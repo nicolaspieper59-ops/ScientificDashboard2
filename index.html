@@ -1,0 +1,44 @@
+<script>
+// Constantes pour calculs
+const c = 299792458; // vitesse lumière m/s
+const vSound = 343;  // vitesse son m/s
+
+// Fonction de mise à jour vitesse
+function updateSpeed(speedMs) {
+  const speedKmh = speedMs*3.6;
+  const speedMm = speedMs*1000;
+  document.getElementById("speed").textContent = speedMs.toFixed(3);
+  document.getElementById("speedKmh").textContent = speedKmh.toFixed(3);
+  document.getElementById("speedMm").textContent = speedMm.toFixed(3);
+  document.getElementById("percentLight").textContent = (speedMs/c*100).toFixed(9)+"%";
+  document.getElementById("percentSound").textContent = (speedMs/vSound*100).toFixed(6)+"%";
+}
+
+// GPS
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(pos => {
+    document.getElementById("lat").textContent = pos.coords.latitude.toFixed(6);
+    document.getElementById("lon").textContent = pos.coords.longitude.toFixed(6);
+    document.getElementById("alt").textContent = pos.coords.altitude ? pos.coords.altitude.toFixed(1) : "-";
+    document.getElementById("accuracy").textContent = pos.coords.accuracy.toFixed(1);
+    updateSpeed(pos.coords.speed || 0);
+  }, err => {
+    console.warn('GPS non autorisé ou indisponible', err);
+  }, {
+    enableHighAccuracy: true,
+    maximumAge: 1000,
+    timeout: 5000
+  });
+}
+
+// Boussole
+window.addEventListener("deviceorientationabsolute", e=>{
+  if(e.alpha!==null) document.getElementById("heading").textContent = e.alpha.toFixed(1);
+});
+
+// Niveau
+window.addEventListener("deviceorientation", e=>{
+  document.getElementById("tiltX").textContent = e.beta? e.beta.toFixed(1) : "-";
+  document.getElementById("tiltY").textContent = e.gamma? e.gamma.toFixed(1) : "-";
+});
+</script>
