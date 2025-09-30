@@ -11,7 +11,17 @@
     <h1>🚀 Vitesse instantanée</h1>
     <div id="vitesse-gps">-- km/h</div>
     <div id="precision-gps">Précision : -- m</div>
-  </main>
+  <main>
+  <h1>🚀 Vitesse instantanée</h1>
+  <div id="vitesse-gps">-- km/h</div>
+  <div id="statut-gps">📡 En attente du signal...</div>
+</main>
+
+<script type="module">
+  import { demarrerVitesseLive } from './js/vitesseLive.js';
+  demarrerVitesseLive();
+</script>
+  
 
   <script type="module">
     import { collecterGPS, calculerVitesse, afficherVitesse } from './js/vitesse.js';
