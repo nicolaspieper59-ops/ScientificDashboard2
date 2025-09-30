@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Compteur Vitesse GPS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -10,28 +11,12 @@
   <main>
     <h1>🚀 Vitesse instantanée</h1>
     <div id="vitesse-gps">-- km/h</div>
-    <div id="precision-gps">Précision : -- m</div>
-  <main>
-  <h1>🚀 Vitesse instantanée</h1>
-  <div id="vitesse-gps">-- km/h</div>
-  <div id="statut-gps">📡 En attente du signal...</div>
-</main>
-
-<script type="module">
-  import { demarrerVitesseLive } from './js/vitesseLive.js';
-  demarrerVitesseLive();
-</script>
-  
+    <div id="statut-gps">📡 En attente du signal...</div>
+  </main>
 
   <script type="module">
-    import { collecterGPS, calculerVitesse, afficherVitesse } from './js/vitesse.js';
-
-    setInterval(() => {
-      collecterGPS().then(gps => {
-        const vitesse = calculerVitesse(gps);
-        afficherVitesse(vitesse, gps.accuracy);
-      });
-    }, 1000);
+    import { demarrerVitesseLive } from './js/vitesseLive.js';
+    demarrerVitesseLive();
   </script>
   <script src="sw-register.js"></script>
 </body>
