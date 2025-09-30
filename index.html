@@ -10,30 +10,19 @@
   <main>
     <h1>🚀 Vitesse instantanée</h1>
     <div id="vitesse-gps">-- km/h</div>
+    <div id="precision-gps">Précision : -- m</div>
   </main>
 
   <script type="module">
-    import { collecterGPS, calculerVitesseInstantanee } from './js/compteurVitesse.js';
+    import { collecterGPS, calculerVitesse, afficherVitesse } from './js/vitesse.js';
 
     setInterval(() => {
-      const timestamp = Date.now();
       collecterGPS().then(gps => {
-        const vitesse = calculerVitesseInstantanee(gps, timestamp);
-        document.getElementById('vitesse-gps').textContent = `${vitesse.toFixed(2)} km/h`;
+        const vitesse = calculerVitesse(gps);
+        afficherVitesse(vitesse, gps.accuracy);
       });
     }, 1000);
   </script>
   <script src="sw-register.js"></script>
-  <script type="module">
-  import { collecterGPS, calculerVitesse, afficherVitesse } from './js/vitesse.js';
-
-  setInterval(() => {
-    collecterGPS().then(gps => {
-      const vitesse = calculerVitesse(gps);
-      afficherVitesse(vitesse);
-    });
-  }, 1000);
-  </script>
-  
 </body>
 </html>
