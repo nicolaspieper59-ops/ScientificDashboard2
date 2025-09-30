@@ -304,3 +304,72 @@ function activerHorlogeMinecraft() {
   miseAJour();
 }
 
+function chargerMeteo() {
+  if (!navigator.onLine) return;
+
+  fetch('https://api.open-meteo.com/v1/forecast?latitude=43.3&longitude=5.4&current_weather=true')
+    .then(r => r.json())
+    .then(data => {
+      const meteo = data.current_weather;
+      document.getElementById('meteo').textContent =
+        `Température : ${meteo.temperature} °C | Vent : ${meteo.windspeed} km/h | Pression : ${meteo.pressure ?? '--'} hPa | Humidité : ${meteo.humidity ?? '--'}%`;
+    });
+
+  fetch('https://api.openaq.org/v2/latest?coordinates=43.3,5.4')
+    .then(r => r.json())
+    .then(data => {
+      const air = data.results[0]?.measurements ?? [];
+      const pm25 = air.find(m => m.parameter === 'pm25')?.value ?? '--';
+      const uv = air.find(m => m.parameter === 'uv')?.value ?? '--';
+      document.getElementById('qualite-air').textContent =
+        `Qualité air : PM2.5 ${pm25} µg/m³ | Indice UV : ${uv}`;
+    });
+        }
+document.addEventListener('DOMContentLoaded', () => {
+  const boutonMarche = document.getElementById('marche');
+  const boutonReset = document.getElementById('reset');
+
+  let actif = false;
+
+  boutonMarche.addEventListener('click', () => {
+    actif = !actif;
+    if (actif) {
+      demarrerCockpit();
+      activerCapteurs();
+      activerBoussole();
+      activerHorlogeMinecraft();
+      afficherMedaillon();
+      chargerMeteo();
+      afficherGrandeurs();
+      boutonMarche.textContent = '⏹️ Arrêter';
+    } else {
+      arreterCockpit();
+      boutonMarche.textContent = '▶️ Marche';
+      document.getElementById('vitesse').textContent = 'Vitesse : -- km/h';
+      document.getElementById('distance').textContent = 'Distance : -- km | -- al';
+      document.getElementById('pourcentage').textContent = '% Lumière : --% | % Son : --%';
+      document.getElementById('gps').textContent = 'Latitude : -- | Longitude : -- | Précision : --%';
+      document.getElementById('capteurs').textContent = 'Lux : -- | dB : -- | Hz : --';
+      document.getElementById('boussole').textContent = 'Cap : --° | Coordonnées Minecraft : --';
+      document.getElementById('horloge').textContent = '🕒 00:00:00';
+      document.getElementById('medaillon').textContent = '☀️🌙 Médaillon cosmique';
+      document.getElementById('meteo').textContent = 'Température : -- °C | Vent : -- km/h';
+      document.getElementById('qualite-air').textContent = 'Qualité air : -- | Indice UV : --';
+      document.getElementById('grandeurs').textContent = 'Point d’ébullition : -- °C | Gravité : -- m/s²';
+    }
+  });
+
+  boutonReset.addEventListener('click', () => {
+    resetVitesseMax();
+    document.getElementById('vitesse').textContent += ' | Max réinitialisé';
+  });
+});
+    function afficherGrandeurs() {
+  const pointEbullition = 100; // °C à pression normale
+  const gravite = 9.81; // m/s²
+  const vitesseSon = 343; // m/s
+  const vitesseLumiere = 299792458; // m/s
+
+  document.getElementById('grandeurs').textContent =
+    `Point d’ébullition : ${pointEbullition} °C | Gravité : ${gravite} m/s² | Vitesse son : ${vitesseSon} m/s | Vitesse lumière : ${vitesseLumiere.toExponential(2)} m/s`;
+    }
