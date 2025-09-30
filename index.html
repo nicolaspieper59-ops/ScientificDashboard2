@@ -4,25 +4,25 @@
   <meta charset="UTF-8">
   <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- Librairies pour le medaillon / cartes célestes -->
+  <script src="lib/d3.min.js"></script>
+  <script src="lib/d3.geo.projection.min.js"></script>
+  <script src="lib/celestial.min.js"></script>
 </head>
 <body>
   <main>
     <h1>🌌 Cockpit Cosmique</h1>
 
-    <!-- Vitesse et distance -->
+    <!-- Vitesse & Distance -->
     <section>
       <h2>🚀 Vitesse & Distance</h2>
-      <div id="vitesse">Temps : 0.00 s | Vitesse instantanée : -- km/h | Vitesse moyenne : -- km/h | Vitesse max : -- km/h | Vitesse : -- m/s | -- mm/s</div>
+      <div id="vitesse">Temps : -- s | Vitesse instantanée : -- km/h | Moyenne : -- | Max : --</div>
       <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-      <div id="distance">Distance : -- km | -- m | -- mm | Distance cosmique : -- s lumière | -- al</div>
-    </section>
-
-    <!-- GPS brut -->
-    <section>
-      <h2>📊 Vue brute GPS</h2>
-      <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision GPS : --%</div>
-      <div id="souterrain">Souterrain : --</div>
+      <div id="distance">Distance : -- km | -- m | -- mm | Cosmique : -- s lumière | -- al</div>
+      <button id="marche">▶️ Marche</button>
+      <button id="reset">🔄 Réinitialiser vitesse max</button>
     </section>
 
     <!-- Capteurs physiques -->
@@ -31,22 +31,38 @@
       <div id="capteurs">Niveau à bulle : --° | Lumière : -- lux | Son : -- dB | Fréquence : -- Hz | Magnétisme : -- µT</div>
     </section>
 
-    <!-- Boussole et coordonnées -->
+    <!-- Accélération, puissance et grandeurs scientifiques -->
+    <section>
+      <h2>🧪 Accélération, Puissance & Grandeurs scientifiques</h2>
+      <div id="grandeurs">
+        Accélération : -- g | Force : -- N | Puissance : -- J<br>
+        Gravité : -- m/s² | Vitesse son : -- m/s | Vitesse lumière : -- m/s | Point d’ébullition : -- °C
+      </div>
+    </section>
+
+    <!-- GPS brut -->
+    <section>
+      <h2>📊 Vue brute GPS</h2>
+      <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision GPS : --%</div>
+    </section>
+
+    <!-- Boussole & coordonnées Minecraft -->
     <section>
       <h2>🧭 Boussole & Coordonnées Minecraft</h2>
-      <div id="boussole">Cap : --° | Vers lat : -- | Vers lon : -- | Cap vers destination : --°</div>
+      <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --°</div>
     </section>
 
-    <!-- Horloge Minecraft -->
+    <!-- Horloge cosmique -->
     <section>
-      <h2>⏰ Horloge Minecraft</h2>
-      <div id="horloge">00:00:00</div>
+      <h2>⏰ Horloge cosmique</h2>
+      <div id="horloge">--:--:--</div>
     </section>
 
-    <!-- Médaillon cosmique -->
+    <!-- Médaillon céleste -->
     <section>
-      <h2>☀️🌙 Médaillon cosmique</h2>
+      <h2>☀️🌙 Médaillon céleste</h2>
       <div id="medaillon">Disque céleste en attente...</div>
+      <div id="celestial-map"></div>
     </section>
 
     <!-- Soleil & Lune -->
@@ -65,32 +81,29 @@
       </div>
     </section>
 
-    <!-- Météo -->
+    <!-- Météo & Qualité de l’air -->
     <section>
       <h2>🌡️ Météo & Qualité de l’air</h2>
-      <div id="meteo">Température : -- °C | Pression : -- hPa | Humidité : --% | Vent : -- km/h | Nuages : --% | Pluie : -- mm | Neige : -- mm</div>
-      <div id="qualite-air">Indice UV : -- | Qualité air : --</div>
-      <div id="ebullition">Point d’ébullition : -- °C</div>
-    </section>
-
-    <!-- Grandeurs scientifiques -->
-    <section>
-      <h2>🧪 Grandeurs physiques, chimiques & biologiques</h2>
-      <div id="grandeurs">
-        Gravité : -- m/s² | Masse : -- kg | Température : -- K | Pression : -- Pa<br>
-        Vitesse son : -- m/s | Vitesse lumière : -- m/s<br>
-        pH : -- | Conductivité : -- S/m | Concentration : -- mol/L
+      <div id="meteo">
+        Temp : -- °C | Humidité : --% | Point rosée : -- °C | Vent : -- km/h | Rafales : -- km/h<br>
+        Couverture nuageuse : --% | Visibilité : -- km | Plafond : -- m | AccuLumen : -- lx
+      </div>
+      <div id="qualite-air">
+        NO₂ : -- µg/m³ | PM2.5 : -- µg/m³ | PM10 : -- µg/m³ | O₃ : -- µg/m³ | CO : -- µg/m³ | SO₂ : -- µg/m³
       </div>
     </section>
 
     <!-- Contrôles -->
     <section>
       <h2>🎛️ Contrôles</h2>
+      <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
       <button id="marche">▶️ Marche</button>
       <button id="reset">🔄 Réinitialiser vitesse max</button>
     </section>
+
   </main>
 
   <script type="module" src="cockpitCosmique.js"></script>
 </body>
-</html>
+  </html>
+        
