@@ -33,4 +33,23 @@ function calculerDistance(pos1, pos2) {
   const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
+  export function collecterGPS() {
+  return new Promise(resolve => {
+    navigator.geolocation.getCurrentPosition(pos => {
+      resolve({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      });
+    }, err => {
+      console.error("Erreur GPS :", err);
+      resolve({ latitude: 0, longitude: 0, accuracy: null });
+    }, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    });
+  });
+  }
+  
 }
