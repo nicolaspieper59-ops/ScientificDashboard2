@@ -44,9 +44,13 @@ function calculerDistance(pos1, pos2) {
   return R * c;
 }
 
-export function afficherVitesse(vitesse) {
+export function afficherVitesse(vitesse, precision) {
   const affichage = document.getElementById('vitesse-gps');
+  const affichagePrecision = document.getElementById('precision-gps');
   if (affichage) {
     affichage.textContent = `${vitesse.toFixed(2)} km/h`;
+  }
+  if (affichagePrecision && precision !== null) {
+    affichagePrecision.textContent = `Précision : ${precision.toFixed(0)} m`;
   }
 }
