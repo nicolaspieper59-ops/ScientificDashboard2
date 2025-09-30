@@ -4,60 +4,69 @@
   <meta charset="UTF-8">
   <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      background-color: #000;
-      color: #0ff;
-      font-family: 'Courier New', monospace;
-      padding: 20px;
-    }
-    h1 {
-      color: #ffd700;
-      text-align: center;
-    }
-    main > div {
-      margin: 10px 0;
-      font-size: 1em;
-    }
-    button {
-      margin: 10px;
-      padding: 10px 20px;
-      font-size: 1em;
-      background-color: #222;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #333;
-    }
-    #medaillon canvas {
-      display: block;
-      margin: 10px auto;
-      border: 1px solid #555;
-      background-color: #000;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
     <h1>🌌 Cockpit Cosmique</h1>
 
-    <div id="vitesse">Vitesse : -- km/h</div>
-    <div id="distance">Distance : -- km | -- al</div>
-    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-    <div id="gps">Latitude : -- | Longitude : -- | Précision GPS : --%</div>
-    <div id="capteurs">Lux : -- | dB : -- | Hz : --</div>
-    <div id="boussole">Cap : --° | Coordonnées Minecraft : --</div>
-    <div id="horloge">🕒 00:00:00</div>
-    <div id="medaillon">☀️🌙 Médaillon cosmique</div>
-    <div id="meteo">Température : -- °C | Vent : -- km/h</div>
-    <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
-    <div id="grandeurs">Point d’ébullition : -- °C | Gravité : -- m/s²</div>
+    <!-- Vitesse et distance -->
+    <section>
+      <h2>🚀 Vitesse & Distance</h2>
+      <div id="vitesse">Vitesse : -- km/h</div>
+      <div id="distance">Distance : -- km | -- al</div>
+      <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+    </section>
 
-    <button id="marche">▶️ Marche</button>
-    <button id="reset">🔄 Réinitialiser</button>
+    <!-- GPS brut -->
+    <section>
+      <h2>📊 Vue brute GPS</h2>
+      <div id="gps">Latitude : -- | Longitude : -- | Précision GPS : --%</div>
+    </section>
+
+    <!-- Capteurs -->
+    <section>
+      <h2>📐 Capteurs physiques</h2>
+      <div id="capteurs">Lux : -- | dB : -- | Hz : -- | Niveau : --° | Magnétisme : -- µT</div>
+    </section>
+
+    <!-- Boussole -->
+    <section>
+      <h2>🧭 Boussole & Coordonnées</h2>
+      <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --°</div>
+    </section>
+
+    <!-- Horloge -->
+    <section>
+      <h2>⏰ Horloge Minecraft</h2>
+      <div id="horloge">00:00:00</div>
+    </section>
+
+    <!-- Médaillon cosmique -->
+    <section>
+      <h2>☀️🌙 Médaillon cosmique</h2>
+      <div id="medaillon">Disque céleste en attente...</div>
+    </section>
+
+    <!-- Météo -->
+    <section>
+      <h2>🌡️ Météo & Air</h2>
+      <div id="meteo">Température : -- °C | Vent : -- km/h | Pression : -- hPa | Humidité : --%</div>
+      <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
+    </section>
+
+    <!-- Grandeurs scientifiques -->
+    <section>
+      <h2>🧪 Grandeurs physiques & chimiques</h2>
+      <div id="grandeurs">Point d’ébullition : -- °C | Gravité : -- m/s² | Vitesse son : -- m/s | Vitesse lumière : -- m/s</div>
+    </section>
+
+    <!-- Contrôles -->
+    <section>
+      <h2>🎛️ Contrôles</h2>
+      <button id="marche">▶️ Marche</button>
+      <button id="reset">🔄 Réinitialiser vitesse max</button>
+    </section>
   </main>
 
   <script type="module" src="cockpitCosmique.js"></script>
