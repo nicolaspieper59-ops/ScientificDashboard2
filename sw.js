@@ -6,7 +6,7 @@ self.addEventListener('install', event => {
         './index.html',
         './style.css',
         './manifest.json',
-        './js/vitesse.js'
+        './js/vitesseLive.js'
       ]);
     })
   );
