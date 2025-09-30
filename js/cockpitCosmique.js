@@ -218,4 +218,89 @@ export function definirDestination(lat, lon) {
   destination.longitude = lon;
           }
   
-                                    
+function afficherMedaillon() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 300;
+  canvas.height = 300;
+  const ctx = canvas.getContext('2d');
+  const medaillon = document.getElementById('medaillon');
+  medaillon.innerHTML = '';
+  medaillon.appendChild(canvas);
+
+  // Fond cosmique
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Disque céleste
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const r = 140;
+
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  ctx.stroke();
+
+  // Zénith au bord, 0° au centre
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px monospace';
+  ctx.fillText('Zénith', cx - 20, cy - r + 10);
+  ctx.fillText('0°', cx - 10, cy + 4);
+
+  // Horizon en demi-cercle
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, 0);
+  ctx.strokeStyle = '#888';
+  ctx.stroke();
+
+  // Soleil stylisé
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.arc(cx + 60, cy - 60, 8, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.fillText('☀️ Soleil', cx + 50, cy - 70);
+
+  // Lune stylisée
+  ctx.fillStyle = '#ccc';
+  ctx.beginPath();
+  ctx.arc(cx - 60, cy - 40, 6, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.fillText('🌙 Lune', cx - 70, cy - 50);
+
+  // Constellations (exemples)
+  const constellations = [
+    { name: 'Orion', x: cx + 20, y: cy + 60 },
+    { name: 'Cassiopeia', x: cx - 30, y: cy + 40 },
+    { name: 'Scorpius', x: cx + 70, y: cy + 10 }
+  ];
+  ctx.fillStyle = '#0ff';
+  constellations.forEach(c => {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 2, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillText(c.name, c.x + 5, c.y + 5);
+  });
+
+  // Galaxie stylisée
+  ctx.fillStyle = '#f0f';
+  ctx.beginPath();
+  ctx.arc(cx, cy + 100, 3, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.fillText('🌌 Galaxie', cx - 20, cy + 110);
+    }
+function activerHorlogeMinecraft() {
+  const horloge = document.getElementById('horloge');
+
+  function miseAJour() {
+    const maintenant = new Date();
+    const h = String(maintenant.getHours()).padStart(2, '0');
+    const m = String(maintenant.getMinutes()).padStart(2, '0');
+    const s = String(maintenant.getSeconds()).padStart(2, '0');
+    horloge.textContent = `⏰ Horloge Minecraft\n${h}:${m}:${s}`;
+    requestAnimationFrame(miseAJour);
+  }
+
+  miseAJour();
+}
+
