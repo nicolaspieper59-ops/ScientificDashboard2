@@ -109,3 +109,113 @@ function afficherGPS(gps) {
   document.getElementById('gps').textContent =
     `Latitude : ${gps.latitude.toFixed(6)} | Longitude : ${gps.longitude.toFixed(6)} | Précision GPS : ${gps.accuracy.toFixed(0)}%`;
     }
+function activerCapteurs() {
+  // Lumière ambiante
+  if ('AmbientLightSensor' in window) {
+    try {
+      const lightSensor = new AmbientLightSensor();
+      lightSensor.addEventListener('reading', () => {
+        document.getElementById('capteurs').textContent =
+          `Lumière : ${lightSensor.illuminance.toFixed(0)} lux`;
+      });
+      lightSensor.start();
+    } catch (err) {
+      console.warn("Capteur lumière indisponible :", err);
+    }
+  }
+
+  // Son ambiant (simulation via microphone)
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      const audioCtx = new AudioContext();
+      const analyser = audioCtx.createAnalyser();
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+
+      function analyserSon() {
+        analyser.getByteFrequencyData(data);
+        const moyenne = data.reduce((a, b) => a + b, 0) / data.length;
+        const dB = 20 * Math.log10(moyenne);
+        const Hz = analyser.frequencyBinCount;
+
+        document.getElementById('capteurs').textContent +=
+          ` | Son : ${dB.toFixed(0)} dB | Fréquence : ${Hz} Hz`;
+        requestAnimationFrame(analyserSon);
+      }
+      analyserSon();
+    }).catch(err => {
+      console.warn("Microphone indisponible :", err);
+    });
+  }
+
+  // Niveau à bulle (inclinaison)
+  if ('DeviceOrientationEvent' in window) {
+    window.addEventListener('deviceorientation', e => {
+      const inclinaison = e.beta; // axe Y
+      document.getElementById('capteurs').textContent +=
+        ` | Niveau à bulle : ${inclinaison.toFixed(1)}°`;
+    });
+  }
+
+  // Champ magnétique (si disponible)
+  if ('Magnetometer' in window) {
+    try {
+      const magneto = new Magnetometer();
+      magneto.addEventListener('reading', () => {
+        const champ = Math.sqrt(
+          magneto.x ** 2 + magneto.y ** 2 + magneto.z ** 2
+        );
+        document.getElementById('capteurs').textContent +=
+          ` | Magnétisme : ${champ.toFixed(0)} µT`;
+      });
+      magneto.start();
+    } catch (err) {
+      console.warn("Magnétomètre indisponible :", err);
+    }
+  }
+          }
+let destination = { latitude: null, longitude: null };
+
+function activerBoussole() {
+  if ('DeviceOrientationEvent' in window) {
+    window.addEventListener('deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', e => {
+      const cap = e.alpha; // azimut
+      const coordMinecraft = convertirCoordonneesMinecraft();
+      const capDest = calculerCapVersDestination(cap);
+
+      document.getElementById('boussole').textContent =
+        `Cap : ${cap?.toFixed(0) ?? '--'}° | Coordonnées Minecraft : ${coordMinecraft} | Cap vers destination : ${capDest}`;
+    });
+  }
+}
+
+function convertirCoordonneesMinecraft() {
+  if (!positionPrecedente) return '--';
+  const x = Math.round(positionPrecedente.longitude * 1000);
+  const z = Math.round(positionPrecedente.latitude * 1000);
+  return `X:${x} Z:${z}`;
+}
+
+function calculerCapVersDestination(capActuel) {
+  if (!positionPrecedente || !destination.latitude || !destination.longitude) return '--';
+
+  const φ1 = positionPrecedente.latitude * Math.PI / 180;
+  const φ2 = destination.latitude * Math.PI / 180;
+  const Δλ = (destination.longitude - positionPrecedente.longitude) * Math.PI / 180;
+
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const θ = Math.atan2(y, x);
+  const capDestination = (θ * 180 / Math.PI + 360) % 360;
+
+  const delta = Math.abs(capActuel - capDestination);
+  return `${capDestination.toFixed(0)}° (${delta.toFixed(0)}° d'écart)`;
+}
+
+export function definirDestination(lat, lon) {
+  destination.latitude = lat;
+  destination.longitude = lon;
+          }
+  
+                                    
