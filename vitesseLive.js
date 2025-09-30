@@ -68,4 +68,5 @@ function afficherVitesse(vitesse, precision) {
       statut.textContent = "🌫️ Signal faible";
     }
   }
-}
+  }
+  
