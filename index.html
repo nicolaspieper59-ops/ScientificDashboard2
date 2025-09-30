@@ -2,38 +2,64 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Compteur Vitesse GPS</title>
+  <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      background-color: #000;
+      color: #0ff;
+      font-family: 'Courier New', monospace;
+      padding: 20px;
+    }
+    h1 {
+      color: #ffd700;
+      text-align: center;
+    }
+    main > div {
+      margin: 10px 0;
+      font-size: 1em;
+    }
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 1em;
+      background-color: #222;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #333;
+    }
+    #medaillon canvas {
+      display: block;
+      margin: 10px auto;
+      border: 1px solid #555;
+      background-color: #000;
+    }
+  </style>
 </head>
 <body>
   <main>
-    <h1>🚀 Vitesse instantanée</h1>
-    <div id="vitesse-gps">-- km/h</div>
-    <div id="statut-gps">📡 En attente du signal...</div>
-    <button id="bouton-marche">▶️ Démarrer</button>
+    <h1>🌌 Cockpit Cosmique</h1>
+
+    <div id="vitesse">Vitesse : -- km/h</div>
+    <div id="distance">Distance : -- km | -- al</div>
+    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+    <div id="gps">Latitude : -- | Longitude : -- | Précision GPS : --%</div>
+    <div id="capteurs">Lux : -- | dB : -- | Hz : --</div>
+    <div id="boussole">Cap : --° | Coordonnées Minecraft : --</div>
+    <div id="horloge">🕒 00:00:00</div>
+    <div id="medaillon">☀️🌙 Médaillon cosmique</div>
+    <div id="meteo">Température : -- °C | Vent : -- km/h</div>
+    <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
+    <div id="grandeurs">Point d’ébullition : -- °C | Gravité : -- m/s²</div>
+
+    <button id="marche">▶️ Marche</button>
+    <button id="reset">🔄 Réinitialiser</button>
   </main>
 
-  <script type="module">
-    import { demarrerVitesseLive, arreterVitesseLive } from './js/vitesseLive.js';
-
-    let actif = false;
-    const bouton = document.getElementById('bouton-marche');
-
-    bouton.addEventListener('click', () => {
-      actif = !actif;
-      if (actif) {
-        demarrerVitesseLive();
-        bouton.textContent = '⏹️ Arrêter';
-      } else {
-        arreterVitesseLive();
-        bouton.textContent = '▶️ Démarrer';
-        document.getElementById('vitesse-gps').textContent = '-- km/h';
-        document.getElementById('statut-gps').textContent = '🛑 Compteur arrêté';
-      }
-    });
-  </script>
-  <script src="sw-register.js"></script>
+  <script type="module" src="cockpitCosmique.js"></script>
 </body>
 </html>
