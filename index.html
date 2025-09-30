@@ -1,44 +1,26 @@
-<script>
-// Constantes pour calculs
-const c = 299792458; // vitesse lumière m/s
-const vSound = 343;  // vitesse son m/s
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Compteur Vitesse GPS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>🚀 Vitesse instantanée</h1>
+    <div id="vitesse-gps">-- km/h</div>
+  </main>
 
-// Fonction de mise à jour vitesse
-function updateSpeed(speedMs) {
-  const speedKmh = speedMs*3.6;
-  const speedMm = speedMs*1000;
-  document.getElementById("speed").textContent = speedMs.toFixed(3);
-  document.getElementById("speedKmh").textContent = speedKmh.toFixed(3);
-  document.getElementById("speedMm").textContent = speedMm.toFixed(3);
-  document.getElementById("percentLight").textContent = (speedMs/c*100).toFixed(9)+"%";
-  document.getElementById("percentSound").textContent = (speedMs/vSound*100).toFixed(6)+"%";
-}
+  <script type="module">
+    import { collecterGPS, calculerVitesseInstantanee } from './js/compteurVitesse.js';
 
-// GPS
-if (navigator.geolocation) {
-  navigator.geolocation.watchPosition(pos => {
-    document.getElementById("lat").textContent = pos.coords.latitude.toFixed(6);
-    document.getElementById("lon").textContent = pos.coords.longitude.toFixed(6);
-    document.getElementById("alt").textContent = pos.coords.altitude ? pos.coords.altitude.toFixed(1) : "-";
-    document.getElementById("accuracy").textContent = pos.coords.accuracy.toFixed(1);
-    updateSpeed(pos.coords.speed || 0);
-  }, err => {
-    console.warn('GPS non autorisé ou indisponible', err);
-  }, {
-    enableHighAccuracy: true,
-    maximumAge: 1000,
-    timeout: 5000
-  });
-}
-
-// Boussole
-window.addEventListener("deviceorientationabsolute", e=>{
-  if(e.alpha!==null) document.getElementById("heading").textContent = e.alpha.toFixed(1);
-});
-
-// Niveau
-window.addEventListener("deviceorientation", e=>{
-  document.getElementById("tiltX").textContent = e.beta? e.beta.toFixed(1) : "-";
-  document.getElementById("tiltY").textContent = e.gamma? e.gamma.toFixed(1) : "-";
-});
-</script>
+    setInterval(() => {
+      const timestamp = Date.now();
+      collecterGPS().then(gps => {
+        const vitesse = calculerVitesseInstantanee(gps, timestamp);
+        document.getElementById('vitesse-gps').textContent = `${vitesse.toFixed(2)} km/h`;
+      });
+    }, 1000);
+  </script>
+</body>
+</html>
