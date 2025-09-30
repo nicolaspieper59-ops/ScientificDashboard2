@@ -4,37 +4,44 @@ let vitesseMax = 0;
 let vitesses = [];
 let distanceTotale = 0;
 
+let destination = { latitude: null, longitude: null };
+
 export function demarrerCockpit() {
   if (watchId !== null) return;
 
-  watchId = navigator.geolocation.watchPosition(pos => {
-    const gps = {
-      latitude: pos.coords.latitude,
-      longitude: pos.coords.longitude,
-      accuracy: pos.coords.accuracy,
-      timestamp: pos.timestamp,
-      speed: pos.coords.speed
-    };
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      const gps = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        timestamp: pos.timestamp,
+        speed: pos.coords.speed
+      };
 
-    const vitesse = gps.speed !== null
-      ? gps.speed * 3.6
-      : calculerVitesse(gps);
+      const vitesse = gps.speed !== null
+        ? gps.speed * 3.6
+        : calculerVitesse(gps);
 
-    if (vitesse >= 0 && vitesse < 300) {
-      vitesseMax = Math.max(vitesseMax, vitesse);
-      vitesses.push(vitesse);
-      afficherVitesse(vitesse);
-      afficherDistance(gps);
-      afficherPourcentage(vitesse);
-      afficherGPS(gps);
+      if (vitesse >= 0 && vitesse < 300) {
+        vitesseMax = Math.max(vitesseMax, vitesse);
+        vitesses.push(vitesse);
+
+        afficherVitesse(vitesse);
+        afficherDistance(gps);
+        afficherPourcentage(vitesse);
+        afficherGPS(gps);
+      }
+    },
+    err => {
+      console.error("Erreur GPS :", err);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000
     }
-  }, err => {
-    console.error("Erreur GPS :", err);
-  }, {
-    enableHighAccuracy: true,
-    maximumAge: 0,
-    timeout: 10000
-  });
+  );
 }
 
 export function arreterCockpit() {
@@ -71,21 +78,31 @@ function calculerDistance(pos1, pos2) {
   const φ2 = pos2.latitude * Math.PI / 180;
   const Δφ = (pos2.latitude - pos1.latitude) * Math.PI / 180;
   const Δλ = (pos2.longitude - pos1.longitude) * Math.PI / 180;
-  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  const a = Math.sin(Δφ / 2) ** 2 +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
 function afficherVitesse(vitesse) {
-  const moyenne = vitesses.reduce((a, b) => a + b, 0) / vitesses.length;
+  const moyenne = vitesses.length
+    ? vitesses.reduce((a, b) => a + b, 0) / vitesses.length
+    : 0;
+
   const mps = vitesse / 3.6;
   const mmps = mps * 1000;
 
   document.getElementById('vitesse').textContent =
-    `Temps : ${new Date().toLocaleTimeString()} | Vitesse instantanée : ${vitesse.toFixed(2)} km/h | Moyenne : ${moyenne.toFixed(2)} km/h | Max : ${vitesseMax.toFixed(2)} km/h | ${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`;
+    `Temps : ${new Date().toLocaleTimeString()} | ` +
+    `Vitesse instantanée : ${vitesse.toFixed(2)} km/h | ` +
+    `Moyenne : ${moyenne.toFixed(2)} km/h | ` +
+    `Max : ${vitesseMax.toFixed(2)} km/h | ` +
+    `${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`;
 }
 
-function afficherDistance(gps) {
+function afficherDistance() {
   const km = distanceTotale / 1000;
   const m = distanceTotale;
   const mm = m * 1000;
@@ -93,7 +110,9 @@ function afficherDistance(gps) {
   const anneesLumiere = secondesLumiere / (3600 * 24 * 365.25);
 
   document.getElementById('distance').textContent =
-    `Distance : ${km.toFixed(3)} km | ${m.toFixed(0)} m | ${mm.toFixed(0)} mm | Cosmique : ${secondesLumiere.toFixed(3)} s lumière | ${anneesLumiere.toExponential(3)} al`;
+    `Distance : ${km.toFixed(3)} km | ${m.toFixed(0)} m | ` +
+    `${mm.toFixed(0)} mm | Cosmique : ${secondesLumiere.toFixed(3)} s lumière | ` +
+    `${anneesLumiere.toExponential(3)} al`;
 }
 
 function afficherPourcentage(vitesse) {
@@ -102,274 +121,14 @@ function afficherPourcentage(vitesse) {
   const pourcentSon = (mps / 343) * 100;
 
   document.getElementById('pourcentage').textContent =
-    `% Lumière : ${pourcentLumiere.toExponential(2)}% | % Son : ${pourcentSon.toFixed(2)}%`;
+    `% Lumière : ${pourcentLumiere.toExponential(2)}% | ` +
+    `% Son : ${pourcentSon.toFixed(2)}%`;
 }
 
 function afficherGPS(gps) {
   document.getElementById('gps').textContent =
-    `Latitude : ${gps.latitude.toFixed(6)} | Longitude : ${gps.longitude.toFixed(6)} | Précision GPS : ${gps.accuracy.toFixed(0)}%`;
-    }
-function activerCapteurs() {
-  // Lumière ambiante
-  if ('AmbientLightSensor' in window) {
-    try {
-      const lightSensor = new AmbientLightSensor();
-      lightSensor.addEventListener('reading', () => {
-        document.getElementById('capteurs').textContent =
-          `Lumière : ${lightSensor.illuminance.toFixed(0)} lux`;
-      });
-      lightSensor.start();
-    } catch (err) {
-      console.warn("Capteur lumière indisponible :", err);
-    }
-  }
-
-  // Son ambiant (simulation via microphone)
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      const audioCtx = new AudioContext();
-      const analyser = audioCtx.createAnalyser();
-      const source = audioCtx.createMediaStreamSource(stream);
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-
-      function analyserSon() {
-        analyser.getByteFrequencyData(data);
-        const moyenne = data.reduce((a, b) => a + b, 0) / data.length;
-        const dB = 20 * Math.log10(moyenne);
-        const Hz = analyser.frequencyBinCount;
-
-        document.getElementById('capteurs').textContent +=
-          ` | Son : ${dB.toFixed(0)} dB | Fréquence : ${Hz} Hz`;
-        requestAnimationFrame(analyserSon);
-      }
-      analyserSon();
-    }).catch(err => {
-      console.warn("Microphone indisponible :", err);
-    });
-  }
-
-  // Niveau à bulle (inclinaison)
-  if ('DeviceOrientationEvent' in window) {
-    window.addEventListener('deviceorientation', e => {
-      const inclinaison = e.beta; // axe Y
-      document.getElementById('capteurs').textContent +=
-        ` | Niveau à bulle : ${inclinaison.toFixed(1)}°`;
-    });
-  }
-
-  // Champ magnétique (si disponible)
-  if ('Magnetometer' in window) {
-    try {
-      const magneto = new Magnetometer();
-      magneto.addEventListener('reading', () => {
-        const champ = Math.sqrt(
-          magneto.x ** 2 + magneto.y ** 2 + magneto.z ** 2
-        );
-        document.getElementById('capteurs').textContent +=
-          ` | Magnétisme : ${champ.toFixed(0)} µT`;
-      });
-      magneto.start();
-    } catch (err) {
-      console.warn("Magnétomètre indisponible :", err);
-    }
-  }
-          }
-let destination = { latitude: null, longitude: null };
-
-function activerBoussole() {
-  if ('DeviceOrientationEvent' in window) {
-    window.addEventListener('deviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', e => {
-      const cap = e.alpha; // azimut
-      const coordMinecraft = convertirCoordonneesMinecraft();
-      const capDest = calculerCapVersDestination(cap);
-
-      document.getElementById('boussole').textContent =
-        `Cap : ${cap?.toFixed(0) ?? '--'}° | Coordonnées Minecraft : ${coordMinecraft} | Cap vers destination : ${capDest}`;
-    });
-  }
+    `Latitude : ${gps.latitude.toFixed(6)} | ` +
+    `Longitude : ${gps.longitude.toFixed(6)} | ` +
+    `Précision GPS : ${gps.accuracy.toFixed(0)}%`;
 }
-
-function convertirCoordonneesMinecraft() {
-  if (!positionPrecedente) return '--';
-  const x = Math.round(positionPrecedente.longitude * 1000);
-  const z = Math.round(positionPrecedente.latitude * 1000);
-  return `X:${x} Z:${z}`;
-}
-
-function calculerCapVersDestination(capActuel) {
-  if (!positionPrecedente || !destination.latitude || !destination.longitude) return '--';
-
-  const φ1 = positionPrecedente.latitude * Math.PI / 180;
-  const φ2 = destination.latitude * Math.PI / 180;
-  const Δλ = (destination.longitude - positionPrecedente.longitude) * Math.PI / 180;
-
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  const θ = Math.atan2(y, x);
-  const capDestination = (θ * 180 / Math.PI + 360) % 360;
-
-  const delta = Math.abs(capActuel - capDestination);
-  return `${capDestination.toFixed(0)}° (${delta.toFixed(0)}° d'écart)`;
-}
-
-export function definirDestination(lat, lon) {
-  destination.latitude = lat;
-  destination.longitude = lon;
-          }
   
-function afficherMedaillon() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 300;
-  canvas.height = 300;
-  const ctx = canvas.getContext('2d');
-  const medaillon = document.getElementById('medaillon');
-  medaillon.innerHTML = '';
-  medaillon.appendChild(canvas);
-
-  // Fond cosmique
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Disque céleste
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  const r = 140;
-
-  ctx.strokeStyle = '#444';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-  ctx.stroke();
-
-  // Zénith au bord, 0° au centre
-  ctx.fillStyle = '#fff';
-  ctx.font = '10px monospace';
-  ctx.fillText('Zénith', cx - 20, cy - r + 10);
-  ctx.fillText('0°', cx - 10, cy + 4);
-
-  // Horizon en demi-cercle
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, Math.PI, 0);
-  ctx.strokeStyle = '#888';
-  ctx.stroke();
-
-  // Soleil stylisé
-  ctx.fillStyle = '#ffd700';
-  ctx.beginPath();
-  ctx.arc(cx + 60, cy - 60, 8, 0, 2 * Math.PI);
-  ctx.fill();
-  ctx.fillText('☀️ Soleil', cx + 50, cy - 70);
-
-  // Lune stylisée
-  ctx.fillStyle = '#ccc';
-  ctx.beginPath();
-  ctx.arc(cx - 60, cy - 40, 6, 0, 2 * Math.PI);
-  ctx.fill();
-  ctx.fillText('🌙 Lune', cx - 70, cy - 50);
-
-  // Constellations (exemples)
-  const constellations = [
-    { name: 'Orion', x: cx + 20, y: cy + 60 },
-    { name: 'Cassiopeia', x: cx - 30, y: cy + 40 },
-    { name: 'Scorpius', x: cx + 70, y: cy + 10 }
-  ];
-  ctx.fillStyle = '#0ff';
-  constellations.forEach(c => {
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, 2, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.fillText(c.name, c.x + 5, c.y + 5);
-  });
-
-  // Galaxie stylisée
-  ctx.fillStyle = '#f0f';
-  ctx.beginPath();
-  ctx.arc(cx, cy + 100, 3, 0, 2 * Math.PI);
-  ctx.fill();
-  ctx.fillText('🌌 Galaxie', cx - 20, cy + 110);
-    }
-function activerHorlogeMinecraft() {
-  const horloge = document.getElementById('horloge');
-
-  function miseAJour() {
-    const maintenant = new Date();
-    const h = String(maintenant.getHours()).padStart(2, '0');
-    const m = String(maintenant.getMinutes()).padStart(2, '0');
-    const s = String(maintenant.getSeconds()).padStart(2, '0');
-    horloge.textContent = `⏰ Horloge Minecraft\n${h}:${m}:${s}`;
-    requestAnimationFrame(miseAJour);
-  }
-
-  miseAJour();
-}
-
-function chargerMeteo() {
-  if (!navigator.onLine) return;
-
-  fetch('https://api.open-meteo.com/v1/forecast?latitude=43.3&longitude=5.4&current_weather=true')
-    .then(r => r.json())
-    .then(data => {
-      const meteo = data.current_weather;
-      document.getElementById('meteo').textContent =
-        `Température : ${meteo.temperature} °C | Vent : ${meteo.windspeed} km/h | Pression : ${meteo.pressure ?? '--'} hPa | Humidité : ${meteo.humidity ?? '--'}%`;
-    });
-
-  fetch('https://api.openaq.org/v2/latest?coordinates=43.3,5.4')
-    .then(r => r.json())
-    .then(data => {
-      const air = data.results[0]?.measurements ?? [];
-      const pm25 = air.find(m => m.parameter === 'pm25')?.value ?? '--';
-      const uv = air.find(m => m.parameter === 'uv')?.value ?? '--';
-      document.getElementById('qualite-air').textContent =
-        `Qualité air : PM2.5 ${pm25} µg/m³ | Indice UV : ${uv}`;
-    });
-        }
-document.addEventListener('DOMContentLoaded', () => {
-  const boutonMarche = document.getElementById('marche');
-  const boutonReset = document.getElementById('reset');
-
-  let actif = false;
-
-  boutonMarche.addEventListener('click', () => {
-    actif = !actif;
-    if (actif) {
-      demarrerCockpit();
-      activerCapteurs();
-      activerBoussole();
-      activerHorlogeMinecraft();
-      afficherMedaillon();
-      chargerMeteo();
-      afficherGrandeurs();
-      boutonMarche.textContent = '⏹️ Arrêter';
-    } else {
-      arreterCockpit();
-      boutonMarche.textContent = '▶️ Marche';
-      document.getElementById('vitesse').textContent = 'Vitesse : -- km/h';
-      document.getElementById('distance').textContent = 'Distance : -- km | -- al';
-      document.getElementById('pourcentage').textContent = '% Lumière : --% | % Son : --%';
-      document.getElementById('gps').textContent = 'Latitude : -- | Longitude : -- | Précision : --%';
-      document.getElementById('capteurs').textContent = 'Lux : -- | dB : -- | Hz : --';
-      document.getElementById('boussole').textContent = 'Cap : --° | Coordonnées Minecraft : --';
-      document.getElementById('horloge').textContent = '🕒 00:00:00';
-      document.getElementById('medaillon').textContent = '☀️🌙 Médaillon cosmique';
-      document.getElementById('meteo').textContent = 'Température : -- °C | Vent : -- km/h';
-      document.getElementById('qualite-air').textContent = 'Qualité air : -- | Indice UV : --';
-      document.getElementById('grandeurs').textContent = 'Point d’ébullition : -- °C | Gravité : -- m/s²';
-    }
-  });
-
-  boutonReset.addEventListener('click', () => {
-    resetVitesseMax();
-    document.getElementById('vitesse').textContent += ' | Max réinitialisé';
-  });
-});
-    function afficherGrandeurs() {
-  const pointEbullition = 100; // °C à pression normale
-  const gravite = 9.81; // m/s²
-  const vitesseSon = 343; // m/s
-  const vitesseLumiere = 299792458; // m/s
-
-  document.getElementById('grandeurs').textContent =
-    `Point d’ébullition : ${pointEbullition} °C | Gravité : ${gravite} m/s² | Vitesse son : ${vitesseSon} m/s | Vitesse lumière : ${vitesseLumiere.toExponential(2)} m/s`;
-    }
