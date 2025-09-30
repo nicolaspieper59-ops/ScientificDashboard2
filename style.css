@@ -1,0 +1,18 @@
+body {
+  background-color: #000;
+  color: #0ff;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+  padding-top: 100px;
+}
+
+h1 {
+  font-size: 2em;
+  color: #ffd700;
+}
+
+#vitesse-gps {
+  font-size: 3em;
+  margin-top: 20px;
+  font-weight: bold;
+}
