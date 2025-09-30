@@ -12,11 +12,27 @@
     <h1>🚀 Vitesse instantanée</h1>
     <div id="vitesse-gps">-- km/h</div>
     <div id="statut-gps">📡 En attente du signal...</div>
+    <button id="bouton-marche">▶️ Démarrer</button>
   </main>
 
   <script type="module">
-    import { demarrerVitesseLive } from './js/vitesseLive.js';
-    demarrerVitesseLive();
+    import { demarrerVitesseLive, arreterVitesseLive } from './js/vitesseLive.js';
+
+    let actif = false;
+    const bouton = document.getElementById('bouton-marche');
+
+    bouton.addEventListener('click', () => {
+      actif = !actif;
+      if (actif) {
+        demarrerVitesseLive();
+        bouton.textContent = '⏹️ Arrêter';
+      } else {
+        arreterVitesseLive();
+        bouton.textContent = '▶️ Démarrer';
+        document.getElementById('vitesse-gps').textContent = '-- km/h';
+        document.getElementById('statut-gps').textContent = '🛑 Compteur arrêté';
+      }
+    });
   </script>
   <script src="sw-register.js"></script>
 </body>
