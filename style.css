@@ -1,63 +1,51 @@
 body {
-  font-family: 'Minecraftia', monospace;
-  background: #111;
-  color: #eee;
+  font-family: Arial, sans-serif;
+  background: linear-gradient(to bottom, #0d1b2a, #1b263b, #415a77);
+  color: #f1faee;
+  text-align: center;
   margin: 0;
   padding: 0;
-}
-
-header {
-  background: #222;
-  padding: 1em;
-  text-align: center;
-  font-size: 1.8em;
-  color: #ffd700;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1em;
-  padding: 1em;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 2rem;
+  border-radius: 15px;
+  box-shadow: 0px 0px 20px rgba(0, 255, 255, 0.4);
 }
 
-section {
-  background: #222;
-  border: 1px solid #444;
-  border-radius: 10px;
-  padding: 1em;
+h1 {
+  font-size: 2rem;
+  margin-bottom: 1.5rem;
+  color: #00d9ff;
 }
 
-h1, h2 {
-  color: #0ff;
-  margin: 0.5em 0;
+#vitesse-gps {
+  font-size: 3rem;
+  margin: 1rem 0;
+  color: #ffd700;
+}
+
+#statut-gps {
+  font-size: 1.2rem;
+  margin: 1rem 0;
+  color: #a8dadc;
 }
 
 button {
-  background: #333;
-  color: #0ff;
-  border: 1px solid #0ff;
-  padding: 0.5em 1em;
-  border-radius: 5px;
+  background: #00d9ff;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 10px;
   cursor: pointer;
-  margin: 0.5em 0.2em;
+  transition: background 0.3s;
 }
 
 button:hover {
-  background: #0ff;
-  color: #111;
-}
-
-.full-width {
-  grid-column: span 2;
-}
-
-#medaillon {
-  display: block;
-  margin: 0 auto;
-  width: 300px;
-  height: 300px;
-  border: 1px solid #444;
-  border-radius: 10px;
-  background: #000;
+  background: #0099cc;
 }
