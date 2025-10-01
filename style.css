@@ -1,39 +1,34 @@
 body {
-  font-family: 'Minecraftia', monospace;
-  background-color: #0b0b1a;
-  color: #fff;
+  font-family: monospace;
+  background: #000;
+  color: #0ff;
   margin: 0;
   padding: 1rem;
 }
 
-h1, h2 { color: #0ff; }
+h1, h2 {
+  text-align: center;
+}
 
 section {
-  background-color: #11112a;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border-radius: 10px;
-  box-shadow: 0 0 10px #00ffff33;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  border: 1px solid #0ff;
+  border-radius: 8px;
 }
 
 button {
-  font-family: 'Minecraftia', monospace;
-  font-size: 1rem;
+  margin: 0.5rem;
   padding: 0.5rem 1rem;
-  margin: 0.2rem;
-  border: none;
-  border-radius: 8px;
-  background-color: #00ffff33;
-  color: #0ff;
+  font-size: 1rem;
   cursor: pointer;
+  background: #0ff;
+  color: #000;
+  border: none;
+  border-radius: 5px;
 }
-
-button:hover { background-color: #0ff; color: #000; }
 
 #medaillon canvas {
   display: block;
   margin: 0 auto;
-  background-color: #000;
-  border: 2px solid #0ff;
-  border-radius: 50%;
 }
