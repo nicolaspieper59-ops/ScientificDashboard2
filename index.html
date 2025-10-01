@@ -14,66 +14,54 @@
   <main>
     <h1>🌌 Cockpit Cosmique</h1>
 
-    <!-- Vitesse & Distance -->
     <section>
       <h2>🚀 Vitesse & Distance</h2>
-      <div id="vitesse-gps">-- km/h</div>
+      <div id="vitesse">-- km/h</div>
       <div id="pourcentage">-- %</div>
       <div id="distance">-- km</div>
-      <div id="statut-gps">📡 En attente GPS...</div>
-      <button id="bouton-marche">▶️ Démarrer</button>
+      <div id="gps">Latitude : -- | Longitude : -- | Précision : --%</div>
+      <button id="marche">▶️ Marche</button>
       <button id="reset">🔄 Réinitialiser vitesse max</button>
     </section>
 
-    <!-- Capteurs -->
     <section>
-      <h2>📐 Capteurs</h2>
-      <div id="capteurs">--</div>
+      <h2>📐 Capteurs physiques</h2>
+      <div id="capteurs">Lux : -- | dB : -- | Hz : --</div>
     </section>
 
-    <!-- Horloge -->
+    <section>
+      <h2>🧲 Grandeurs scientifiques</h2>
+      <div id="grandeurs">Point d’ébullition : -- °C | Gravité : -- m/s² | Vitesse son : -- | Vitesse lumière : --</div>
+    </section>
+
+    <section>
+      <h2>📊 Boussole & Minecraft</h2>
+      <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --</div>
+    </section>
+
     <section>
       <h2>⏰ Horloge cosmique</h2>
       <div id="horloge">--:--:--</div>
     </section>
 
-    <!-- Médaillon céleste -->
     <section>
       <h2>☀️🌙 Médaillon céleste</h2>
+      <div id="medaillon">☀️🌙 Médaillon cosmique</div>
       <div id="celestial-map"></div>
     </section>
 
-    <!-- Contrôles -->
+    <section>
+      <h2>🌡️ Météo & Air</h2>
+      <div id="meteo">Température : -- °C | Vent : -- km/h</div>
+      <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
+    </section>
+
     <section>
       <h2>🎛️ Contrôles</h2>
       <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
     </section>
   </main>
 
-  <script type="module">
-    import * as Cockpit from "./js/cockpit.js";
-
-    const bouton = document.getElementById("bouton-marche");
-    const resetBtn = document.getElementById("reset");
-
-    let actif = false;
-
-    bouton.addEventListener("click", () => {
-      actif = !actif;
-      if (actif) {
-        Cockpit.demarrerCockpit();
-        bouton.textContent = "⏹️ Arrêter";
-      } else {
-        Cockpit.arreterCockpit();
-        bouton.textContent = "▶️ Démarrer";
-        document.getElementById("vitesse-gps").textContent = "-- km/h";
-        document.getElementById("statut-gps").textContent = "🛑 Compteur arrêté";
-      }
-    });
-
-    resetBtn.addEventListener("click", () => {
-      Cockpit.resetVitesseMax();
-    });
-  </script>
+  <script type="module" src="./js/cockpitOffline.js"></script>
 </body>
 </html>
