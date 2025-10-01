@@ -1,92 +1,37 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>Cockpit Cosmique</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <title>Compteur Vitesse GPS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main>
-  <h1>🌌 Cockpit Cosmique</h1>
+  <main>
+    <h1>🚀 Vitesse instantanée</h1>
+    <div id="vitesse-gps">-- km/h</div>
+    <div id="statut-gps">📡 En attente du signal...</div>
+    <button id="bouton-marche">▶️ Démarrer</button>
+  </main>
 
-  <section>
-    <h2>🚀 Vitesse & Distance</h2>
-    <div id="vitesse">Temps : -- | Vitesse : -- km/h | Moy : -- | Max : --</div>
-    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-    <div id="distance">Distance : -- km | -- m | -- mm | Cosmique : -- s lumière | -- al</div>
-    <button id="marche">▶️ Marche</button>
-    <button id="reset">🔄 Réinitialiser vitesse max</button>
-  </section>
+  <script type="module">
+    import { demarrerVitesseLive, arreterVitesseLive } from './js/vitesseLive.js';
 
-  <section>
-    <h2>📐 Capteurs physiques</h2>
-    <div id="capteurs">Lumière : -- lux | Son : -- dB | Hz : --</div>
-  </section>
+    let actif = false;
+    const bouton = document.getElementById('bouton-marche');
 
-  <section>
-    <h2>🧲 Accélération & Puissance</h2>
-    <div id="grandeurs">Accélération : -- g | Force : -- N | Puissance : -- J</div>
-  </section>
-
-  <section>
-    <h2>📊 Vue GPS</h2>
-    <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision : --%</div>
-    <div id="boussole">Cap : --° | Cap vers destination : --</div>
-  </section>
-
-  <section>
-    <h2>⏰ Horloge cosmique</h2>
-    <div id="horloge">--:--:--</div>
-  </section>
-
-  <section>
-    <h2>☀️🌙 Médaillon céleste</h2>
-    <canvas id="medaillon" width="300" height="300"></canvas>
-  </section>
-
-  <section>
-    <h2>🌡️ Météo & Air</h2>
-    <div id="meteo">Temp : -- °C | Humidité : --% | Vent : -- km/h</div>
-    <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
-  </section>
-
-  <section>
-    <h2>🎛️ Contrôles</h2>
-    <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
-  </section>
-</main>
-
-<script type="module">
-import * as Cockpit from './modules/cockpit.js';
-
-const marche = document.getElementById('marche');
-const reset = document.getElementById('reset');
-const rituelBtn = document.getElementById('toggle-rituel');
-
-marche.addEventListener('click',()=>{
-  if(marche.textContent.includes('▶️')){
-    Cockpit.demarrerCockpit();
-    Cockpit.activerCapteurs();
-    Cockpit.activerBoussole();
-    Cockpit.activerHorloge();
-    Cockpit.afficherMedaillon();
-    Cockpit.chargerMeteo();
-    Cockpit.afficherGrandeurs();
-    marche.textContent='⏹️ Arrêter';
-  } else {
-    Cockpit.arreterCockpit();
-    marche.textContent='▶️ Marche';
-  }
-});
-
-reset.addEventListener('click',()=>{Cockpit.resetVitesseMax();});
-rituelBtn.addEventListener('click',()=>{Cockpit.toggleRituel();});
-
-// Exemple destination
-Cockpit.definirDestination(43.3,5.4);
-</script>
+    bouton.addEventListener('click', () => {
+      actif = !actif;
+      if (actif) {
+        demarrerVitesseLive();
+        bouton.textContent = '⏹️ Arrêter';
+      } else {
+        arreterVitesseLive();
+        bouton.textContent = '▶️ Démarrer';
+        document.getElementById('vitesse-gps').textContent = '-- km/h';
+        document.getElementById('statut-gps').textContent = '🛑 Compteur arrêté';
+      }
+    });
+  </script>
 </body>
-      </html>
-    
+</html>
