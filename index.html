@@ -2,13 +2,13 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Cockpit Cosmique</title>
+  <title>Cockpit Cosmique Complet</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
-    <h1>🌌 Cockpit Cosmique</h1>
+    <h1>🌌 Cockpit Cosmique Complet</h1>
 
     <section>
       <h2>🚀 Vitesse & Distance</h2>
@@ -22,7 +22,12 @@
 
     <section>
       <h2>📐 Capteurs physiques</h2>
-      <div id="capteurs">Lux : -- | dB : -- | Hz : --</div>
+      <div id="capteurs">Lux : -- | dB : -- | Hz : -- | Niveau : -- | Magnétisme : --</div>
+    </section>
+
+    <section>
+      <h2>🧭 Boussole & Destination</h2>
+      <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --</div>
     </section>
 
     <section>
@@ -34,14 +39,24 @@
       <h2>☀️🌙 Médaillon céleste</h2>
       <div id="medaillon"></div>
     </section>
+
+    <section>
+      <h2>🌡️ Météo & Air</h2>
+      <div id="meteo">Temp : -- °C | Humidité : --% | Vent : -- km/h</div>
+      <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
+    </section>
+
+    <section>
+      <h2>🔬 Grandeurs scientifiques</h2>
+      <div id="grandeurs">Point ébullition : -- | Gravité : -- | Vitesse son : -- | Vitesse lumière : --</div>
+    </section>
   </main>
 
   <script type="module">
-    import { demarrerCockpit, arreterCockpit, resetVitesseMax } from './js/cockpit.js';
+    import { demarrerCockpit, arreterCockpit, resetVitesseMax, definirDestination } from './js/cockpit.js';
 
     const boutonMarche = document.getElementById('marche');
     const boutonReset = document.getElementById('reset');
-
     let actif = false;
 
     boutonMarche.addEventListener('click', () => {
@@ -55,9 +70,10 @@
       }
     });
 
-    boutonReset.addEventListener('click', () => {
-      resetVitesseMax();
-    });
+    boutonReset.addEventListener('click', () => resetVitesseMax());
+
+    // Exemple : définir destination
+    definirDestination(43.3, 5.4);
   </script>
 </body>
 </html>
