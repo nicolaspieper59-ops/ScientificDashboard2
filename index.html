@@ -11,9 +11,11 @@
   <script src="lib/celestial.min.js"></script>
 </head>
 <body>
-  <main>
-    <h1>🌌 Cockpit Cosmique</h1>
+  <header>
+    🌌 Cockpit Cosmique
+  </header>
 
+  <main>
     <!-- Vitesse & Distance -->
     <section>
       <h2>🚀 Vitesse & Distance</h2>
@@ -27,7 +29,7 @@
     <!-- Capteurs physiques -->
     <section>
       <h2>📐 Capteurs physiques</h2>
-      <div id="capteurs">Lumière : -- lux | Son : -- dB | Hz : --</div>
+      <div id="capteurs">Lumière : -- lux | Son : -- dB | Hz : -- | Niveau : -- | Magnétisme : --</div>
     </section>
 
     <!-- Accélération & puissance -->
@@ -36,7 +38,7 @@
       <div id="grandeurs">Accélération : -- g | Force : -- N | Puissance : -- J</div>
     </section>
 
-    <!-- GPS -->
+    <!-- GPS & Boussole -->
     <section>
       <h2>📊 Vue GPS</h2>
       <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision : --%</div>
@@ -50,7 +52,7 @@
     </section>
 
     <!-- Médaillon céleste -->
-    <section>
+    <section class="full-width">
       <h2>☀️🌙 Médaillon céleste</h2>
       <div id="medaillon">☀️🌙 Médaillon cosmique</div>
       <div id="celestial-map"></div>
@@ -79,10 +81,28 @@
     boutonMarche.addEventListener('click', () => {
       if (boutonMarche.textContent.includes('▶️')) {
         Cockpit.demarrerCockpit();
+        Cockpit.activerCapteurs();
+        Cockpit.activerBoussole();
+        Cockpit.activerHorlogeMinecraft();
+        Cockpit.afficherMedaillon();
+        Cockpit.chargerMeteo();
+        Cockpit.afficherGrandeurs();
         boutonMarche.textContent = '⏹️ Arrêter';
       } else {
         Cockpit.arreterCockpit();
         boutonMarche.textContent = '▶️ Marche';
+        // Reset affichages
+        document.getElementById("vitesse").textContent = "-- km/h";
+        document.getElementById("distance").textContent = "-- km | -- al";
+        document.getElementById("pourcentage").textContent = "% Lumière : --% | % Son : --%";
+        document.getElementById("gps").textContent = "Latitude : -- | Longitude : -- | Altitude : -- | Précision : --%";
+        document.getElementById("capteurs").textContent = "Lux : -- | dB : -- | Hz : -- | Niveau : -- | Magnétisme : --";
+        document.getElementById("boussole").textContent = "Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --";
+        document.getElementById("horloge").textContent = "🕒 00:00:00";
+        document.getElementById("medaillon").textContent = "☀️🌙 Médaillon cosmique";
+        document.getElementById("meteo").textContent = "Température : -- °C | Vent : -- km/h";
+        document.getElementById("qualite-air").textContent = "Qualité air : -- | Indice UV : --";
+        document.getElementById("grandeurs").textContent = "Point d’ébullition : -- °C | Gravité : -- m/s²";
       }
     });
 
@@ -90,8 +110,14 @@
       Cockpit.resetVitesseMax();
     });
 
-    // Exemple destination
+    // Destination exemple
     Cockpit.definirDestination(43.3, 5.4);
+
+    // Rituel cosmique
+    document.getElementById('toggle-rituel').addEventListener('click', () => {
+      Cockpit.toggleRituel();
+    });
   </script>
 </body>
-</html>
+  </html>
+  
