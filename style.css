@@ -22,18 +22,27 @@ button {
   padding: 0.5rem 1rem;
   font-size: 1rem;
   cursor: pointer;
-  background: #0ff;
-  color: #000;
   border: none;
   border-radius: 5px;
+  transition: 0.3s;
+}
+
+#marche {
+  background: #0ff;
+  color: #000;
+}
+
+#marche.actif {
+  background: #f00;
+  color: #fff;
+}
+
+#reset {
+  background: #444;
+  color: #0ff;
 }
 
 #medaillon canvas {
   display: block;
   margin: 0 auto;
 }
-#medaillon canvas {
-  display: block;
-  margin: 0 auto;
-  }
-  
