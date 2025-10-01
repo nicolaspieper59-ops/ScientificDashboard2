@@ -22,7 +22,7 @@
 
     <section>
       <h2>📐 Capteurs physiques</h2>
-      <div id="capteurs">Lux : -- | dB : -- | Hz : -- | Niveau : -- | Magnétisme : --</div>
+      <div id="capteurs">Niveau à bulle : --° | Lumière : -- lux | Son : -- dB | Fréquence : -- Hz | Magnétisme : -- µT</div>
     </section>
 
     <section>
@@ -52,28 +52,6 @@
     </section>
   </main>
 
-  <script type="module">
-    import { demarrerCockpit, arreterCockpit, resetVitesseMax, definirDestination } from './js/cockpit.js';
-
-    const boutonMarche = document.getElementById('marche');
-    const boutonReset = document.getElementById('reset');
-    let actif = false;
-
-    boutonMarche.addEventListener('click', () => {
-      actif = !actif;
-      if (actif) {
-        demarrerCockpit();
-        boutonMarche.textContent = '⏹️ Arrêter';
-      } else {
-        arreterCockpit();
-        boutonMarche.textContent = '▶️ Démarrer';
-      }
-    });
-
-    boutonReset.addEventListener('click', () => resetVitesseMax());
-
-    // Exemple : définir destination
-    definirDestination(43.3, 5.4);
-  </script>
+  <script type="module" src="./js/cockpit.js"></script>
 </body>
 </html>
