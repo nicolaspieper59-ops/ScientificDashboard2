@@ -1,126 +1,63 @@
-/* === Police Minecraft === */
-@import url('https://fonts.cdnfonts.com/css/minecraftia');
-
 body {
-  background-color: #0b0b0b;
-  color: #00ffcc;
   font-family: 'Minecraftia', monospace;
+  background: #111;
+  color: #eee;
   margin: 0;
-  padding: 20px;
+  padding: 0;
 }
 
-/* === Titres === */
-h1 {
-  font-size: 2em;
+header {
+  background: #222;
+  padding: 1em;
+  text-align: center;
+  font-size: 1.8em;
   color: #ffd700;
-  text-shadow: 2px 2px 4px #000;
-  margin-bottom: 20px;
-}
-h2 {
-  font-size: 1.4em;
-  color: #ffcc00;
-  margin-top: 30px;
-  text-shadow: 1px 1px 2px #000;
 }
 
-/* === Sections === */
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+  padding: 1em;
+}
+
 section {
-  border: 2px solid #333;
-  padding: 15px;
-  margin-bottom: 20px;
-  background-color: #111;
-  box-shadow: 0 0 10px #222;
-  border-radius: 8px;
+  background: #222;
+  border: 1px solid #444;
+  border-radius: 10px;
+  padding: 1em;
 }
 
-/* === Données === */
-div {
-  margin: 5px 0;
-  font-size: 1em;
-  word-wrap: break-word;
+h1, h2 {
+  color: #0ff;
+  margin: 0.5em 0;
 }
 
-/* === Boutons === */
 button {
-  background-color: #222;
-  color: #00ffcc;
-  border: 2px solid #00ffcc;
-  padding: 8px 12px;
-  margin: 5px 5px 0 0;
-  font-family: 'Minecraftia', monospace;
+  background: #333;
+  color: #0ff;
+  border: 1px solid #0ff;
+  padding: 0.5em 1em;
+  border-radius: 5px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  border-radius: 4px;
+  margin: 0.5em 0.2em;
 }
+
 button:hover {
-  background-color: #00ffcc;
-  color: #000;
+  background: #0ff;
+  color: #111;
 }
 
-/* === Pulsation cosmique === */
-.pulsation {
-  animation: pulse 2s infinite;
-}
-@keyframes pulse {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.05); opacity: 0.7; }
-  100% { transform: scale(1); opacity: 1; }
+.full-width {
+  grid-column: span 2;
 }
 
-/* === Médaillon céleste / map === */
-#medaillon, #celestial-map {
-  width: 100%;
-  max-width: 800px;
-  height: 400px;
-  border: 2px solid #444;
-  box-shadow: 0 0 20px #00ffcc;
-  margin-top: 20px;
-  border-radius: 8px;
+#medaillon {
+  display: block;
+  margin: 0 auto;
+  width: 300px;
+  height: 300px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #000;
 }
-
-/* === Mode rituel OFF (batterie / désactivation effets) === */
-body.rituel-off * {
-  animation: none !important;
-  transition: none !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  background-image: none !important;
-}
-body.rituel-off button {
-  border-color: #666;
-  color: #666;
-}
-body.rituel-off section {
-  background-color: #000;
-  border-color: #222;
-}
-
-/* === Responsive === */
-@media (max-width: 768px) {
-  body {
-    padding: 10px;
-  }
-  h1 {
-    font-size: 1.5em;
-  }
-  h2 {
-    font-size: 1.2em;
-  }
-  section {
-    padding: 10px;
-  }
-  #medaillon, #celestial-map {
-    height: 300px;
-  }
-  button {
-    padding: 6px 10px;
-    font-size: 0.9em;
-  }
-}
-
-/* === Styles spécifiques pour cockpit cosmique === */
-#vitesse, #distance, #pourcentage, #gps, #capteurs, #horloge, #soleil-lune, #meteo, #qualite-air, #grandeurs {
-  font-size: 0.95em;
-  line-height: 1.4em;
-  }
-  
