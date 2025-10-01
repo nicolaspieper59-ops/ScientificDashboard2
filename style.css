@@ -5,18 +5,15 @@ body {
   margin: 0;
   padding: 1rem;
 }
-
 h1, h2 {
   text-align: center;
 }
-
 section {
   margin: 1rem 0;
   padding: 0.5rem;
   border: 1px solid #0ff;
   border-radius: 8px;
 }
-
 button {
   margin: 0.5rem;
   padding: 0.5rem 1rem;
@@ -26,9 +23,15 @@ button {
   color: #000;
   border: none;
   border-radius: 5px;
+  transition: background 0.3s;
 }
-
-#medaillon canvas {
+button.active {
+  background: #ff0;
+  color: #000;
+}
+#medaillon {
   display: block;
-  margin: 0 auto;
+  margin: 0.5rem auto;
+  border: 1px solid #0ff;
+  background: #000;
 }
