@@ -14,7 +14,7 @@ section {
   margin: 1rem 0;
   padding: 0.5rem;
   border: 1px solid #0ff;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 button {
@@ -22,13 +22,20 @@ button {
   padding: 0.5rem 1rem;
   font-size: 1rem;
   cursor: pointer;
-  background: #0ff;
-  color: #000;
   border: none;
   border-radius: 5px;
+  color: #000;
+  background-color: #0ff;
+  transition: all 0.3s ease;
+}
+
+button.active {
+  background-color: #ff0;
+  color: #000;
 }
 
 #medaillon canvas {
   display: block;
   margin: 0 auto;
-}
+  }
+  
