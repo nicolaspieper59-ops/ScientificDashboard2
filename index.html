@@ -11,19 +11,27 @@
     <h1>🌌 Cockpit Cosmique Complet</h1>
 
     <section>
-      <h2>⏱️ Temps & Vitesse</h2>
-      <div id="vitesse">Temps : 0.00 s | Vitesse instantanée : -- km/h | Moyenne : -- km/h | Max : -- km/h | Vitesse : -- m/s | -- mm/s</div>
+      <h2>🚀 Temps & Vitesse</h2>
+      <div id="chrono">Temps : 0.00 s</div>
+      <div id="vitesse">Vitesse instantanée : -- km/h</div>
+      <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+      <div id="vitesse-max">Vitesse max : -- km/h</div>
+      <div id="vitesse-detail">Vitesse : -- m/s | -- mm/s</div>
       <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-      <div id="distance">Distance : -- km | -- m | -- mm | Cosmique : -- s lumière | -- al</div>
-      <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision GPS : --%</div>
-      <button id="marche">▶️ Marche</button>
+      <div id="distance">Distance : -- km | -- m | -- mm</div>
+      <div id="cosmique">Distance cosmique : -- s lumière | -- al</div>
+      <div id="gps-precision">Précision GPS : -- m</div>
+      <button id="marche">▶️ Démarrer</button>
       <button id="reset">🔄 Réinitialiser max</button>
     </section>
 
     <section>
       <h2>☀️🌙 Soleil & Lune</h2>
-      <div id="soleil">Culmination soleil : -- | Heure solaire vraie : -- | Heure solaire moyenne : -- | Équation du temps : --</div>
-      <div id="lune">Phase : --% | Magnitude : -- | Lever : -- | Coucher : -- | Culmination : --</div>
+      <div id="soleil">Culmination soleil : --</div>
+      <div id="heure-solaire">Heure solaire vraie : -- | Heure solaire moyenne : --</div>
+      <div id="equation">Équation du temps : --</div>
+      <div id="lune">Phase lune : --% | Magnitude : --</div>
+      <div id="lune-horaires">Lever : -- | Coucher : -- | Culmination : --</div>
     </section>
 
     <section>
@@ -32,33 +40,43 @@
     </section>
 
     <section>
-      <h2>🌡️ Météo & Qualité air</h2>
-      <div id="meteo">Température : -- °C | Pression : -- hPa | Humidité : --% | Vent : -- km/h | Nuages : --% | Pluie : -- mm | Neige : -- mm | Indice UV : --</div>
+      <h2>🌡️ Météo</h2>
+      <div id="meteo">Température : -- °C | Vent : -- km/h</div>
+      <div id="pression">Pression : -- hPa</div>
+      <div id="humidite">Humidité : --%</div>
+      <div id="nuages">Nuages : --%</div>
+      <div id="precip">Pluie : -- mm | Neige : -- mm</div>
+      <div id="uv">Indice UV : --</div>
       <div id="qualite-air">Qualité air : --</div>
+      <div id="ebullition">Point d’ébullition : 100 °C</div>
     </section>
 
     <section>
-      <h2>🔬 Grandeurs scientifiques</h2>
-      <div id="grandeurs">Point ébullition : -- °C | Gravité : -- m/s² | Vitesse son : -- m/s | Vitesse lumière : -- m/s</div>
-    </section>
-
-    <section>
-      <h2>🧭 Boussole & Destination</h2>
-      <div id="boussole">Cap : --° | Vers lat : -- | Vers lon : -- | Cap vers destination : --°</div>
+      <h2>🧭 Boussole</h2>
+      <div id="boussole">Cap : --°</div>
+      <div id="vers">Vers lat : -- | Vers lon : --</div>
+      <div id="cap-dest">Cap vers destination : --°</div>
+      <button id="aller">🎯 Aller</button>
     </section>
 
     <section>
       <h2>📐 Capteurs</h2>
-      <div id="capteurs">Niveau à bulle : --° | Lumière : -- lux | Son : -- dB | Fréquence : -- Hz | Magnétisme : -- µT</div>
+      <div id="capteurs">Niveau à bulle : --° | Lumière : -- lux | Son : -- dB | Fréquence : -- Hz</div>
+    </section>
+
+    <section>
+      <h2>📊 Vue brute GPS</h2>
+      <div id="gps">Latitude : -- | Longitude : -- | Altitude : --</div>
+      <div id="gps-precision-detail">Précision GPS : -- m</div>
+      <div id="souterrain">Souterrain : --</div>
     </section>
 
     <section>
       <h2>☀️🌙 Médaillon céleste</h2>
       <div id="medaillon"></div>
     </section>
-
   </main>
 
-  <script type="module" src="cockpitCosmique.js"></script>
+  <script type="module" src="./js/cockpit.js"></script>
 </body>
 </html>
