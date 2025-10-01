@@ -5,9 +5,9 @@ let distanceTotale = 0;
 let vitesseMax = 0;
 let destination = { latitude: null, longitude: null };
 
-/* ======================
-   INIT DOM
-====================== */
+// ======================
+// INIT DOM
+// ======================
 document.addEventListener("DOMContentLoaded", () => {
   const boutonMarche = document.getElementById("marche");
   const boutonReset = document.getElementById("reset");
@@ -32,12 +32,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-/* ======================
-   GPS & Vitesse
-====================== */
+// ======================
+// GPS & Vitesse
+// ======================
 export function demarrerCockpit() {
   if (!("geolocation" in navigator)) return;
-
   if (watchId !== null) return;
 
   watchId = navigator.geolocation.watchPosition(pos => {
@@ -72,53 +71,42 @@ export function arreterCockpit() {
   vitesseMax = 0;
 }
 
-export function resetVitesseMax() {
-  vitesseMax = 0;
-}
+export function resetVitesseMax() { vitesseMax = 0; }
+export function definirDestination(lat, lon) { destination.latitude = lat; destination.longitude = lon; }
 
-export function definirDestination(lat, lon) {
-  destination.latitude = lat;
-  destination.longitude = lon;
-}
-
-/* ======================
-   Calculs
-====================== */
+// ======================
+// Calculs
+// ======================
 function calculerVitesse(pos) {
-  if (!positionPrecedente) {
-    positionPrecedente = pos.coords;
-    return 0;
-  }
-  const dt = (pos.timestamp - positionPrecedente.timestamp) / 1000;
+  if (!positionPrecedente) { positionPrecedente = pos.coords; return 0; }
+  const dt = (pos.timestamp - positionPrecedente.timestamp)/1000;
   const d = calculerDistance(pos.coords, positionPrecedente);
   distanceTotale += d;
   positionPrecedente = pos.coords;
-  return dt > 0 ? (d / dt) * 3.6 : 0;
+  return dt>0 ? (d/dt)*3.6 : 0;
 }
 
-function calculerDistance(a, b) {
-  const R = 6371e3;
-  const φ1 = a.latitude * Math.PI/180;
-  const φ2 = b.latitude * Math.PI/180;
-  const Δφ = (b.latitude - a.latitude) * Math.PI/180;
-  const Δλ = (b.longitude - a.longitude) * Math.PI/180;
-  const c = 2 * Math.atan2(Math.sqrt(Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2),
-                           Math.sqrt(1-(Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2)));
+function calculerDistance(a,b) {
+  const R=6371e3;
+  const φ1=a.latitude*Math.PI/180;
+  const φ2=b.latitude*Math.PI/180;
+  const Δφ=(b.latitude-a.latitude)*Math.PI/180;
+  const Δλ=(b.longitude-a.longitude)*Math.PI/180;
+  const c=2*Math.atan2(Math.sqrt(Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2),
+                         Math.sqrt(1-(Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2)));
   return R*c;
 }
 
-/* ======================
-   Affichage GPS / Vitesse
-====================== */
+// ======================
+// Affichage GPS / Vitesse
+// ======================
 function afficherVitesse(v) {
   const moyenne = vitesses.length ? vitesses.reduce((a,b)=>a+b,0)/vitesses.length : 0;
   document.getElementById("vitesse").textContent =
     `Vitesse : ${v.toFixed(2)} km/h | Moyenne : ${moyenne.toFixed(2)} | Max : ${vitesseMax.toFixed(2)}`;
 }
 
-function afficherDistance() {
-  document.getElementById("distance").textContent = `Distance : ${(distanceTotale/1000).toFixed(3)} km`;
-}
+function afficherDistance() { document.getElementById("distance").textContent = `Distance : ${(distanceTotale/1000).toFixed(3)} km`; }
 
 function afficherPourcentage(v) {
   const mps = v/3.6;
@@ -132,66 +120,42 @@ function afficherGPS(g) {
     `Latitude : ${g.latitude.toFixed(6)} | Longitude : ${g.longitude.toFixed(6)} | Altitude : ${(g.altitude??0).toFixed(1)} m`;
 }
 
-/* ======================
-   Capteurs physiques
-====================== */
+// ======================
+// Capteurs physiques
+// ======================
 let capteursBaseText = "Niveau à bulle : --° | Lumière : -- lux | Son : -- dB | Fréquence : -- Hz | Magnétisme : -- µT";
 function activerCapteurs() {
   const el = document.getElementById("capteurs");
   el.textContent = capteursBaseText;
 
   if("AmbientLightSensor" in window){
-    try{
-      const light = new AmbientLightSensor();
-      light.addEventListener("reading", ()=>{
-        el.textContent = capteursBaseText.replace("-- lux", `${Math.round(light.illuminance)} lux`);
-      });
-      light.start();
-    }catch{}
+    try{ const light=new AmbientLightSensor(); light.addEventListener("reading",()=>{ el.textContent=capteursBaseText.replace("-- lux", `${Math.round(light.illuminance)} lux`); }); light.start(); }catch{}
   }
 
   if(navigator.mediaDevices?.getUserMedia){
     navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
-      const audioCtx = new AudioContext();
-      const analyser = audioCtx.createAnalyser();
-      const source = audioCtx.createMediaStreamSource(stream);
+      const audioCtx=new AudioContext();
+      const analyser=audioCtx.createAnalyser();
+      const source=audioCtx.createMediaStreamSource(stream);
       source.connect(analyser);
-      analyser.fftSize = 2048;
-      const data = new Uint8Array(analyser.frequencyBinCount);
-
-      function loopAudio() {
-        analyser.getByteFrequencyData(data);
-        const dB = 20 * Math.log10(data.reduce((a,b)=>a+b,0)/data.length||1);
-        el.textContent = capteursBaseText.replace("-- dB", `${Math.round(dB)} dB`).replace("-- Hz", `${analyser.frequencyBinCount} Hz`);
-        requestAnimationFrame(loopAudio);
-      }
-      loopAudio();
+      analyser.fftSize=2048;
+      const data=new Uint8Array(analyser.frequencyBinCount);
+      (function loopAudio(){ analyser.getByteFrequencyData(data); const dB=20*Math.log10(data.reduce((a,b)=>a+b,0)/data.length||1); el.textContent=capteursBaseText.replace("-- dB", `${Math.round(dB)} dB`).replace("-- Hz", `${analyser.frequencyBinCount} Hz`); requestAnimationFrame(loopAudio); })();
     }).catch(()=>{});
   }
 
   if("DeviceOrientationEvent" in window){
-    window.addEventListener("deviceorientation", e=>{
-      if(e.beta!=null){
-        el.textContent = capteursBaseText.replace("--°", `${e.beta.toFixed(1)}°`);
-      }
-    });
+    window.addEventListener("deviceorientation", e=>{ if(e.beta!=null) el.textContent=capteursBaseText.replace("--°", `${e.beta.toFixed(1)}°`); });
   }
 
   if("Magnetometer" in window){
-    try{
-      const mag = new Magnetometer();
-      mag.addEventListener("reading", ()=>{
-        const champ = Math.sqrt(mag.x**2+mag.y**2+mag.z**2);
-        el.textContent = capteursBaseText.replace("-- µT", `${Math.round(champ)} µT`);
-      });
-      mag.start();
-    }catch{}
+    try{ const mag=new Magnetometer(); mag.addEventListener("reading",()=>{ const champ=Math.sqrt(mag.x**2+mag.y**2+mag.z**2); el.textContent=capteursBaseText.replace("-- µT", `${Math.round(champ)} µT`); }); mag.start(); }catch{}
   }
 }
 
-/* ======================
-   Boussole
-====================== */
+// ======================
+// Boussole
+// ======================
 function activerBoussole(){
   if("DeviceOrientationEvent" in window){
     window.addEventListener("deviceorientationabsolute", e=>{
@@ -205,9 +169,9 @@ function activerBoussole(){
   }
 }
 
-/* ======================
-   Horloge
-====================== */
+// ======================
+// Horloge
+// ======================
 function activerHorloge(){
   const h = document.getElementById("horloge");
   (function loop(){
@@ -217,32 +181,50 @@ function activerHorloge(){
   })();
 }
 
-/* ======================
-   Médaillon
-====================== */
+// ======================
+// Médaillon Soleil/Lune
+// ======================
 function afficherMedaillon(){
   const med = document.getElementById("medaillon");
   med.innerHTML = "";
-  const c = document.createElement("canvas");
-  c.width = 300; c.height = 300;
-  med.appendChild(c);
-  const ctx = c.getContext("2d");
+  const c = document.createElement("canvas"); c.width=300;c.height=300; med.appendChild(c);
+  const ctx=c.getContext("2d");
 
-  ctx.fillStyle = "#000"; ctx.fillRect(0,0,300,300);
-  ctx.strokeStyle = "#0ff"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(150,150,140,0,2*Math.PI); ctx.stroke();
+  const draw = ()=>{
+    const now = new Date();
+    ctx.fillStyle="#000"; ctx.fillRect(0,0,300,300);
+    ctx.strokeStyle="#0ff"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(150,150,140,0,2*Math.PI); ctx.stroke();
 
-  ctx.fillStyle = "#ffd700"; ctx.beginPath(); ctx.arc(210,90,8,0,2*Math.PI); ctx.fill(); ctx.fillText("☀️ Soleil",200,80);
-  ctx.fillStyle = "#ccc"; ctx.beginPath(); ctx.arc(90,110,6,0,2*Math.PI); ctx.fill(); ctx.fillText("🌙 Lune",70,100);
+    // Soleil rotation (0-24h)
+    const angleS = (now.getHours()/24)*2*Math.PI - Math.PI/2;
+    const sx = 150 + 100*Math.cos(angleS);
+    const sy = 150 + 100*Math.sin(angleS);
+    ctx.fillStyle="#ffd700"; ctx.beginPath(); ctx.arc(sx,sy,8,0,2*Math.PI); ctx.fill(); ctx.fillText("☀️ Soleil",sx+10,sy-10);
 
-  const stars=[{name:"Orion",x:170,y:210},{name:"Cassiopeia",x:120,y:190},{name:"Scorpius",x:220,y:180}];
-  ctx.fillStyle="#0ff"; stars.forEach(s=>{ctx.beginPath(); ctx.arc(s.x,s.y,2,0,2*Math.PI); ctx.fill(); ctx.fillText(s.name,s.x+5,s.y+5);});
-  ctx.fillStyle="#f0f"; ctx.beginPath(); ctx.arc(150,250,3,0,2*Math.PI); ctx.fill(); ctx.fillText("🌌 Galaxie",130,260);
+    // Lune rotation avec phase simple
+    const angleL = angleS + Math.PI; // opposée au Soleil
+    const lx = 150 + 100*Math.cos(angleL);
+    const ly = 150 + 100*Math.sin(angleL);
+    const phase = ((now.getDate()%29.53)/29.53); // fraction du cycle
+    ctx.fillStyle="#ccc"; ctx.beginPath(); ctx.arc(lx,ly,6,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle="#000"; ctx.beginPath();
+    ctx.arc(lx + 6*(1-phase), ly, 6, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle="#ccc"; ctx.fillText("🌙 Lune", lx-20, ly-10);
+
+    // Étoiles fixes
+    const stars=[{name:"Orion",x:170,y:210},{name:"Cassiopeia",x:120,y:190},{name:"Scorpius",x:220,y:180}];
+    ctx.fillStyle="#0ff"; stars.forEach(s=>{ctx.beginPath();ctx.arc(s.x,s.y,2,0,2*Math.PI);ctx.fill();ctx.fillText(s.name,s.x+5,s.y+5);});
+    ctx.fillStyle="#f0f"; ctx.beginPath(); ctx.arc(150,250,3,0,2*Math.PI); ctx.fill(); ctx.fillText("🌌 Galaxie",130,260);
+
+    requestAnimationFrame(draw);
+  };
+  draw();
 }
 
-/* ======================
-   Météo
-====================== */
+// ======================
+// Météo
+// ======================
 function chargerMeteo(){
   const meteoEl=document.getElementById("meteo");
   const airEl=document.getElementById("qualite-air");
@@ -263,13 +245,14 @@ function chargerMeteo(){
     }).catch(()=>{airEl.textContent="Indisponible";});
 }
 
-/* ======================
-   Grandeurs scientifiques
-====================== */
+// ======================
+// Grandeurs scientifiques
+// ======================
 function afficherGrandeurs(){
   document.getElementById("grandeurs").textContent=
     `Point ébullition : 100°C | Gravité : 9.81 m/s² | Vitesse son : 343 m/s | Vitesse lumière : 299792458 m/s`;
 }
 
-// Exemple de destination par défaut
+// Destination par défaut
 definirDestination(43.3, 5.4);
+     
