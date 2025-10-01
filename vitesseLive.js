@@ -1,62 +1,48 @@
-// === Variables globales avec cache ===
 let watchId = null;
 let positionPrecedente = null;
-let vitesseMax = parseFloat(localStorage.getItem("vitesseMax")) || 0;
+let vitesseMax = 0;
 let vitesses = [];
-let distanceTotale = parseFloat(localStorage.getItem("distanceTotale")) || 0;
-let rituelActif = JSON.parse(localStorage.getItem("rituelActif")) ?? true;
+let distanceTotale = 0;
+let destination = { latitude: null, longitude: null };
 
-let destination = JSON.parse(localStorage.getItem("destination")) || { latitude: null, longitude: null };
-
-// === Mode rituel cosmique ===
-const boutonRituel = document.getElementById("toggle-rituel");
-if (boutonRituel) {
-  boutonRituel.textContent = rituelActif ? "✨ Rituel cosmique : ON" : "🔋 Rituel cosmique : OFF";
-  boutonRituel.addEventListener("click", () => {
-    rituelActif = !rituelActif;
-    localStorage.setItem("rituelActif", rituelActif);
-    document.body.classList.toggle("rituel-off", !rituelActif);
-    boutonRituel.textContent = rituelActif ? "✨ Rituel cosmique : ON" : "🔋 Rituel cosmique : OFF";
-  });
-}
-
-// === GPS : démarrage / arrêt ===
+/* ========================
+   GESTION GPS / VITESSE
+======================== */
 export function demarrerCockpit() {
   if (!("geolocation" in navigator)) {
-    document.getElementById("statut-gps").textContent = "❌ GPS non disponible sur cet appareil.";
+    document.getElementById("gps").textContent = "GPS non disponible";
     return;
   }
   if (watchId !== null) return;
 
-  document.getElementById("statut-gps").textContent = "📡 Recherche GPS...";
   watchId = navigator.geolocation.watchPosition(
     pos => {
       const gps = {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
+        altitude: pos.coords.altitude,
         accuracy: pos.coords.accuracy,
         timestamp: pos.timestamp,
         speed: pos.coords.speed
       };
 
-      const vitesse = gps.speed !== null ? gps.speed * 3.6 : calculerVitesse(gps);
+      const vitesse = gps.speed !== null
+        ? gps.speed * 3.6
+        : calculerVitesse(gps);
 
       if (vitesse >= 0 && vitesse < 300) {
         vitesseMax = Math.max(vitesseMax, vitesse);
-        localStorage.setItem("vitesseMax", vitesseMax);
-
         vitesses.push(vitesse);
+
         afficherVitesse(vitesse);
         afficherDistance();
         afficherPourcentage(vitesse);
         afficherGPS(gps);
-
-        localStorage.setItem("distanceTotale", distanceTotale);
-        localStorage.setItem("destination", JSON.stringify(destination));
       }
     },
     err => {
-      document.getElementById("statut-gps").textContent = "❌ Erreur GPS : " + err.message;
+      console.error("Erreur GPS :", err);
+      document.getElementById("gps").textContent = "Erreur GPS : " + err.message;
     },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
   );
@@ -66,21 +52,19 @@ export function arreterCockpit() {
   if (watchId !== null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
-    document.getElementById("statut-gps").textContent = "🛑 GPS arrêté.";
+    positionPrecedente = null;
+    vitesses = [];
+    distanceTotale = 0;
   }
 }
 
-export function resetVitesseMax() {
-  vitesseMax = 0;
-  localStorage.setItem("vitesseMax", 0);
-}
+export function resetVitesseMax() { vitesseMax = 0; }
 
-// === Calcul vitesse et distance ===
+/* ========================
+   FONCTIONS CALCULS
+======================== */
 function calculerVitesse(gps) {
-  if (!positionPrecedente) {
-    positionPrecedente = gps;
-    return 0;
-  }
+  if (!positionPrecedente) { positionPrecedente = gps; return 0; }
   const dt = (gps.timestamp - positionPrecedente.timestamp) / 1000;
   const d = calculerDistance(gps, positionPrecedente);
   distanceTotale += d;
@@ -99,62 +83,57 @@ function calculerDistance(pos1, pos2) {
   return R * c;
 }
 
-// === Affichages ===
-function afficherVitesse(vitesse) {
-  const moyenne = vitesses.length ? vitesses.reduce((a, b) => a + b, 0) / vitesses.length : 0;
-  document.getElementById("vitesse-gps").textContent =
-    `⏱️ ${new Date().toLocaleTimeString()} | ` +
-    `Vit : ${vitesse.toFixed(1)} km/h | Moy : ${moyenne.toFixed(1)} | Max : ${vitesseMax.toFixed(1)}`;
+/* ========================
+   AFFICHAGE
+======================== */
+function afficherVitesse(v) {
+  const moyenne = vitesses.length ? vitesses.reduce((a,b)=>a+b,0)/vitesses.length : 0;
+  const mps = v/3.6;
+  const mmps = mps*1000;
+  document.getElementById("vitesse").textContent =
+    `Temps : ${new Date().toLocaleTimeString()} | Vitesse : ${v.toFixed(2)} km/h | Moy : ${moyenne.toFixed(2)} km/h | Max : ${vitesseMax.toFixed(2)} km/h | ${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`;
 }
 
 function afficherDistance() {
   const km = distanceTotale / 1000;
+  const m = distanceTotale;
+  const mm = m*1000;
+  const secondesLumiere = m / 299792458;
+  const anneesLumiere = secondesLumiere / (3600*24*365.25);
   document.getElementById("distance").textContent =
-    `📏 ${km.toFixed(2)} km parcourus`;
+    `Distance : ${km.toFixed(3)} km | ${m.toFixed(0)} m | ${mm.toFixed(0)} mm | Cosmique : ${secondesLumiere.toFixed(3)} s lumière | ${anneesLumiere.toExponential(3)} al`;
 }
 
-function afficherPourcentage(vitesse) {
-  const mps = vitesse / 3.6;
-  const pourcentLumiere = (mps / 299792458) * 100;
-  const pourcentSon = (mps / 343) * 100;
+function afficherPourcentage(v) {
+  const mps = v/3.6;
+  const pourcentLumiere = (mps/299792458)*100;
+  const pourcentSon = (mps/343)*100;
   document.getElementById("pourcentage").textContent =
-    `% Lumière : ${pourcentLumiere.toExponential(2)} | % Son : ${pourcentSon.toFixed(2)}`;
+    `% Lumière : ${pourcentLumiere.toExponential(2)}% | % Son : ${pourcentSon.toFixed(2)}%`;
 }
 
 function afficherGPS(gps) {
-  document.getElementById("statut-gps").textContent =
-    `📍 Lat : ${gps.latitude.toFixed(6)} | Lon : ${gps.longitude.toFixed(6)} | Précision : ±${gps.accuracy}m`;
+  document.getElementById("gps").textContent =
+    `Latitude : ${gps.latitude.toFixed(6)} | Longitude : ${gps.longitude.toFixed(6)} | Altitude : ${(gps.altitude??0).toFixed(1)} m | Précision GPS : ${gps.accuracy.toFixed(0)}%`;
 }
 
-// === Détection des capteurs ===
-if ("AmbientLightSensor" in window) {
-  try {
-    const sensor = new AmbientLightSensor();
-    sensor.addEventListener("reading", () => {
-      document.getElementById("capteurs").textContent = `💡 Lumière : ${sensor.illuminance.toFixed(1)} lux`;
-    });
-    sensor.start();
-  } catch (e) {
-    document.getElementById("capteurs").textContent = "❌ Capteur de lumière non disponible";
-  }
-} else {
-  document.getElementById("capteurs").textContent = "❌ Pas de capteur de lumière";
+/* ========================
+   EXPORT DESTINATION
+======================== */
+export function definirDestination(lat, lon) {
+  destination.latitude = lat;
+  destination.longitude = lon;
 }
 
-if (navigator.mediaDevices?.getUserMedia) {
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    const ctx = new AudioContext();
-    const analyser = ctx.createAnalyser();
-    const source = ctx.createMediaStreamSource(stream);
-    source.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    setInterval(() => {
-      analyser.getByteFrequencyData(data);
-      const moy = data.reduce((a, b) => a + b, 0) / data.length;
-      const dB = 20 * Math.log10(moy || 1);
-      document.getElementById("capteurs").textContent = `🎤 Son : ${dB.toFixed(1)} dB`;
-    }, 1000);
-  }).catch(() => {
-    document.getElementById("capteurs").textContent = "❌ Micro non disponible";
+/* ========================
+   INIT
+======================== */
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("marche").addEventListener("click", () => {
+    demarrerCockpit();
   });
-          }
+  document.getElementById("reset").addEventListener("click", () => {
+    resetVitesseMax();
+  });
+});
+      
