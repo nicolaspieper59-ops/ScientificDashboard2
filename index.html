@@ -12,27 +12,27 @@
 
     <section>
       <h2>🚀 Vitesse & Distance</h2>
-      <div id="vitesse">--</div>
-      <div id="distance">--</div>
-      <div id="pourcentage">--</div>
-      <div id="gps">--</div>
+      <div id="vitesse">Vitesse : -- km/h</div>
+      <div id="distance">Distance : -- km</div>
+      <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+      <div id="gps">Latitude : -- | Longitude : -- | Altitude : --</div>
       <button id="marche">▶️ Démarrer</button>
       <button id="reset">🔄 Réinitialiser vitesse max</button>
     </section>
 
     <section>
       <h2>📐 Capteurs physiques</h2>
-      <div id="capteurs">--</div>
+      <div id="capteurs">Lux : -- | dB : -- | Hz : -- | Niveau : -- | Magnétisme : --</div>
     </section>
 
     <section>
       <h2>🧭 Boussole & Destination</h2>
-      <div id="boussole">--</div>
+      <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --</div>
     </section>
 
     <section>
-      <h2>⏰ Horloge Minecraft</h2>
-      <div id="horloge">--</div>
+      <h2>⏰ Horloge cosmique</h2>
+      <div id="horloge">--:--:--</div>
     </section>
 
     <section>
@@ -41,17 +41,39 @@
     </section>
 
     <section>
-      <h2>🌡️ Météo & Qualité de l’air</h2>
-      <div id="meteo">--</div>
-      <div id="qualite-air">--</div>
+      <h2>🌡️ Météo & Air</h2>
+      <div id="meteo">Temp : -- °C | Humidité : --% | Vent : -- km/h</div>
+      <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
     </section>
 
     <section>
       <h2>🔬 Grandeurs scientifiques</h2>
-      <div id="grandeurs">--</div>
+      <div id="grandeurs">Point ébullition : -- | Gravité : -- | Vitesse son : -- | Vitesse lumière : --</div>
     </section>
   </main>
 
-  <script type="module" src="cockpitCosmique.js"></script>
+  <script type="module">
+    import { demarrerCockpit, arreterCockpit, resetVitesseMax, definirDestination } from './js/cockpit.js';
+
+    const boutonMarche = document.getElementById('marche');
+    const boutonReset = document.getElementById('reset');
+    let actif = false;
+
+    boutonMarche.addEventListener('click', () => {
+      actif = !actif;
+      if (actif) {
+        demarrerCockpit();
+        boutonMarche.textContent = '⏹️ Arrêter';
+      } else {
+        arreterCockpit();
+        boutonMarche.textContent = '▶️ Démarrer';
+      }
+    });
+
+    boutonReset.addEventListener('click', () => resetVitesseMax());
+
+    // Exemple : définir destination
+    definirDestination(43.3, 5.4);
+  </script>
 </body>
 </html>
