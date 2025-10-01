@@ -2,14 +2,10 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>🌌 Cockpit Cosmique</title>
+  <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Police Minecraft -->
   <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-
-  <!-- Librairies astronomiques -->
   <script src="lib/d3.min.js"></script>
   <script src="lib/d3.geo.projection.min.js"></script>
   <script src="lib/celestial.min.js"></script>
@@ -21,7 +17,7 @@
     <!-- Vitesse & Distance -->
     <section>
       <h2>🚀 Vitesse & Distance</h2>
-      <div id="vitesse">Temps : -- s | Vitesse : -- km/h | Moyenne : -- | Max : --</div>
+      <div id="vitesse">Temps : -- s | Vitesse : -- km/h | Moy : -- | Max : --</div>
       <div id="pourcentage">% Lumière : --% | % Son : --%</div>
       <div id="distance">Distance : -- km | -- m | -- mm | Cosmique : -- s lumière | -- al</div>
       <button id="marche">▶️ Marche</button>
@@ -31,7 +27,7 @@
     <!-- Capteurs physiques -->
     <section>
       <h2>📐 Capteurs physiques</h2>
-      <div id="capteurs">Lumière : -- lux | Son : -- dB</div>
+      <div id="capteurs">Lumière : -- lux | Son : -- dB | Hz : --</div>
     </section>
 
     <!-- Accélération & puissance -->
@@ -40,16 +36,11 @@
       <div id="grandeurs">Accélération : -- g | Force : -- N | Puissance : -- J</div>
     </section>
 
-    <!-- GPS brut -->
+    <!-- GPS -->
     <section>
-      <h2>📊 Vue brute GPS</h2>
+      <h2>📊 Vue GPS</h2>
       <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision : --%</div>
-    </section>
-
-    <!-- Boussole -->
-    <section>
-      <h2>🧭 Boussole cosmique</h2>
-      <div id="boussole">Cap : --°</div>
+      <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --</div>
     </section>
 
     <!-- Horloge cosmique -->
@@ -61,6 +52,7 @@
     <!-- Médaillon céleste -->
     <section>
       <h2>☀️🌙 Médaillon céleste</h2>
+      <div id="medaillon">☀️🌙 Médaillon cosmique</div>
       <div id="celestial-map"></div>
     </section>
 
@@ -68,10 +60,38 @@
     <section>
       <h2>🌡️ Météo & Air</h2>
       <div id="meteo">Temp : -- °C | Humidité : --% | Vent : -- km/h</div>
-      <div id="qualite-air">Qualité de l’air : --</div>
+      <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
+    </section>
+
+    <!-- Contrôles -->
+    <section>
+      <h2>🎛️ Contrôles</h2>
+      <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
     </section>
   </main>
 
-  <script type="module" src="cockpitCosmique.js"></script>
+  <script type="module">
+    import * as Cockpit from './modules/cockpit.js';
+
+    const boutonMarche = document.getElementById('marche');
+    const boutonReset = document.getElementById('reset');
+
+    boutonMarche.addEventListener('click', () => {
+      if (boutonMarche.textContent.includes('▶️')) {
+        Cockpit.demarrerCockpit();
+        boutonMarche.textContent = '⏹️ Arrêter';
+      } else {
+        Cockpit.arreterCockpit();
+        boutonMarche.textContent = '▶️ Marche';
+      }
+    });
+
+    boutonReset.addEventListener('click', () => {
+      Cockpit.resetVitesseMax();
+    });
+
+    // Exemple destination
+    Cockpit.definirDestination(43.3, 5.4);
+  </script>
 </body>
 </html>
