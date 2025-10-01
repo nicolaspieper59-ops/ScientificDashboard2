@@ -206,4 +206,4 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   if(btnReset) btnReset.addEventListener('click', ()=>resetVitesseMax());
 });
-                                                                                                         
+                            
