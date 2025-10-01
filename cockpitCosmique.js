@@ -20,11 +20,17 @@ document.getElementById('toggle-rituel')?.addEventListener('click', () => {
 export function demarrerCockpit() {
   if (watchId !== null) return;
 
+  if (!('geolocation' in navigator)) {
+    document.getElementById('gps').textContent = "GPS non disponible";
+    return;
+  }
+
   watchId = navigator.geolocation.watchPosition(pos => {
     const gps = {
       latitude: pos.coords.latitude,
       longitude: pos.coords.longitude,
       accuracy: pos.coords.accuracy,
+      altitude: pos.coords.altitude ?? 0,
       timestamp: pos.timestamp,
       speed: pos.coords.speed
     };
@@ -79,14 +85,16 @@ function calculerDistance(pos1, pos2) {
   const φ2 = pos2.latitude * Math.PI / 180;
   const Δφ = (pos2.latitude - pos1.latitude) * Math.PI / 180;
   const Δλ = (pos2.longitude - pos1.longitude) * Math.PI / 180;
-  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a = Math.sin(Δφ / 2) ** 2 +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
 // === Affichage cockpit ===
 function afficherVitesse(vitesse) {
-  const moyenne = vitesses.reduce((a,b)=>a+b,0)/vitesses.length;
+  const moyenne = vitesses.length ? vitesses.reduce((a, b) => a + b, 0)/vitesses.length : 0;
   const mps = vitesse / 3.6;
   const mmps = mps*1000;
   document.getElementById('vitesse').textContent =
@@ -94,9 +102,9 @@ function afficherVitesse(vitesse) {
 }
 
 function afficherDistance() {
-  const km = distanceTotale / 1000;
+  const km = distanceTotale/1000;
   const m = distanceTotale;
-  const mm = m * 1000;
+  const mm = m*1000;
   const secondesLumiere = m / 299792458;
   const anneesLumiere = secondesLumiere / (3600*24*365.25);
   document.getElementById('distance').textContent =
@@ -113,7 +121,7 @@ function afficherPourcentage(vitesse) {
 
 function afficherGPS(gps) {
   document.getElementById('gps').textContent =
-    `Latitude : ${gps.latitude.toFixed(6)} | Longitude : ${gps.longitude.toFixed(6)} | Précision : ${gps.accuracy.toFixed(0)}%`;
+    `Latitude : ${gps.latitude.toFixed(6)} | Longitude : ${gps.longitude.toFixed(6)} | Altitude : ${gps.altitude.toFixed(1)} m | Précision : ${gps.accuracy.toFixed(0)}%`;
 }
 
 // === Capteurs physiques ===
@@ -141,7 +149,7 @@ if (navigator.mediaDevices?.getUserMedia) {
     setInterval(()=>{
       analyser.getByteFrequencyData(data);
       const moy = data.reduce((a,b)=>a+b,0)/data.length;
-      const dB = 20*Math.log10(moy);
+      const dB = 20*Math.log10(moy || 1);
       intensitesSon.push(dB);
       const max = Math.max(...intensitesSon);
       document.getElementById('capteurs').textContent =
@@ -217,4 +225,5 @@ chargerMeteo();
 export function definirDestination(lat, lon){
   destination.latitude = lat;
   destination.longitude = lon;
-}
+                         }
+      
