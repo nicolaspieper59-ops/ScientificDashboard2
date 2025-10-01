@@ -6,9 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="lib/d3.min.js"></script>
-  <script src="lib/d3.geo.projection.min.js"></script>
-  <script src="lib/celestial.min.js"></script>
 </head>
 <body>
   <main>
@@ -19,14 +16,14 @@
       <div id="vitesse">-- km/h</div>
       <div id="pourcentage">-- %</div>
       <div id="distance">-- km</div>
-      <div id="gps">Latitude : -- | Longitude : -- | Précision : --%</div>
+      <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision : --%</div>
       <button id="marche">▶️ Marche</button>
       <button id="reset">🔄 Réinitialiser vitesse max</button>
     </section>
 
     <section>
       <h2>📐 Capteurs physiques</h2>
-      <div id="capteurs">Lux : -- | dB : -- | Hz : --</div>
+      <div id="capteurs">Lux : -- | dB : -- | Hz : -- | Niveau : --° | Magnétisme : -- µT</div>
     </section>
 
     <section>
@@ -47,7 +44,6 @@
     <section>
       <h2>☀️🌙 Médaillon céleste</h2>
       <div id="medaillon">☀️🌙 Médaillon cosmique</div>
-      <div id="celestial-map"></div>
     </section>
 
     <section>
@@ -55,13 +51,8 @@
       <div id="meteo">Température : -- °C | Vent : -- km/h</div>
       <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
     </section>
-
-    <section>
-      <h2>🎛️ Contrôles</h2>
-      <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
-    </section>
   </main>
 
-  <script type="module" src="./js/cockpitOffline.js"></script>
+  <script type="module" src="cockpit.js"></script>
 </body>
 </html>
