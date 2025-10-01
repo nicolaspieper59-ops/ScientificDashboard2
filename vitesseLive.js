@@ -2,14 +2,6 @@ let watchId = null;
 let positionPrecedente = null;
 
 export function demarrerVitesseLive() {
-  if (!("geolocation" in navigator)) {
-    document.getElementById('statut-gps').textContent = "❌ GPS non disponible";
-    return;
-  }
-
-  if (watchId !== null) return;
-
-  document.getElementById('statut-gps').textContent = "📡 Recherche du signal...";
 
   watchId = navigator.geolocation.watchPosition(
     pos => {
