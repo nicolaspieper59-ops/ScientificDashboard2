@@ -3,18 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cockpit Cosmique Complet</title>
+<title>Cockpit Cosmique Ultime</title>
 <style>
 body { font-family: monospace; background:#000; color:#0ff; margin:0; padding:1rem; }
 h1,h2 { text-align:center; }
 section { margin:1rem 0; padding:0.5rem; border:1px solid #0ff; border-radius:8px; }
 button { margin:0.5rem; padding:0.5rem 1rem; font-size:1rem; cursor:pointer; background:#0ff; color:#000; border:none; border-radius:5px; }
 #medaillon canvas { display:block; margin:0 auto; }
+input { width:4rem; margin-left:0.5rem; background:#000; color:#0ff; border:1px solid #0ff; border-radius:4px; text-align:center;}
 </style>
 </head>
 <body>
 <main>
-<h1>🌌 Cockpit Cosmique Complet</h1>
+<h1>🌌 Cockpit Cosmique Ultime</h1>
 
 <section>
 <h2>⏱️ Temps & Vitesse</h2>
@@ -34,11 +35,16 @@ button { margin:0.5rem; padding:0.5rem 1rem; font-size:1rem; cursor:pointer; bac
 <section>
 <h2>🧭 Boussole & Coordonnées</h2>
 <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --</div>
+<div>
+    Définir destination : Lat <input id="destLat"> Lon <input id="destLon">
+    <button id="defDest">Aller</button>
+</div>
 </section>
 
 <section>
 <h2>⏰ Horloge Cosmique</h2>
 <div id="horloge">--:--:--</div>
+<div id="heureSolaire">Heure solaire vraie : -- | Heure solaire moyenne : -- | Equation du temps : --</div>
 </section>
 
 <section>
@@ -54,10 +60,14 @@ button { margin:0.5rem; padding:0.5rem 1rem; font-size:1rem; cursor:pointer; bac
 
 <section>
 <h2>🔬 Grandeurs Scientifiques</h2>
-<div id="grandeurs">Point ébullition : -- °C | Gravité : -- m/s² | Force : -- N | Energie : -- J | Cinétique : -- J | Vitesse lumière : -- m/s | Vitesse son : -- m/s</div>
+<div id="grandeurs">
+Force : <input id="force" value="10"> N | Energie : <input id="energie" value="100"> J | Energie cinétique : <input id="cin" value="50"> J
+<br>Point ébullition : 100 °C | Gravité : 9.81 m/s² | Vitesse lumière : 299792458 m/s | Vitesse son : 343 m/s
+</div>
 </section>
 
 <script type="module" src="./js/cockpit.js"></script>
 </main>
 </body>
-</html>
+                                                                                       </html>
+                              
