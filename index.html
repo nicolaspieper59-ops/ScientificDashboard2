@@ -5,6 +5,7 @@
   <title>Cockpit Cosmique Complet</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
   <main>
@@ -28,7 +29,8 @@
     <section>
       <h2>🧭 Boussole & Destination</h2>
       <div id="boussole">--</div>
-      <button id="choisir-destination">🌐 Choisir coordonnées</button>
+      <div id="map" style="height:300px;"></div>
+      <label>Masse simulée (kg): <input type="number" id="masseSimulee" value="70"></label>
     </section>
 
     <section>
@@ -38,21 +40,25 @@
 
     <section>
       <h2>☀️🌙 Médaillon céleste</h2>
-      <div id="medaillon"></div>
+      <button id="fullscreenMedaillon">🔍 Plein écran</button>
+      <div id="medaillon" style="width:300px; height:300px;"></div>
     </section>
 
     <section>
-      <h2>🌡️ Météo & Air</h2>
-      <div id="meteo">--</div>
-      <div id="qualite-air">--</div>
+      <h2>🌡️ Météo & Qualité Air</h2>
+      <div id="meteo">Temp : -- °C | Humidité : --% | Vent : -- km/h</div>
+      <div id="qualite-air">Qualité air : -- | Indice UV : --</div>
     </section>
 
     <section>
       <h2>🔬 Grandeurs scientifiques</h2>
-      <div id="grandeurs">--</div>
+      <div id="grandeurs">Point ébullition : -- | Gravité : -- | Force : -- N | Puissance : -- J | Cinétique : -- J</div>
     </section>
+
   </main>
 
-  <script type="module" src="./cockpit.js"></script>
+  <script type="module" src="js/cockpit.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </body>
-</html>
+  </html>
+      
