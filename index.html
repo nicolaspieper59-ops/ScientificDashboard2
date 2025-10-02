@@ -64,10 +64,10 @@
       if (v >= 0 && v < 300) {
         vitesseMax = Math.max(vitesseMax, v); vitesses.push(v);
         const moy = vitesses.reduce((a, b) => a + b, 0) / vitesses.length;
-        set('vitesse', `Vitesse : ${v.toFixed(2)} km/h | Moy : ${moy.toFixed(2)} | Max : ${vitesseMax.toFixed(2)}`);
+        set('vitesse', `Vitesse : ${v.toFixed(4)} km/h | Moy : ${moy.toFixed(4)} | Max : ${vitesseMax.toFixed(4)}`);
         set('distance', `Distance : ${(distanceTotale / 1000).toFixed(3)} km`);
         const mps = v / 3.6;
-        set('pourcentage', `% Lumière : ${(mps / 299792458 * 100).toExponential(2)}% | % Son : ${(mps / 343 * 100).toFixed(2)}%`);
+        set('pourcentage', `% Lumière : ${(mps / 299792458 * 100).toExponential(4)}% | % Son : ${(mps / 343 * 100).toFixed(2)}%`);
       }
     }
 
