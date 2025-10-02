@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>🌌 Cockpit Cosmique Complet</title>
+  <title>Cockpit Cosmique Complet</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -10,73 +10,128 @@
   <main>
     <h1>🌌 Cockpit Cosmique Complet</h1>
 
+    <!-- Vitesse & Distance -->
     <section>
-      <h2>🚀 Vitesse & Distance</h2>
-      <div id="infos-vitesse">
-        Temps : <span id="temps">0.00</span> s<br>
-        Vitesse instantanée : <span id="vitesse">--</span> km/h<br>
-        Moyenne : <span id="moyenne">--</span> km/h<br>
-        Max : <span id="vmax">--</span> km/h<br>
-        % Lumière : <span id="plumiere">--</span>% | % Son : <span id="pson">--</span>%<br>
-        Distance : <span id="distance">--</span> km | Cosmique : <span id="distcosmique">--</span> al
+      <h2>⏱️ Temps & Vitesse</h2>
+      <div id="vitesse">
+        Temps : 0.00 s<br>
+        Vitesse instantanée : -- km/h<br>
+        Vitesse moyenne : -- km/h<br>
+        Vitesse max : -- km/h<br>
+        Vitesse : -- m/s | -- mm/s
       </div>
-      <button id="startStop">▶️ Marche</button>
-      <button id="resetMax">🔄 Réinitialiser max</button>
+      <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+      <div id="distance">
+        Distance : -- km | -- m | -- mm<br>
+        Distance cosmique : -- s lumière | -- al
+      </div>
+      <div id="gps">
+        Latitude : -- | Longitude : -- | Altitude : -- | Précision GPS : --%
+      </div>
+      <button id="marche">▶️ Démarrer</button>
+      <button id="reset">🔄 Réinitialiser vitesse max</button>
     </section>
 
+    <!-- Soleil & Lune -->
     <section>
       <h2>☀️🌙 Soleil & Lune</h2>
       <div id="astro">
-        Culmination soleil : <span id="culmSoleil">--</span><br>
-        Heure solaire vraie : <span id="hSolV">--</span><br>
-        Heure solaire moyenne : <span id="hSolM">--</span><br>
-        Équation du temps : <span id="eqTemps">--</span><br>
-        Phase lune : <span id="phaseLune">--</span>%<br>
-        Lever lune : <span id="leverLune">--</span> | Coucher lune : <span id="coucherLune">--</span>
+        Culmination soleil : --<br>
+        Heure solaire vraie : --<br>
+        Heure solaire moyenne : --<br>
+        Équation du temps : --<br>
+        Lune phase : --%<br>
+        Lune magnitude : --<br>
+        Lever lune : --<br>
+        Coucher lune : --<br>
+        Culmination lune : --
       </div>
-      <canvas id="medaillon"></canvas>
     </section>
 
+    <!-- Horloge Minecraft -->
     <section>
-      <h2>🌡️ Météo & Qualité Air</h2>
+      <h2>⏰ Horloge Minecraft</h2>
+      <div id="horloge">00:00:00</div>
+    </section>
+
+    <!-- Météo & Qualité de l'air -->
+    <section>
+      <h2>🌡️ Météo & Air</h2>
       <div id="meteo">
-        Température : <span id="temp">--</span> °C<br>
-        Pression : <span id="pression">--</span> hPa<br>
-        Humidité : <span id="humid">--</span>%<br>
-        Vent : <span id="vent">--</span> km/h<br>
-        Nuages : <span id="nuages">--</span>%<br>
-        Indice UV : <span id="uv">--</span>
+        Température : -- °C<br>
+        Pression : -- hPa<br>
+        Humidité : --%<br>
+        Vent : -- km/h<br>
+        Nuages : --%<br>
+        Pluie : -- mm<br>
+        Neige : -- mm<br>
+        Indice UV : --
       </div>
       <div id="qualite-air">Qualité air : --</div>
     </section>
 
+    <!-- Grandeurs scientifiques -->
     <section>
-      <h2>🧭 Boussole & Destination</h2>
-      <div id="boussole">Cap : --° | Lat/Lon : --</div>
+      <h2>🔬 Grandeurs physiques</h2>
+      <div id="grandeurs">
+        Point d’ébullition : -- °C<br>
+        Gravité : -- m/s²<br>
+        Vitesse son : -- m/s<br>
+        Vitesse lumière : -- m/s<br>
+        Force : -- N<br>
+        Énergie cinétique : -- J<br>
+        Puissance : -- W
+      </div>
     </section>
 
+    <!-- Boussole & Destination -->
     <section>
-      <h2>📐 Capteurs</h2>
+      <h2>🧭 Boussole & Destination</h2>
+      <div id="boussole">
+        Cap : --°<br>
+        Vers lat : --<br>
+        Vers lon : --<br>
+        Cap vers destination : --°
+      </div>
+      <button id="choisir-destination">📍 Choisir destination sur carte</button>
+    </section>
+
+    <!-- Capteurs physiques -->
+    <section>
+      <h2>📐 Capteurs physiques</h2>
       <div id="capteurs">
         Niveau à bulle : --°<br>
         Lumière : -- lux<br>
         Son : -- dB<br>
         Fréquence : -- Hz<br>
-        Magnétisme : -- µT
+        Magnétisme : -- µT<br>
+        Souterrain : -- 
       </div>
     </section>
 
+    <!-- Médaillon céleste -->
     <section>
-      <h2>⏰ Horloge atomique / Minecraft</h2>
-      <div id="horloge">00:00:00</div>
+      <h2>☀️🌙 Médaillon céleste</h2>
+      <div id="medaillon"></div>
     </section>
 
+    <!-- Vue brute GPS -->
     <section>
-      <h2>🔬 Grandeurs scientifiques</h2>
-      <div id="grandeurs">Point ébullition : -- °C | Gravité : -- m/s² | Vitesse son : -- m/s | Vitesse lumière : -- m/s</div>
+      <h2>📊 Vue brute GPS</h2>
+      <div id="gps-brut">
+        Latitude : --<br>
+        Longitude : --<br>
+        Altitude : --<br>
+        Précision GPS : --%<br>
+        Lumière : --<br>
+        Souterrain : --<br>
+        Son : --
+      </div>
     </section>
-
   </main>
+
+  <!-- Scripts -->
   <script type="module" src="js/cockpit.js"></script>
 </body>
-</html>
+  </html>
+  
