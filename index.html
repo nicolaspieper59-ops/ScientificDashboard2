@@ -2,94 +2,69 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Vitesse Cosmique</title>
+  <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
-  <style>
-    body {
-      background-color: #0b0b0b;
-      color: #00ffcc;
-      font-family: 'Minecraftia', monospace;
-      padding: 20px;
-    }
-    h1 { color: #ffd700; text-shadow: 1px 1px 2px #000; }
-    section { border: 2px solid #333; padding: 10px; margin: 10px 0; background-color: #111; box-shadow: 0 0 10px #222; }
-    button { background: #222; color: #00ffcc; border: 2px solid #00ffcc; padding: 6px 12px; margin: 5px; font-family: 'Minecraftia'; cursor: pointer; }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>🚀 Vitesse Cosmique</h1>
+  <h1>🌌 Cockpit Cosmique</h1>
 
-  <section>
-    <div id="vitesse">Vitesse : --</div>
-    <div id="distance">Distance : --</div>
-    <div id="pourcentage">% Lumière / Son : --</div>
-    <button id="marche">▶️ Démarrer</button>
-    <button id="stop">⏹️ Arrêter</button>
-    <button id="reset">🔄 Réinitialiser</button>
+  <section><h2>🚀 Vitesse</h2>
+    <div id="temps">Temps : 0.00 s</div>
+    <div id="vitesse">Vitesse instantanée : -- km/h</div>
+    <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+    <div id="vitesse-max">Vitesse max : -- km/h</div>
+    <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
+    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+    <div id="distance">Distance : -- km | -- m | -- mm</div>
+    <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
+    <button id="marche">▶️ Marche</button>
+    <button id="stop">⏹️ Arrêt</button>
+    <button id="reset">🔄 Réinitialiser max</button>
   </section>
 
-  <script>
-    let watchId = null;
-    let positionPrecedente = null;
-    let vitesses = [];
-    let vitesseMax = 0;
-    let distanceTotale = 0;
+  <section><h2>☀️🌙 Soleil & Lune</h2>
+    <div id="culmination-soleil">Culmination soleil : --</div>
+    <div id="heure-vraie">Heure solaire vraie : --</div>
+    <div id="heure-moyenne">Heure solaire moyenne : --</div>
+    <div id="equation-temps">Équation du temps : --</div>
+    <div id="lune-phase">Lune phase : --%</div>
+    <div id="lune-mag">Lune magnitude : --</div>
+    <div id="lune-lever">Lever lune : --</div>
+    <div id="lune-coucher">Coucher lune : --</div>
+    <div id="lune-culmination">Culmination lune : --</div>
+  </section>
 
-    const set = (id, txt) => document.getElementById(id).textContent = txt;
+  <section><h2>⏰ Horloge Minecraft</h2>
+    <div id="horloge-minecraft">00:00:00</div>
+    <div id="horloge-atomique">Heure atomique (UTC) : --:--:--</div>
+  </section>
 
-    document.getElementById('marche').onclick = () => {
-      if (!('geolocation' in navigator)) return set('vitesse', 'GPS non disponible');
-      if (watchId !== null) return;
+  <section><h2>🌡️ Météo</h2>
+    <div id="meteo">Température : -- °C</div>
+    <div id="qualite-air">Qualité air : --</div>
+    <div id="grandeurs">Point d’ébullition : -- °C</div>
+  </section>
 
-      navigator.geolocation.getCurrentPosition(pos => traiter(pos.coords, pos.timestamp));
-      watchId = navigator.geolocation.watchPosition(pos => traiter(pos.coords, pos.timestamp), err => set('vitesse', 'Erreur GPS'), { enableHighAccuracy: true });
-    };
+  <section><h2>🧭 Boussole</h2>
+    <div id="boussole">Cap : --° | Vers lat : -- | Vers lon : -- | Cap vers destination : --°</div>
+    <button id="aller">Aller</button>
+  </section>
 
-    document.getElementById('stop').onclick = () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-        set('vitesse', '⏹️ Suivi arrêté');
-      }
-    };
+  <section><h2>📐 Capteurs</h2>
+    <div id="capteurs">--</div>
+  </section>
 
-    document.getElementById('reset').onclick = () => {
-      vitesses = []; vitesseMax = 0; distanceTotale = 0; positionPrecedente = null;
-      set('vitesse', 'Vitesse : --'); set('distance', 'Distance : --'); set('pourcentage', '--');
-    };
+  <section><h2>📊 Vue brute GPS</h2>
+    <div id="gps-brut">Latitude : -- | Longitude : -- | Altitude : --</div>
+    <div id="gps">Précision GPS : --%</div>
+  </section>
 
-    function traiter(coords, timestamp) {
-      const v = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
-      if (v >= 0 && v < 300) {
-        vitesseMax = Math.max(vitesseMax, v); vitesses.push(v);
-        const moy = vitesses.reduce((a, b) => a + b, 0) / vitesses.length;
-        set('vitesse', `Vitesse : ${v.toFixed(4)} km/h | Moy : ${moy.toFixed(4)} | Max : ${vitesseMax.toFixed(4)}`);
-        set('distance', `Distance : ${(distanceTotale / 1000).toFixed(3)} km`);
-        const mps = v / 3.6;
-        set('pourcentage', `% Lumière : ${(mps / 299792458 * 100).toExponential(4)}% | % Son : ${(mps / 343 * 100).toFixed(2)}%`);
-      }
-    }
+  <section><h2>🎛️ Contrôle</h2>
+    <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
+  </section>
 
-    function calculerVitesse(c, t) {
-      if (!positionPrecedente) { positionPrecedente = { ...c, timestamp: t }; return 0; }
-      const dt = (t - positionPrecedente.timestamp) / 1000;
-      const d = calculerDistance(c, positionPrecedente);
-      distanceTotale += d;
-      positionPrecedente = { ...c, timestamp: t };
-      return dt > 0 ? (d / dt) * 3.6 : 0;
-    }
-
-    function calculerDistance(a, b) {
-      const R = 6371e3;
-      const φ1 = a.latitude * Math.PI / 180;
-      const φ2 = b.latitude * Math.PI / 180;
-      const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
-      const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
-      const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-      return R * c;
-    }
-  </script>
+  <script type="module" src="cockpit.js"></script>
 </body>
 </html>
