@@ -5,7 +5,54 @@
   <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #00ffcc;
+      font-family: 'Minecraftia', monospace;
+      padding: 20px;
+    }
+    h1, h2 {
+      color: #ffd700;
+      text-shadow: 1px 1px 2px #000;
+    }
+    section {
+      border: 2px solid #333;
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #111;
+      box-shadow: 0 0 10px #222;
+    }
+    button {
+      background: #222;
+      color: #00ffcc;
+      border: 2px solid #00ffcc;
+      padding: 6px 12px;
+      margin: 5px;
+      font-family: 'Minecraftia';
+      cursor: pointer;
+    }
+    .pulsation {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    body.rituel-off * {
+      animation: none !important;
+      filter: grayscale(100%) brightness(0.5);
+    }
+    body.rituel-off button {
+      border-color: #666;
+      color: #666;
+    }
+    body.rituel-off section {
+      background-color: #000;
+      border-color: #222;
+    }
+  </style>
 </head>
 <body>
   <h1>🌌 Cockpit Cosmique</h1>
@@ -57,7 +104,6 @@
     <button id="toggle-svt">🌱 SVT : ON</button>
   </section>
 
-  <script type="module" src="cockpit.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/gh/nicolas-cockpit/cockpit-cosmique/cockpit.js"></script>
 </body>
-      </html>
-      
+</html>
