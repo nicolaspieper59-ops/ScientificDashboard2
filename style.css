@@ -34,8 +34,6 @@ button {
 }
 body.rituel-off * {
   animation: none !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
   filter: grayscale(100%) brightness(0.5);
 }
 body.rituel-off button {
@@ -45,5 +43,4 @@ body.rituel-off button {
 body.rituel-off section {
   background-color: #000;
   border-color: #222;
-      }
-       
+}
