@@ -25,6 +25,7 @@
     <div id="distance">Distance : --</div>
     <div id="pourcentage">% Lumière / Son : --</div>
     <button id="marche">▶️ Démarrer</button>
+    <button id="stop">⏹️ Arrêter</button>
     <button id="reset">🔄 Réinitialiser</button>
   </section>
 
@@ -45,8 +46,16 @@
       watchId = navigator.geolocation.watchPosition(pos => traiter(pos.coords, pos.timestamp), err => set('vitesse', 'Erreur GPS'), { enableHighAccuracy: true });
     };
 
+    document.getElementById('stop').onclick = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        set('vitesse', '⏹️ Suivi arrêté');
+      }
+    };
+
     document.getElementById('reset').onclick = () => {
-      vitesses = []; vitesseMax = 0; distanceTotale = 0;
+      vitesses = []; vitesseMax = 0; distanceTotale = 0; positionPrecedente = null;
       set('vitesse', 'Vitesse : --'); set('distance', 'Distance : --'); set('pourcentage', '--');
     };
 
@@ -83,5 +92,4 @@
     }
   </script>
 </body>
-  </html>
-  
+</html>
