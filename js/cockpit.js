@@ -89,6 +89,9 @@ function afficherBoussole(coords){
 // MÉDAILLON COSMIQUE
 // ======================
 function afficherMedaillonComplet(){
+  async function afficherMedaillon() {
+  // Initialise le médaillon dans le conteneur HTML avec id="medaillon"
+  await Medaillon.initMedaillon('medaillon'); 
   const med=document.getElementById('medaillon');
   med.innerHTML='';
   const c=document.createElement('canvas'); c.width=400; c.height=400;
