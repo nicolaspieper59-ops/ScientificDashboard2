@@ -1,4 +1,5 @@
 import SunCalc from 'https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js';
+import * as Medaillon from './js/medaillon.js';
 
 let watchId=null,positionPrecedente=null,distanceTotale=0,vitesseMax=0,vitesses=[],startTime=null;
 let destination={latitude:null,longitude:null};
