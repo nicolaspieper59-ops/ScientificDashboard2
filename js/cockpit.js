@@ -133,3 +133,96 @@ function activerHorloge() {
 
 function synchroniserHeureAtomique() {
   fetch('https://worldtime
+
+function synchroniserHeureAtomique() {
+  fetch('https://worldtimeapi.org/api/ip')
+    .then(r => r.json())
+    .then(data => {
+      const utc = new Date(data.utc_datetime);
+      set('horloge-atomique', `Heure atomique (UTC) : ${utc.toLocaleTimeString()}`);
+    })
+    .catch(() => set('horloge-atomique', 'Heure atomique indisponible'));
+}
+
+function activerCapteurs() {
+  if ('AmbientLightSensor' in window) {
+    try {
+      const light = new AmbientLightSensor();
+      light.addEventListener('reading', () => {
+        set('capteurs', `Lumière : ${Math.round(light.illuminance)} lux`);
+      });
+      light.start();
+    } catch {}
+  }
+
+  if (navigator.mediaDevices?.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      const ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      (function loop() {
+        analyser.getByteFrequencyData(data);
+        const dB = 20 * Math.log10(data.reduce((a, b) => a + b, 0) / data.length || 1);
+        const niveau = document.getElementById('capteurs').textContent;
+        set('capteurs', niveau.replace(/Son : .*? dB/, `Son : ${Math.round(dB)} dB`));
+        requestAnimationFrame(loop);
+      })();
+    });
+  }
+
+  if ('DeviceOrientationEvent' in window) {
+    window.addEventListener('deviceorientation', e => {
+      const niveau = document.getElementById('capteurs').textContent;
+      set('capteurs', niveau.replace(/Niveau : .*?°/, `Niveau : ${e.beta?.toFixed(1)}°`));
+    });
+  }
+}
+
+function chargerMeteo() {
+  fetch("https://api.open-meteo.com/v1/forecast?latitude=43.3&longitude=5.4&current_weather=true")
+    .then(r => r.json())
+    .then(data => {
+      const w = data.current_weather;
+      set('meteo', `Température : ${w.temperature}°C | Vent : ${w.windspeed} km/h | Nuages : ${w.cloudcover}%`);
+    });
+
+  fetch("https://api.openaq.org/v2/latest?coordinates=43.3,5.4")
+    .then(r => r.json())
+    .then(d => {
+      const m = d.results[0]?.measurements ?? [];
+      const pm25 = m.find(a => a.parameter === "pm25")?.value ?? "--";
+      set('qualite-air', `PM2.5 : ${pm25} µg/m³`);
+    });
+}
+
+function chargerGrandeurs() {
+  const masse = 70;
+  const vitesse = vitesses.length ? vitesses.at(-1) / 3.6 : 0;
+  const gravite = 9.81;
+  let texte = '';
+
+  if (applicateurs.physique) {
+    const force = masse * gravite;
+    const energie = 0.5 * masse * vitesse ** 2;
+    const puissance = force * vitesse;
+    texte += `🧲 Force : ${force.toFixed(1)} N | 🔋 Énergie : ${energie.toFixed(1)} J | ⚡ Puissance : ${puissance.toFixed(1)} W\n`;
+  }
+
+  if (applicateurs.chimie) {
+    const R = 8.314;
+    const T = 298;
+    const Vm = (R * T / 101325).toFixed(3);
+    texte += `🧪 Volume molaire : ${Vm} m³/mol | 🧬 Avogadro : 6.022×10²³\n`;
+  }
+
+  if (applicateurs.svt) {
+    const bpm = Math.round(60 + vitesse * 2);
+    const temp = 36.5 + vitesse * 0.02;
+    texte += `🫀 Fréquence cardiaque : ${bpm} bpm | 🌡️ Température corporelle : ${temp.toFixed(1)}°C\n`;
+  }
+
+  set('grandeurs', texte);
+       }
+       
