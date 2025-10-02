@@ -1,73 +1,91 @@
-// ============================
-// cockpit.js - GPS et vitesse
-// ============================
+import * as SunCalc from 'https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js';
 
 let watchId = null;
 let positionPrecedente = null;
 let vitesses = [];
 let vitesseMax = 0;
 let distanceTotale = 0;
+let t0 = null;
+let destination = { latitude: null, longitude: null };
 
-// === Utilitaires DOM ===
-function safeSetText(id, text) {
+function set(id, txt) {
   const el = document.getElementById(id);
-  if (el) el.textContent = text;
+  if (el) el.textContent = txt;
 }
 
-// === Boutons de contrôle ===
-document.getElementById('marche').addEventListener('click', demarrerCockpit);
-document.getElementById('reset').addEventListener('click', () => {
-  vitesseMax = 0;
-  safeSetText('vitesse', '--');
-});
-
-// === Démarrage cockpit ===
-function demarrerCockpit() {
-  if (!('geolocation' in navigator)) {
-    safeSetText('gps', 'GPS non disponible');
-    return;
-  }
+document.getElementById('marche').onclick = () => {
   if (watchId !== null) return;
+  t0 = performance.now();
+  navigator.geolocation.getCurrentPosition(pos => traiter(pos.coords, pos.timestamp));
+  watchId = navigator.geolocation.watchPosition(pos => traiter(pos.coords, pos.timestamp), err => set('gps', 'Erreur GPS'), { enableHighAccuracy: true });
+  loopTemps();
+  afficherMedaillon();
+};
 
-  navigator.geolocation.getCurrentPosition(
-    pos => traiterPosition(pos.coords, pos.timestamp),
-    err => safeSetText('gps', 'Erreur GPS : ' + err.message)
-  );
+document.getElementById('stop').onclick = () => {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    set('vitesse', '⏹️ Suivi arrêté');
+  }
+};
 
-  watchId = navigator.geolocation.watchPosition(
-    pos => traiterPosition(pos.coords, pos.timestamp),
-    err => safeSetText('gps', 'Erreur GPS : ' + err.message),
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-  );
+document.getElementById('reset').onclick = () => {
+  vitesses = [];
+  vitesseMax = 0;
+  distanceTotale = 0;
+  positionPrecedente = null;
+  set('vitesse', '--');
+  set('distance', '--');
+  set('pourcentage', '--');
+};
+
+function loopTemps() {
+  const el = document.getElementById('temps');
+  function tick() {
+    const t = performance.now() - t0;
+    el.textContent = `Temps : ${(t / 1000).toFixed(2)} s`;
+    requestAnimationFrame(tick);
+  }
+  tick();
 }
 
-// === Traitement position GPS ===
-function traiterPosition(coords, timestamp) {
-  const vitesse = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
-  if (vitesse >= 0 && vitesse < 300) {
-    vitesseMax = Math.max(vitesseMax, vitesse);
-    vitesses.push(vitesse);
-    afficherVitesse(vitesse);
-    afficherDistance();
-    afficherPourcentage(vitesse);
-    afficherGPS(coords);
+function traiter(coords, timestamp) {
+  const v = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
+  if (v >= 0 && v < 300) {
+    vitesseMax = Math.max(vitesseMax, v);
+    vitesses.push(v);
+    const moy = vitesses.reduce((a, b) => a + b, 0) / vitesses.length;
+    const mps = v / 3.6;
+    const mmps = mps * 1000;
+    set('vitesse', `Vitesse instantanée : ${v.toFixed(2)} km/h`);
+    set('vitesse-moy', `Vitesse moyenne : ${moy.toFixed(2)} km/h`);
+    set('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
+    set('vitesse-ms', `Vitesse : ${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`);
+    set('pourcentage', `% Lumière : ${(mps / 299792458 * 100).toExponential(2)}% | % Son : ${(mps / 343 * 100).toFixed(2)}%`);
+    const dkm = distanceTotale / 1000;
+    const ds = distanceTotale / 299792458;
+    const dal = ds / (3600 * 24 * 365.25);
+    set('distance', `Distance : ${dkm.toFixed(3)} km | ${(distanceTotale).toFixed(1)} m | ${(distanceTotale * 1000).toFixed(0)} mm`);
+    set('distance-cosmique', `Distance cosmique : ${ds.toFixed(6)} s lumière | ${dal.toExponential(3)} al`);
+    set('gps', `Précision GPS : ${(coords.accuracy ?? 0).toFixed(0)}%`);
+    afficherVueBrute(coords);
+    afficherMedaillon();
   }
 }
 
-// === Calcul vitesse si pas fournie ===
-function calculerVitesse(coords, timestamp) {
+function calculerVitesse(c, t) {
   if (!positionPrecedente) {
-    positionPrecedente = { ...coords, timestamp };
+    positionPrecedente = { ...c, timestamp: t };
     return 0;
   }
-  const dt = (timestamp - positionPrecedente.timestamp) / 1000;
-  const d = calculerDistance(coords, positionPrecedente);
+  const dt = (t - positionPrecedente.timestamp) / 1000;
+  const d = calculerDistance(c, positionPrecedente);
   distanceTotale += d;
-  positionPrecedente = { ...coords, timestamp };
+  positionPrecedente = { ...c, timestamp: t };
   return dt > 0 ? (d / dt) * 3.6 : 0;
 }
 
-// === Calcul distance entre deux points GPS ===
 function calculerDistance(a, b) {
   const R = 6371e3;
   const φ1 = a.latitude * Math.PI / 180;
@@ -79,24 +97,30 @@ function calculerDistance(a, b) {
   return R * c;
 }
 
-// === Affichages ===
-function afficherVitesse(v) {
-  const moyenne = vitesses.length ? vitesses.reduce((a, b) => a + b, 0) / vitesses.length : 0;
-  safeSetText('vitesse', `Vitesse : ${v.toFixed(2)} km/h | Moyenne : ${moyenne.toFixed(2)} | Max : ${vitesseMax.toFixed(2)}`);
+function afficherVueBrute(g) {
+  set('gps-brut', `Latitude : ${g.latitude.toFixed(6)} | Longitude : ${g.longitude.toFixed(6)} | Altitude : ${(g.altitude ?? 0).toFixed(1)} m`);
 }
 
-function afficherDistance() {
-  safeSetText('distance', `Distance : ${(distanceTotale / 1000).toFixed(3)} km`);
-}
+function afficherMedaillon() {
+  const lat = positionPrecedente?.latitude ?? 43.3;
+  const lon = positionPrecedente?.longitude ?? 5.4;
+  const now = new Date();
+  const soleil = SunCalc.getPosition(now, lat, lon);
+  const lune = SunCalc.getMoonPosition(now, lat, lon);
+  const phase = SunCalc.getMoonIllumination(now);
+  const times = SunCalc.getMoonTimes(now, lat, lon);
+  const solarTimes = SunCalc.getTimes(now, lat, lon);
 
-function afficherPourcentage(v) {
-  const mps = v / 3.6;
-  const pctL = (mps / 299792458) * 100;
-  const pctS = (mps / 343) * 100;
-  safeSetText('pourcentage', `% Lumière : ${pctL.toExponential(2)}% | % Son : ${pctS.toFixed(2)}%`);
-}
+  set('culmination-soleil', `Culmination soleil : ${solarTimes.solarNoon.toLocaleTimeString()}`);
+  set('heure-vraie', `Heure solaire vraie : ${solarTimes.sunrise.toLocaleTimeString()}`);
+  set('heure-moyenne', `Heure solaire moyenne : ${solarTimes.sunset.toLocaleTimeString()}`);
+  const eqTemps = (solarTimes.sunset - solarTimes.sunrise) / 60000 - 720;
+  set('equation-temps', `Équation du temps : ${eqTemps.toFixed(2)} min`);
 
-function afficherGPS(g) {
-  safeSetText('gps', `Latitude : ${g.latitude.toFixed(6)} | Longitude : ${g.longitude.toFixed(6)} | Altitude : ${(g.altitude ?? 0).toFixed(1)} m | Précision : ${(g.accuracy ?? 0).toFixed(0)} m`);
-              }
-      
+  set('lune-phase', `Lune phase : ${(phase.fraction * 100).toFixed(1)}%`);
+  set('lune-mag', `Lune magnitude : ${lune.altitude.toFixed(2)} rad`);
+  set('lune-lever', `Lever lune : ${times.rise?.toLocaleTimeString() ?? '--'}`);
+  set('lune-coucher', `Coucher lune : ${times.set?.toLocaleTimeString() ?? '--'}`);
+  set('lune-culmination', `Culmination lune : ${times.alwaysUp ? 'Toujours visible' : times.alwaysDown ? 'Invisible' : '--'}`);
+    }
+    
