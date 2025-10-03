@@ -2,47 +2,93 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Cockpit Cosmique</title>
+  <title>Vitesse Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#0a0a0a" />
-
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #00ffcc;
+      font-family: 'Minecraftia', monospace;
+      padding: 20px;
+    }
+    h1 { color: #ffd700; text-shadow: 1px 1px 2px #000; }
+    section { border: 2px solid #333; padding: 10px; margin: 10px 0; background-color: #111; box-shadow: 0 0 10px #222; }
+    button { background: #222; color: #00ffcc; border: 2px solid #00ffcc; padding: 6px 12px; margin: 5px; font-family: 'Minecraftia'; cursor: pointer; }
+  </style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique (Offline Ready)</h1>
+  <h1>🚀 Vitesse Cosmique</h1>
 
   <section>
-    <h2>🚀 Temps & Vitesse</h2>
-    <div id="temps">Temps : 0.00 s</div>
-    <div id="vitesse">Vitesse instantanée : -- km/h</div>
-    <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-    <div id="vitesse-max">Vitesse max : -- km/h</div>
-    <div id="distance">Distance : -- km</div>
-    <div id="gps">📡 En attente...</div>
-    <button id="marche">▶️ Marche</button>
-    <button id="stop">⏹️ Arrêt</button>
-    <button id="reset">🔄 Reset</button>
+    <div id="vitesse">Vitesse : --</div>
+    <div id="distance">Distance : --</div>
+    <div id="pourcentage">% Lumière / Son : --</div>
+    <button id="marche">▶️ Démarrer</button>
+    <button id="stop">⏹️ Arrêter</button>
+    <button id="reset">🔄 Réinitialiser</button>
   </section>
 
-  <section>
-    <h2>🌡️ Météo & Air</h2>
-    <div id="meteo">Température : -- °C | Vent : -- km/h | Nuages : --%</div>
-    <div id="air">Qualité air (PM2.5) : -- µg/m³</div>
-  </section>
-
-  <div id="map"></div>
-
-  <script type="module" src="cockpit.js"></script>
   <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js")
-        .then(() => console.log("✅ Service Worker enregistré"))
-        .catch(err => console.error("❌ SW erreur:", err));
+    let watchId = null;
+    let positionPrecedente = null;
+    let vitesses = [];
+    let vitesseMax = 0;
+    let distanceTotale = 0;
+
+    const set = (id, txt) => document.getElementById(id).textContent = txt;
+
+    document.getElementById('marche').onclick = () => {
+      if (!('geolocation' in navigator)) return set('vitesse', 'GPS non disponible');
+      if (watchId !== null) return;
+
+      navigator.geolocation.getCurrentPosition(pos => traiter(pos.coords, pos.timestamp));
+      watchId = navigator.geolocation.watchPosition(pos => traiter(pos.coords, pos.timestamp), err => set('vitesse', 'Erreur GPS'), { enableHighAccuracy: true });
+    };
+
+    document.getElementById('stop').onclick = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        set('vitesse', '⏹️ Suivi arrêté');
+      }
+    };
+
+    document.getElementById('reset').onclick = () => {
+      vitesses = []; vitesseMax = 0; distanceTotale = 0; positionPrecedente = null;
+      set('vitesse', 'Vitesse : --'); set('distance', 'Distance : --'); set('pourcentage', '--');
+    };
+
+    function traiter(coords, timestamp) {
+      const v = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
+      if (v >= 0 && v < 300) {
+        vitesseMax = Math.max(vitesseMax, v); vitesses.push(v);
+        const moy = vitesses.reduce((a, b) => a + b, 0) / vitesses.length;
+        set('vitesse', `Vitesse : ${v.toFixed(2)} km/h | Moy : ${moy.toFixed(2)} | Max : ${vitesseMax.toFixed(2)}`);
+        set('distance', `Distance : ${(distanceTotale / 1000).toFixed(3)} km`);
+        const mps = v / 3.6;
+        set('pourcentage', `% Lumière : ${(mps / 299792458 * 100).toExponential(2)}% | % Son : ${(mps / 343 * 100).toFixed(2)}%`);
+      }
+    }
+
+    function calculerVitesse(c, t) {
+      if (!positionPrecedente) { positionPrecedente = { ...c, timestamp: t }; return 0; }
+      const dt = (t - positionPrecedente.timestamp) / 1000;
+      const d = calculerDistance(c, positionPrecedente);
+      distanceTotale += d;
+      positionPrecedente = { ...c, timestamp: t };
+      return dt > 0 ? (d / dt) * 3.6 : 0;
+    }
+
+    function calculerDistance(a, b) {
+      const R = 6371e3;
+      const φ1 = a.latitude * Math.PI / 180;
+      const φ2 = b.latitude * Math.PI / 180;
+      const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
+      const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
+      const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+      return R * c;
     }
   </script>
 </body>
