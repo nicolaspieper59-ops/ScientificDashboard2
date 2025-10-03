@@ -1,57 +1,37 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>Cockpit Cosmique Ultime</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet">
-<style>
-  body { background:#0b0b0b; color:#00ffcc; font-family:'Minecraftia', monospace; padding:20px; }
-  h1, h2 { color:#ffd700; text-shadow:1px 1px 2px #000; }
-  section { border:2px solid #333; padding:10px; margin:10px 0; background:#111; box-shadow:0 0 10px #222; }
-  button { background:#222; color:#00ffcc; border:2px solid #00ffcc; padding:6px 12px; margin:5px; cursor:pointer; }
-  #medaillon, #carte { width:100%; height:400px; margin:10px 0; background:#000; }
-</style>
+  <meta charset="UTF-8">
+  <title>Cockpit Cosmique</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet">
+  <style>
+    body { background: #0b0b0b; color: #00ffcc; font-family: 'Minecraftia', monospace; padding: 20px; }
+    h1,h2 { color: #ffd700; text-shadow: 1px 1px 2px #000; }
+    section { border:2px solid #333; padding:10px; margin:10px 0; background:#111; box-shadow:0 0 10px #222; }
+    button { background:#222; color:#00ffcc; border:2px solid #00ffcc; padding:6px 12px; margin:5px; cursor:pointer; }
+    .pulsation { animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { transform: scale(1); opacity:1 } 50% { transform: scale(1.05); opacity:0.7 } 100% { transform: scale(1); opacity:1 } }
+    body.rituel-off * { animation:none !important; filter: grayscale(100%) brightness(0.5); }
+    body.rituel-off button { border-color:#666; color:#666; }
+    body.rituel-off section { background:#000; border-color:#222; }
+    canvas { display:block; margin:0 auto; background:#000; }
+  </style>
 </head>
 <body>
-<h1>🚀 Cockpit Cosmique Ultime</h1>
+<h1>馃寣 Cockpit Cosmique</h1>
 
 <section>
-  <h2>Vitesse & Distance</h2>
+  <h2>馃殌 Vitesse</h2>
   <div id="temps">Temps : 0.00 s</div>
-  <div id="vitesse">Vitesse : -- km/h</div>
+  <div id="vitesse">Vitesse instantanée : -- km/h</div>
   <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
   <div id="vitesse-max">Vitesse max : -- km/h</div>
-  <div id="distance">Distance : -- km</div>
-  <div id="pourcentage">% Lumière / Son : --</div>
-  <button id="marche">▶️ Démarrer</button>
-  <button id="stop">⏹️ Arrêter</button>
-  <button id="reset">🔄 Réinitialiser</button>
-</section>
-
-<section>
-  <h2>Médaillon Cosmique</h2>
-  <div id="medaillon"></div>
-</section>
-
-<section>
-  <h2>Carte</h2>
-  <div id="carte"></div>
-</section>
-
-<section>
-  <h2>Horloge & Temps Atomique</h2>
-  <div id="horloge-local">--:--:--</div>
-  <div id="horloge-atomique">Heure atomique (UTC) : --</div>
-</section>
-
-<section>
-  <h2>Capteurs</h2>
-  <div id="capteurs">Lumière : -- lux | Son : -- dB | Gyro : -- | Magnétomètre : -- µT | Batterie : --% | Réseau : --</div>
-</section>
-
-<script type="module" src="cockpit.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-</body>
-</html>
+  <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
+  <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+  <div id="distance">Distance : -- km | -- m | -- mm</div>
+  <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
+  <div id="gps">GPS : --</div>
+  <button id="marche">鈻讹笍 Marche</button>
+  <button id="stop">鈴癸笍
+    
