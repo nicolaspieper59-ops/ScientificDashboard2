@@ -5,38 +5,74 @@
   <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
-  <!-- Leaflet pour la carte -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #00ffcc;
+      font-family: 'Minecraftia', monospace;
+      padding: 20px;
+    }
+    h1, h2 {
+      color: #ffd700;
+      text-shadow: 1px 1px 2px #000;
+    }
+    section {
+      border: 2px solid #333;
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #111;
+      box-shadow: 0 0 10px #222;
+    }
+    button {
+      background: #222;
+      color: #00ffcc;
+      border: 2px solid #00ffcc;
+      padding: 6px 12px;
+      margin: 5px;
+      font-family: 'Minecraftia';
+      cursor: pointer;
+    }
+    .pulsation {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    body.rituel-off * {
+      animation: none !important;
+      filter: grayscale(100%) brightness(0.5);
+    }
+    body.rituel-off button {
+      border-color: #666;
+      color: #666;
+    }
+    body.rituel-off section {
+      background-color: #000;
+      border-color: #222;
+    }
+  </style>
 </head>
 <body>
   <h1>🌌 Cockpit Cosmique</h1>
 
-  <!-- GPS et Vitesse -->
-  <section>
-    <h2>🚀 Temps & Vitesse</h2>
+  <section><h2>🚀 Vitesse</h2>
     <div id="temps">Temps : 0.00 s</div>
     <div id="vitesse">Vitesse instantanée : -- km/h</div>
     <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
     <div id="vitesse-max">Vitesse max : -- km/h</div>
-    <div id="distance">Distance : -- km</div>
-    <div id="gps">📡 En attente...</div>
+    <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
+    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+    <div id="distance">Distance : -- km | -- m | -- mm</div>
+    <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
+    <div id="gps">GPS : --</div>
     <button id="marche">▶️ Marche</button>
     <button id="stop">⏹️ Arrêt</button>
-    <button id="reset">🔄 Reset</button>
+    <button id="reset">🔄 Réinitialiser</button>
   </section>
 
-  <!-- Carte interactive -->
-  <section>
-    <h2>🗺️ Carte & Destination</h2>
-    <div id="map"></div>
-    <div id="destination">Destination : Aucune</div>
-  </section>
-
-  <!-- Médaillon céleste -->
-  <section>
-    <h2>☀️🌙 Médaillon céleste</h2>
+  <section><h2>☀️🌙 Médaillon céleste</h2>
     <div id="culmination-soleil">--</div>
     <div id="heure-vraie">--</div>
     <div id="heure-moyenne">--</div>
@@ -45,21 +81,30 @@
     <div id="lune-mag">--</div>
     <div id="lune-lever">--</div>
     <div id="lune-coucher">--</div>
+    <div id="lune-culmination">--</div>
   </section>
 
-  <!-- Capteurs -->
-  <section>
-    <h2>📐 Capteurs</h2>
-    <div id="capteurs">Lumière : -- lux | Son : -- dB | Orientation : --°</div>
+  <section><h2>⏰ Horloge</h2>
+    <div id="horloge-minecraft">00:00:00</div>
+    <div id="horloge-atomique">Heure atomique (UTC) : --</div>
   </section>
 
-  <!-- Contrôles -->
-  <section>
-    <h2>🎛️ Contrôle</h2>
+  <section><h2>📐 Capteurs</h2>
+    <div id="capteurs">Lumière : -- lux | Son : -- dB | Niveau : --° | Gyro : -- | Magnétomètre : -- | Batterie : --% | Réseau : --</div>
+  </section>
+
+  <section><h2>🧪 Grandeurs</h2>
+    <div id="grandeurs">--</div>
+  </section>
+
+  <section><h2>🎛️ Contrôle</h2>
     <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
+    <button id="toggle-physique">🧲 Physique : ON</button>
+    <button id="toggle-chimie">🧪 Chimie : ON</button>
+    <button id="toggle-svt">🌱 SVT : ON</button>
   </section>
 
-  <!-- Script -->
   <script type="module" src="cockpit.js"></script>
 </body>
-</html>
+                                     </html>
+    
