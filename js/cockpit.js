@@ -121,3 +121,33 @@ function activerCapteurs() {
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
       const ctx = new AudioContext();
       const analyser = ctx
+  function initialiserGPS() {
+  if (!navigator.geolocation) {
+    set('gps', '🌐 GPS non disponible sur ce navigateur');
+    return;
+  }
+
+  // Lecture initiale
+  navigator.geolocation.getCurrentPosition(
+    pos => traiterPosition(pos.coords, pos.timestamp),
+    err => {
+      modeSouterrain = true;
+      set('gps', 'Mode souterrain activé 🌑');
+    }
+  );
+
+  // Suivi en continu
+  watchId = navigator.geolocation.watchPosition(
+    pos => traiterPosition(pos.coords, pos.timestamp),
+    err => {
+      modeSouterrain = true;
+      set('gps', 'Mode souterrain activé 🌑');
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000
+    }
+  );
+  }
+      
