@@ -2,81 +2,35 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Cockpit Cosmique</title>
-<link rel="stylesheet" href="style.css">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
+<title>GPS & Vitesse</title>
+<style>
+  body { font-family:sans-serif; background:#000; color:#0ff; display:flex; flex-direction:column; align-items:center; padding:2em; }
+  h1 { text-align:center; }
+  div { margin:0.5em 0; }
+  button { margin:0.2em; padding:0.5em 1em; background:#111; color:#0ff; border:1px solid #0ff; cursor:pointer; border-radius:4px; }
+  button:hover { background:#0ff; color:#000; }
+</style>
 </head>
 <body>
 
-<h1>Cockpit Cosmique</h1>
+<h1>GPS & Vitesse</h1>
 
-<div class="section">
-<h2>⏱️ Vitesse & Temps</h2>
-<div class="grid">
-  <div id="temps">Temps : 0.00 s</div>
-  <div id="vitesse">Vitesse instantanée : -- km/h</div>
-  <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-  <div id="vitesse-max">Vitesse max : -- km/h</div>
-  <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
-  <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-  <div id="distance">Distance : -- m</div>
-  <div id="distance-cosmique">Distance cosmique : -- s lumière</div>
-  <div id="gps">GPS : --</div>
-</div>
+<div id="latitude">Latitude : --</div>
+<div id="longitude">Longitude : --</div>
+<div id="altitude">Altitude : --</div>
+<div id="gps">GPS : --</div>
+<div id="gps-brut">Précision GPS : --</div>
+<div id="vitesse">Vitesse instantanée : -- km/h</div>
+<div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+<div id="vitesse-max">Vitesse max : -- km/h</div>
+<div id="distance">Distance : -- m</div>
+
 <div>
   <button onclick="demarrer()">▶️ Marche</button>
   <button onclick="stop()">⏹️ Arrêt</button>
   <button onclick="resetAll()">🔁 Réinitialiser</button>
 </div>
-</div>
 
-<div class="section">
-<h2>🔮 Médaillon céleste</h2>
-<div class="grid">
-  <div id="culmination-soleil">Culmination soleil : --</div>
-  <div id="heure-solaire-vraie">Heure solaire vraie : --</div>
-  <div id="heure-solaire-moyenne">Heure solaire moyenne : --</div>
-  <div id="equation-temps">Équation du temps : --</div>
-  <div id="lune-phase">Lune phase : --%</div>
-  <div id="lune-magnitude">Lune magnitude : --</div>
-  <div id="lever-lune">Lever lune : --</div>
-  <div id="coucher-lune">Coucher lune : --</div>
-  <div id="culmination-lune">Culmination lune : --</div>
-</div>
-</div>
-
-<div class="section">
-<h2>⏰ Horloge</h2>
-<div id="horloge-minecraft">00:00:00</div>
-<div id="heure-atomique">Heure atomique (UTC) : --</div>
-</div>
-
-<div class="section">
-<h2>🌡️ Météo</h2>
-<div class="grid">
-  <div id="temperature">Température : -- °C</div>
-  <div id="pression">Pression : -- hPa</div>
-  <div id="humidite">Humidité : --%</div>
-  <div id="vent">Vent : -- km/h</div>
-  <div id="nuages">Nuages : --%</div>
-  <div id="pluie">Pluie : -- mm</div>
-  <div id="neige">Neige : -- mm</div>
-  <div id="uv">Indice UV : --</div>
-  <div id="qualite-air">Qualité air : --</div>
-  <div id="ebullition">Point d’ébullition : -- °C</div>
-</div>
-</div>
-
-<div class="section">
-<h2>📊 Vue brute GPS</h2>
-<div class="grid">
-  <div id="latitude">Latitude : --</div>
-  <div id="longitude">Longitude : --</div>
-  <div id="altitude">Altitude : --</div>
-  <div id="gps-brut">Précision GPS : --</div>
-</div>
-</div>
-
-<script src="cockpit-complet.js"></script>
+<script src="gps-vitesse.js"></script>
 </body>
 </html>
