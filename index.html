@@ -2,54 +2,54 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Test GPS Navigateur</title>
+  <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
   <style>
     body {
-      background-color: #111;
+      background-color: #0b0b0b;
       color: #00ffcc;
-      font-family: monospace;
+      font-family: 'Minecraftia', monospace;
       padding: 20px;
     }
-    h1 { color: #ffd700; }
+    h1, h2 {
+      color: #ffd700;
+      text-shadow: 1px 1px 2px #000;
+    }
+    section {
+      border: 2px solid #333;
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #111;
+      box-shadow: 0 0 10px #222;
+    }
     button {
       background: #222;
       color: #00ffcc;
       border: 2px solid #00ffcc;
-      padding: 10px;
+      padding: 6px 12px;
+      margin: 5px;
+      font-family: 'Minecraftia';
       cursor: pointer;
-      font-size: 16px;
     }
-    #result { margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h1>📍 Test GPS Navigateur</h1>
-  <button onclick="demarrerGPS()">▶️ Démarrer</button>
-  <div id="result">En attente…</div>
+  <h1>🚀 Cockpit Cosmique</h1>
 
-  <script>
-    function demarrerGPS() {
-      if (!navigator.geolocation) {
-        document.getElementById('result').textContent = '🌐 Géolocalisation non disponible';
-        return;
-      }
+  <section><h2>📍 GPS & Navigation</h2>
+    <div id="latitude">Latitude : --</div>
+    <div id="longitude">Longitude : --</div>
+    <div id="gps">Précision GPS : -- m</div>
+    <div id="temps">Temps : 0.00 s</div>
+    <div id="vitesse">Vitesse instantanée : -- km/h</div>
+    <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+    <div id="vitesse-max">Vitesse max : -- km/h</div>
+    <div id="distance">Distance : -- km</div>
+    <button id="toggle">▶️ Marche</button>
+    <button id="reset">🔄 Réinitialiser</button>
+  </section>
 
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          const c = pos.coords;
-          document.getElementById('result').innerHTML = `
-            Latitude : ${c.latitude.toFixed(6)}<br>
-            Longitude : ${c.longitude.toFixed(6)}<br>
-            Précision : ${c.accuracy.toFixed(1)} m
-          `;
-        },
-        err => {
-          document.getElementById('result').textContent = `Erreur GPS : ${err.message}`;
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    }
-  </script>
+  <script type="module" src="cockpit.js"></script>
 </body>
 </html>
