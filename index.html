@@ -2,24 +2,25 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>How Fast Am I Going - GPS</title>
-<style>
-  body { font-family:sans-serif; background:#000; color:#0ff; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
-  h1 { margin-bottom:1em; }
-  div { margin:0.5em 0; font-size:1.2em; }
-  button { margin:0.2em; padding:0.5em 1em; background:#111; color:#0ff; border:1px solid #0ff; cursor:pointer; border-radius:4px; }
-  button:hover { background:#0ff; color:#000; }
-</style>
+<title>Cockpit Scientifique</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<h1>How Fast Am I Going?</h1>
+<h1>Cockpit Scientifique</h1>
 
-<div id="vitesse">Vitesse : -- km/h</div>
-<div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-<div id="vitesse-ms">Vitesse : -- m/s</div>
-<div id="distance">Distance : -- m</div>
-<div id="gps">GPS : --</div>
+<div id="gps" class="info-box">GPS : --</div>
+<div id="latitude" class="info-box">Latitude : --</div>
+<div id="longitude" class="info-box">Longitude : --</div>
+<div id="altitude" class="info-box">Altitude : --</div>
+
+<div id="vitesse" class="info-box">Vitesse : -- km/h (GPS + IMU)</div>
+<div id="vitesse-moy" class="info-box">Vitesse moyenne : -- km/h</div>
+<div id="distance" class="info-box">Distance : -- m</div>
+
+<div id="orientation" class="info-box">Orientation : -- (Magnétomètre + Gyroscope)</div>
+<div id="acceleration" class="info-box">Accélération : -- (IMU)</div>
+<div id="lumiere" class="info-box">Luminosité : -- (Capteur lumière)</div>
 
 <div>
   <button onclick="demarrer()">▶️ Démarrer</button>
@@ -27,6 +28,6 @@
   <button onclick="resetAll()">🔁 Réinitialiser</button>
 </div>
 
-<script src="speedometer.js"></script>
+<script type="module" src="main.js"></script>
 </body>
 </html>
