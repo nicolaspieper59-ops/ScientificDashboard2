@@ -9,23 +9,40 @@ let t0 = null;
 const set = (id, txt) => {
   const el = document.getElementById(id);
   if (el) el.textContent = txt;
+  else console.warn(`Élément manquant : #${id}`);
 };
 
 document.getElementById('toggle').onclick = () => {
-  if (!navigator.geolocation) return set('gps', '🌐 GPS non disponible');
+  console.log('▶️ Bouton Marche cliqué');
+  if (!navigator.geolocation) {
+    console.error('🌐 Géolocalisation non disponible');
+    set('gps', '🌐 Géolocalisation non disponible');
+    return;
+  }
 
   if (!suiviActif) {
+    console.log('⏱️ Démarrage du suivi GPS');
     t0 = performance.now();
-    navigator.geolocation.getCurrentPosition(pos => traiter(pos.coords, pos.timestamp));
+    navigator.geolocation.getCurrentPosition(pos => {
+      console.log('📍 Position initiale reçue');
+      traiter(pos.coords, pos.timestamp);
+    });
     watchId = navigator.geolocation.watchPosition(
-      pos => traiter(pos.coords, pos.timestamp),
-      err => set('gps', `Erreur GPS : ${err.message}`),
+      pos => {
+        console.log('📡 Nouvelle position reçue');
+        traiter(pos.coords, pos.timestamp);
+      },
+      err => {
+        console.error('❌ Erreur GPS :', err.message);
+        set('gps', `Erreur GPS : ${err.message}`);
+      },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
     suiviActif = true;
     document.getElementById('toggle').textContent = '⏹️ Arrêt';
     boucleTemps();
   } else {
+    console.log('⏹️ Arrêt du suivi GPS');
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
     suiviActif = false;
@@ -35,6 +52,7 @@ document.getElementById('toggle').onclick = () => {
 };
 
 document.getElementById('reset').onclick = () => {
+  console.log('🔄 Réinitialisation des données');
   vitesses = [];
   vitesseMax = 0;
   distanceTotale = 0;
@@ -62,12 +80,16 @@ function boucleTemps() {
 }
 
 function traiter(coords, timestamp) {
+  console.log('📊 Traitement des coordonnées');
   set('latitude', `Latitude : ${coords.latitude.toFixed(6)}`);
   set('longitude', `Longitude : ${coords.longitude.toFixed(6)}`);
   set('gps', `Précision GPS : ${coords.accuracy?.toFixed(1) ?? '--'} m`);
 
   const v = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
-  if (v < 0) return;
+  if (v < 0) {
+    console.warn('⚠️ Vitesse négative ou invalide ignorée');
+    return;
+  }
 
   vitesseMax = Math.max(vitesseMax, v);
   vitesses.push(v);
@@ -91,6 +113,7 @@ function traiter(coords, timestamp) {
 
 function calculerVitesse(coords, timestamp) {
   if (!positionPrecedente) {
+    console.log('📍 Première position enregistrée');
     positionPrecedente = { ...coords, timestamp };
     return 0;
   }
@@ -98,6 +121,7 @@ function calculerVitesse(coords, timestamp) {
   const d = calculerDistance(coords, positionPrecedente);
   distanceTotale += d;
   positionPrecedente = { ...coords, timestamp };
+  console.log(`📐 Distance = ${d.toFixed(2)} m | Δt = ${dt.toFixed(2)} s`);
   return dt > 0 ? (d / dt) * 3.6 : 0;
 }
 
@@ -110,5 +134,5 @@ function calculerDistance(a, b) {
   const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
   return R * c;
-  }
-    
+                                                        }
+                              
