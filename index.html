@@ -2,46 +2,31 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Cockpit Cosmique GPS</title>
+<title>How Fast Am I Going - GPS</title>
 <style>
-  body { font-family:sans-serif; background:#000; color:#0ff; display:flex; flex-direction:column; align-items:center; padding:2em; }
-  h1 { text-align:center; margin-bottom:1em; }
-  div { margin:0.4em 0; }
+  body { font-family:sans-serif; background:#000; color:#0ff; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+  h1 { margin-bottom:1em; }
+  div { margin:0.5em 0; font-size:1.2em; }
   button { margin:0.2em; padding:0.5em 1em; background:#111; color:#0ff; border:1px solid #0ff; cursor:pointer; border-radius:4px; }
   button:hover { background:#0ff; color:#000; }
 </style>
 </head>
 <body>
 
-<h1>Cockpit Cosmique GPS</h1>
+<h1>How Fast Am I Going?</h1>
 
-<div id="latitude">Latitude : --</div>
-<div id="longitude">Longitude : --</div>
-<div id="altitude">Altitude : --</div>
-<div id="gps">GPS : --</div>
-<div id="gps-brut">Précision GPS : --</div>
-<div id="vitesse">Vitesse instantanée : -- km/h</div>
+<div id="vitesse">Vitesse : -- km/h</div>
 <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-<div id="vitesse-max">Vitesse max : -- km/h</div>
-<div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
-<div id="pourcentage">% Lumière : -- | % Son : --</div>
+<div id="vitesse-ms">Vitesse : -- m/s</div>
 <div id="distance">Distance : -- m</div>
+<div id="gps">GPS : --</div>
 
 <div>
-  <button onclick="demarrer()">▶️ Marche</button>
-  <button onclick="stop()">⏹️ Arrêt</button>
+  <button onclick="demarrer()">▶️ Démarrer</button>
+  <button onclick="stop()">⏹️ Arrêter</button>
   <button onclick="resetAll()">🔁 Réinitialiser</button>
 </div>
 
-<script src="gps-vitesse-corrigee.js"></script>
-
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js')
-    .then(reg => console.log('SW enregistré avec succès:', reg))
-    .catch(err => console.error('Échec enregistrement SW:', err));
-}
-</script>
-
+<script src="speedometer.js"></script>
 </body>
 </html>
