@@ -120,26 +120,4 @@ function activerCapteurs() {
   if (navigator.mediaDevices?.getUserMedia) {
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
       const ctx = new AudioContext();
-      const analyser = ctx.createAnalyser();
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      (function loop() {
-        analyser.getByteFrequencyData(data);
-        const dB = 20 * Math.log10(data.reduce((a, b) => a + b, 0) / data.length || 1);
-        const txt = document.getElementById('pourcentage').textContent;
-        set('pourcentage', txt.replace(/% Son : .*?%/, `% Son : ${Math.min(100, Math.round(dB + 100))}%`));
-        requestAnimationFrame(loop);
-      })();
-    });
-  }
-
-  if ('DeviceOrientationEvent' in window) {
-    window.addEventListener('deviceorientation', e => {
-      const niveau = e.beta?.toFixed(1) ?? '--';
-      const el = document.getElementById('gps');
-      if (el) el.textContent += ` | Niveau : ${niveau}°`;
-    });
-  }
-    }
-                                                  
+      const analyser = ctx
