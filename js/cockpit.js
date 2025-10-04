@@ -43,7 +43,7 @@ document.getElementById('reset').onclick = () => {
   set('pourcentage', '% Lumière : --% | % Son : --%');
   set('distance', 'Distance : -- km | -- m | -- mm');
   set('distance-cosmique', 'Distance cosmique : -- s lumière | -- al');
-  set('gps', 'Précision GPS : --%');
+  set('gps', 'Précision GPS : -- m');
 };
 
 function boucleTemps() {
@@ -104,4 +104,5 @@ function calculerDistance(a, b) {
   const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
   return R * c;
-}
+    }
+    
