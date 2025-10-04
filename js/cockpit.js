@@ -18,6 +18,7 @@ function demarrer() {
     el("longitude").textContent = `Longitude : ${c.longitude.toFixed(6)}`;
     el("altitude").textContent = `Altitude : ${c.altitude?.toFixed(1) ?? "--"} m`;
     el("gps").textContent = `Précision GPS : ${c.accuracy?.toFixed(1) ?? "--"}%`;
+    el("gps-brut").textContent = `Précision GPS : ${c.accuracy?.toFixed(1) ?? "--"}`;
 
     const dt = positionPrecedente ? (t - positionPrecedente.timestamp) / 1000 : 0;
     const d = positionPrecedente ? calculerDistance(c, positionPrecedente) : 0;
@@ -48,20 +49,18 @@ function demarrer() {
 
   function tick() {
     const t = performance.now() - t0;
-    el("temps").textContent = `Temps : ${(t / 1000).toFixed(2)} s`;
+    document.getElementById("temps").textContent = `Temps : ${(t / 1000).toFixed(2)} s`;
     requestAnimationFrame(tick);
   }
   tick();
 }
 
-function calculerDistance(a, b) {
-  const R = 6371e3;
-  const φ1 = a.latitude * Math.PI / 180;
-  const φ2 = b.latitude * Math.PI / 180;
-  const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
-  const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
-  const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-  return R * c;
-      }
-      
+function reset() {
+  const ids = [
+    "latitude", "longitude", "altitude", "gps", "gps-brut", "temps",
+    "vitesse", "vitesse-moy", "vitesse-max", "vitesse-ms", "pourcentage",
+    "distance", "distance-cosmique", "culmination-soleil", "heure-solaire-vraie",
+    "heure-solaire-moyenne", "equation-temps", "lune-phase", "lune-magnitude",
+    "lever-lune", "coucher-lune", "culmination-lune", "horloge-minecraft",
+    "temperature", "pression", "humidite", "vent", "nuages", "pluie", "neige",
+    "uv", "qualite-air", "ebull
