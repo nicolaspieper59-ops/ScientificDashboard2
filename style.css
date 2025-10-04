@@ -12,12 +12,8 @@ h1,h2 {
   color:#0ff;
   margin:0.5em 0;
 }
-h2 {
-  font-size:1.2em;
-}
-div, button {
-  margin:0.2em 0;
-}
+h2 { font-size:1.2em; }
+div, button { margin:0.2em 0; }
 button {
   background:#111;
   color:#0ff;
@@ -28,10 +24,7 @@ button {
   transition:0.2s;
   margin-right:0.3em;
 }
-button:hover {
-  background:#0ff;
-  color:#000;
-}
+button:hover { background:#0ff; color:#000; }
 .section {
   background: rgba(0,0,0,0.3);
   padding:1em;
