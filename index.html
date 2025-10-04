@@ -32,23 +32,26 @@
       font-family: 'Minecraftia';
       cursor: pointer;
     }
+    .label {
+      margin: 4px 0;
+    }
   </style>
 </head>
 <body>
   <h1>🚀 Cockpit Cosmique</h1>
 
   <section><h2>📍 GPS & Navigation</h2>
-    <div id="latitude">Latitude : --</div>
-    <div id="longitude">Longitude : --</div>
-    <div id="gps">Précision GPS : -- m</div>
-    <div id="temps">Temps : 0.00 s</div>
-    <div id="vitesse">Vitesse instantanée : -- km/h</div>
-    <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-    <div id="vitesse-max">Vitesse max : -- km/h</div>
-    <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
-    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-    <div id="distance">Distance : -- km | -- m | -- mm</div>
-    <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
+    <div class="label" id="latitude">Latitude : --</div>
+    <div class="label" id="longitude">Longitude : --</div>
+    <div class="label" id="gps">Précision GPS : -- m</div>
+    <div class="label" id="temps">Temps : 0.00 s</div>
+    <div class="label" id="vitesse">Vitesse instantanée : -- km/h</div>
+    <div class="label" id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+    <div class="label" id="vitesse-max">Vitesse max : -- km/h</div>
+    <div class="label" id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
+    <div class="label" id="pourcentage">% Lumière : --% | % Son : --%</div>
+    <div class="label" id="distance">Distance : -- km | -- m | -- mm</div>
+    <div class="label" id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
     <button id="toggle">▶️ Marche</button>
     <button id="reset">🔄 Réinitialiser</button>
   </section>
