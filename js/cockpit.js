@@ -7,13 +7,11 @@ let vmax = 0;
 let lastAstroFetch = 0;
 let lastMeteoFetch = 0;
 
-// Fonction pour mettre à jour le texte des éléments
 function set(id, txt) {
   const el = document.getElementById(id);
   if(el) el.textContent = txt;
 }
 
-// Démarrer le cockpit
 function demarrer() {
   if(!navigator.geolocation) return set("gps","Géolocalisation non disponible");
   if(watchId!==null) return set("gps","GPS déjà actif");
@@ -23,11 +21,9 @@ function demarrer() {
 
   watchId = navigator.geolocation.watchPosition(onPosition, onGeoError,
     {enableHighAccuracy:true, maximumAge:5000, timeout:20000});
-
   requestAnimationFrame(tick);
 }
 
-// Arrêter le cockpit
 function stop() {
   if(watchId!==null) {
     navigator.geolocation.clearWatch(watchId);
@@ -36,7 +32,6 @@ function stop() {
   }
 }
 
-// Réinitialiser toutes les valeurs
 function resetAll() {
   stop();
   t0=null; prevPos=null; distanceTotale=0; vitesses=[]; vmax=0;
@@ -50,12 +45,10 @@ function resetAll() {
   ids.forEach(id => set(id, id.replace(/-/g," ") + " : --"));
 }
 
-// Gestion erreur GPS
 function onGeoError(err){
   set("gps",`Erreur géolocalisation : ${err.message}`);
 }
 
-// Fonction appelée à chaque nouvelle position
 function onPosition(pos) {
   const c = pos.coords; const t = pos.timestamp;
 
@@ -65,7 +58,6 @@ function onPosition(pos) {
   set("gps",`GPS : ${c.accuracy?.toFixed(1)??"--"} m`);
   set("gps-brut",`Précision GPS : ${c.accuracy?.toFixed(1)??"--"} m`);
 
-  // Calcul distance / vitesse
   if(prevPos){
     const dt = Math.max((t-prevPos.timestamp)/1000,0.001);
     const d = calculerDistance(prevPos,c);
@@ -98,7 +90,6 @@ function onPosition(pos) {
   if(now - lastAstroFetch > 60000){ lastAstroFetch = now; medaillonCeleste(c.latitude,c.longitude); }
 }
 
-// Tick de l’horloge et du temps écoulé
 function tick() {
   if(t0!==null) set("temps",`Temps : ${((performance.now()-t0)/1000).toFixed(2)} s`);
   set("horloge-minecraft",new Date().toLocaleTimeString());
@@ -106,7 +97,6 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-// Calcul de distance entre deux positions
 function calculerDistance(a,b){
   const R=6371e3;
   const φ1 = a.latitude*Math.PI/180;
@@ -117,7 +107,6 @@ function calculerDistance(a,b){
   return 2*R*Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
 }
 
-// ----------------------
 // Médaillon céleste
 async function medaillonCeleste(lat, lon){
   try{
@@ -143,7 +132,6 @@ async function medaillonCeleste(lat, lon){
   }catch(e){console.error("Soleil API",e);}
 }
 
-// ----------------------
 // Météo cosmique
 async function meteoCosmique(lat, lon){
   try{
@@ -166,4 +154,5 @@ async function meteoCosmique(lat, lon){
     const p = parseFloat(h.pressure_msl?.[idx]??1013);
     set("ebullition",`Point d’ébullition : ${!isNaN(p)?(100-((1013-p)*0.03)).toFixed(2):"--"} °C`);
   }catch(e){console.error("Météo API",e);}
-     }
+    }
+      
