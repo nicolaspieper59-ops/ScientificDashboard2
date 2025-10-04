@@ -6,7 +6,10 @@ let distanceTotale = 0;
 let suiviActif = false;
 let t0 = null;
 
-const set = (id, txt) => document.getElementById(id).textContent = txt;
+const set = (id, txt) => {
+  const el = document.getElementById(id);
+  if (el) el.textContent = txt;
+};
 
 document.getElementById('toggle').onclick = () => {
   if (!('geolocation' in navigator)) return set('gps', '🌐 GPS non disponible');
@@ -104,4 +107,5 @@ function calculerDistance(a, b) {
   const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
   return R * c;
-}
+  }
+  
