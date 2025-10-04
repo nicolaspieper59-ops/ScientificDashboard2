@@ -6,13 +6,16 @@ let distanceTotale = 0;
 let suiviActif = false;
 let t0 = null;
 
-const set = (id, txt) => {
+function set(id, txt) {
   const el = document.getElementById(id);
   if (el) el.textContent = txt;
-};
+}
 
 document.getElementById('toggle').onclick = () => {
-  if (!navigator.geolocation) return set('gps', '🌐 GPS non disponible');
+  if (!navigator.geolocation) {
+    set('gps', 'Géolocalisation non disponible');
+    return;
+  }
 
   if (!suiviActif) {
     t0 = performance.now();
@@ -23,14 +26,14 @@ document.getElementById('toggle').onclick = () => {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
     suiviActif = true;
-    document.getElementById('toggle').textContent = '⏹️ Arrêt';
+    document.getElementById('toggle').textContent = 'Arrêt';
     boucleTemps();
   } else {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
     suiviActif = false;
-    document.getElementById('toggle').textContent = '▶️ Marche';
-    set('vitesse', '⏹️ Suivi arrêté');
+    document.getElementById('toggle').textContent = 'Marche';
+    set('vitesse', 'Suivi arrêté');
   }
 };
 
@@ -112,4 +115,4 @@ function calculerDistance(a, b) {
   const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
   return R * c;
-}
+    }
