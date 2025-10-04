@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>GPS & Vitesse avancée</title>
+<title>Cockpit Cosmique GPS</title>
 <style>
   body { font-family:sans-serif; background:#000; color:#0ff; display:flex; flex-direction:column; align-items:center; padding:2em; }
   h1 { text-align:center; margin-bottom:1em; }
@@ -13,7 +13,7 @@
 </head>
 <body>
 
-<h1>GPS & Vitesse Avancée</h1>
+<h1>Cockpit Cosmique GPS</h1>
 
 <div id="latitude">Latitude : --</div>
 <div id="longitude">Longitude : --</div>
@@ -34,5 +34,14 @@
 </div>
 
 <script src="gps-vitesse-corrigee.js"></script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => console.log('SW enregistré avec succès:', reg))
+    .catch(err => console.error('Échec enregistrement SW:', err));
+}
+</script>
+
 </body>
 </html>
