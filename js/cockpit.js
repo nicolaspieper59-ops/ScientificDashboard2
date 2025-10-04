@@ -45,7 +45,10 @@ document.getElementById('reset').onclick = () => {
   set('vitesse', 'Vitesse instantanée : -- km/h');
   set('vitesse-moy', 'Vitesse moyenne : -- km/h');
   set('vitesse-max', 'Vitesse max : -- km/h');
-  set('distance', 'Distance : -- km');
+  set('vitesse-ms', 'Vitesse : -- m/s | -- mm/s');
+  set('pourcentage', '% Lumière : --% | % Son : --%');
+  set('distance', 'Distance : -- km | -- m | -- mm');
+  set('distance-cosmique', 'Distance cosmique : -- s lumière | -- al');
 };
 
 function boucleTemps() {
@@ -64,30 +67,37 @@ function traiter(coords, timestamp) {
   set('gps', `Précision GPS : ${coords.accuracy?.toFixed(1) ?? '--'} m`);
 
   const v = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
-  if (!isFinite(v) || v < 0) return;
+  if (v < 0) return;
 
   vitesseMax = Math.max(vitesseMax, v);
   vitesses.push(v);
   const moy = vitesses.reduce((a, b) => a + b, 0) / vitesses.length;
+  const mps = v / 3.6;
+  const mmps = mps * 1000;
   const dkm = distanceTotale / 1000;
+  const ds = distanceTotale / 299792458;
+  const dal = ds / (3600 * 24 * 365.25);
+  const pctLumiere = (mps / 299792458 * 100).toExponential(2);
+  const pctSon = (mps / 343 * 100).toFixed(2);
 
   set('vitesse', `Vitesse instantanée : ${v.toFixed(2)} km/h`);
   set('vitesse-moy', `Vitesse moyenne : ${moy.toFixed(2)} km/h`);
   set('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
-  set('distance', `Distance : ${dkm.toFixed(3)} km`);
-
-  positionPrecedente = { ...coords, timestamp };
+  set('vitesse-ms', `Vitesse : ${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`);
+  set('pourcentage', `% Lumière : ${pctLumiere}% | % Son : ${pctSon}%`);
+  set('distance', `Distance : ${dkm.toFixed(3)} km | ${distanceTotale.toFixed(1)} m | ${(distanceTotale * 1000).toFixed(0)} mm`);
+  set('distance-cosmique', `Distance cosmique : ${ds.toFixed(6)} s lumière | ${dal.toExponential(3)} al`);
 }
 
-function calculerVitesse(c, t) {
+function calculerVitesse(coords, timestamp) {
   if (!positionPrecedente) {
-    positionPrecedente = { ...c, timestamp: t };
+    positionPrecedente = { ...coords, timestamp };
     return 0;
   }
-  const dt = (t - positionPrecedente.timestamp) / 1000;
-  const d = calculerDistance(c, positionPrecedente);
+  const dt = (timestamp - positionPrecedente.timestamp) / 1000;
+  const d = calculerDistance(coords, positionPrecedente);
   distanceTotale += d;
-  positionPrecedente = { ...c, timestamp: t };
+  positionPrecedente = { ...coords, timestamp };
   return dt > 0 ? (d / dt) * 3.6 : 0;
 }
 
@@ -100,5 +110,5 @@ function calculerDistance(a, b) {
   const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
   return R * c;
-      }
-  
+  }
+    
