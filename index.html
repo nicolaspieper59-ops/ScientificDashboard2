@@ -3,71 +3,109 @@
 <head>
   <meta charset="UTF-8" />
   <title>Cockpit Cosmique</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #00ffcc;
+      font-family: 'Minecraftia', monospace;
+      padding: 20px;
+    }
+    h1, h2 {
+      color: #ffd700;
+      text-shadow: 1px 1px 2px #000;
+    }
+    section {
+      border: 2px solid #333;
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #111;
+      box-shadow: 0 0 10px #222;
+    }
+    button {
+      background: #222;
+      color: #00ffcc;
+      border: 2px solid #00ffcc;
+      padding: 6px 12px;
+      margin: 5px;
+      font-family: 'Minecraftia';
+      cursor: pointer;
+    }
+    .pulsation {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    body.rituel-off * {
+      animation: none !important;
+      filter: grayscale(100%) brightness(0.5);
+    }
+    body.rituel-off button {
+      border-color: #666;
+      color: #666;
+    }
+    body.rituel-off section {
+      background-color: #000;
+      border-color: #222;
+    }
+  </style>
 </head>
 <body>
-  <h1>Cockpit Cosmique</h1>
+  <h1>馃寣 Cockpit Cosmique</h1>
 
-  <h2>⏱️ Temps & Vitesse</h2>
-  <div id="temps">Temps : 0.00 s</div>
-  <div id="vitesse">Vitesse instantanée : -- km/h</div>
-  <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-  <div id="vitesse-max">Vitesse max : -- km/h</div>
-  <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
-  <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-  <div id="distance">Distance : -- km | -- m | -- mm</div>
-  <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
-  <div id="gps">Précision GPS : --%</div>
-  <button onclick="demarrer()">Marche/Arrêt</button>
-  <button onclick="reset()">Réinitialiser</button>
-  <button id="max">Max</button>
+  <section><h2>馃殌 Vitesse</h2>
+    <div id="temps">Temps : 0.00 s</div>
+    <div id="vitesse">Vitesse instantan茅e : -- km/h</div>
+    <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+    <div id="vitesse-max">Vitesse max : -- km/h</div>
+    <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
+    <div id="pourcentage">% Lumi猫re : --% | % Son : --%</div>
+    <div id="distance">Distance : -- km | -- m | -- mm</div>
+    <div id="distance-cosmique">Distance cosmique : -- s lumi猫re | -- al</div>
+    <div id="gps">GPS : --</div>
+    <button id="marche">鈻讹笍 Marche</button>
+    <button id="stop">鈴癸笍 Arr锚t</button>
+    <button id="reset">馃攧 R茅initialiser</button>
+  </section>
 
-  <h2>☀️🌙 Soleil & Lune</h2>
-  <div id="culmination-soleil">Culmination soleil : --</div>
-  <div id="heure-solaire-vraie">Heure solaire vraie : --</div>
-  <div id="heure-solaire-moyenne">Heure solaire moyenne : --</div>
-  <div id="equation-temps">Équation du temps : --</div>
-  <div id="lune-phase">Lune phase : --%</div>
-  <div id="lune-magnitude">Lune magnitude : --</div>
-  <div id="lever-lune">Lever lune : --</div>
-  <div id="coucher-lune">Coucher lune : --</div>
-  <div id="culmination-lune">Culmination lune : --</div>
+  <section><h2>鈽�锔忦煂� M茅daillon c茅leste</h2>
+    <div id="culmination-soleil">--</div>
+    <div id="heure-vraie">--</div>
+    <div id="heure-moyenne">--</div>
+    <div id="equation-temps">--</div>
+    <div id="lune-phase">--</div>
+    <div id="lune-mag">--</div>
+    <div id="lune-lever">--</div>
+    <div id="lune-coucher">--</div>
+    <div id="lune-culmination">--</div>
+  </section>
 
-  <h2>⏰ Horloge Minecraft</h2>
-  <div id="horloge-minecraft">00:00:00</div>
+  <section><h2>鈴� Horloge</h2>
+    <div id="horloge-minecraft">00:00:00</div>
+    <div id="horloge-atomique">Heure atomique (UTC) : --</div>
+  </section>
 
-  <h2>🌡️ Météo</h2>
-  <div id="temperature">Température : -- °C</div>
-  <div id="pression">Pression : -- hPa</div>
-  <div id="humidite">Humidité : --%</div>
-  <div id="vent">Vent : -- km/h</div>
-  <div id="nuages">Nuages : --%</div>
-  <div id="pluie">Pluie : -- mm</div>
-  <div id="neige">Neige : -- mm</div>
-  <div id="uv">Indice UV : --</div>
-  <div id="qualite-air">Qualité air : --</div>
-  <div id="ebullition">Point d’ébullition : -- °C</div>
+  <section><h2>馃搻 Capteurs</h2>
+    <div id="capteurs">Lumi猫re : -- lux | Son : -- dB | Niveau : --掳 | Gyro : -- | Magn茅tom猫tre : -- | Batterie : --% | R茅seau : --</div>
+  </section>
 
-  <h2>🧭 Boussole</h2>
-  <div id="cap">Cap : --°</div>
-  <div id="vers-lat">Vers lat : --</div>
-  <div id="vers-lon">Vers lon : --</div>
-  <div id="cap-destination">Cap vers destination : --°</div>
-  <button id="aller">Aller</button>
+  <section><h2>馃И Grandeurs</h2>
+    <div id="grandeurs">--</div>
+  </section>
 
-  <h2>📐 Capteurs</h2>
-  <div id="niveau-bulle">Niveau à bulle : --°</div>
-  <div id="lumiere">Lumière : -- lux</div>
-  <div id="son">Son : -- dB</div>
-  <div id="frequence">Fréquence : -- Hz</div>
+  <section><h2>馃帥锔� Contr么le</h2>
+    <button id="toggle-rituel">鉁� Rituel cosmique : ON</button>
+    <button id="toggle-physique">馃Р Physique : ON</button>
+    <button id="toggle-chimie">馃И Chimie : ON</button>
+    <button id="toggle-svt">馃尡 SVT : ON</button>
+  </section>
 
-  <h2>📊 Vue brute GPS</h2>
-  <div id="latitude">Latitude : --</div>
-  <div id="longitude">Longitude : --</div>
-  <div id="altitude">Altitude : --</div>
-  <div id="gps-brut">Précision GPS : --</div>
-  <div id="lumiere-brute">Lumière : --</div>
-  <div id="souterrain">Souterrain : --</div>
-
-  <script src="cockpit.js"></script>
+  <script type="module" src="cockpit.js"></script>
 </body>
-</html>
+                                     </html>
+
+    
