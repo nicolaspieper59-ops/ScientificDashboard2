@@ -32,43 +32,26 @@
       font-family: 'Minecraftia';
       cursor: pointer;
     }
-    .pulsation {
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.05); opacity: 0.7; }
-      100% { transform: scale(1); opacity: 1; }
-    }
-    body.rituel-off * {
-      animation: none !important;
-      filter: grayscale(100%) brightness(0.5);
-    }
-    body.rituel-off button {
-      border-color: #666;
-      color: #666;
-    }
-    body.rituel-off section {
-      background-color: #000;
-      border-color: #222;
-    }
   </style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique</h1>
+  <h1>🚀 Cockpit Cosmique</h1>
 
-  <section><h2>🧪 Grandeurs</h2>
-    <div id="vitesse">Vitesse : -- km/h</div>
-    <div id="puissance">Puissance : -- W</div>
-    <div id="lune-phase">Phase lunaire : --%</div>
-    <div id="cardiaque">Fréquence cardiaque : -- bpm</div>
-    <button id="amplifier">✨ Amplifier</button>
-    <button id="toggle-rituel">🔮 Rituel : ON</button>
-    <button id="toggle-physique">🧲 Physique : ON</button>
-    <button id="toggle-chimie">🧪 Chimie : ON</button>
-    <button id="toggle-svt">🌱 SVT : ON</button>
+  <section><h2>🧭 Navigation</h2>
+    <div id="temps">EtTemps : 0.00 s</div>
+    <div id="vitesse">Vitesse instantanée : -- km/h</div>
+    <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+    <div id="vitesse-max">Vitesse max : -- km/h</div>
+    <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
+    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+    <div id="distance">Distance : -- km | -- m | -- mm</div>
+    <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
+    <div id="gps">Précision GPS : --%</div>
+    <button id="marche">▶️ Marche</button>
+    <button id="stop">⏹️ Arrêt</button>
+    <button id="reset">🔄 Réinitialiser</button>
   </section>
 
-  <script type="module" src="amplificateur.js"></script>
+  <script type="module" src="cockpit.js"></script>
 </body>
 </html>
