@@ -1,33 +1,21 @@
 let watchId = null, positionPrecedente = null, vitesses = [], vitesseMax = 0, distanceTotale = 0, t0 = null;
 let modeSouterrain = false;
+let boucleActive = false;
 
 const set = (id, txt) => document.getElementById(id).textContent = txt;
 
-document.getElementById('marche').onclick = () => {
-  if (watchId !== null) return;
-  t0 = performance.now();
-  navigator.geolocation.getCurrentPosition(
-    pos => traiterPosition(pos.coords, pos.timestamp),
-    err => {
-      modeSouterrain = true;
-      set('gps', 'Mode souterrain activé 🌑');
-    }
-  );
-  watchId = navigator.geolocation.watchPosition(
-    pos => traiterPosition(pos.coords, pos.timestamp),
-    err => {
-      modeSouterrain = true;
-      set('gps', 'Mode souterrain activé 🌑');
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-  );
-  loopTemps(); activerCapteurs();
-};
-
-document.getElementById('stop').onclick = () => {
-  if (watchId !== null) {
+document.getElementById('toggle').onclick = () => {
+  if (watchId === null) {
+    t0 = performance.now();
+    initialiserGPS();
+    boucle24Hz();
+    activerCapteurs();
+    document.getElementById('toggle').textContent = '⏹️ Arrêt';
+  } else {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
+    boucleActive = false;
+    document.getElementById('toggle').textContent = '▶️ Marche';
     set('vitesse', '⏹️ Suivi arrêté');
   }
 };
@@ -37,14 +25,39 @@ document.getElementById('reset').onclick = () => {
   ['vitesse','vitesse-moy','vitesse-max','vitesse-ms','pourcentage','distance','distance-cosmique','gps'].forEach(id => set(id, '--'));
 };
 
-function loopTemps() {
-  const el = document.getElementById('temps');
+function boucle24Hz() {
+  boucleActive = true;
   function tick() {
+    if (!boucleActive) return;
     const t = performance.now() - t0;
-    el.textContent = `EtTemps : ${(t / 1000).toFixed(2)} s`;
-    requestAnimationFrame(tick);
+    set('temps', `EtTemps : ${(t / 1000).toFixed(2)} s`);
+    if (positionPrecedente) traiterPosition(positionPrecedente, performance.now());
+    setTimeout(tick, 1000 / 24);
   }
   tick();
+}
+
+function initialiserGPS() {
+  if (!navigator.geolocation) {
+    set('gps', '🌐 GPS non disponible');
+    modeSouterrain = true;
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos => traiterPosition(pos.coords, pos.timestamp),
+    err => activerModeSouterrain()
+  );
+  watchId = navigator.geolocation.watchPosition(
+    pos => { positionPrecedente = pos.coords; },
+    err => activerModeSouterrain(),
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+}
+
+function activerModeSouterrain() {
+  modeSouterrain = true;
+  set('gps', 'Mode souterrain activé 🌑');
+  document.body.style.background = 'radial-gradient(circle, #222, #000)';
 }
 
 function traiterPosition(coords, timestamp) {
@@ -100,54 +113,4 @@ function calculerDistance(a, b) {
   const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
   const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
   const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-  return R * c;
-}
-
-function activerCapteurs() {
-  if ('AmbientLightSensor' in window) {
-    try {
-      const light = new AmbientLightSensor();
-      light.addEventListener('reading', () => {
-        const pct = Math.min(100, Math.round(light.illuminance / 100));
-        const txt = document.getElementById('pourcentage').textContent;
-        set('pourcentage', txt.replace(/% Lumière : .*?%/, `% Lumière : ${pct}%`));
-      });
-      light.start();
-    } catch {}
-  }
-
-  if (navigator.mediaDevices?.getUserMedia) {
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      const ctx = new AudioContext();
-      const analyser = ctx
-  function initialiserGPS() {
-  if (!navigator.geolocation) {
-    set('gps', '🌐 GPS non disponible sur ce navigateur');
-    return;
-  }
-
-  // Lecture initiale
-  navigator.geolocation.getCurrentPosition(
-    pos => traiterPosition(pos.coords, pos.timestamp),
-    err => {
-      modeSouterrain = true;
-      set('gps', 'Mode souterrain activé 🌑');
-    }
-  );
-
-  // Suivi en continu
-  watchId = navigator.geolocation.watchPosition(
-    pos => traiterPosition(pos.coords, pos.timestamp),
-    err => {
-      modeSouterrain = true;
-      set('gps', 'Mode souterrain activé 🌑');
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000
-    }
-  );
-  }
-      
+  const c = 2 * Math
