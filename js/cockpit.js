@@ -3,8 +3,10 @@ function set(id, txt) {
   if (el) el.textContent = txt;
 }
 
+let watchId = null;
+
 function demarrer() {
-  if (!navigator.geolocation) return set("gps", "Géolocalisation non disponible");
+  if (!navigator.geolocation) return set("gps", "❌ Géolocalisation non disponible");
 
   let t0 = performance.now();
   let positionPrecedente = null;
@@ -12,24 +14,26 @@ function demarrer() {
   let vitesses = [];
   let vmax = 0;
 
-  navigator.geolocation.watchPosition(pos => {
+  watchId = navigator.geolocation.watchPosition(pos => {
     const c = pos.coords;
     const t = pos.timestamp;
     set("latitude", `Latitude : ${c.latitude.toFixed(6)}`);
     set("longitude", `Longitude : ${c.longitude.toFixed(6)}`);
     set("altitude", `Altitude : ${c.altitude?.toFixed(1) ?? "--"} m`);
-    set("gps", `GPS : ${c.accuracy?.toFixed(1) ?? "--"}%`);
+    set("gps", `GPS : ${c.accuracy?.toFixed(1) ?? "--"} m`);
     set("gps-brut", `Précision GPS : ${c.accuracy?.toFixed(1) ?? "--"}`);
 
+    // Données astro + météo
     medaillonCeleste(c.latitude, c.longitude);
-    meteoCosmique(c.latitude, c.longitude, c.altitude ?? 0);
+    meteoCosmique(c.latitude, c.longitude);
 
+    // Distance & vitesse
     const dt = positionPrecedente ? (t - positionPrecedente.timestamp) / 1000 : 0;
     const d = positionPrecedente ? calculerDistance(c, positionPrecedente) : 0;
     distanceTotale += d;
     positionPrecedente = { ...c, timestamp: t };
 
-    const v = dt > 0 ? (d / dt) * 3.6 : 0;
+    const v = dt > 0 ? (d / dt) * 3.6 : 0; // km/h
     if (v >= 0) {
       vitesses.push(v);
       vmax = Math.max(vmax, v);
@@ -62,16 +66,10 @@ function demarrer() {
 }
 
 function reset() {
-  const ids = [
-    "latitude", "longitude", "altitude", "gps", "gps-brut", "temps",
-    "vitesse", "vitesse-moy", "vitesse-max", "vitesse-ms", "pourcentage",
-    "distance", "distance-cosmique", "culmination-soleil", "heure-solaire-vraie",
-    "heure-solaire-moyenne", "equation-temps", "lune-phase", "lune-magnitude",
-    "lever-lune", "coucher-lune", "culmination-lune", "horloge-minecraft",
-    "heure-atomique", "temperature", "pression", "humidite", "vent", "nuages",
-    "pluie", "neige", "uv", "qualite-air", "ebullition"
-  ];
-  for (const id of ids) set(id, `${id.replace(/-/g, " ")} : --`);
+  if (watchId) navigator.geolocation.clearWatch(watchId);
+  document.querySelectorAll("div").forEach(d => {
+    if (d.id) set(d.id, `${d.id.replace(/-/g, " ")} : --`);
+  });
 }
 
 function calculerDistance(a, b) {
@@ -87,50 +85,46 @@ function calculerDistance(a, b) {
 
 async function medaillonCeleste(lat, lon) {
   try {
-    const moonRes = await fetch(`https://moon-api.com/api/v1/moon?lat=${lat}&lon=${lon}`);
-    const moon = await moonRes.json();
-    set("lune-phase", `Lune phase : ${moon.phase_percentage}%`);
-    set("lune-magnitude", `Lune magnitude : ${moon.magnitude}`);
-    set("lever-lune", `Lever lune : ${moon.moonrise}`);
-    set("coucher-lune", `Coucher lune : ${moon.moonset}`);
-    set("culmination-lune", `Culmination lune : ${moon.culmination}`);
-  } catch (e) {
-    console.error("Moon API", e);
-  }
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=sunrise,sunset,moon_phase&timezone=auto`;
+    const res = await fetch(url);
+    const data = await res.json();
 
-  try {
-    const now = new Date().toISOString();
-    const solarRes = await fetch(`https://api.le-systeme-solaire.net/rest/positions?lon=${lon}&lat=${lat}&elev=0&datetime=${now}&zon=auto`);
-    const solar = await solarRes.json();
-    const soleil = solar.positions?.find(p => p.name === "Sun");
-    if (soleil) {
-      set("culmination-soleil", `Culmination soleil : ${soleil.altitude}`);
-      set("heure-solaire-vraie", `Heure solaire vraie : ${soleil.local_time}`);
-      set("heure-solaire-moyenne", `Heure solaire moyenne : ${new Date().toLocaleTimeString()}`);
-      set("equation-temps", `Équation du temps : ${soleil.equation_time}`);
-    }
+    set("culmination-soleil", `Culmination soleil : ${data.daily.sunrise[0]} / ${data.daily.sunset[0]}`);
+    set("heure-solaire-vraie", `Heure solaire vraie : ${new Date().toLocaleTimeString()}`);
+    set("heure-solaire-moyenne", `Heure solaire moyenne : ${new Date().toLocaleTimeString()}`);
+    set("equation-temps", `Équation du temps : --`);
+
+    set("lune-phase", `Lune phase : ${data.daily.moon_phase[0]}`);
+    set("lune-magnitude", `Lune magnitude : --`);
+    set("lever-lune", `Lever lune : --`);
+    set("coucher-lune", `Coucher lune : --`);
+    set("culmination-lune", `Culmination lune : --`);
   } catch (e) {
-    console.error("Soleil API", e);
+    console.error("Erreur API Astro", e);
   }
 }
 
-async function meteoCosmique(lat, lon, alt = 0) {
+async function meteoCosmique(lat, lon) {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,pressure_msl,relative_humidity_2m,windspeed_10m,cloudcover,precipitation,uv_index&timezone=auto`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,pressure_msl,cloudcover,windspeed_10m,precipitation,uv_index&timezone=auto`;
     const res = await fetch(url);
     const data = await res.json();
-    const w = data.current_weather;
+    const w = data.current;
 
-    set("temperature", `Température : ${w.temperature} °C`);
+    set("temperature", `Température : ${w.temperature_2m} °C`);
     set("pression", `Pression : ${w.pressure_msl ?? "--"} hPa`);
-    set("humidite", `Humidité : ${data.hourly.relative_humidity_2m[0] ?? "--"}%`);
-    set("vent", `Vent : ${w.windspeed} km/h`);
-    set("nuages", `Nuages : ${data.hourly.cloudcover[0] ?? "--"}%`);
-    set("pluie", `Pluie : ${data.hourly.precipitation[0] ?? "0"} mm`);
+    set("humidite", `Humidité : ${w.relative_humidity_2m ?? "--"}%`);
+    set("vent", `Vent : ${w.windspeed_10m} km/h`);
+    set("nuages", `Nuages : ${w.cloudcover ?? "--"}%`);
+    set("pluie", `Pluie : ${w.precipitation ?? "0"} mm`);
     set("neige", `Neige : -- mm`);
-    set("uv", `Indice UV : ${data.hourly.uv_index[0] ?? "--"}`);
+    set("uv", `Indice UV : ${w.uv_index ?? "--"}`);
     set("qualite-air", `Qualité air : --`);
 
     const pression = w.pressure_msl ?? 1013;
     const ebullition = 100 - ((1013 - pression) * 0.03);
-    set("ebullition", `Point d’ébullition : ${ebullition.toFixed
+    set("ebullition", `Point d’ébullition : ${ebullition.toFixed(2)} °C`);
+  } catch (e) {
+    console.error("Erreur API Météo", e);
+  }
+}
