@@ -1,85 +1,145 @@
-let rituelActif = true;
-const applicateurs = {
-  physique: true,
-  chimie: true,
-  svt: true
+let watchId = null, positionPrecedente = null, vitesses = [], vitesseMax = 0, distanceTotale = 0, t0 = null;
+let modeSouterrain = false;
+
+const set = (id, txt) => document.getElementById(id).textContent = txt;
+
+document.getElementById('marche').onclick = () => {
+  if (watchId !== null) return;
+  t0 = performance.now();
+  navigator.geolocation.getCurrentPosition(
+    pos => traiterPosition(pos.coords, pos.timestamp),
+    err => {
+      modeSouterrain = true;
+      set('gps', 'Mode souterrain activé 🌑');
+    }
+  );
+  watchId = navigator.geolocation.watchPosition(
+    pos => traiterPosition(pos.coords, pos.timestamp),
+    err => {
+      modeSouterrain = true;
+      set('gps', 'Mode souterrain activé 🌑');
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+  loopTemps(); activerCapteurs();
 };
 
-function amplifierSon(grandeur, valeur) {
-  if (!rituelActif) return;
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  let freq = 440;
-  switch (grandeur) {
-    case 'vitesse': freq = 100 + valeur * 5; break;
-    case 'puissance': freq = 300 + valeur * 0.1; break;
-    case 'lune': freq = 220 + valeur * 2; break;
-    case 'cardiaque': freq = 60 + valeur; break;
+document.getElementById('stop').onclick = () => {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    set('vitesse', '⏹️ Suivi arrêté');
   }
+};
 
-  osc.frequency.value = freq;
-  osc.type = 'sine';
-  gain.gain.value = 0.05;
+document.getElementById('reset').onclick = () => {
+  vitesses = []; vitesseMax = 0; distanceTotale = 0; positionPrecedente = null;
+  ['vitesse','vitesse-moy','vitesse-max','vitesse-ms','pourcentage','distance','distance-cosmique','gps'].forEach(id => set(id, '--'));
+};
 
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start();
-  osc.stop(ctx.currentTime + 0.5);
+function loopTemps() {
+  const el = document.getElementById('temps');
+  function tick() {
+    const t = performance.now() - t0;
+    el.textContent = `EtTemps : ${(t / 1000).toFixed(2)} s`;
+    requestAnimationFrame(tick);
+  }
+  tick();
 }
 
-function amplifierVisuel(id, intensité = 1) {
-  if (!rituelActif) return;
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.style.animation = `pulse ${2 / (intensité || 1)}s infinite`;
-  el.classList.add('pulsation');
+function traiterPosition(coords, timestamp) {
+  if (modeSouterrain || !coords.latitude || !coords.longitude || coords.accuracy > 1000) {
+    coords.latitude = 43.3; coords.longitude = 5.4;
+    set('gps', 'Mode souterrain activé 🌑');
+  } else {
+    set('gps', `Précision GPS : ${(coords.accuracy ?? 0).toFixed(0)}%`);
+  }
+
+  let v = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
+  if (!isFinite(v) || v < 0) v = 0;
+
+  vitesseMax = Math.max(vitesseMax, v);
+  vitesses.push(v);
+  const moy = vitesses.reduce((a, b) => a + b, 0) / vitesses.length;
+  const mps = v / 3.6;
+  const mmps = mps * 1000;
+  const dkm = distanceTotale / 1000;
+  const ds = distanceTotale / 299792458;
+  const dal = ds / (3600 * 24 * 365.25);
+  const pctLumiere = (mps / 299792458 * 100).toExponential(2);
+  const pctSon = (mps / 343 * 100).toFixed(2);
+
+  set('vitesse', `Vitesse instantanée : ${v.toFixed(2)} km/h`);
+  set('vitesse-moy', `Vitesse moyenne : ${moy.toFixed(2)} km/h`);
+  set('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
+  set('vitesse-ms', `Vitesse : ${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`);
+  set('pourcentage', `% Lumière : ${pctLumiere}% | % Son : ${pctSon}%`);
+  set('distance', `Distance : ${dkm.toFixed(3)} km | ${distanceTotale.toFixed(1)} m | ${(distanceTotale * 1000).toFixed(0)} mm`);
+  set('distance-cosmique', `Distance cosmique : ${ds.toFixed(6)} s lumière | ${dal.toExponential(3)} al`);
+
+  if (mps > 299792458) {
+    document.body.style.background = 'radial-gradient(circle, #ff00ff, #000)';
+    set('vitesse', `🚀 Vitesse supraluminique : ${v.toFixed(2)} km/h`);
+  }
+
+  positionPrecedente = { ...coords, timestamp };
 }
 
-function amplifier(grandeurs) {
-  if (applicateurs.physique) {
-    amplifierSon('vitesse', grandeurs.vitesse);
-    amplifierVisuel('vitesse', grandeurs.vitesse / 100);
-  }
-  if (applicateurs.chimie) {
-    amplifierSon('puissance', grandeurs.puissance);
-    amplifierVisuel('puissance', grandeurs.puissance / 500);
-  }
-  if (applicateurs.svt) {
-    amplifierSon('cardiaque', grandeurs.cardiaque);
-    amplifierVisuel('lune-phase', grandeurs.phase / 100);
-  }
+function calculerVitesse(c, t) {
+  if (!positionPrecedente) return 0;
+  const dt = (t - positionPrecedente.timestamp) / 1000;
+  const d = calculerDistance(c, positionPrecedente);
+  distanceTotale += d;
+  return dt > 0 ? (d / dt) * 3.6 : 0;
 }
 
-function testAmplification() {
-  const vitesse = 42.5;
-  const puissance = 180.0;
-  const phase = 98.7;
-  const cardiaque = 72;
-
-  document.getElementById('vitesse').textContent = `Vitesse : ${vitesse} km/h`;
-  document.getElementById('puissance').textContent = `Puissance : ${puissance} W`;
-  document.getElementById('lune-phase').textContent = `Phase lunaire : ${phase}%`;
-  document.getElementById('cardiaque').textContent = `Fréquence cardiaque : ${cardiaque} bpm`;
-
-  amplifier({ vitesse, puissance, phase, cardiaque });
+function calculerDistance(a, b) {
+  const R = 6371e3;
+  const φ1 = a.latitude * Math.PI / 180;
+  const φ2 = b.latitude * Math.PI / 180;
+  const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
+  const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
+  const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+  return R * c;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('amplifier').onclick = testAmplification;
+function activerCapteurs() {
+  if ('AmbientLightSensor' in window) {
+    try {
+      const light = new AmbientLightSensor();
+      light.addEventListener('reading', () => {
+        const pct = Math.min(100, Math.round(light.illuminance / 100));
+        const txt = document.getElementById('pourcentage').textContent;
+        set('pourcentage', txt.replace(/% Lumière : .*?%/, `% Lumière : ${pct}%`));
+      });
+      light.start();
+    } catch {}
+  }
 
-  document.getElementById('toggle-rituel').onclick = () => {
-    rituelActif = !rituelActif;
-    document.body.classList.toggle('rituel-off', !rituelActif);
-    document.getElementById('toggle-rituel').textContent = rituelActif ? '🔮 Rituel : ON' : '🔋 Rituel : OFF';
-  };
+  if (navigator.mediaDevices?.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      const ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      (function loop() {
+        analyser.getByteFrequencyData(data);
+        const dB = 20 * Math.log10(data.reduce((a, b) => a + b, 0) / data.length || 1);
+        const txt = document.getElementById('pourcentage').textContent;
+        set('pourcentage', txt.replace(/% Son : .*?%/, `% Son : ${Math.min(100, Math.round(dB + 100))}%`));
+        requestAnimationFrame(loop);
+      })();
+    });
+  }
 
-  ['physique','chimie','svt'].forEach(type => {
-    document.getElementById(`toggle-${type}`).onclick = () => {
-      applicateurs[type] = !applicateurs[type];
-      document.getElementById(`toggle-${type}`).textContent =
-        `${type === 'physique' ? '🧲' : type === 'chimie' ? '🧪' : '🌱'} ${type.charAt(0).toUpperCase() + type.slice(1)} : ${applicateurs[type] ? 'ON' : 'OFF'}`;
-    };
-  });
-});
+  if ('DeviceOrientationEvent' in window) {
+    window.addEventListener('deviceorientation', e => {
+      const niveau = e.beta?.toFixed(1) ?? '--';
+      const el = document.getElementById('gps');
+      if (el) el.textContent += ` | Niveau : ${niveau}°`;
+    });
+  }
+    }
+                                                  
