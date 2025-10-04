@@ -6,7 +6,7 @@ let vmax = 0;
 
 function set(id, txt) {
   const el = document.getElementById(id);
-  if(el) el.textContent = txt;
+  if (el) el.textContent = txt;
 }
 
 function demarrer() {
@@ -18,7 +18,7 @@ function demarrer() {
   watchId = navigator.geolocation.watchPosition(
     onPosition,
     onGeoError,
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
   );
 
   set("gps", "Recherche position...");
@@ -34,7 +34,8 @@ function stop() {
 
 function resetAll() {
   stop();
-  const ids = ["latitude","longitude","altitude","gps","gps-brut","vitesse","vitesse-moy","vitesse-max","distance"];
+  const ids = ["latitude","longitude","altitude","gps","gps-brut",
+               "vitesse","vitesse-moy","vitesse-max","vitesse-ms","pourcentage","distance"];
   ids.forEach(id => set(id, `${id.replace(/-/g," ")} : --`));
   prevPos = null; distanceTotale = 0; vitesses = []; vmax = 0;
 }
@@ -47,37 +48,46 @@ function onPosition(pos) {
   set("gps", `GPS : précision ${c.accuracy.toFixed(1)} m`);
   set("gps-brut", `Précision GPS : ${c.accuracy.toFixed(1)} m`);
 
-  if(prevPos){
-    const dt = Math.max((pos.timestamp-prevPos.timestamp)/1000,0.001);
-    const d = calculerDistance(prevPos,c);
+  if (prevPos) {
+    const dt = Math.max((pos.timestamp - prevPos.timestamp) / 1000, 0.001);
+    const d = calculerDistance(prevPos, c);
     distanceTotale += d;
 
-    const v = (d/dt)*3.6; // km/h
-    vitesses.push(v);
-    if(v>vmax) vmax=v;
-    if(vitesses.length>1000) vitesses.shift();
-    const moy = vitesses.reduce((a,b)=>a+b,0)/vitesses.length;
+    const v = (d / dt) * 3.6; // km/h
+    if (!isNaN(v)) {
+      vitesses.push(v);
+      if (v > vmax) vmax = v;
+      if (vitesses.length > 1000) vitesses.shift();
+      const moy = vitesses.reduce((a,b)=>a+b,0)/vitesses.length;
 
-    set("vitesse", `Vitesse instantanée : ${v.toFixed(4)} km/h`);
-    set("vitesse-moy", `Vitesse moyenne : ${moy.toFixed(4)} km/h`);
-    set("vitesse-max", `Vitesse max : ${vmax.toFixed(4)} km/h`);
-    set("distance", `Distance : ${distanceTotale.toFixed(4)} m`);
+      const mps = v / 3.6;
+      const mmps = mps * 1000;
+      const pctL = (mps / 299792458 * 100).toExponential(2);
+      const pctS = (mps / 343 * 100).toFixed(2);
+
+      set("vitesse", `Vitesse instantanée : ${v.toFixed(2)} km/h`);
+      set("vitesse-moy", `Vitesse moyenne : ${moy.toFixed(2)} km/h`);
+      set("vitesse-max", `Vitesse max : ${vmax.toFixed(2)} km/h`);
+      set("vitesse-ms", `Vitesse : ${mps.toFixed(2)} m/s | ${Math.round(mmps)} mm/s`);
+      set("pourcentage", `% Lumière : ${pctL}% | % Son : ${pctS}%`);
+      set("distance", `Distance : ${distanceTotale.toFixed(1)} m`);
+    }
   }
 
-  prevPos = {...c, timestamp: pos.timestamp};
+  prevPos = { ...c, timestamp: pos.timestamp }; // toujours mettre à jour prevPos
 }
 
 function onGeoError(err) {
   set("gps", `Erreur géolocalisation : ${err.message}`);
 }
 
-function calculerDistance(a,b){
+function calculerDistance(a, b) {
   const R = 6371e3;
-  const φ1 = a.latitude*Math.PI/180;
-  const φ2 = b.latitude*Math.PI/180;
-  const Δφ = (b.latitude - a.latitude)*Math.PI/180;
-  const Δλ = (b.longitude - a.longitude)*Math.PI/180;
+  const φ1 = a.latitude * Math.PI / 180;
+  const φ2 = b.latitude * Math.PI / 180;
+  const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
+  const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
   const s = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
-    }
-    
+  return 2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+        }
+                                    
