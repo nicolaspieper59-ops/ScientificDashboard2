@@ -63,4 +63,11 @@ function reset() {
     "heure-solaire-moyenne", "equation-temps", "lune-phase", "lune-magnitude",
     "lever-lune", "coucher-lune", "culmination-lune", "horloge-minecraft",
     "temperature", "pression", "humidite", "vent", "nuages", "pluie", "neige",
-    "uv", "qualite-air", "ebull
+    "uv", "qualite-air", "ebullition", "cap", "vers-lat", "vers-lon",
+    "cap-destination", "niveau-bulle", "lumiere", "son", "frequence",
+    "lumiere-brute", "souterrain"
+  ];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = el.textContent.includes(":") ? el.textContent.split(":")[0] + " : --" : "--";
+  }
