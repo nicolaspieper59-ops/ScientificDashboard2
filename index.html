@@ -2,142 +2,112 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Diagnostic Cockpit Cosmique</title>
+  <title>Cockpit Cosmique</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
   <style>
     body {
       background-color: #0b0b0b;
       color: #00ffcc;
-      font-family: monospace;
+      font-family: 'Minecraftia', monospace;
       padding: 20px;
     }
-    h1 { color: #ffd700; }
+    h1, h2 {
+      color: #ffd700;
+      text-shadow: 1px 1px 2px #000;
+    }
     section {
       border: 2px solid #333;
       padding: 10px;
-      margin: 10px 0;
+      margin: 15px 0;
       background-color: #111;
+      box-shadow: 0 0 10px #222;
+    }
+    .label {
+      margin: 4px 0;
     }
     button {
       background: #222;
       color: #00ffcc;
       border: 2px solid #00ffcc;
-      padding: 8px 16px;
+      padding: 6px 12px;
       margin: 5px;
+      font-family: 'Minecraftia';
       cursor: pointer;
     }
-    .label { margin: 4px 0; }
   </style>
 </head>
 <body>
-  <h1>🚀 Diagnostic Cockpit Cosmique</h1>
+  <h1>🚀 Cockpit Cosmique</h1>
 
-  <section>
-    <div class="label" id="latitude">Latitude : --</div>
-    <div class="label" id="longitude">Longitude : --</div>
-    <div class="label" id="gps">Précision GPS : -- m</div>
-    <div class="label" id="vitesse">Vitesse : -- km/h</div>
-    <div class="label" id="distance">Distance : -- m</div>
+  <section><h2>⏱️ Temps & Vitesse</h2>
     <div class="label" id="temps">Temps : 0.00 s</div>
-    <button onclick="demarrer()">▶️ Démarrer</button>
-    <button onclick="reset()">🔄 Réinitialiser</button>
+    <div class="label" id="vitesse">Vitesse instantanée : -- km/h</div>
+    <div class="label" id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+    <div class="label" id="vitesse-max">Vitesse max : -- km/h</div>
+    <div class="label" id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
+    <div class="label" id="pourcentage">% Lumière : --% | % Son : --%</div>
+    <div class="label" id="distance">Distance : -- km | -- m | -- mm</div>
+    <div class="label" id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
+    <div class="label" id="gps">Précision GPS : --%</div>
+    <button id="toggle">▶️ Marche</button>
+    <button id="reset">🔄 Réinitialiser</button>
+    <button id="max">⛰️ Max</button>
   </section>
 
-  <script>
-    let watchId = null;
-    let positionPrecedente = null;
-    let distanceTotale = 0;
-    let t0 = null;
+  <section><h2>☀️🌙 Soleil & Lune</h2>
+    <div class="label" id="culmination-soleil">Culmination soleil : --</div>
+    <div class="label" id="heure-solaire-vraie">Heure solaire vraie : --</div>
+    <div class="label" id="heure-solaire-moyenne">Heure solaire moyenne : --</div>
+    <div class="label" id="equation-temps">Équation du temps : --</div>
+    <div class="label" id="lune-phase">Lune phase : --%</div>
+    <div class="label" id="lune-magnitude">Lune magnitude : --</div>
+    <div class="label" id="lever-lune">Lever lune : --</div>
+    <div class="label" id="coucher-lune">Coucher lune : --</div>
+    <div class="label" id="culmination-lune">Culmination lune : --</div>
+  </section>
 
-    function set(id, txt) {
-      const el = document.getElementById(id);
-      if (el) el.textContent = txt;
-      else console.warn("❌ Élément introuvable :", id);
-    }
+  <section><h2>⏰ Horloge Minecraft</h2>
+    <div class="label" id="horloge-minecraft">00:00:00</div>
+  </section>
 
-    function demarrer() {
-      console.log("▶️ Démarrage demandé");
-      if (!navigator.geolocation) {
-        console.error("🌐 Géolocalisation non disponible");
-        set("gps", "🌐 Géolocalisation non disponible");
-        return;
-      }
+  <section><h2>🌡️ Météo</h2>
+    <div class="label" id="temperature">Température : -- °C</div>
+    <div class="label" id="pression">Pression : -- hPa</div>
+    <div class="label" id="humidite">Humidité : --%</div>
+    <div class="label" id="vent">Vent : -- km/h</div>
+    <div class="label" id="nuages">Nuages : --%</div>
+    <div class="label" id="pluie">Pluie : -- mm</div>
+    <div class="label" id="neige">Neige : -- mm</div>
+    <div class="label" id="uv">Indice UV : --</div>
+    <div class="label" id="qualite-air">Qualité air : --</div>
+    <div class="label" id="ebullition">Point d’ébullition : -- °C</div>
+  </section>
 
-      t0 = performance.now();
-      navigator.geolocation.getCurrentPosition(pos => {
-        console.log("📍 Position initiale reçue");
-        traiter(pos.coords, pos.timestamp);
-      });
+  <section><h2>🧭 Boussole</h2>
+    <div class="label" id="cap">Cap : --°</div>
+    <div class="label" id="vers-lat">Vers lat : --</div>
+    <div class="label" id="vers-lon">Vers lon : --</div>
+    <div class="label" id="cap-destination">Cap vers destination : --°</div>
+    <button id="aller">Aller</button>
+  </section>
 
-      watchId = navigator.geolocation.watchPosition(
-        pos => {
-          console.log("📡 Position mise à jour");
-          traiter(pos.coords, pos.timestamp);
-        },
-        err => {
-          console.error("❌ Erreur GPS :", err.message);
-          set("gps", `Erreur GPS : ${err.message}`);
-        },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-      );
+  <section><h2>📐 Capteurs</h2>
+    <div class="label" id="niveau-bulle">Niveau à bulle : --°</div>
+    <div class="label" id="lumiere">Lumière : -- lux</div>
+    <div class="label" id="son">Son : -- dB</div>
+    <div class="label" id="frequence">Fréquence : -- Hz</div>
+  </section>
 
-      boucleTemps();
-    }
+  <section><h2>📊 Vue brute GPS</h2>
+    <div class="label" id="latitude">Latitude : --</div>
+    <div class="label" id="longitude">Longitude : --</div>
+    <div class="label" id="altitude">Altitude : --</div>
+    <div class="label" id="gps-brut">Précision GPS : --</div>
+    <div class="label" id="lumiere-brute">Lumière : --</div>
+    <div class="label" id="souterrain">Souterrain : --</div>
+  </section>
 
-    function reset() {
-      console.log("🔄 Réinitialisation");
-      positionPrecedente = null;
-      distanceTotale = 0;
-      set("latitude", "Latitude : --");
-      set("longitude", "Longitude : --");
-      set("gps", "Précision GPS : -- m");
-      set("vitesse", "Vitesse : -- km/h");
-      set("distance", "Distance : -- m");
-      set("temps", "Temps : 0.00 s");
-    }
-
-    function boucleTemps() {
-      function tick() {
-        const t = performance.now() - t0;
-        set("temps", `Temps : ${(t / 1000).toFixed(2)} s`);
-        requestAnimationFrame(tick);
-      }
-      tick();
-    }
-
-    function traiter(coords, timestamp) {
-      set("latitude", `Latitude : ${coords.latitude.toFixed(6)}`);
-      set("longitude", `Longitude : ${coords.longitude.toFixed(6)}`);
-      set("gps", `Précision GPS : ${coords.accuracy?.toFixed(1) ?? "--"} m`);
-
-      const vitesse = coords.speed != null ? coords.speed * 3.6 : calculerVitesse(coords, timestamp);
-      set("vitesse", `Vitesse : ${vitesse.toFixed(2)} km/h`);
-      set("distance", `Distance : ${distanceTotale.toFixed(1)} m`);
-    }
-
-    function calculerVitesse(c, t) {
-      if (!positionPrecedente) {
-        positionPrecedente = { ...c, timestamp: t };
-        return 0;
-      }
-      const dt = (t - positionPrecedente.timestamp) / 1000;
-      const d = calculerDistance(c, positionPrecedente);
-      distanceTotale += d;
-      positionPrecedente = { ...c, timestamp: t };
-      console.log(`📐 Δt = ${dt.toFixed(2)} s | Δd = ${d.toFixed(2)} m`);
-      return dt > 0 ? (d / dt) * 3.6 : 0;
-    }
-
-    function calculerDistance(a, b) {
-      const R = 6371e3;
-      const φ1 = a.latitude * Math.PI / 180;
-      const φ2 = b.latitude * Math.PI / 180;
-      const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
-      const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
-      const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-      return R * c;
-    }
-  </script>
+  <script type="module" src="cockpit.js"></script>
 </body>
 </html>
