@@ -136,5 +136,5 @@ async function meteoCosmique(lat, lon, alt = 0) {
   } catch (e) {
     console.error("Météo API", e);
   }
-        }
-      
+                                                        }
+  
