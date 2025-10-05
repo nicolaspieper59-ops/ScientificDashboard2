@@ -10,16 +10,19 @@
       background-color: #0b0b0b;
       color: #00ffcc;
       font-family: 'Minecraftia', monospace;
-      padding: 10px; /* Réduit le padding pour plus d'espace */
+      padding: 10px; 
       font-size: 0.9em; /* Police plus petite mais lisible */
+      margin: 0;
     }
     h1, h2 {
       color: #ffd700;
       text-shadow: 1px 1px 2px #000;
+      margin-top: 5px;
+      margin-bottom: 5px;
     }
     section {
       border: 2px solid #333;
-      padding: 8px; /* Réduit le padding */
+      padding: 8px; 
       margin: 8px 0;
       background-color: #111;
       box-shadow: 0 0 10px #222;
@@ -28,7 +31,7 @@
       background: #222;
       color: #00ffcc;
       border: 2px solid #00ffcc;
-      padding: 4px 8px; /* Réduit la taille des boutons */
+      padding: 4px 8px; 
       margin: 3px;
       font-family: 'Minecraftia';
       cursor: pointer;
@@ -41,9 +44,28 @@
       50% { transform: scale(1.05); opacity: 0.7; }
       100% { transform: scale(1); opacity: 1; }
     }
+    /* Mode Rituel OFF (style d'arrêt ou de pause) */
+    body.rituel-off * {
+      animation: none !important;
+      filter: grayscale(100%) brightness(0.5);
+    }
+    body.rituel-off button {
+      border-color: #666;
+      color: #666;
+    }
+    body.rituel-off section {
+      background-color: #000;
+      border-color: #222;
+    }
     #minecraft-clock-container {
-        text-align: center;
+        display: flex;
+        align-items: center;
+        gap: 10px;
         margin-top: 5px;
+    }
+    #minecraft-clock {
+        border: 1px solid #00ffcc;
+        background-color: #000;
     }
     #carte-navigation input {
         background: #000;
@@ -51,7 +73,7 @@
         border: 1px solid #00ffcc;
         font-family: 'Minecraftia', monospace;
         padding: 4px;
-        margin: 5px;
+        margin-right: 5px;
     }
   </style>
 </head>
@@ -75,15 +97,15 @@
     <button id="toggle-souterrain" style="background: #440000; border-color: #ff4500;">🚫 Mode Souterrain : OFF</button>
   </section>
 
-  <section><h2>💫 Médaillon céleste (Heures Solaires)</h2>
+  <section><h2>💫 Médaillon céleste (Heures Solaires & Phases)</h2>
     <div id="heure-vraie">Heure Solaire Vraie : --</div>
     <div id="heure-moyenne">Heure Solaire Moyenne : --</div>
     <div id="equation-temps">Équation du Temps : --</div>
     <div id="soleil-lever">Lever Soleil HSLV : -- | HSML : --</div>
     <div id="soleil-coucher">Coucher Soleil HSLV : -- | HSML : --</div>
+    <div id="lune-phase">Phase Lune : --</div>
     <div id="lune-lever">Lever Lune HSLV : -- | HSML : --</div>
     <div id="lune-coucher">Coucher Lune HSLV : -- | HSML : --</div>
-    <div id="lune-phase">Phase Lune : --</div>
     <div id="lune-mag">Magnitude Lune : --</div>
     <div id="lune-culmination">Culmination Lune : --</div>
   </section>
@@ -91,7 +113,7 @@
   <section><h2>🧭 Carte Cosmique</h2>
     <div id="carte-navigation">
         <label for="target-coord">Point de Rendez-vous (Lat, Lon):</label>
-        <input type="text" id="target-coord" value="48.8584, 2.2945" /> 
+        <input type="text" id="target-coord" value="48.8584, 2.2945" placeholder="Lat, Lon" /> 
         <button id="set-target">🎯 Cible</button>
         <div id="bearing-display" style="margin-top: 5px;">Relèvement vers la cible : --° | Distance : -- km</div>
         <div id="compass-display" style="margin-top: 5px;">Boussole (Nord Vrai) : --°</div>
@@ -123,6 +145,10 @@
   </section>
 
 <script>
+// =====================================================================================
+// DEBUT DU CODE JAVASCRIPT
+// =====================================================================================
+
 // ========================
 // ETAT GLOBAL
 // ========================
@@ -134,26 +160,30 @@ let distanceTotale = 0;
 let tempsDebut = null; 
 let intervalleTemps = null; 
 let modeSouterrainActif = false; 
-let targetCoords = { latitude: 48.8584, longitude: 2.2945 }; // Coordonnées Tour Eiffel
+// Coordonnées Tour Eiffel par défaut (48.8584, 2.2945)
+let targetCoords = { latitude: 48.8584, longitude: 2.2945 }; 
+let deviceOrientationListener = null; // Pour la boussole
 
 // Constantes physiques
-const VITESSE_LUMIERE = 299792458; 
-const VITESSE_SON = 343; 
-const R_TERRE = 6371e3; 
+const VITESSE_LUMIERE = 299792458; // m/s
+const VITESSE_SON = 343; // m/s (approx. à 20°C)
+const R_TERRE = 6371e3; // Rayon de la Terre en mètres
 const ANNEE_LUMIERE_SECONDES = 3600 * 24 * 365.25;
+const MASSE_EXPLORATEUR = 70; // kg (pour l'énergie cinétique)
 
 // Capteurs et Coordonnées par défaut
 let capteursEtat = {
   niveauBulle: '--',
   lumiere: '--',
   son: '--',
-  magnetisme: '--'
+  magnetisme: '--',
+  pression: null 
 };
 const DEFAULT_LONGITUDE = 2.3522; 
-const DEFAULT_LATITUDE = 48.8566; // Latitude de Paris par défaut
+const DEFAULT_LATITUDE = 48.8566; 
 
 // ========================
-// UTILS DOM
+// UTILS & MATH
 // ========================
 function safeSetText(id, text) { 
   const e = document.getElementById(id); 
@@ -165,6 +195,11 @@ function safeDisplay(id, display) {
 }
 function toRadians(degrees) { return degrees * Math.PI / 180; }
 function toDegrees(radians) { return radians * 180 / Math.PI; }
+function formatHours(h) {
+    const hours = Math.floor(h);
+    const minutes = Math.floor((h - hours) * 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
 
 // ========================
 // CALCULS DE BASE (GPS/VITESSE)
@@ -191,8 +226,8 @@ function miseAJourVitesse(pos) {
         altitude: pos.coords.altitude,
         accuracy: pos.coords.accuracy,
         timestamp: pos.timestamp,
-        speed: pos.coords.speed, // m/s
-        heading: pos.coords.heading // degrés
+        speed: pos.coords.speed, 
+        heading: pos.coords.heading 
     };
 
     let vitesse_ms = 0;
@@ -223,17 +258,14 @@ function miseAJourVitesse(pos) {
         afficherTemps();
         afficherGrandeurs(vitesse_ms);
         
-        // Mise à jour de la carte/boussole si la position est connue
         if (positionPrecedente) {
             updateNavigation(positionPrecedente, targetCoords);
-            updateCompass(gps.heading);
+            updateCompass(gps.heading); 
         }
     }
 
     afficherGPS(gps);
 }
-
-// ... (afficherVitesse, afficherDistance, afficherTemps, afficherGPS restent inchangées) ...
 
 function afficherVitesse(v_kmh) {
   const mps = v_kmh / 3.6;
@@ -268,29 +300,30 @@ function afficherGPS(g) {
   safeSetText('gps', `GPS : Lat : ${g.latitude.toFixed(6)} | Lon : ${g.longitude.toFixed(6)} | Alt : ${g.altitude?.toFixed(0)??'--'} m | Préc. : ${g.accuracy?.toFixed(0)??'--'} m`);
 }
 
-
 // ========================
-// GRANDEURS PHYSIQUES (NOUVEAU)
+// GRANDEURS PHYSIQUES
 // ========================
 
 function afficherGrandeurs(vitesse_ms) {
-    const P_estimee = 1013.25; // hPa (Pression atmosphérique standard au niveau de la mer)
-    let E_cinetique = '--';
+    const P_atm_mer = 1013.25; 
+    let P_estimee = P_atm_mer;
 
-    // Estimation de l'énergie cinétique (pour un objet de masse arbitraire, par ex. 70kg pour un explorateur)
-    const MASSE_EXPLORATEUR = 70; // kg
+    if (positionPrecedente && positionPrecedente.altitude) {
+        const alt_m = positionPrecedente.altitude;
+        P_estimee = P_atm_mer - (alt_m / 8.3); 
+    }
+    capteursEtat.pression = P_estimee.toFixed(2);
+    
+    let E_cinetique = '--';
     if (typeof vitesse_ms === 'number' && vitesse_ms >= 0) {
         E_cinetique = (0.5 * MASSE_EXPLORATEUR * vitesse_ms * vitesse_ms).toFixed(2);
     }
 
-    // Ici on ajouterait la température/humidité/pression si les capteurs étaient implémentés
-    const pression_capteur = capteursEtat.pression || P_estimee.toFixed(2);
-
-    safeSetText('grandeurs', `Pression Est. : ${pression_capteur} hPa | Énergie cinétique Est. : ${E_cinetique} J`);
+    safeSetText('grandeurs', `Pression Est. : ${capteursEtat.pression} hPa | Énergie cinétique Est. : ${E_cinetique} J`);
 }
 
 // ========================
-// CARTE & NAVIGATION (NOUVEAU)
+// CARTE & NAVIGATION
 // ========================
 
 function getBearing(p1, p2) {
@@ -303,7 +336,7 @@ function getBearing(p1, p2) {
     const x = Math.cos(φ1) * Math.sin(φ2) -
               Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
     const bearing = toDegrees(Math.atan2(y, x));
-    return (bearing + 360) % 360; // Normalize 0-360
+    return (bearing + 360) % 360; 
 }
 
 function updateNavigation(currentPos, targetPos) {
@@ -319,9 +352,20 @@ function updateCompass(heading) {
     safeSetText('compass-display', `Boussole (Nord Vrai) : ${heading_deg}°`);
 }
 
+function handleOrientation(event) {
+    let alpha = event.alpha; 
+    if (event.webkitCompassHeading) { 
+        alpha = event.webkitCompassHeading;
+    }
+    if (typeof alpha === 'number') {
+        // 360 - alpha car alpha est souvent mesuré depuis le Nord vrai dans le sens horaire
+        // et nous voulons le cap de l'appareil (inverse de la rotation)
+        updateCompass((360 - alpha) % 360); 
+    }
+}
 
 // ========================
-// CALCULS ASTRONOMIQUES (COMPLET)
+// CALCULS ASTRONOMIQUES AVANCÉS
 // ========================
 
 function angleToTime(angle_deg) {
@@ -337,7 +381,6 @@ function angleToTime(angle_deg) {
 }
 
 function calculerHeuresSolaires(now, latitude, longitude) {
-    // Jour Julien et T (fraction de siècle depuis J2000)
     const Jd = (now.getTime() / (24 * 60 * 60 * 1000)) + 2440587.5;
     const T = (Jd - 2451545.0) / 36525;
 
@@ -358,6 +401,7 @@ function calculerHeuresSolaires(now, latitude, longitude) {
     let EqT_deg = L0_mod - alpha_norm;
     if (EqT_deg > 180) EqT_deg -= 360; 
     if (EqT_deg < -180) EqT_deg += 360;
+
     const EqT_sec = EqT_deg * 240; 
     const UTC_h = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
     const HSML_deg = (UTC_h * 15 + longitude) % 360;
@@ -369,49 +413,70 @@ function calculerHeuresSolaires(now, latitude, longitude) {
     safeSetText('heure-moyenne', `Heure Solaire Moyenne : ${angleToTime(HSML_norm)}`);
     safeSetText('equation-temps', `Équation du Temps : ${EqT_sec.toFixed(2)} s`);
 
-    // --- Calcul Déclinaison du Soleil (δ) ---
+    // --- Lever/Coucher Soleil ---
     const delta_rad = Math.asin(Math.sin(epsilon_rad) * Math.sin(lambda_rad));
-    const delta_deg = toDegrees(delta_rad);
-
-    // --- Lever/Coucher Soleil (Approximation simple, H0 = -0.83°) ---
-    const H0 = toRadians(-0.83); // Angle pour le lever/coucher (réfraction)
+    const H0_soleil = toRadians(-0.83); 
     const phi_rad = toRadians(latitude);
-    const delta_rad_calc = delta_rad;
 
-    const cosH_soleil = (Math.sin(H0) - Math.sin(phi_rad) * Math.sin(delta_rad_calc)) / (Math.cos(phi_rad) * Math.cos(delta_rad_calc));
+    const cosH_soleil = (Math.sin(H0_soleil) - Math.sin(phi_rad) * Math.sin(delta_rad)) / (Math.cos(phi_rad) * Math.cos(delta_rad));
     
-    let lever_coucher_soleil = { lever_h: '--', coucher_h: '--' };
-
     if (cosH_soleil <= 1 && cosH_soleil >= -1) {
-        const H_soleil_deg = toDegrees(Math.acos(cosH_soleil)); // Angle horaire
-        
-        const culmination_h_HSML = 12; // HSM culminait à midi
-        const culmination_h_HSLV = 12 - (EqT_sec / 3600); // HSLV culminait à midi - EqT
-        
-        // Lever/Coucher HSLV (en heures après culmination)
+        const H_soleil_deg = toDegrees(Math.acos(cosH_soleil)); 
         const H_soleil_h = H_soleil_deg / 15;
+        
+        const culmination_h_HSLV = 12 - (EqT_sec / 3600); 
+        const culmination_h_HSML = 12;
+
         const lever_h_HSLV = (culmination_h_HSLV - H_soleil_h + 24) % 24;
         const coucher_h_HSLV = (culmination_h_HSLV + H_soleil_h) % 24;
-
-        // Lever/Coucher HSML (en heures)
         const lever_h_HSML = (culmination_h_HSML - H_soleil_h + 24) % 24;
         const coucher_h_HSML = (culmination_h_HSML + H_soleil_h) % 24;
 
         safeSetText('soleil-lever', `Lever Soleil HSLV : ${formatHours(lever_h_HSLV)} | HSML : ${formatHours(lever_h_HSML)}`);
         safeSetText('soleil-coucher', `Coucher Soleil HSLV : ${formatHours(coucher_h_HSLV)} | HSML : ${formatHours(coucher_h_HSML)}`);
     } else {
-        safeSetText('soleil-lever', 'Lever Soleil HSLV : Jour Polaire | HSML : Jour Polaire');
-        safeSetText('soleil-coucher', 'Coucher Soleil HSLV : Nuit Polaire | HSML : Nuit Polaire');
+        safeSetText('soleil-lever', (latitude >= 66.5) ? 'Lever Soleil HSLV : Jour Polaire' : 'Lever Soleil HSLV : Nuit Polaire');
+        safeSetText('soleil-coucher', (latitude >= 66.5) ? 'Coucher Soleil HSLV : Nuit Polaire' : 'Coucher Soleil HSLV : Jour Polaire');
     }
 
+    // --- Calculs Lunaires Simplifiés ---
+    const lune_results = calculerLune(Jd, latitude, longitude);
+    safeSetText('lune-phase', `Phase Lune : ${lune_results.phase}`);
+    safeSetText('lune-lever', `Lever Lune HSLV : ${lune_results.lever || '--'} | HSML : ${lune_results.lever || '--'}`); 
+    safeSetText('lune-coucher', `Coucher Lune HSLV : ${lune_results.coucher || '--'} | HSML : ${lune_results.coucher || '--'}`); 
+    safeSetText('lune-culmination', `Culmination Lune : ${lune_results.culmination || '--'}`);
+    safeSetText('lune-mag', `Magnitude Lune : ${lune_results.mag || '--'}`);
+
     // --- Montre Minecraft (Mise à jour) ---
-    drawMinecraftClock(HSLV_norm / 15); // HSLV en heures (0-24)
+    drawMinecraftClock(HSLV_norm / 15, lune_results.phase); 
 }
 
-function formatHours(h) {
-    const hours = Math.floor(h);
-    const minutes = Math.floor((h - hours) * 60);
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+function calculerLune(Jd, latitude, longitude) {
+    const T = (Jd - 2451545.0) / 36525;
+    const T0 = (Jd - 2451550.09765) / 36525.0;
+    const L = 218.316 + 481267.881 * T0; 
+    const S = 135.963 + 477198.868 * T0; 
+    
+    // Phase Lunaire
+    const phase_fraction = (L - S) % 360 / 360; 
+
+    let phase_nom = '';
+    if (phase_fraction < 0.05 || phase_fraction > 0.95) phase_nom = 'Nouvelle Lune';
+    else if (phase_fraction < 0.22) phase_nom = 'Croissant Jeune';
+    else if (phase_fraction < 0.28) phase_nom = 'Premier Quartier';
+    else if (phase_fraction < 0.45) phase_nom = 'Gibbeuse Croissante';
+    else if (phase_fraction < 0.55) phase_nom = 'Pleine Lune';
+    else if (phase_fraction < 0.72) phase_nom = 'Gibbeuse Décroissante';
+    else if (phase_fraction < 0.78) phase_nom = 'Dernier Quartier';
+    else phase_nom = 'Croissant Vieillissant';
+
+    return {
+        phase: phase_nom,
+        mag: '--', 
+        lever: '--',
+        coucher: '--',
+        culmination: '--'
+    };
 }
 
 function activerHorlogeSolaire(latitude, longitude) {
@@ -428,15 +493,14 @@ function activerHorlogeSolaire(latitude, longitude) {
 
         const now = new Date();
         calculerHeuresSolaires(now, currentLatitude, currentLongitude);
-        // Note: Les calculs lunaires sont plus complexes et sont laissés à '--' pour l'instant.
     }, 1000);
 }
 
 
 // ========================
-// MONTRE MINECRAFT (NOUVEAU)
+// MONTRE MINECRAFT
 // ========================
-function drawMinecraftClock(HSLV_hour) {
+function drawMinecraftClock(HSLV_hour, phase_nom) {
     const canvas = document.getElementById('minecraft-clock');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -444,10 +508,8 @@ function drawMinecraftClock(HSLV_hour) {
     const center = size / 2;
     const radius = size * 0.45;
     
-    // HSLV_hour est une heure de 0 à 24, où 12 est midi et 0/24 est minuit.
-    // L'heure Minecraft est 0 à 24, avec 6h=lever, 12h=midi, 18h=coucher, 24h=minuit.
-    // On centre à minuit pour le cycle.
-    const angle_rad = toRadians((HSLV_hour - 6) / 24 * 360 - 90); // 6h = 0°, 12h = 90°, 18h = 180°
+    const angle_deg = (HSLV_hour / 24 * 360 + 90) % 360; 
+    const angle_rad = toRadians(angle_deg); 
 
     ctx.clearRect(0, 0, size, size);
     ctx.strokeStyle = '#00ffcc';
@@ -456,103 +518,37 @@ function drawMinecraftClock(HSLV_hour) {
     ctx.arc(center, center, radius, 0, 2 * Math.PI);
     ctx.stroke();
 
-    // 1. Cycle Jour/Nuit (Couleur de fond)
-    let time_status = 'Nuit';
-    if (HSLV_hour > 6 && HSLV_hour < 18) {
-        // Jour (6h à 18h)
-        time_status = 'Jour';
-        ctx.fillStyle = '#ffd700'; // Jaune Soleil
-    } else {
-        // Nuit (18h à 6h)
-        ctx.fillStyle = '#ffffff'; // Blanc Lune
-    }
-    
-    // 2. Position du Soleil/Lune
+    let is_day = HSLV_hour > 6 && HSLV_hour < 18;
+    let time_status = is_day ? 'Jour' : 'Nuit';
+
+    // 1. Position du Soleil/Lune
     const x = center + radius * Math.cos(angle_rad);
     const y = center + radius * Math.sin(angle_rad);
     
     ctx.beginPath();
-    ctx.arc(x, y, 10, 0, 2 * Math.PI);
+    ctx.arc(x, y, 8, 0, 2 * Math.PI);
+
+    if (is_day) {
+        ctx.fillStyle = '#ffd700'; 
+    } else {
+        ctx.fillStyle = '#ffffff'; 
+    }
     ctx.fill();
     
+    // 2. Saisons (simple)
+    const month = new Date().getMonth();
+    let season = '';
+    if (month >= 2 && month <= 4) season = 'Printemps';
+    else if (month >= 5 && month <= 7) season = 'Été';
+    else if (month >= 8 && month <= 10) season = 'Automne';
+    else season = 'Hiver';
+
     // 3. Affichage du temps
-    safeSetText('minecraft-time-display', `${time_status} (HSL Vraie)`);
+    safeSetText('minecraft-time-display', `${time_status} | Saisons : ${season} | ${phase_nom}`);
 }
 
 // ========================
-// GESTION DU COCKPIT (NON MODIFIÉ)
+// GESTION DU COCKPIT (GÉNÉRAL)
 // ========================
 
-function demarrerCockpit() {
-  if (!("geolocation" in navigator)) {
-    safeSetText('gps', 'GPS non disponible');
-    return;
-  }
-  if (watchId !== null) return;
-
-  tempsDebut = Date.now();
-  intervalleTemps = setInterval(afficherTemps, 100);
-
-  watchId = navigator.geolocation.watchPosition(
-    miseAJourVitesse,
-    err => {
-      console.warn('GPS refusé ou erreur', err);
-      safeSetText('gps', 'Erreur GPS: ' + err.code);
-    }, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000
-    }
-  );
-  
-  activerCapteurs();
-
-  document.getElementById('marche').textContent = '▶️ En cours...';
-  document.getElementById('marche').classList.remove('pulsation');
-  document.getElementById('stop').classList.add('pulsation');
-}
-
-function arreterCockpit() {
-  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-  if (intervalleTemps !== null) clearInterval(intervalleTemps);
-  
-  watchId = null;
-  intervalleTemps = null;
-  positionPrecedente = null;
-
-  document.getElementById('marche').textContent = '▶️ Marche';
-  document.getElementById('marche').classList.add('pulsation');
-  document.getElementById('stop').classList.remove('pulsation');
-}
-
-function resetCockpit() {
-  arreterCockpit();
-  
-  vitesseMax = 0;
-  vitesses = [];
-  distanceTotale = 0;
-  tempsDebut = null;
-
-  safeSetText('temps', 'Temps : 0.00 s');
-  afficherVitesse(0);
-  afficherDistance();
-  safeSetText('gps', 'GPS : --');
-  afficherGrandeurs('--'); // Réinitialisation des grandeurs
-  
-  capteursEtat = { niveauBulle: '--', lumiere: '--', son: '--', magnetisme: '--' };
-  afficherCapteurs();
-}
-
-function toggleModeSouterrain() {
-    modeSouterrainActif = !modeSouterrainActif;
-    const btn = document.getElementById('toggle-souterrain');
-    
-    if (modeSouterrainActif) {
-        if (watchId !== null) {
-            navigator.geolocation.clearWatch(watchId);
-            watchId = null;
-            positionPrecedente = null; 
-        }
-
-        btn.textContent = '✅ Mode Souterrain : ON';
-        btn.style.backg
+function dema
