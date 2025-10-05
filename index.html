@@ -18,6 +18,7 @@ button:hover { background: #0056b3; }
 <body>
 <h2>Full Cockpit Scientifique Live</h2>
 
+<!-- Carte GPS & Trajectoire -->
 <div class="card">
 <h3>Carte GPS & Trajectoire</h3>
 <div id="map"></div>
@@ -32,13 +33,13 @@ Distance: <span id="distanceKm">—</span> km
 <button id="bleBtn">Connecter BLE/UWB</button>
 </div>
 
+<!-- Horloge Minecraft -->
 <div class="card">
 <h3>Horloge Minecraft</h3>
-<p class="small">
-<time id="mcClock">00:00:00</time>
-</p>
+<p class="small"><time id="mcClock">00:00:00</time></p>
 </div>
 
+<!-- Météo & Graphique -->
 <div class="card">
 <h3>Météo & Environnement</h3>
 <p class="small">
@@ -48,6 +49,7 @@ Vent: <span id="wind">—</span> km/h
 <canvas id="tempChart"></canvas>
 </div>
 
+<!-- IMU & Capteurs internes -->
 <div class="card">
 <h3>IMU & Capteurs internes</h3>
 <p class="small">
@@ -59,11 +61,13 @@ Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB
 <canvas id="attitude"></canvas>
 </div>
 
+<!-- Sismogramme -->
 <div class="card">
 <h3>Sismogramme</h3>
 <canvas id="seis"></canvas>
 </div>
 
+<!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="script.js"></script>
