@@ -1,70 +1,108 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>Cockpit Scientifique Final</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>
-body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; }
-.card { background: #fff; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 15px; margin-bottom: 20px; }
-h2, h3 { margin: 0 0 10px 0; }
-#map { width: 100%; height: 300px; margin-bottom:10px; }
-canvas { width: 100%; height: 180px; background: #fafafa; margin-bottom:10px; }
-.small { font-size: 0.85rem; color: #555; }
-button { padding: 5px 10px; border-radius: 5px; border: none; background: #007BFF; color: #fff; cursor: pointer; margin-right:5px; }
-button:hover { background: #0056b3; }
-</style>
+  <meta charset="UTF-8">
+  <title>Cockpit Cosmique</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Librairies pour le medaillon / cartes célestes -->
+  <script src="lib/d3.min.js"></script>
+  <script src="lib/d3.geo.projection.min.js"></script>
+  <script src="lib/celestial.min.js"></script>
 </head>
 <body>
-<h2>Full Cockpit Scientifique Final</h2>
+  <main>
+    <h1>🌌 Cockpit Cosmique</h1>
 
-<div class="card">
-<h3>Carte GPS & Trajectoire</h3>
-<div id="map"></div>
-<p class="small">
-Lat: <span id="lat">—</span>, Lon: <span id="lon">—</span>, Alt: <span id="alt">—</span><br>
-Précision GPS: <span id="gpsAcc">—</span> m<br>
-Vitesse instantanée: <span id="speed">—</span> km/h, Vitesse max: <span id="speedMax">—</span> km/h<br>
-Distance: <span id="distanceKm">—</span> km
-</p>
-<button id="toggleBtn">Marche</button>
-<button id="resetBtn">Réinitialiser</button>
-<button id="bleBtn">Connecter BLE/UWB</button>
-</div>
+    <!-- Vitesse & Distance -->
+    <section>
+      <h2>🚀 Vitesse & Distance</h2>
+      <div id="vitesse">Temps : -- s | Vitesse instantanée : -- km/h | Moyenne : -- | Max : --</div>
+      <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+      <div id="distance">Distance : -- km | -- m | -- mm | Cosmique : -- s lumière | -- al</div>
+      <button id="marche">▶️ Marche</button>
+      <button id="reset">🔄 Réinitialiser vitesse max</button>
+    </section>
 
-<div class="card">
-<h3>Horloge Minecraft</h3>
-<p class="small"><time id="mcClock">00:00:00</time></p>
-</div>
+    <!-- Capteurs physiques -->
+    <section>
+      <h2>📐 Capteurs physiques</h2>
+      <div id="capteurs">Niveau à bulle : --° | Lumière : -- lux | Son : -- dB | Fréquence : -- Hz | Magnétisme : -- µT</div>
+    </section>
 
-<div class="card">
-<h3>Météo & Environnement</h3>
-<p class="small">
-Temp: <span id="temp">—</span> °C, Pression: <span id="pressure">—</span> hPa, Humidité: <span id="hum">—</span>%<br>
-Vent: <span id="wind">—</span> km/h
-</p>
-<canvas id="tempChart"></canvas>
-</div>
+    <!-- Accélération, puissance et grandeurs scientifiques -->
+    <section>
+      <h2>🧪 Accélération, Puissance & Grandeurs scientifiques</h2>
+      <div id="grandeurs">
+        Accélération : -- g | Force : -- N | Puissance : -- J<br>
+        Gravité : -- m/s² | Vitesse son : -- m/s | Vitesse lumière : -- m/s | Point d’ébullition : -- °C
+      </div>
+    </section>
 
-<div class="card">
-<h3>IMU & Capteurs internes</h3>
-<p class="small">
-Accel X: <span id="ax">—</span>, Y: <span id="ay">—</span>, Z: <span id="az">—</span><br>
-Gyro X: <span id="gx">—</span>, Y: <span id="gy">—</span>, Z: <span id="gz">—</span><br>
-Magnétomètre X: <span id="mx">—</span>, Y: <span id="my">—</span>, Z: <span id="mz">—</span><br>
-Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB
-</p>
-<canvas id="attitude"></canvas>
-</div>
+    <!-- GPS brut -->
+    <section>
+      <h2>📊 Vue brute GPS</h2>
+      <div id="gps">Latitude : -- | Longitude : -- | Altitude : -- | Précision GPS : --%</div>
+    </section>
 
-<div class="card">
-<h3>Sismogramme</h3>
-<canvas id="seis"></canvas>
-</div>
+    <!-- Boussole & coordonnées Minecraft -->
+    <section>
+      <h2>🧭 Boussole & Coordonnées Minecraft</h2>
+      <div id="boussole">Cap : --° | Coordonnées Minecraft : -- | Cap vers destination : --°</div>
+    </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="script.js"></script>
+    <!-- Horloge cosmique -->
+    <section>
+      <h2>⏰ Horloge cosmique</h2>
+      <div id="horloge">--:--:--</div>
+    </section>
+
+    <!-- Médaillon céleste -->
+    <section>
+      <h2>☀️🌙 Médaillon céleste</h2>
+      <div id="medaillon">Disque céleste en attente...</div>
+      <div id="celestial-map"></div>
+    </section>
+
+    <!-- Soleil & Lune -->
+    <section>
+      <h2>🌞🌙 Soleil & Lune</h2>
+      <div id="soleil-lune">
+        Culmination soleil : --<br>
+        Heure solaire vraie : --<br>
+        Heure solaire moyenne : --<br>
+        Équation du temps : --<br>
+        Lune phase : --%<br>
+        Lune magnitude : --<br>
+        Lever lune : --<br>
+        Coucher lune : --<br>
+        Culmination lune : --
+      </div>
+    </section>
+
+    <!-- Météo & Qualité de l’air -->
+    <section>
+      <h2>🌡️ Météo & Qualité de l’air</h2>
+      <div id="meteo">
+        Temp : -- °C | Humidité : --% | Point rosée : -- °C | Vent : -- km/h | Rafales : -- km/h<br>
+        Couverture nuageuse : --% | Visibilité : -- km | Plafond : -- m | AccuLumen : -- lx
+      </div>
+      <div id="qualite-air">
+        NO₂ : -- µg/m³ | PM2.5 : -- µg/m³ | PM10 : -- µg/m³ | O₃ : -- µg/m³ | CO : -- µg/m³ | SO₂ : -- µg/m³
+      </div>
+    </section>
+
+    <!-- Contrôles -->
+    <section>
+      <h2>🎛️ Contrôles</h2>
+      <button id="toggle-rituel">✨ Rituel cosmique : ON</button>
+      <button id="marche">▶️ Marche</button>
+      <button id="reset">🔄 Réinitialiser vitesse max</button>
+    </section>
+
+  </main>
+
+  <script type="module" src="cockpitCosmique.js"></script>
 </body>
-  </html>
-  
+</html>
