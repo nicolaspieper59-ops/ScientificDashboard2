@@ -1,29 +1,63 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>Cockpit Cosmique</title>
-<style>
-  body{background:#111;color:#0ff;font-family:monospace;padding:20px;}
-  button{background:#222;color:#0ff;border:2px solid #0ff;padding:10px;cursor:pointer;font-size:16px;}
-  div{margin:5px 0;}
-</style>
+  <meta charset="UTF-8">
+  <title>Cockpit Cosmique Corrigé</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background-color: #111;
+      color: #00ffcc;
+      font-family: monospace;
+      padding: 20px;
+    }
+    h1 { color: #ffd700; }
+    button {
+      background: #222;
+      color: #00ffcc;
+      border: 2px solid #00ffcc;
+      padding: 10px 20px;
+      cursor: pointer;
+      margin: 5px;
+      font-size: 16px;
+    }
+    section {
+      margin-bottom: 20px;
+      border-bottom: 1px solid #00ffcc;
+      padding-bottom: 10px;
+    }
+    .data { margin: 5px 0; }
+  </style>
 </head>
 <body>
-<h1>🌌 Cockpit Cosmique</h1>
-<button id="marche">▶️ Marche</button>
-<button id="reset">🔄 Réinitialiser vitesse max</button>
-<div id="vitesse">Vitesse instantanée : --</div>
-<div id="vitesse-moy">Vitesse moyenne : --</div>
-<div id="vitesse-max">Vitesse max : --</div>
-<div id="vitesse-ms">-- m/s</div>
-<div id="pourcentage">% Lumière : -- | % Son : --</div>
-<div id="distance">Distance : --</div>
-<div id="distance-cosmique">Distance cosmique : --</div>
-<div id="temps">Temps : --</div>
-<div id="gps">GPS : --</div>
-<div id="capteurs">Capteurs : --</div>
+  <h1>🌌 Cockpit Cosmique Corrigé</h1>
 
-<script type="module" src="cockpitCosmique.js"></script>
+  <section>
+    <h2>🚀 Vitesse & Distance</h2>
+    <div class="data" id="vitesse">Vitesse instantanée : --</div>
+    <div class="data" id="vitesse-moy">Vitesse moyenne : --</div>
+    <div class="data" id="vitesse-max">Vitesse max : --</div>
+    <div class="data" id="vitesse-ms">Vitesse m/s : --</div>
+    <div class="data" id="pourcentage">% Lumière / Son : --</div>
+    <div class="data" id="distance">Distance : --</div>
+    <div class="data" id="distance-cosmique">Distance cosmique : --</div>
+    <div class="data" id="temps">Temps : 0.00 s</div>
+    <button id="marche">▶️ Marche</button>
+    <button id="reset">🔄 Réinitialiser vitesse max</button>
+  </section>
+
+  <section>
+    <h2>📊 Capteurs physiques</h2>
+    <div class="data" id="capteurs">
+      Niveau : -- | Lumière : -- | Son : -- | Magnétomètre : --
+    </div>
+  </section>
+
+  <section>
+    <h2>📍 GPS</h2>
+    <div class="data" id="gps">GPS : --</div>
+  </section>
+
+  <script type="module" src="cockpitCosmiqueCorrige.js"></script>
 </body>
 </html>
