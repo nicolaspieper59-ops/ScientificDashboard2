@@ -10,16 +10,20 @@
       background-color: #0b0b0b;
       color: #00ffcc;
       font-family: 'Minecraftia', monospace;
-      padding: 20px;
+      padding: 10px; 
+      font-size: 0.9em;
+      margin: 0;
     }
     h1, h2 {
       color: #ffd700;
       text-shadow: 1px 1px 2px #000;
+      margin-top: 5px;
+      margin-bottom: 5px;
     }
     section {
       border: 2px solid #333;
-      padding: 10px;
-      margin: 10px 0;
+      padding: 8px; 
+      margin: 8px 0;
       background-color: #111;
       box-shadow: 0 0 10px #222;
     }
@@ -27,8 +31,8 @@
       background: #222;
       color: #00ffcc;
       border: 2px solid #00ffcc;
-      padding: 6px 12px;
-      margin: 5px;
+      padding: 4px 8px; 
+      margin: 3px;
       font-family: 'Minecraftia';
       cursor: pointer;
     }
@@ -40,17 +44,20 @@
       50% { transform: scale(1.05); opacity: 0.7; }
       100% { transform: scale(1); opacity: 1; }
     }
+    /* Mode Rituel OFF (non géré par le JS ici, mais conservé pour le style) */
     body.rituel-off * {
       animation: none !important;
       filter: grayscale(100%) brightness(0.5);
     }
-    body.rituel-off button {
-      border-color: #666;
-      color: #666;
+    #minecraft-clock-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 5px;
     }
-    body.rituel-off section {
-      background-color: #000;
-      border-color: #222;
+    #minecraft-clock {
+        border: 1px solid #00ffcc;
+        background-color: #000;
     }
   </style>
 </head>
@@ -68,288 +75,33 @@
     <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
     <div id="gps">GPS : --</div>
     <button id="marche" class="pulsation">▶️ Marche</button>
-    <button id="stop">⏹️ Arrêt</button>
-    <button id="reset">⚙️ Réinitialiser</button>
+    <button id="stop" style="display:none;">⏹️ Arrêt</button> 
+    <button id="reset">⚙️ Réinitialiser Max</button>
+    <button id="reset-tout">⚙️ Réinitialiser Tout</button> 
   </section>
 
-  <section><h2>💫 Médaillon céleste</h2>
-    <div id="culmination-soleil">--</div>
-    <div id="heure-vraie">--</div>
-    <div id="heure-moyenne">--</div>
-    <div id="equation-temps">--</div>
-    <div id="lune-phase">--</div>
-    <div id="lune-mag">--</div>
-    <div id="lune-lever">--</div>
-    <div id="lune-coucher">--</div>
-    <div id="lune-culmination">--</div>
+  <section><h2>💫 Médaillon céleste (Heures Solaires & Phases)</h2>
+    <div id="heure-vraie">Heure Solaire Vraie : --</div>
+    <div id="lune-phase">Phase Lune : --</div>
+    </section>
+  
+  <section><h2>🧭 Carte Cosmique</h2>
+    <div id="bearing-display">Relèvement vers la cible : --° | Distance : -- km</div>
+    <div id="compass-display">Boussole (Nord Vrai) : --°</div>
   </section>
 
-  <section><h2>⏱️ Horloge</h2>
-    <div id="horloge">⏰ --:--:--</div>
-    <div id="horloge-atomique">Heure atomique (UTC) : --</div>
+  <section><h2>⏱️ Horloge Système & Minecraft</h2>
+    <div id="horloge">⏰ --:--:-- (Système)</div>
+    <div id="minecraft-clock-container">
+        <canvas id="minecraft-clock" width="100" height="100"></canvas>
+        <div id="minecraft-time-display">Jour/Nuit : --</div>
+    </div>
   </section>
-
+  
   <section><h2>🔋 Capteurs</h2>
-    <div id="capteurs">Lumière : -- lux | Son : -- dB | Niveau : --° | Gyro : -- | Magnétomètre : -- | Batterie : --% | Réseau : --</div>
+    <div id="capteurs">Lumière : -- lux | Son : -- dB | Niveau : --° | Magnétomètre : -- µT | Batterie : --% | Réseau : --</div>
   </section>
 
-  <section><h2>⚛️ Grandeurs</h2>
-    <div id="grandeurs">--</div>
-  </section>
-
-  <section><h2>🛠️ Contrôle</h2>
-    <button id="toggle-rituel">✅ Rituel cosmique : ON</button>
-    <button id="toggle-physique">🧪 Physique : ON</button>
-    <button id="toggle-chimie">⚗️ Chimie : ON</button>
-    <button id="toggle-svt">🌿 SVT : ON</button>
-  </section>
-
-<script>
-// ========================
-// ETAT GLOBAL
-// ========================
-let watchId = null;
-let positionPrecedente = null;
-let vitesseMax = 0;
-let vitesses = []; // Pour calculer la moyenne glissante
-let distanceTotale = 0;
-let tempsDebut = null; // Timestamp du début de la course
-let intervalleTemps = null; // Pour le setInterval du temps
-
-// Constantes physiques
-const VITESSE_LUMIERE = 299792458; // m/s
-const VITESSE_SON = 343; // m/s (approx. à 20°C)
-const R_TERRE = 6371e3; // Rayon de la Terre en mètres
-const ANNEE_LUMIERE_SECONDES = 3600 * 24 * 365.25;
-
-// Objet pour stocker l'état des capteurs physiques (pour affichage unifié)
-let capteursEtat = {
-  niveauBulle: '--',
-  lumiere: '--',
-  son: '--',
-  magnetisme: '--'
-};
-
-// ========================
-// UTILS DOM
-// ========================
-function safeSetText(id, text) { 
-  const e = document.getElementById(id); 
-  if (e) e.textContent = text; 
-}
-
-// ========================
-// CALCULS DE VITESSE/DISTANCE
-// ========================
-
-function calculerDistanceHaversine(p1, p2) {
-  const φ1 = p1.latitude * Math.PI / 180;
-  const φ2 = p2.latitude * Math.PI / 180;
-  const Δφ = (p2.latitude - p1.latitude) * Math.PI / 180;
-  const Δλ = (p2.longitude - p1.longitude) * Math.PI / 180;
-  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R_TERRE * c; // Distance en mètres
-}
-
-function miseAJourVitesse(pos) {
-  const gps = {
-    latitude: pos.coords.latitude,
-    longitude: pos.coords.longitude,
-    altitude: pos.coords.altitude,
-    accuracy: pos.coords.accuracy,
-    timestamp: pos.timestamp,
-    speed: pos.coords.speed // Vitesse native en m/s
-  };
-
-  let vitesse_ms = 0;
-  let distance_parcourue = 0;
-  
-  // 1. Calcul de la distance et du temps
-  if (positionPrecedente) {
-    const dt = (gps.timestamp - positionPrecedente.timestamp) / 1000; // temps en secondes
-    distance_parcourue = calculerDistanceHaversine(gps, positionPrecedente);
-    distanceTotale += distance_parcourue;
-    
-    // 2. Calcul de la vitesse (priorité à la vitesse native si disponible et valide)
-    if (typeof gps.speed === 'number' && gps.speed >= 0) {
-      vitesse_ms = gps.speed; // Utilise la vitesse native du GPS
-    } else if (dt > 0) {
-      vitesse_ms = distance_parcourue / dt; // Vitesse calculée manuellement (m/s)
-    }
-  }
-  
-  positionPrecedente = gps; // Met à jour la position pour la prochaine itération
-  const vitesse_kmh = vitesse_ms * 3.6;
-
-  if (vitesse_kmh >= 0) { 
-    vitesseMax = Math.max(vitesseMax, vitesse_kmh);
-    vitesses.push(vitesse_kmh);
-    if (vitesses.length > 30) vitesses.shift(); // Moyenne glissante sur 30 points
-
-    afficherVitesse(vitesse_kmh);
-    afficherDistance();
-  }
-
-  afficherGPS(gps);
-}
-
-// ========================
-// AFFICHAGE GPS / VITESSE
-// ========================
-
-function afficherVitesse(v_kmh) {
-  const mps = v_kmh / 3.6;
-  const mmps = mps * 1000;
-  const moyenne_kmh = vitesses.length ? vitesses.reduce((a, b) => a + b, 0) / vitesses.length : 0;
-
-  // Affichage Vitesse
-  safeSetText('vitesse', `Vitesse instantanée : ${v_kmh.toFixed(2)} km/h`);
-  safeSetText('vitesse-moy', `Vitesse moyenne : ${moyenne_kmh.toFixed(2)} km/h`);
-  safeSetText('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
-  safeSetText('vitesse-ms', `Vitesse : ${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`);
-
-  // Affichage Pourcentage
-  safeSetText('pourcentage', `% Lumière : ${(mps / VITESSE_LUMIERE * 100).toExponential(2)}% | % Son : ${(mps / VITESSE_SON * 100).toFixed(2)}%`);
-}
-
-function afficherDistance() {
-  const km = distanceTotale / 1000;
-  const m = distanceTotale;
-  const mm = m * 1000;
-  const secLumiere = m / VITESSE_LUMIERE;
-  const al = secLumiere / ANNEE_LUMIERE_SECONDES;
-
-  // Affichage Distance
-  safeSetText('distance', `Distance : ${km.toFixed(3)} km | ${m.toFixed(0)} m | ${mm.toFixed(0)} mm`);
-  safeSetText('distance-cosmique', `Distance cosmique : ${secLumiere.toFixed(3)} s lumière | ${al.toExponential(3)} al`);
-}
-
-function afficherTemps() {
-  if (!tempsDebut) return;
-  const tempsEcoule = (Date.now() - tempsDebut) / 1000;
-  safeSetText('temps', `Temps : ${tempsEcoule.toFixed(2)} s`);
-}
-
-function afficherGPS(g) {
-  safeSetText('gps', `GPS : Latitude : ${g.latitude.toFixed(6)} | Longitude : ${g.longitude.toFixed(6)} | Altitude : ${g.altitude?.toFixed(0)??'--'} m | Précision GPS : ${g.accuracy?.toFixed(0)??'--'} m`);
-}
-
-
-// ========================
-// GESTION DU COCKPIT
-// ========================
-
-function demarrerCockpit() {
-  if (!("geolocation" in navigator)) {
-    safeSetText('gps', 'GPS non disponible');
-    return;
-  }
-  if (watchId !== null) return;
-
-  // Démarrage du chronomètre
-  tempsDebut = Date.now();
-  intervalleTemps = setInterval(afficherTemps, 100);
-
-  // Démarrage de la surveillance GPS
-  watchId = navigator.geolocation.watchPosition(
-    miseAJourVitesse,
-    err => {
-      console.warn('GPS refusé ou erreur', err);
-      safeSetText('gps', 'Erreur GPS: ' + err.code);
-    }, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000
-    }
-  );
-  
-  // Démarrage des capteurs
-  activerCapteurs();
-
-  // Mise à jour de l'interface
-  document.getElementById('marche').textContent = '▶️ En cours...';
-  document.getElementById('marche').classList.remove('pulsation');
-  document.getElementById('stop').classList.add('pulsation');
-}
-
-function arreterCockpit() {
-  // Arrêt du GPS et du chronomètre
-  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-  if (intervalleTemps !== null) clearInterval(intervalleTemps);
-  
-  watchId = null;
-  intervalleTemps = null;
-  positionPrecedente = null;
-
-  // Mise à jour de l'interface
-  document.getElementById('marche').textContent = '▶️ Marche';
-  document.getElementById('marche').classList.add('pulsation');
-  document.getElementById('stop').classList.remove('pulsation');
-}
-
-function resetCockpit() {
-  arreterCockpit(); // Arrête tout d'abord
-  
-  // Réinitialisation des variables
-  vitesseMax = 0;
-  vitesses = [];
-  distanceTotale = 0;
-  tempsDebut = null;
-
-  // Réinitialisation des affichages
-  const defaultGPS = 'GPS : --';
-  safeSetText('temps', 'Temps : 0.00 s');
-  afficherVitesse(0);
-  afficherDistance();
-  safeSetText('gps', defaultGPS);
-  
-  // Réinitialisation des capteurs virtuels/physiques
-  capteursEtat = { niveauBulle: '--', lumiere: '--', son: '--', magnetisme: '--' };
-  afficherCapteurs();
-}
-
-// ========================
-// AFFICHAGE CAPTEURS PHYSIQUES
-// (Les fonctions suivantes sont conservées/adaptées pour la démo)
-// ========================
-
-function afficherCapteurs() {
-  safeSetText('capteurs', 
-    `Lumière : ${capteursEtat.lumiere} lux | Son : ${capteursEtat.son} dB | Niveau : ${capteursEtat.niveauBulle}° | Gyro : -- | Magnétomètre : ${capteursEtat.magnetisme} µT | Batterie : --% | Réseau : --`
-  );
-}
-
-async function activerCapteurs(){
-  afficherCapteurs(); 
-
-  if (!('AmbientLightSensor' in window)) capteursEtat.lumiere = 'Simul';
-  if (!('Magnetometer' in window)) capteursEtat.magnetisme = 'Simul';
-  if (typeof DeviceOrientationEvent === 'undefined') capteursEtat.niveauBulle = 'Simul';
-
-}
-
-function activerHorloge(){
-  function loop(){
-    const t=new Date();
-    safeSetText('horloge', `⏰ ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`);
-    requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
-}
-
-function afficherMedaillon(){
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  resetCockpit(); 
-  afficherMedaillon();
-  activerHorloge();
-
-  document.getElementById('marche').addEventListener('click', demarrerCockpit);
-  document.getElementById('stop').addEventListener('click', arreterCockpit);
-  document.getElementById('reset').addEventListener('click', resetCockpit);
-});
-</script>
+  <script src="cockpit.js"></script>
 </body>
-  </html>
+</html>
