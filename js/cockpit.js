@@ -74,7 +74,7 @@ function afficherVitesse(v_kmh) {
   safeSetText('vitesse', `Vitesse instantanée : ${v_kmh.toFixed(4)} km/h`);
   safeSetText('vitesse-moy', `Vitesse moyenne : ${moyenne_kmh.toFixed(4)} km/h`);
   safeSetText('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(4)} km/h`);
-  safeSetText('vitesse-ms', `Vitesse : ${mps.toFixed(4)} m/s | ${mmps.toFixed(2)} mm/s`);
+  safeSetText('vitesse-ms', `Vitesse : ${mps.toFixed(4)} m/s | ${mmps.toFixed(3)} mm/s`);
 
   // Affichage Pourcentage
   safeSetText('pourcentage', `% Lumière : ${(mps / VITESSE_LUMIERE * 100).toExponential(2)}% | % Son : ${(mps / VITESSE_SON * 100).toFixed(2)}%`);
