@@ -1,107 +1,119 @@
-let watchId = null;
-let prevPos = null;
-let distanceTotale = 0;
-let vitesses = [];
+// Carte Leaflet
+var map = L.map('map').setView([48.8566,2.3522], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+var marker = L.marker([48.8566,2.3522]).addTo(map);
 
-// Met à jour le DOM
-function set(id, txt) {
-  const el = document.getElementById(id);
-  if(el) el.textContent = txt;
+// Variables simulation
+var startTime = Date.now(), totalDistance=0, speedMax=0, lat=48.8566, lon=2.3522;
+
+// Horloge Minecraft
+function mcClock(){
+    let now = new Date();
+    let ticks = Math.floor(now.getTime()/50);
+    let hours = Math.floor(ticks/1000)%24;
+    let minutes = Math.floor((ticks%1000)/1000*60);
+    let seconds = Math.floor(((ticks%1000)/1000*60)%60);
+    document.getElementById('mcClock').textContent =
+      `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
 }
 
-// Démarrer la collecte de données
-export function demarrer() {
-  if(!navigator.geolocation) return set("gps","GPS non disponible");
+// Mise à jour dynamique
+function updateData(){
+    var now = Date.now();
+    var elapsed = (now - startTime)/1000;
+    document.getElementById('time').textContent = elapsed.toFixed(2);
 
-  distanceTotale = 0; vitesses = []; prevPos = null;
+    // GPS simulation
+    lat += (Math.random()-0.5)/1000;
+    lon += (Math.random()-0.5)/1000;
+    marker.setLatLng([lat,lon]);
+    document.getElementById('lat').textContent = lat.toFixed(6);
+    document.getElementById('lon').textContent = lon.toFixed(6);
+    var alt = 30 + Math.random()*10;
+    document.getElementById('alt').textContent = alt.toFixed(1);
+    document.getElementById('gpsAcc').textContent = (90+Math.random()*10).toFixed(0);
 
-  // GPS / Vitesse
-  watchId = navigator.geolocation.watchPosition(onPosition, onError, {
-    enableHighAccuracy: true,
-    maximumAge: 0,
-    timeout: 20000
-  });
+    // Vitesse
+    var speed = Math.random()*50;
+    document.getElementById('speed').textContent = speed.toFixed(1);
+    speedMax = Math.max(speedMax, speed);
+    document.getElementById('speedMax').textContent = speedMax.toFixed(1);
+    totalDistance += speed*1000/3600;
+    document.getElementById('distanceKm').textContent = (totalDistance/1000).toFixed(3);
+    document.getElementById('distanceM').textContent = totalDistance.toFixed(1);
+    document.getElementById('distanceMm').textContent = (totalDistance*1000).toFixed(0);
+    document.getElementById('distanceLightS').textContent = (totalDistance/299792458).toFixed(6);
+    document.getElementById('distanceAL').textContent = (totalDistance/9.461e15).toExponential(3);
 
-  // Orientation et mouvement
-  if(window.DeviceOrientationEvent) {
-    window.addEventListener('deviceorientation', e=>{
-      const alpha = e.alpha?.toFixed(1) ?? "--";
-      const beta = e.beta?.toFixed(1) ?? "--";
-      const gamma = e.gamma?.toFixed(1) ?? "--";
-      set("orientation", `Orientation : α=${alpha} β=${beta} γ=${gamma} (Magnétomètre + Gyroscope)`);
-    });
-  }
+    // IMU simulation
+    document.getElementById('ax').textContent = (Math.random()*2-1).toFixed(2);
+    document.getElementById('ay').textContent = (Math.random()*2-1).toFixed(2);
+    document.getElementById('az').textContent = (9.8+(Math.random()-0.5)).toFixed(2);
+    document.getElementById('gx').textContent = (Math.random()*2-1).toFixed(2);
+    document.getElementById('gy').textContent = (Math.random()*2-1).toFixed(2);
+    document.getElementById('gz').textContent = (Math.random()*2-1).toFixed(2);
+    document.getElementById('heading').textContent = Math.floor(Math.random()*360);
+    document.getElementById('mx').textContent = (Math.random()*50-25).toFixed(1);
+    document.getElementById('my').textContent = (Math.random()*50-25).toFixed(1);
+    document.getElementById('mz').textContent = (Math.random()*50-25).toFixed(1);
 
-  if(window.DeviceMotionEvent) {
-    window.addEventListener('devicemotion', e=>{
-      const ax = e.acceleration?.x?.toFixed(2) ?? 0;
-      const ay = e.acceleration?.y?.toFixed(2) ?? 0;
-      const az = e.acceleration?.z?.toFixed(2) ?? 0;
-      set("acceleration", `Accélération : x=${ax} y=${ay} z=${az} (IMU)`);
-    });
-  }
+    // Météo simulation
+    document.getElementById('temp').textContent = (20+Math.random()*5).toFixed(1);
+    document.getElementById('pressure').textContent = (1010+Math.random()*5).toFixed(1);
+    document.getElementById('hum').textContent = (40+Math.random()*20).toFixed(0);
+    document.getElementById('wind').textContent = (Math.random()*20).toFixed(0);
+    document.getElementById('clouds').textContent = (Math.random()*100).toFixed(0);
+    document.getElementById('rain').textContent = (Math.random()*5).toFixed(1);
+    document.getElementById('snow').textContent = (Math.random()*2).toFixed(1);
+    document.getElementById('uv').textContent = (Math.random()*12).toFixed(1);
+    document.getElementById('airQuality').textContent = Math.floor(Math.random()*500);
+    document.getElementById('boilPoint').textContent = (100+Math.random()*5).toFixed(1);
 
-  // Lumière
-  if('AmbientLightSensor' in window){
-    const sensor = new AmbientLightSensor();
-    sensor.addEventListener('reading', ()=>set("lumiere", `Luminosité : ${sensor.illuminance} lx (Capteur lumière)`));
-    sensor.start();
-  }
+    // Soleil & Lune simulation
+    document.getElementById('sunCul').textContent = '12:30';
+    document.getElementById('trueSolar').textContent = '12:28';
+    document.getElementById('meanSolar').textContent = '12:30';
+    document.getElementById('eqTime').textContent = '+/- 1.5 min';
+    document.getElementById('moonPhase').textContent = (Math.random()*100).toFixed(0);
+    document.getElementById('moonMag').textContent = (Math.random()*1).toFixed(2);
+    document.getElementById('moonRise').textContent = '20:15';
+    document.getElementById('moonSet').textContent = '06:05';
+    document.getElementById('moonCul').textContent = '01:45';
+
+    // Capteurs supplémentaires
+    document.getElementById('level').textContent = (Math.random()*5-2.5).toFixed(2);
+    document.getElementById('lux').textContent = (Math.random()*1000).toFixed(0);
+    document.getElementById('dB').textContent = (30+Math.random()*50).toFixed(1);
+    document.getElementById('freq').textContent = (Math.random()*2000).toFixed(0);
+
+    mcClock();
+    drawSismograph();
+    drawAttitude();
+}
+setInterval(updateData,1000);
+
+// Sismogramme
+var seisCanvas = document.getElementById('seis');
+var seisCtx = seisCanvas.getContext('2d');
+function drawSismograph(){
+    seisCtx.clearRect(0,0,seisCanvas.width,seisCanvas.height);
+    seisCtx.beginPath();
+    for(let i=0;i<seisCanvas.width;i+=2){
+        let y = seisCanvas.height/2 + Math.sin(Date.now()/500 + i/10)*30;
+        if(i===0) seisCtx.moveTo(i,y); else seisCtx.lineTo(i,y);
+    }
+    seisCtx.strokeStyle='red';
+    seisCtx.stroke();
 }
 
-// Stop GPS et capteurs
-export function stop() {
-  if(watchId!==null){
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-  }
-}
-
-// Reset
-export function resetAll() {
-  stop();
-  prevPos=null; distanceTotale=0; vitesses=[];
-  const ids = ["gps","latitude","longitude","altitude","vitesse","vitesse-moy","distance","orientation","acceleration","lumiere"];
-  for(const id of ids) set(id, `${id} : --`);
-}
-
-// Callback GPS
-function onPosition(pos){
-  const c = pos.coords;
-  set("gps", `GPS précision : ${c.accuracy.toFixed(1)} m`);
-  set("latitude", `Latitude : ${c.latitude.toFixed(6)} (GPS)`);
-  set("longitude", `Longitude : ${c.longitude.toFixed(6)} (GPS)`);
-  set("altitude", `Altitude : ${c.altitude?.toFixed(1) ?? "--"} m (GPS + Baromètre)`);
-
-  if(prevPos){
-    const dt = Math.max((pos.timestamp-prevPos.timestamp)/1000,0.001);
-    const d = calculerDistance(prevPos,c);
-    distanceTotale += d;
-    const v = (d/dt)*3.6;
-    vitesses.push(v);
-    if(vitesses.length>1000) vitesses.shift();
-    const moy = vitesses.reduce((a,b)=>a+b,0)/vitesses.length;
-
-    set("vitesse", `Vitesse : ${v.toFixed(2)} km/h (GPS + IMU)`);
-    set("vitesse-moy", `Vitesse moyenne : ${moy.toFixed(2)} km/h`);
-    set("distance", `Distance : ${distanceTotale.toFixed(1)} m`);
-  }
-
-  prevPos = {...c, timestamp: pos.timestamp};
-}
-
-function onError(err){
-  set("gps", `Erreur GPS : ${err.message}`);
-}
-
-// Calcul distance en mètres (Haversine)
-function calculerDistance(a,b){
-  const R = 6371e3;
-  const φ1 = a.latitude*Math.PI/180;
-  const φ2 = b.latitude*Math.PI/180;
-  const Δφ=(b.latitude-a.latitude)*Math.PI/180;
-  const Δλ=(b.longitude-a.longitude)*Math.PI/180;
-  const s = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
-        }
-                            
+// Attitude IMU
+var attCanvas = document.getElementById('attitude');
+var attCtx = attCanvas.getContext('2d');
+function drawAttitude(){
+    attCtx.clearRect(0,0,attCanvas.width,attCanvas.height);
+    let pitch = parseFloat(document.getElementById('ax').textContent);
+    let roll = parseFloat(document.getElementById('ay').textContent);
+    attCtx.fillStyle='blue';
+    attCtx.fillRect(attCanvas.width/2 + roll*5, attCanvas.height/2 + pitch*5, 50, 5);
+      }
+                                                 
