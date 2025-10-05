@@ -1,72 +1,132 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<title>Cockpit Scientifique Live</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>
-body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; }
-.card { background: #fff; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 15px; margin-bottom: 20px; }
-h2, h3 { margin: 0 0 10px 0; }
-#map { width: 100%; height: 300px; margin-bottom:10px; }
-canvas { width: 100%; height: 180px; background: #fafafa; margin-bottom:10px; }
-.small { font-size: 0.85rem; color: #555; }
-button { padding: 5px 10px; border-radius: 5px; border: none; background: #007BFF; color: #fff; cursor: pointer; margin-right:5px; }
-button:hover { background: #0056b3; }
-</style>
-</head>
-<body>
-<h2>Full Cockpit Scientifique Live</h2>
+// Carte Leaflet
+var map = L.map('map').setView([48.8566,2.3522], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+var marker=L.marker([48.8566,2.3522]).addTo(map);
+var polyline=L.polyline([], {color:'blue'}).addTo(map);
 
-<div class="card">
-<h3>Carte GPS & Trajectoire</h3>
-<div id="map"></div>
-<p class="small">
-Lat: <span id="lat">—</span>, Lon: <span id="lon">—</span>, Alt: <span id="alt">—</span><br>
-Précision GPS: <span id="gpsAcc">—</span> m<br>
-Vitesse instantanée: <span id="speed">—</span> km/h, Vitesse max: <span id="speedMax">—</span> km/h<br>
-Distance: <span id="distanceKm">—</span> km
-</p>
-<button id="toggleBtn">Arrêt</button>
-<button id="resetBtn">Réinitialiser</button>
-<button id="bleBtn">Connecter BLE/UWB</button>
-</div>
+// Variables
+let running=true;
+let startTime=Date.now();
+let prevLat=48.8566, prevLon=2.3522;
+let totalDistance=0, speedMax=0;
+let lastGPS=Date.now();
+let lastAccel={x:0,y:0};
+let velocity={x:0,y:0};
+let uwbPos=null;
+let tempData=[], speedData=[];
 
-<div class="card">
-<h3>Horloge Minecraft</h3>
-<p class="small">
-<time id="mcClock">00:00:00</time>
-</p>
-</div>
+// Boutons
+document.getElementById('toggleBtn').addEventListener('click', ()=>{running=!running; document.getElementById('toggleBtn').textContent=running?'Arrêt':'Marche';});
+document.getElementById('resetBtn').addEventListener('click', ()=>{totalDistance=0; speedMax=0; prevLat=48.8566; prevLon=2.3522; velocity={x:0,y:0}; document.getElementById('speed').textContent='0'; document.getElementById('speedMax').textContent='0'; document.getElementById('distanceKm').textContent='0'; polyline.setLatLngs([]); tempData=[]; speedData=[]; chart.update();});
+document.getElementById('bleBtn').addEventListener('click', connectBLE);
 
-<div class="card">
-<h3>Météo & Environnement</h3>
-<p class="small">
-Temp: <span id="temp">—</span> °C, Pression: <span id="pressure">—</span> hPa, Humidité: <span id="hum">—</span>%<br>
-Vent: <span id="wind">—</span> km/h
-</p>
-<canvas id="tempChart"></canvas>
-</div>
+// Dead Reckoning
+window.addEventListener('devicemotion', e=>{lastAccel.x=e.accelerationIncludingGravity.x||0; lastAccel.y=e.accelerationIncludingGravity.y||0;});
 
-<div class="card">
-<h3>IMU & Capteurs internes</h3>
-<p class="small">
-Accel X: <span id="ax">—</span>, Y: <span id="ay">—</span>, Z: <span id="az">—</span><br>
-Gyro X: <span id="gx">—</span>, Y: <span id="gy">—</span>, Z: <span id="gz">—</span><br>
-Magnétomètre X: <span id="mx">—</span>, Y: <span id="my">—</span>, Z: <span id="mz">—</span><br>
-Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB
-</p>
-<canvas id="attitude"></canvas>
-</div>
+// Update position avec correction UWB
+function updatePosition(deltaTime){
+    velocity.x += lastAccel.x*deltaTime;
+    velocity.y += lastAccel.y*deltaTime;
 
-<div class="card">
-<h3>Sismogramme</h3>
-<canvas id="seis"></canvas>
-</div>
+    let dLat=(velocity.y*deltaTime)/111000;
+    let dLon=(velocity.x*deltaTime)/(111000*Math.cos(prevLat*Math.PI/180));
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="script.js"></script>
-</body>
-</html>
-       
+    prevLat+=dLat; prevLon+=dLon;
+    totalDistance+=Math.sqrt((dLat*111000)**2 + (dLon*111000*Math.cos(prevLat*Math.PI/180))**2);
+
+    if(uwbPos){
+        const alpha=0.3;
+        prevLat=prevLat*(1-alpha)+uwbPos.lat*alpha;
+        prevLon=prevLon*(1-alpha)+uwbPos.lon*alpha;
+    }
+
+    marker.setLatLng([prevLat, prevLon]);
+    polyline.addLatLng([prevLat, prevLon]);
+    document.getElementById('lat').textContent=prevLat.toFixed(6);
+    document.getElementById('lon').textContent=prevLon.toFixed(6);
+    document.getElementById('distanceKm').textContent=(totalDistance/1000).toFixed(3);
+    let speed=Math.sqrt(velocity.x**2+velocity.y**2);
+    speedMax=Math.max(speedMax,speed);
+    document.getElementById('speed').textContent=(speed*3.6).toFixed(1);
+    document.getElementById('speedMax').textContent=(speedMax*3.6).toFixed(1);
+    speedData.push(speed*3.6);
+}
+
+// GPS réel navigateur
+function updateGPS(){
+    if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(pos=>{
+            prevLat=pos.coords.latitude; prevLon=pos.coords.longitude;
+            lastGPS=Date.now();
+            document.getElementById('lat').textContent=prevLat.toFixed(6);
+            document.getElementById('lon').textContent=prevLon.toFixed(6);
+            document.getElementById('alt').textContent=(pos.coords.altitude||0).toFixed(1);
+            document.getElementById('gpsAcc').textContent=pos.coords.accuracy.toFixed(1);
+            marker.setLatLng([prevLat,prevLon]);
+            polyline.addLatLng([prevLat,prevLon]);
+        });
+    }
+}
+
+// BLE/UWB
+async function connectBLE(){
+    try{
+        const device=await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:['battery_service']});
+        const server=await device.gatt.connect();
+        const service=await server.getPrimaryService('battery_service');
+        const char=await service.getCharacteristic('battery_level');
+        char.startNotifications().then(c=>{
+            c.addEventListener('characteristicvaluechanged', e=>{
+                const val=e.target.value.getUint8(0);
+                uwbPos={lat:48.8566+val*0.00001, lon:2.3522+val*0.00001};
+                document.getElementById('mx').textContent=val;
+            });
+        });
+    }catch(e){console.log(e); document.getElementById('headingDest').textContent='BLE erreur';}
+}
+
+// Horloge Minecraft
+function mcClock(){let now=new Date(); let ticks=Math.floor(now.getTime()/50); let h=Math.floor(ticks/1000)%24; let m=Math.floor((ticks%1000)/1000*60); let s=Math.floor(((ticks%1000)/1000*60)%60); document.getElementById('mcClock').textContent=`${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;}
+
+// Canvas sismogramme et attitude
+var seisCanvas=document.getElementById('seis'); var seisCtx=seisCanvas.getContext('2d');
+function drawSismograph(){seisCtx.clearRect(0,0,seisCanvas.width,seisCanvas.height); seisCtx.beginPath(); for(let i=0;i<seisCanvas.width;i+=2){let y=seisCanvas.height/2+Math.sin(Date.now()/500+i/10)*30; if(i===0) seisCtx.moveTo(i,y); else seisCtx.lineTo(i,y);} seisCtx.strokeStyle='red'; seisCtx.stroke();}
+var attCanvas=document.getElementById('attitude'); var attCtx=attCanvas.getContext('2d');
+function drawAttitude(){attCtx.clearRect(0,0,attCanvas.width,attCanvas.height); let pitch=parseFloat(document.getElementById('ax').textContent)||0; let roll=parseFloat(document.getElementById('ay').textContent)||0; attCtx.fillStyle='blue'; attCtx.fillRect(attCanvas.width/2+roll*5, attCanvas.height/2+pitch*5,50,5);}
+
+// Chart.js
+var ctx=document.getElementById('tempChart').getContext('2d');
+var chart=new Chart(ctx,{type:'line',data:{labels:[],datasets:[{label:'Temp °C',data:tempData,borderColor:'red',fill:false},{label:'Vitesse km/h',data:speedData,borderColor:'blue',fill:false}]},options:{animation:false,scales:{x:{display:false}}}});
+
+// Mise à jour capteurs
+let lastUpdate=Date.now();
+function updateAll(){
+    if(!running) return;
+    let now=Date.now();
+    let deltaTime=(now-lastUpdate)/1000;
+    lastUpdate=now;
+
+    mcClock(); drawSismograph(); drawAttitude();
+    updateGPS();
+    if(Date.now()-lastGPS>1000) updatePosition(deltaTime);
+
+    // IMU, lumière, son (AmbientLightSensor et microphone)
+    if('AmbientLightSensor' in window){let sensor=new AmbientLightSensor(); sensor.addEventListener('reading',()=>document.getElementById('lux').textContent=sensor.illuminance.toFixed(0)); sensor.start();}
+    if(navigator.mediaDevices){navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{let context=new AudioContext(); let source=context.createMediaStreamSource(stream); let analyser=context.createAnalyser(); source.connect(analyser); analyser.fftSize=256; let dataArray=new Uint8Array(analyser.frequencyBinCount); function updateSound(){analyser.getByteFrequencyData(dataArray); let avg=dataArray.reduce((a,b)=>a+b)/dataArray.length; document.getElementById('dB').textContent=avg.toFixed(1); requestAnimationFrame(updateSound);} updateSound();}).catch(()=>{document.getElementById('dB').textContent='—';});}
+
+    // Météo API
+    let latC=prevLat??48.8566, lonC=prevLon??2.3522;
+    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${latC}&lon=${lonC}&units=metric&appid=YOUR_API_KEY`).then(res=>res.json()).then(data=>{
+        document.getElementById('temp').textContent=data.main.temp.toFixed(1);
+        document.getElementById('pressure').textContent=data.main.pressure;
+        document.getElementById('hum').textContent=data.main.humidity;
+        document.getElementById('wind').textContent=data.wind.speed;
+        tempData.push(data.main.temp);
+        if(tempData.length>50){tempData.shift(); speedData.shift();}
+        chart.update();
+    }).catch(()=>{});
+
+}
+
+setInterval(updateAll,1000);
+               
