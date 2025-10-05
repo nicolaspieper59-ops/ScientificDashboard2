@@ -47,7 +47,8 @@ function safeDisplay(id, displayStyle) {
 function haversine(lat1, lon1, lat2, lon2) {
     // Rayon de la Terre en kilomètres
     const R = 6371; 
-    return 0.01; // Simuler une petite distance pour ne pas bloquer le script
+    // Calcul réel omis pour la concision du script, simule une petite distance:
+    return 0.01; 
 }
 
 // ========================
@@ -56,10 +57,12 @@ function haversine(lat1, lon1, lat2, lon2) {
 
 // Fonction de gestion de l'orientation (Boussole)
 function handleOrientation(event) {
-    let alpha = event.webkitCompassHeading || event.alpha; // Pour iOS et Android
+    // Utilisez event.webkitCompassHeading pour iOS ou event.alpha pour Android/autres
+    let alpha = event.webkitCompassHeading || event.alpha; 
     if (alpha !== null) {
-        // Le Nord vrai peut nécessiter des corrections pour la déclinaison magnétique
-        safeSetText('compass-display', `Boussole (Nord Vrai) : ${alpha.toFixed(2)}°`);
+        // Normaliser l'angle si alpha est utilisé (0-360)
+        let heading = alpha ? (360 - alpha) % 360 : 0; 
+        safeSetText('compass-display', `Boussole (Nord Vrai) : ${heading.toFixed(2)}°`);
     } else {
         safeSetText('compass-display', 'Boussole (Nord Vrai) : **ERREUR CAPTEUR**');
     }
@@ -111,14 +114,12 @@ function miseAJourVitesse(position) {
         updateNavigation({latitude: lat, longitude: lon}, targetCoords);
 
         // Mise à jour des grandeurs
-        // Estimation simple de l'énergie cinétique (masse fixe arbitraire de 1000kg)
-        const masseKg = 1000;
+        const masseKg = 1000; // Masse fixe arbitraire
         const energieJ = 0.5 * masseKg * vitesseInstMS * vitesseInstMS;
         safeSetText('grandeurs', `Pression Est. : 1013 hPa | Énergie cinétique Est. : ${energieJ.toExponential(2)} J`);
 
     }
     
-    // Mise à jour de la position précédente
     positionPrecedente = { 
         latitude: lat, 
         longitude: lon, 
@@ -128,9 +129,8 @@ function miseAJourVitesse(position) {
 
 // Fonction de mise à jour de la navigation vers la cible
 function updateNavigation(currentPos, targetPos) {
-    // Calcul de la distance et du relèvement (bearing)
     const distance = haversine(currentPos.latitude, currentPos.longitude, targetPos.latitude, targetPos.longitude);
-    const bearing = 0; // Calcul réel omis pour la concision
+    const bearing = 0; // Calcul réel omis
 
     safeSetText('bearing-display', `Relèvement vers la cible : ${bearing.toFixed(2)}° | Distance : ${distance.toFixed(3)} km`);
 }
@@ -159,18 +159,16 @@ function activerHorlogeSolaire(lat, lon) {
         ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
         ctx.stroke();
 
-        // Affichage Jour/Nuit
         let phaseText = 'Jour';
         let color = '#ffd700';
-        let angle = 0; // 0 à 1 (midi)
-
+        
         if (timeOfDay > 0.8 || timeOfDay < 0.2) {
             phaseText = 'Nuit';
             color = '#00ffcc';
         }
         
         // Rotation de l'aiguille (0.5 = midi, 0.0 = minuit)
-        angle = (timeOfDay * 2 * Math.PI) - (Math.PI / 2);
+        let angle = (timeOfDay * 2 * Math.PI) - (Math.PI / 2);
 
         // Soleil/Lune
         ctx.fillStyle = color;
@@ -197,7 +195,6 @@ function activerHorlogeSolaire(lat, lon) {
         safeSetText('heure-vraie', `Heure Solaire Vraie : ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
         safeSetText('heure-moyenne', `Heure Solaire Moyenne : ${((now.getHours() + 12) % 24).toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
         safeSetText('lune-phase', `Phase Lune : ${timeOfDay < 0.5 ? 'Croissant' : 'Décroissant'} (Sim.)`);
-        // Le reste des données célestes reste en simulation
         safeSetText('soleil-lever', 'Lever Soleil HSLV : 06:00 | HSML : 07:00');
         safeSetText('soleil-coucher', 'Coucher Soleil HSLV : 18:00 | HSML : 19:00');
         safeSetText('lune-lever', 'Lever Lune HSLV : 00:00 | HSML : 01:00');
@@ -221,7 +218,7 @@ function requestSensorAccess() {
         DeviceOrientationEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
-                    // On peut ajouter l'écouteur après l'accord
+                    // On ajoute l'écouteur après l'accord
                     window.addEventListener('deviceorientation', handleOrientation, true);
                     console.log("Permission DeviceOrientation accordée.");
                     button.textContent = "✅ Capteurs/Boussole ON";
@@ -246,7 +243,6 @@ function requestSensorAccess() {
         button.style.borderColor = "#00ff45";
     } else {
         // 3. API non supportée du tout
-        alert("Device Orientation API non supportée ou vous n'êtes pas en HTTPS.");
         safeSetText('compass-display', 'Boussole (Nord Vrai) : **HTTPS/API MANQUANTE**');
         button.textContent = "❌ Capteurs/Boussole Indisponible";
     }
@@ -261,14 +257,13 @@ function requestSensorAccess() {
 function demarrerCockpit() {
     if (watchId !== null) return; // Déjà en cours
     
-    // *** CORRECTION HTTPS : La géolocalisation exige HTTPS ***
+    // *** VÉRIFICATION HTTPS : OBLIGATOIRE POUR LA GÉOLOCALISATION ***
     if (window.location.protocol !== 'https:') {
         alert("⚠️ Le GPS et les capteurs exigent une connexion sécurisée (HTTPS). Veuillez charger la page via HTTPS.");
         safeSetText('gps', 'GPS : **HTTPS REQUIS**');
         return; 
     }
     
-    // Réinitialiser les données de temps si c'est la première exécution ou après un arrêt
     if (tempsDebut === null) {
         tempsDebut = Date.now(); 
         distanceTotale = 0;
@@ -276,7 +271,6 @@ function demarrerCockpit() {
         vitesses = [];
     }
     
-    // Options de géolocalisation pour un suivi précis
     const options = {
         enableHighAccuracy: true,
         timeout: 5000,
@@ -293,10 +287,8 @@ function demarrerCockpit() {
         options
     );
     
-    // Démarrer la mise à jour du temps et de l'horloge système
     intervalleTemps = setInterval(updateSystemClock, 1000);
     
-    // Activer l'horloge solaire
     activerHorlogeSolaire(positionPrecedente?.latitude || DEFAULT_LATITUDE, positionPrecedente?.longitude || DEFAULT_LONGITUDE);
     
     document.getElementById('marche').classList.add('pulsation');
@@ -318,14 +310,12 @@ function arreterCockpit() {
 function resetCockpit() {
     arreterCockpit();
     
-    // Réinitialisation de toutes les variables d'état
     positionPrecedente = null;
     vitesseMax = 0;
     vitesses = []; 
     distanceTotale = 0;
     tempsDebut = null; 
     
-    // Réinitialisation de l'affichage
     safeSetText('temps', 'Temps : 0.00 s');
     safeSetText('vitesse', 'Vitesse instantanée : -- km/h');
     safeSetText('vitesse-moy', 'Vitesse moyenne : -- km/h');
@@ -341,7 +331,7 @@ function resetCockpit() {
 }
 
 // ========================
-// GESTION DES BOUTONS
+// GESTION DES BOUTONS ET HORLOGES
 // ========================
 
 function toggleModeSouterrain() {
@@ -406,10 +396,8 @@ function updateSystemClock() {
 }
 
 function updateCapteursSimules() {
-    // Simulation simple de la batterie
     let bat_level = Math.floor(Math.random() * 50) + 50; 
     
-    // Le code navigator.getBattery() est asynchrone et peut ne pas être supporté
     if ('getBattery' in navigator) {
         navigator.getBattery().then(battery => {
             bat_level = Math.floor(battery.level * 100);
@@ -425,45 +413,38 @@ function updateCapteursSimules() {
 // ========================
 
 function initialiser() {
-    // 1. Initialiser l'affichage de l'horloge au démarrage
     updateSystemClock(); 
     
-    // 2. Écouteurs d'événements pour les boutons
+    // Écouteurs d'événements pour les boutons
     document.getElementById('marche').addEventListener('click', demarrerCockpit);
     document.getElementById('stop').addEventListener('click', arreterCockpit);
     document.getElementById('reset').addEventListener('click', resetCockpit);
     document.getElementById('toggle-souterrain').addEventListener('click', toggleModeSouterrain);
     document.getElementById('toggle-rituel').addEventListener('click', toggleRituel);
     document.getElementById('set-target').addEventListener('click', setTargetCoords);
-    
-    // NOUVEL ÉCOUTEUR pour les permissions des capteurs
     document.getElementById('request-sensor-access').addEventListener('click', requestSensorAccess);
 
-    // 3. Gestion de l'écouteur de la boussole (DeviceOrientation)
-    // Si la fonction de demande de permission existe (iOS), on attend le clic utilisateur.
+    // Initialisation conditionnelle de la boussole
+    const sensorButton = document.getElementById('request-sensor-access');
+    
     if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // La boussole sera activée via le clic sur le bouton 'request-sensor-access'
+        // iOS/Navigateurs nécessitant une demande de permission explicite
         safeSetText('compass-display', 'Boussole (Nord Vrai) : **CLIC 🔑 REQUIS**');
-    } 
-    // Si la fonction de demande n'existe pas mais l'API est là (Android/Desktop en HTTPS)
-    else if (window.DeviceOrientationEvent) {
+    } else if (window.DeviceOrientationEvent) {
+        // Android/Desktop - pas de demande explicite nécessaire
         window.addEventListener('deviceorientation', handleOrientation, true);
-        document.getElementById('request-sensor-access').textContent = "✅ Capteurs/Boussole ON";
-        document.getElementById('request-sensor-access').style.background = "#004400";
-        document.getElementById('request-sensor-access').style.borderColor = "#00ff45";
-        document.getElementById('request-sensor-access').disabled = true;
-    } 
-    // Sinon, l'API n'est pas supportée
-    else {
+        sensorButton.textContent = "✅ Capteurs/Boussole ON";
+        sensorButton.style.background = "#004400";
+        sensorButton.style.borderColor = "#00ff45";
+        sensorButton.disabled = true;
+    } else {
+        // API non supportée
         safeSetText('compass-display', 'Boussole (Nord Vrai) : **NON DISPONIBLE**');
-        document.getElementById('request-sensor-access').textContent = "❌ Capteurs/Boussole Indisponible";
-        document.getElementById('request-sensor-access').disabled = true;
+        sensorButton.textContent = "❌ Capteurs/Boussole Indisponible";
+        sensorButton.disabled = true;
     }
     
-    // 4. Initialiser la montre Minecraft et les heures solaires
     activerHorlogeSolaire(DEFAULT_LATITUDE, DEFAULT_LONGITUDE);
-    
-    // 5. Initialiser les capteurs (une première fois)
     updateCapteursSimules();
 }
 
