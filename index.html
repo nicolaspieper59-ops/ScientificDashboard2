@@ -8,75 +8,52 @@
 body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; }
 .card { background: #fff; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 15px; margin-bottom: 20px; }
 h2, h3 { margin: 0 0 10px 0; }
-#map { width: 100%; height: 300px; }
-canvas { width: 100%; height: 180px; background: #fafafa; }
+#map { width: 100%; height: 300px; margin-bottom:10px; }
+canvas { width: 100%; height: 180px; background: #fafafa; margin-bottom:10px; }
 .small { font-size: 0.85rem; color: #555; }
 button { padding: 5px 10px; border-radius: 5px; border: none; background: #007BFF; color: #fff; cursor: pointer; }
 button:hover { background: #0056b3; }
 </style>
 </head>
 <body>
-<h2>Full Cockpit Scientifique</h2>
+<h2>Full Cockpit Scientifique Live</h2>
 
 <div class="card">
-<h3>Carte GPS & Position</h3>
+<h3>Carte GPS & Trajectoire</h3>
 <div id="map"></div>
 <p class="small">
 Lat: <span id="lat">—</span>, Lon: <span id="lon">—</span>, Alt: <span id="alt">—</span><br>
 Précision GPS: <span id="gpsAcc">—</span>%<br>
-Vitesse instantanée: <span id="speed">—</span> km/h, Vitesse moyenne: <span id="speedAvg">—</span> km/h, Vitesse max: <span id="speedMax">—</span> km/h
+Vitesse instantanée: <span id="speed">—</span> km/h, Vitesse max: <span id="speedMax">—</span> km/h<br>
+Distance: <span id="distanceKm">—</span> km
 </p>
-<p class="small">
-Distance: <span id="distanceKm">—</span> km | <span id="distanceM">—</span> m | <span id="distanceMm">—</span> mm<br>
-Distance cosmique: <span id="distanceLightS">—</span> s lumière | <span id="distanceAL">—</span> al
-</p>
-</div>
-
-<div class="card">
-<h3>Horloge & Temps</h3>
-<p class="small">
-Temps écoulé: <span id="time">0.00</span> s<br>
-Horloge Minecraft: <span id="mcClock">00:00:00</span><br>
 <button id="toggleBtn">Arrêt</button>
-</p>
+<button id="resetBtn">Réinitialiser</button>
+<button id="bleBtn">Connecter BLE/UWB</button>
 </div>
 
 <div class="card">
-<h3>Soleil & Lune</h3>
+<h3>Horloge Minecraft</h3>
 <p class="small">
-Culmination soleil: <span id="sunCul">—</span><br>
-Heure solaire vraie: <span id="trueSolar">—</span>, Heure solaire moyenne: <span id="meanSolar">—</span><br>
-Équation du temps: <span id="eqTime">—</span><br>
-Phase Lune: <span id="moonPhase">—</span>%<br>
-Magnitude lune: <span id="moonMag">—</span><br>
-Lever lune: <span id="moonRise">—</span>, Coucher lune: <span id="moonSet">—</span>, Culmination lune: <span id="moonCul">—</span>
+<time id="mcClock">00:00:00</time>
 </p>
 </div>
 
 <div class="card">
 <h3>Météo & Environnement</h3>
 <p class="small">
-Température: <span id="temp">—</span> °C, Pression: <span id="pressure">—</span> hPa, Humidité: <span id="hum">—</span>%<br>
-Vent: <span id="wind">—</span> km/h, Nuages: <span id="clouds">—</span>%, Pluie: <span id="rain">—</span> mm, Neige: <span id="snow">—</span> mm<br>
-Indice UV: <span id="uv">—</span>, Qualité air: <span id="airQuality">—</span>, Point ébullition: <span id="boilPoint">—</span> °C
+Temp: <span id="temp">—</span> °C, Pression: <span id="pressure">—</span> hPa, Humidité: <span id="hum">—</span>%<br>
+Vent: <span id="wind">—</span> km/h
 </p>
 </div>
 
 <div class="card">
-<h3>Boussole & Capteurs</h3>
+<h3>IMU & Capteurs internes</h3>
 <p class="small">
-Cap: <span id="heading">—</span>°<br>
-Cap vers destination: <span id="headingDest">—</span>°, Vers lat: <span id="latDest">—</span>, Vers lon: <span id="lonDest">—</span><br>
-Niveau à bulle: <span id="level">—</span>°, Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB, Fréquence: <span id="freq">—</span> Hz
-</p>
-</div>
-
-<div class="card">
-<h3>IMU & Attitude</h3>
-<p class="small">
-Accel (m/s²): X=<span id="ax">—</span> Y=<span id="ay">—</span> Z=<span id="az">—</span><br>
-Gyro (°/s): X=<span id="gx">—</span> Y=<span id="gy">—</span> Z=<span id="gz">—</span><br>
-Magnétomètre: X=<span id="mx">—</span> Y=<span id="my">—</span> Z=<span id="mz">—</span>
+Accel X: <span id="ax">—</span>, Y: <span id="ay">—</span>, Z: <span id="az">—</span><br>
+Gyro X: <span id="gx">—</span>, Y: <span id="gy">—</span>, Z: <span id="gz">—</span><br>
+Magnétomètre X: <span id="mx">—</span>, Y: <span id="my">—</span>, Z: <span id="mz">—</span><br>
+Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB, Fréq: <span id="freq">—</span> Hz
 </p>
 <canvas id="attitude"></canvas>
 </div>
