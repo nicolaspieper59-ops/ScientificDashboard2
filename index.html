@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Full Cockpit Scientifique</title>
+<title>Cockpit Scientifique Live</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; }
@@ -11,7 +11,7 @@ h2, h3 { margin: 0 0 10px 0; }
 #map { width: 100%; height: 300px; margin-bottom:10px; }
 canvas { width: 100%; height: 180px; background: #fafafa; margin-bottom:10px; }
 .small { font-size: 0.85rem; color: #555; }
-button { padding: 5px 10px; border-radius: 5px; border: none; background: #007BFF; color: #fff; cursor: pointer; }
+button { padding: 5px 10px; border-radius: 5px; border: none; background: #007BFF; color: #fff; cursor: pointer; margin-right:5px; }
 button:hover { background: #0056b3; }
 </style>
 </head>
@@ -23,7 +23,7 @@ button:hover { background: #0056b3; }
 <div id="map"></div>
 <p class="small">
 Lat: <span id="lat">—</span>, Lon: <span id="lon">—</span>, Alt: <span id="alt">—</span><br>
-Précision GPS: <span id="gpsAcc">—</span>%<br>
+Précision GPS: <span id="gpsAcc">—</span> m<br>
 Vitesse instantanée: <span id="speed">—</span> km/h, Vitesse max: <span id="speedMax">—</span> km/h<br>
 Distance: <span id="distanceKm">—</span> km
 </p>
@@ -45,6 +45,7 @@ Distance: <span id="distanceKm">—</span> km
 Temp: <span id="temp">—</span> °C, Pression: <span id="pressure">—</span> hPa, Humidité: <span id="hum">—</span>%<br>
 Vent: <span id="wind">—</span> km/h
 </p>
+<canvas id="tempChart"></canvas>
 </div>
 
 <div class="card">
@@ -53,7 +54,7 @@ Vent: <span id="wind">—</span> km/h
 Accel X: <span id="ax">—</span>, Y: <span id="ay">—</span>, Z: <span id="az">—</span><br>
 Gyro X: <span id="gx">—</span>, Y: <span id="gy">—</span>, Z: <span id="gz">—</span><br>
 Magnétomètre X: <span id="mx">—</span>, Y: <span id="my">—</span>, Z: <span id="mz">—</span><br>
-Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB, Fréq: <span id="freq">—</span> Hz
+Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB
 </p>
 <canvas id="attitude"></canvas>
 </div>
@@ -63,6 +64,7 @@ Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB, Fréq
 <canvas id="seis"></canvas>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="script.js"></script>
 </body>
