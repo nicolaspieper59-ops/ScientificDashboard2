@@ -11,7 +11,7 @@
       color: #00ffcc;
       font-family: 'Minecraftia', monospace;
       padding: 10px; 
-      font-size: 0.9em; /* Police plus petite mais lisible */
+      font-size: 0.9em;
       margin: 0;
     }
     h1, h2 {
@@ -111,37 +111,3 @@
   </section>
   
   <section><h2>🧭 Carte Cosmique</h2>
-    <div id="carte-navigation">
-        <label for="target-coord">Point de Rendez-vous (Lat, Lon):</label>
-        <input type="text" id="target-coord" value="48.8584, 2.2945" placeholder="Lat, Lon" /> 
-        <button id="set-target">🎯 Cible</button>
-        <div id="bearing-display" style="margin-top: 5px;">Relèvement vers la cible : --° | Distance : -- km</div>
-        <div id="compass-display" style="margin-top: 5px;">Boussole (Nord Vrai) : --°</div>
-    </div>
-  </section>
-
-  <section><h2>⏱️ Horloge Système & Minecraft</h2>
-    <div id="horloge">⏰ --:--:-- (Système)</div>
-    <div id="horloge-atomique">Heure atomique (UTC) : --</div>
-    <div id="minecraft-clock-container">
-        <canvas id="minecraft-clock" width="100" height="100"></canvas>
-        <div id="minecraft-time-display">Jour/Nuit : --</div>
-    </div>
-  </section>
-  
-  <section><h2>🔋 Capteurs</h2>
-    <div id="capteurs">Lumière : -- lux | Son : -- dB | Niveau : --° | Gyro : -- | Magnétomètre : -- | Batterie : --% | Réseau : --</div>
-  </section>
-
-  <section><h2>⚛️ Grandeurs</h2>
-    <div id="grandeurs">Pression Est. : -- hPa | Énergie cinétique Est. : -- J</div>
-  </section>
-
-  <section><h2>🛠️ Contrôle</h2>
-    <button id="toggle-rituel">✅ Rituel cosmique : ON</button>
-    <button id="request-sensor-access" style="background: #333; border-color: #ffd700;">🔑 Activer Capteurs/Boussole</button> 
-  </section>
-
-  <script src="cockpit.js"></script>
-</body>
-</html>
