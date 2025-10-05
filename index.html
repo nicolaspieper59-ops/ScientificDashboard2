@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Cockpit Scientifique Live</title>
+<title>Cockpit Scientifique Test</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; }
@@ -16,58 +16,35 @@ button:hover { background: #0056b3; }
 </style>
 </head>
 <body>
-<h2>Full Cockpit Scientifique Live</h2>
+<h2>Cockpit Scientifique Test</h2>
 
-<!-- Carte GPS & Trajectoire -->
 <div class="card">
 <h3>Carte GPS & Trajectoire</h3>
 <div id="map"></div>
 <p class="small">
-Lat: <span id="lat">—</span>, Lon: <span id="lon">—</span>, Alt: <span id="alt">—</span><br>
-Précision GPS: <span id="gpsAcc">—</span> m<br>
-Vitesse instantanée: <span id="speed">—</span> km/h, Vitesse max: <span id="speedMax">—</span> km/h<br>
-Distance: <span id="distanceKm">—</span> km
+Lat: <span id="lat">0.000000</span>, Lon: <span id="lon">0.000000</span>, Alt: <span id="alt">0.0</span><br>
+Précision GPS: <span id="gpsAcc">0</span> m<br>
+Vitesse instantanée: <span id="speed">0</span> km/h, Vitesse max: <span id="speedMax">0</span> km/h<br>
+Distance: <span id="distanceKm">0</span> km
 </p>
-<button id="toggleBtn">Arrêt</button>
+<button id="toggleBtn">Marche</button>
 <button id="resetBtn">Réinitialiser</button>
-<button id="bleBtn">Connecter BLE/UWB</button>
 </div>
 
-<!-- Horloge Minecraft -->
 <div class="card">
 <h3>Horloge Minecraft</h3>
 <p class="small"><time id="mcClock">00:00:00</time></p>
 </div>
 
-<!-- Météo & Graphique -->
 <div class="card">
 <h3>Météo & Environnement</h3>
 <p class="small">
-Temp: <span id="temp">—</span> °C, Pression: <span id="pressure">—</span> hPa, Humidité: <span id="hum">—</span>%<br>
-Vent: <span id="wind">—</span> km/h
+Temp: <span id="temp">0.0</span> °C, Pression: <span id="pressure">0</span> hPa, Humidité: <span id="hum">0</span>%<br>
+Vent: <span id="wind">0</span> km/h
 </p>
 <canvas id="tempChart"></canvas>
 </div>
 
-<!-- IMU & Capteurs internes -->
-<div class="card">
-<h3>IMU & Capteurs internes</h3>
-<p class="small">
-Accel X: <span id="ax">—</span>, Y: <span id="ay">—</span>, Z: <span id="az">—</span><br>
-Gyro X: <span id="gx">—</span>, Y: <span id="gy">—</span>, Z: <span id="gz">—</span><br>
-Magnétomètre X: <span id="mx">—</span>, Y: <span id="my">—</span>, Z: <span id="mz">—</span><br>
-Lumière: <span id="lux">—</span> lux, Son: <span id="dB">—</span> dB
-</p>
-<canvas id="attitude"></canvas>
-</div>
-
-<!-- Sismogramme -->
-<div class="card">
-<h3>Sismogramme</h3>
-<canvas id="seis"></canvas>
-</div>
-
-<!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="script.js"></script>
