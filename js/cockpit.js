@@ -71,10 +71,10 @@ function afficherVitesse(v_kmh) {
   const moyenne_kmh = vitesses.length ? vitesses.reduce((a, b) => a + b, 0) / vitesses.length : 0;
 
   // Affichage Vitesse
-  safeSetText('vitesse', `Vitesse instantanée : ${v_kmh.toFixed(2)} km/h`);
-  safeSetText('vitesse-moy', `Vitesse moyenne : ${moyenne_kmh.toFixed(2)} km/h`);
-  safeSetText('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
-  safeSetText('vitesse-ms', `Vitesse : ${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`);
+  safeSetText('vitesse', `Vitesse instantanée : ${v_kmh.toFixed(4)} km/h`);
+  safeSetText('vitesse-moy', `Vitesse moyenne : ${moyenne_kmh.toFixed(4)} km/h`);
+  safeSetText('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(4)} km/h`);
+  safeSetText('vitesse-ms', `Vitesse : ${mps.toFixed(4)} m/s | ${mmps.toFixed(2)} mm/s`);
 
   // Affichage Pourcentage
   safeSetText('pourcentage', `% Lumière : ${(mps / VITESSE_LUMIERE * 100).toExponential(2)}% | % Son : ${(mps / VITESSE_SON * 100).toFixed(2)}%`);
@@ -87,7 +87,7 @@ function afficherDistance() {
   const al = secLumiere / ANNEE_LUMIERE_SECONDES;
 
   // Affichage Distance
-  safeSetText('distance', `Distance : ${km.toFixed(3)} km | ${m.toFixed(0)} m | ${Math.round(m * 1000)} mm`);
+  safeSetText('distance', `Distance : ${km.toFixed(3)} km | ${m.toFixed(3)} m | ${Math.round(m * 1000)} mm`);
   safeSetText('distance-cosmique', `Distance cosmique : ${secLumiere.toFixed(3)} s lumière | ${al.toExponential(3)} al`);
 }
 
