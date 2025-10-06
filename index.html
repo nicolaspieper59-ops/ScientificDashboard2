@@ -1,51 +1,51 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Cockpit Cosmique 3D — Brute + Kalman</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cockpit 3D Fusion Capteurs</title>
   <style>
-    body { background:#0b0b0b; color:#00f2df; font-family: monospace; padding:18px; }
-    h1 { color:#ffd700; margin:0 0 12px 0; }
-    button { background:#111; color:#00f2df; border:2px solid #00f2df; padding:8px 12px; margin:6px 6px 6px 0; cursor:pointer; }
-    #infos { margin-top:14px; border-top:1px solid #222; padding-top:12px; }
-    #infos div { margin:6px 0; }
-    .ok { color:#6ef08a; font-weight:bold; }
-    .nok { color:#ff8a8a; font-weight:bold; }
-    .small { font-size:0.9rem; color:#9be7dd; }
+    body { background:#0a0a0a; color:#00ffcc; font-family: monospace; padding:20px; }
+    h1 { color:#ffd700; }
+    button {
+      background:#222; color:#00ffcc; border:2px solid #00ffcc;
+      padding:10px; margin:5px; cursor:pointer;
+    }
+    #infos div { margin:4px 0; }
+    .disabled { opacity: 0.5; }
   </style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique 3D — Vitesse Brute & Kalman</h1>
+  <h1>🌍 Cockpit 3D Fusion GPS / Capteurs</h1>
 
   <section>
-    <button id="marche">▶️ Démarrer</button>
-    <button id="arreter">⏹️ Arrêter</button>
-    <button id="reset">🔄 Réinitialiser Vitesse max</button>
+    <button id="start">▶️ Démarrer</button>
+    <button id="stop">⏹️ Arrêter</button>
+    <button id="reset">🔄 Réinitialiser</button>
+  </section>
+
+  <section>
+    <h2>🎛️ Capteurs activés</h2>
+    <label><input type="checkbox" id="useGPS" checked> GPS</label><br>
+    <label><input type="checkbox" id="useAccel" checked> Accéléromètre</label><br>
+    <label><input type="checkbox" id="useBaro" checked> Baromètre</label><br>
   </section>
 
   <div id="infos">
-    <h2>🚀 Vitesse & Distance</h2>
-    <div id="temps">Temps écoulé : 0.00 s</div>
-    <div id="vitesse-raw">Vitesse brute 3D : -- km/h</div>
-    <div id="vitesse-kalman">Vitesse filtrée (Kalman) : -- km/h</div>
-    <div id="vitesse-max">Record : 0.00 km/h</div>
-    <div id="distance">Distance totale : 0.000 km</div>
-
-    <h2>📍 GPS, alt & capteurs</h2>
-    <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Acc: -- m</div>
-    <div id="accel-z">Acc Z : 0.00 m/s²</div>
-    <div id="kalman-gain">Gain Kalman (K) : --</div>
-    <div id="kalman-error">Erreur P : --</div>
-
-    <h2>🔎 État capteurs</h2>
-    <div id="etat-capteurs" class="small">GPS: <span id="cap-gps" class="nok">❌</span> — Accel: <span id="cap-accel" class="nok">❌</span> — Gyro: <span id="cap-gyro" class="nok">❌</span> — Magneto: <span id="cap-mag" class="nok">❌</span></div>
-
-    <div id="mode" class="small">Mode : --</div>
-    <div id="avertissement" class="small">⚠️ Utiliser HTTPS / localhost pour activer GPS & capteurs.</div>
+    <h2>🚀 Données en direct</h2>
+    <div id="vitesse">Vitesse : 0.00 km/h</div>
+    <div id="vitesse-max">Vitesse max : 0.00 km/h</div>
+    <div id="distance">Distance : 0.000 km</div>
+    <div id="temps">Temps : 0.00 s</div>
+    
+    <h2>📡 GPS</h2>
+    <div id="gps">GPS : --</div>
+    
+    <h2>📈 Capteurs</h2>
+    <div id="accel">Accélération Z : --</div>
+    <div id="baro">Baromètre : --</div>
   </div>
 
-  <script src="cockpit.js"></script>
+  <script src="fusion.js"></script>
 </body>
-  </html>
-  
+</html>
