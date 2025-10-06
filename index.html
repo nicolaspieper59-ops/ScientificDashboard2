@@ -1,18 +1,22 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Cockpit Cosmique 3D</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { background: #111; color: #0ff; font-family: monospace; padding: 20px; }
-    button { background:#222; color:#0ff; border:2px solid #0ff; padding:10px; cursor:pointer; margin:5px; }
-    #infos { margin-top:20px; }
-  </style>
+<meta charset="UTF-8">
+<title>Cockpit Cosmique 3D Avancé</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { background: #111; color: #0ff; font-family: monospace; padding: 20px; }
+  button { background:#222; color:#0ff; border:2px solid #0ff; padding:10px; cursor:pointer; margin:5px; }
+  #infos div { margin:5px 0; }
+</style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique 3D</h1>
-  <button id="marche">▶️ Démarrer</button>
-  <button id="arreter">⏹️ Arrêter</button>
-  <button id="
-    
+<h1>🌌 Cockpit Cosmique 3D Avancé – Kalman Vectoriel</h1>
+<button id="marche">▶️ Démarrer</button>
+<button id="arreter">⏹️ Arrêter</button>
+<button id="reset">🔄 Réinitialiser vitesse max</button>
+
+<div id="infos">
+  <div id="vitesse">Vitesse instantanée : -- km/h</div>
+  <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+  
