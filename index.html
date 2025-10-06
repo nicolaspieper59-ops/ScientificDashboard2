@@ -2,62 +2,189 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Cockpit Cosmique Corrigé</title>
+  <title>Cockpit Cosmique 3D</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body {
-      background-color: #111;
-      color: #00ffcc;
-      font-family: monospace;
-      padding: 20px;
-    }
-    h1 { color: #ffd700; }
+    body { background-color:#111; color:#00ffcc; font-family:monospace; padding:20px; }
+    h1 { color:#ffd700; }
+    section { margin-bottom:20px; }
     button {
-      background: #222;
-      color: #00ffcc;
-      border: 2px solid #00ffcc;
-      padding: 10px 20px;
-      cursor: pointer;
-      margin: 5px;
-      font-size: 16px;
+      background:#222; color:#00ffcc; border:2px solid #00ffcc;
+      padding:10px; cursor:pointer; font-size:16px; margin-right:10px;
     }
-    section {
-      margin-bottom: 20px;
-      border-bottom: 1px solid #00ffcc;
-      padding-bottom: 10px;
-    }
-    .data { margin: 5px 0; }
   </style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique Corrigé</h1>
+
+  <h1>🌌 Cockpit Cosmique 3D</h1>
 
   <section>
     <h2>🚀 Vitesse & Distance</h2>
-    <div class="data" id="vitesse">Vitesse instantanée : --</div>
-    <div class="data" id="vitesse-moy">Vitesse moyenne : --</div>
-    <div class="data" id="vitesse-max">Vitesse max : --</div>
-    <div class="data" id="vitesse-ms">Vitesse m/s : --</div>
-    <div class="data" id="pourcentage">% Lumière / Son : --</div>
-    <div class="data" id="distance">Distance : --</div>
-    <div class="data" id="distance-cosmique">Distance cosmique : --</div>
-    <div class="data" id="temps">Temps : 0.00 s</div>
+    <div id="vitesse">Vitesse instantanée : -- km/h</div>
+    <div id="vitesse-moy">Moyenne : -- km/h</div>
+    <div id="vitesse-max">Max : -- km/h</div>
+    <div id="vitesse-ms">-- m/s | -- mm/s</div>
+    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+    <div id="distance">Distance : -- km</div>
+    <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
+    <div id="temps">Temps : 0.00 s</div>
     <button id="marche">▶️ Marche</button>
     <button id="reset">🔄 Réinitialiser vitesse max</button>
   </section>
 
   <section>
-    <h2>📊 Capteurs physiques</h2>
-    <div class="data" id="capteurs">
-      Niveau : -- | Lumière : -- | Son : -- | Magnétomètre : --
-    </div>
+    <h2>📊 GPS</h2>
+    <div id="gps">Lat : -- | Lon : -- | Alt : -- m</div>
   </section>
 
   <section>
-    <h2>📍 GPS</h2>
-    <div class="data" id="gps">GPS : --</div>
+    <h2>📐 Capteurs physiques</h2>
+    <div id="capteurs">Niveau : --° | Lumière : -- | Son : -- | Magnétisme : --</div>
   </section>
 
-  <script type="module" src="cockpitCosmiqueCorrige.js"></script>
+  <script>
+  // ======================== ÉTAT GLOBAL ========================
+  let watchId = null;
+  let positionPrecedente = null;
+  let vitesseMax = 0;
+  let vitesses = [];
+  let distanceTotale = 0;
+  let tempsDebut = null;
+  let vitesseVerticaleAcc = 0;
+  let accelPrecedente = null;
+  let capteursEtat = { niveauBulle:'--', lumiere:'--', son:'--', magnetisme:'--' };
+
+  const R_TERRE = 6371e3;
+  const VITESSE_LUMIERE = 299792458;
+  const VITESSE_SON = 343;
+  const ANNEE_LUMIERE_SECONDES = 3600*24*365.25;
+
+  // ======================== UTILITAIRES ========================
+  function safeSetText(id,text){ const e=document.getElementById(id); if(e)e.textContent=text; }
+
+  // ======================== DISTANCE & VITESSE 3D ========================
+  function distanceHaversine(p1,p2){
+    const φ1=p1.coords.latitude*Math.PI/180;
+    const φ2=p2.coords.latitude*Math.PI/180;
+    const Δφ=(p2.coords.latitude-p1.coords.latitude)*Math.PI/180;
+    const Δλ=(p2.coords.longitude-p1.coords.longitude)*Math.PI/180;
+    const a=Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+    const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    return R_TERRE*c;
+  }
+
+  function vitesse3D(pos,posPrec){
+    if(!posPrec) return 0;
+    const dt=(pos.timestamp-posPrec.timestamp)/1000;
+    if(dt<=0) return 0;
+    const dh=distanceHaversine(pos,posPrec);
+    const dv=(pos.coords.altitude??0)-(posPrec.coords.altitude??0);
+    return Math.sqrt(dh**2+dv**2)/dt;
+  }
+
+  function miseAJourVitesseVerticale(accel){
+    const dt=0.05;
+    if(accelPrecedente!==null){
+      vitesseVerticaleAcc += (accel.y + accelPrecedente.y)/2 * dt;
+    }
+    accelPrecedente = accel;
+    return vitesseVerticaleAcc;
+  }
+
+  // ======================== AFFICHAGE ========================
+  function afficherVitesseTotale(v_mps){
+    const v_kmh = v_mps*3.6;
+    vitesseMax = Math.max(vitesseMax,v_kmh);
+    vitesses.push(v_kmh); if(vitesses.length>60) vitesses.shift();
+    const moyenne = vitesses.reduce((a,b)=>a+b,0)/vitesses.length;
+    safeSetText('vitesse', `Instant : ${v_kmh.toFixed(2)} km/h`);
+    safeSetText('vitesse-moy', `Moyenne : ${moyenne.toFixed(2)} km/h`);
+    safeSetText('vitesse-max', `Max : ${vitesseMax.toFixed(2)} km/h`);
+    const mps=v_mps; const mmps=mps*1000;
+    safeSetText('vitesse-ms', `${mps.toFixed(2)} m/s | ${mmps.toFixed(0)} mm/s`);
+    safeSetText('pourcentage', `% Lumière : ${(mps/VITESSE_LUMIERE*100).toExponential(2)}% | % Son : ${(mps/VITESSE_SON*100).toFixed(2)}%`);
+  }
+
+  function afficherDistanceTotale(){
+    const km=distanceTotale/1000;
+    const secLumiere=distanceTotale/VITESSE_LUMIERE;
+    const al=secLumiere/ANNEE_LUMIERE_SECONDES;
+    safeSetText('distance', `Distance : ${km.toFixed(3)} km`);
+    safeSetText('distance-cosmique', `Distance cosmique : ${secLumiere.toFixed(3)} s lumière | ${al.toExponential(3)} al`);
+  }
+
+  function afficherTemps(){
+    if(!tempsDebut) return;
+    const t=(Date.now()-tempsDebut)/1000;
+    safeSetText('temps', `Temps : ${t.toFixed(2)} s`);
+  }
+
+  function afficherGPS(pos){
+    safeSetText('gps', `Lat : ${pos.coords.latitude.toFixed(6)} | Lon : ${pos.coords.longitude.toFixed(6)} | Alt : ${(pos.coords.altitude??'--').toFixed(1)} m`);
+  }
+
+  function afficherCapteurs(){
+    safeSetText('capteurs', `Niveau : ${capteursEtat.niveauBulle}° | Lumière : ${capteursEtat.lumiere} | Son : ${capteursEtat.son} | Magnétisme : ${capteursEtat.magnetisme}`);
+  }
+
+  // ======================== GPS / COCKPIT ========================
+  function miseAJourPosition(pos){
+    let v_mps = vitesse3D(pos,positionPrecedente);
+    positionPrecedente = pos;
+    if(typeof vitesseVerticaleAcc==='number') v_mps = Math.sqrt(v_mps**2 + vitesseVerticaleAcc**2);
+    if(positionPrecedente) distanceTotale += distanceHaversine(pos,positionPrecedente);
+    afficherVitesseTotale(v_mps);
+    afficherDistanceTotale();
+    afficherTemps();
+    afficherGPS(pos);
+  }
+
+  function demarrerCockpit(){
+    if(!navigator.geolocation){ safeSetText('gps','GPS indisponible'); return; }
+    if(watchId!==null) return;
+    tempsDebut=Date.now();
+    watchId = navigator.geolocation.watchPosition(
+      miseAJourPosition,
+      err=>safeSetText('gps','Erreur GPS : '+err.code),
+      { enableHighAccuracy:true, maximumAge:0, timeout:10000 }
+    );
+    activerCapteurs();
+    document.getElementById('marche').textContent='⏹️ Arrêt';
+  }
+
+  function arreterCockpit(){
+    if(watchId!==null) navigator.geolocation.clearWatch(watchId);
+    watchId=null; positionPrecedente=null; vitesses=[]; distanceTotale=0;
+    vitesseVerticaleAcc=0; accelPrecedente=null; vitesseMax=0;
+    safeSetText('vitesse','--'); safeSetText('vitesse-moy','--'); safeSetText('vitesse-max','--');
+    safeSetText('vitesse-ms','--'); safeSetText('pourcentage','--'); safeSetText('distance','--'); safeSetText('distance-cosmique','--');
+    safeSetText('temps','0.00 s'); safeSetText('gps','--');
+    document.getElementById('marche').textContent='▶️ Marche';
+  }
+
+  function resetVitesseMax(){ vitesseMax=0; safeSetText('vitesse-max','Max : 0.00 km/h'); }
+
+  // ======================== CAPTEURS ========================
+  function activerCapteurs(){
+    if('DeviceMotionEvent' in window){
+      window.addEventListener('devicemotion', e=>{
+        miseAJourVitesseVerticale(e.accelerationIncludingGravity);
+        capteursEtat.niveauBulle = (e.rotationRate?.beta ?? '--').toFixed(1);
+        afficherCapteurs();
+      });
+    }
+  }
+
+  // ======================== INIT ========================
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('marche').addEventListener('click', ()=>{
+      if(watchId===null) demarrerCockpit();
+      else arreterCockpit();
+    });
+    document.getElementById('reset').addEventListener('click', resetVitesseMax);
+  });
+
+  </script>
 </body>
-</html>
+  </html>
+  
