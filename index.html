@@ -5,44 +5,65 @@
   <title>Cockpit 3D Ultra-Précis</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { background: #111; color: #0ff; font-family: monospace; padding: 20px; }
-    h1 { color: #ffd700; }
-    button { background: #222; color: #0ff; border: 2px solid #0ff; padding: 10px; cursor: pointer; margin-right:5px; }
-    section { margin-bottom: 15px; }
+    body { 
+      background: #111; 
+      color: #0ff; 
+      font-family: monospace; 
+      padding: 20px; 
+    }
+    h1 { 
+      color: #ffd700; 
+    }
+    button { 
+      background: #222; 
+      color: #0ff; 
+      border: 2px solid #0ff; 
+      padding: 10px; 
+      cursor: pointer; 
+      margin-right: 5px; 
+      font-family: monospace;
+      font-weight: bold;
+    }
+    section { 
+      margin-bottom: 15px; 
+      border-bottom: 1px solid #333;
+      padding-bottom: 10px;
+    }
+    div {
+        margin-top: 5px;
+    }
   </style>
 </head>
 <body>
   <h1>🌌 Cockpit Cosmique 3D</h1>
 
-  <!-- Contrôles -->
   <section>
     <button id="marche">▶️ Marche</button>
-    <button id="reset">🔄 Réinitialiser vitesse max</button>
+    <button id="reset-max">🔄 Réinitialiser vitesse max</button>
   </section>
 
-  <!-- Vitesse & Distance -->
   <section>
     <h2>🚀 Vitesse & Distance</h2>
-    <div id="vitesse">0 km/h</div>
-    <div id="vitesse-moy">0 km/h</div>
-    <div id="vitesse-max">0 km/h</div>
-    <div id="distance">0 km</div>
-    <div id="temps">0.00 s</div>
+    <div id="temps">Temps : 0.00 s</div>
+    <div id="vitesse">Vitesse instantanée : 0.00 km/h</div>
+    <div id="vitesse-moy">Vitesse moyenne : 0.00 km/h</div>
+    <div id="vitesse-max">Vitesse max : 0.00 km/h</div>
+    <div id="vitesse-ms">Vitesse : 0.00 m/s | 0 mm/s</div>
+    <div id="distance">Distance parcourue : 0.000 km</div>
+    <div id="pourcentage">% Lumière : 0.00e-9% | % Son : 0.00%</div>
+    <div id="distance-cosmique">Distance cosmique : 0.000 s lumière | 0.000e-9 al</div>
   </section>
 
-  <!-- GPS -->
   <section>
-    <h2>📍 GPS</h2>
+    <h2>📍 GPS (HTTPS Requis!)</h2>
     <div id="gps">GPS : --</div>
   </section>
 
-  <!-- Capteurs -->
   <section>
-    <h2>📡 Capteurs</h2>
+    <h2>📡 Capteurs (Accéléromètre)</h2>
     <div id="capteurs">Acc XYZ : --, --, --</div>
   </section>
 
-  <!-- JS Module -->
   <script type="module" src="cockpit3d_kalman.js"></script>
 </body>
-</html>
+  </html>
