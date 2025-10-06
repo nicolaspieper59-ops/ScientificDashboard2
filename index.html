@@ -5,18 +5,59 @@
 <title>Cockpit Cosmique 3D Avancé</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { background: #111; color: #0ff; font-family: monospace; padding: 20px; }
-  button { background:#222; color:#0ff; border:2px solid #0ff; padding:10px; cursor:pointer; margin:5px; }
-  #infos div { margin:5px 0; }
+  body { 
+    background: #111; 
+    color: #0ff; 
+    font-family: monospace; 
+    padding: 20px; 
+  }
+  h1 { 
+    color: #ffd700; 
+  }
+  button { 
+    background: #222; 
+    color: #0ff; 
+    border: 2px solid #0ff; 
+    padding: 10px; 
+    cursor: pointer; 
+    margin: 5px; 
+    font-family: monospace;
+    font-weight: bold;
+  }
+  #infos { 
+    margin-top: 15px; 
+    border-top: 1px solid #333;
+    padding-top: 10px;
+  }
+  #infos div { 
+    margin: 5px 0; 
+  }
 </style>
 </head>
 <body>
-<h1>🌌 Cockpit Cosmique 3D Avancé – Kalman Vectoriel</h1>
-<button id="marche">▶️ Démarrer</button>
-<button id="arreter">⏹️ Arrêter</button>
-<button id="reset">🔄 Réinitialiser vitesse max</button>
+  <h1>🌌 Cockpit Cosmique 3D Avancé – Kalman Vectoriel</h1>
 
-<div id="infos">
-  <div id="vitesse">Vitesse instantanée : -- km/h</div>
-  <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-  
+  <section>
+    <button id="marche">▶️ Démarrer</button>
+    <button id="arreter">⏹️ Arrêter</button>
+    <button id="reset">🔄 Réinitialiser vitesse max</button>
+  </section>
+
+  <div id="infos">
+    <h2>🚀 Vitesse & Distance</h2>
+    <div id="temps">Temps écoulé : 0.00 s</div>
+    <div id="vitesse">Vitesse instantanée : -- km/h</div>
+    <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
+    <div id="vitesse-max">Vitesse max : -- km/h</div>
+    <div id="distance">Distance totale : -- km</div>
+    <div id="pourcentage">% Lumière : --% | % Son : --%</div>
+    
+    <h2>📍 GPS & Capteurs</h2>
+    <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Précision: -- m</div>
+    <div id="accelerometre">Accélération Z (Correction) : 0.00 m/s²</div>
+    <div id="avertissement">⚠️ Géolocalisation et Capteurs nécessitent **HTTPS**</div>
+  </div>
+
+  <script src="cockpit_3d.js"></script>
+</body>
+</html>
