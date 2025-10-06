@@ -1,44 +1,42 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Cockpit Cosmique 3D - Filtre de Kalman</title>
-  <style>
-    body { background:#111; color:#0ff; font-family:monospace; padding:20px; }
-    h1 { color:#ffd700; }
-    button { background:#222; color:#0ff; border:2px solid #0ff; padding:10px; cursor:pointer; margin:5px; font-weight:bold; }
-    #infos { margin-top:15px; border-top:1px solid #333; padding-top:10px; }
-    #infos div { margin:6px 0; }
-    .warn { color:#ff8a65; }
-  </style>
+<meta charset="UTF-8">
+<title>Cockpit Cosmique 3D - Kalman</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { background: #111; color: #0ff; font-family: monospace; padding: 20px; }
+h1 { color: #ffd700; }
+button { background:#222; color:#0ff; border:2px solid #0ff; padding:10px; cursor:pointer; margin:5px; font-weight:bold; }
+#infos { margin-top:15px; border-top:1px solid #333; padding-top:10px; }
+#infos div { margin:5px 0; }
+</style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique 3D – Filtre de Kalman</h1>
+<h1>🌌 Cockpit Cosmique 3D – Filtre de Kalman</h1>
 
-  <section>
-    <button id="marche">▶️ Démarrer</button>
-    <button id="arreter">⏹️ Arrêter</button>
-    <button id="reset">🔄 Réinitialiser vitesse max</button>
-  </section>
+<section>
+  <button id="marche">▶️ Démarrer</button>
+  <button id="arreter">⏹️ Arrêter</button>
+  <button id="reset">🔄 Réinitialiser vitesse max</button>
+</section>
 
-  <div id="infos">
-    <h2>🚀 Vitesse & Distance</h2>
-    <div id="temps">Temps écoulé : 0.00 s</div>
-    <div id="vitesse-kalman">Vitesse Filtrée (Kalman) : -- km/h</div>
-    <div id="vitesse-raw">Vitesse GPS Brute : -- km/h</div>
-    <div id="vitesse-max">Vitesse max (Filtrée) : -- km/h</div>
-    <div id="distance">Distance totale : -- km</div>
+<div id="infos">
+  <h2>🚀 Vitesse & Distance</h2>
+  <div id="temps">Temps : 0.00 s</div>
+  <div id="vitesse-kalman">Vitesse Filtrée : -- km/h</div>
+  <div id="vitesse-raw">Vitesse GPS : -- km/h</div>
+  <div id="vitesse-max">Vitesse max : -- km/h</div>
+  <div id="distance">Distance : -- km</div>
 
-    <h2>📍 Précision & Capteurs</h2>
-    <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Précision: -- m</div>
-    <div id="accel-z">Accélération Z : 0.00 m/s²</div>
-    <div id="kalman-gain">Gain de Kalman (K) : --</div>
-    <div id="kalman-error">Erreur Estimée (P) : --</div>
-    <div id="avertissement" class="warn">⚠️ Géolocalisation & capteurs requièrent HTTPS (localhost est autorisé).</div>
-  </div>
+  <h2>📍 Capteurs & Précision</h2>
+  <div id="gps">GPS : --</div>
+  <div id="accel-z">Acc Z : 0.00 m/s²</div>
+  <div id="kalman-gain">Gain : --</div>
+  <div id="kalman-error">Erreur P : --</div>
+  <div id="avertissement">⚠ Géolocalisation et Capteurs nécessitent HTTPS</div>
+</div>
 
-  <!-- Chargement du JS (même dossier) -->
-  <script src="kalman.js"></script>
+<script src="./kalman.js"></script>
 </body>
 </html>
