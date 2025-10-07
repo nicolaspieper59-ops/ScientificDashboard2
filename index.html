@@ -1,51 +1,38 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cockpit 3D Fusion Capteurs</title>
-  <style>
-    body { background:#0a0a0a; color:#00ffcc; font-family: monospace; padding:20px; }
-    h1 { color:#ffd700; }
-    button {
-      background:#222; color:#00ffcc; border:2px solid #00ffcc;
-      padding:10px; margin:5px; cursor:pointer;
-    }
-    #infos div { margin:4px 0; }
-    .disabled { opacity: 0.5; }
-  </style>
+<meta charset="UTF-8">
+<title>Cockpit Cosmique 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <h1>🌍 Cockpit 3D Fusion GPS / Capteurs</h1>
+<h1>🌌 Cockpit Cosmique 3D</h1>
 
-  <section>
-    <button id="start">▶️ Démarrer</button>
-    <button id="stop">⏹️ Arrêter</button>
-    <button id="reset">🔄 Réinitialiser</button>
-  </section>
+<section>
+  <button id="marche">▶️ Démarrer</button>
+  <button id="arreter">⏹️ Arrêter</button>
+  <button id="reset">🔄 Réinitialiser vitesse max</button>
+</section>
 
-  <section>
-    <h2>🎛️ Capteurs activés</h2>
-    <label><input type="checkbox" id="useGPS" checked> GPS</label><br>
-    <label><input type="checkbox" id="useAccel" checked> Accéléromètre</label><br>
-    <label><input type="checkbox" id="useBaro" checked> Baromètre</label><br>
-  </section>
+<div id="infos">
+  <h2>🚀 Vitesse & Distance</h2>
+  <div id="temps">Temps écoulé : 0.00 s</div>
+  <div id="vitesse-kalman">Vitesse Filtrée (Kalman) : -- km/h</div>
+  <div id="vitesse-raw">Vitesse GPS Brute : -- km/h</div>
+  <div id="vitesse-max">Vitesse max : -- km/h</div>
+  <div id="distance">Distance totale : -- km</div>
 
-  <div id="infos">
-    <h2>🚀 Données en direct</h2>
-    <div id="vitesse">Vitesse : 0.00 km/h</div>
-    <div id="vitesse-max">Vitesse max : 0.00 km/h</div>
-    <div id="distance">Distance : 0.000 km</div>
-    <div id="temps">Temps : 0.00 s</div>
-    
-    <h2>📡 GPS</h2>
-    <div id="gps">GPS : --</div>
-    
-    <h2>📈 Capteurs</h2>
-    <div id="accel">Accélération Z : --</div>
-    <div id="baro">Baromètre : --</div>
-  </div>
+  <h2>📍 GPS & Capteurs</h2>
+  <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Précision: -- m</div>
+  <div id="accel-z">Accélération Z : 0.00 m/s²</div>
+  <div id="kalman-gain">Gain de Kalman : --</div>
+  <div id="kalman-error">Erreur estimée (P) : --</div>
+  <div id="avertissement">⚠️ HTTPS requis pour GPS et capteurs</div>
+</div>
 
-  <script src="fusion.js"></script>
+<script src="js/kalman2.js"></script>
+<script src="js/sensors.js"></script>
+<script src="js/cockpit.js"></script>
 </body>
 </html>
