@@ -1,309 +1,428 @@
-// kalmanFusion.js
-// Intégration : GPS 3D + capteurs (accel, gyro, baro, magneto) + filtre Kalman 1D sur distance cumulative
-// Conçu pour fonctionner avec index.html + utils.js
+let watchID = null;
+let lastPos = null;
+let totalDistance = 0;
+let maxSpeed = 0;
+let startTime = null;
+let souterrain = false;
 
-// ---------- Configuration ----------
-const KALMAN_Q = 0.0001;      // bruit du modèle
-const KALMAN_P_INIT = 1000;   // covariance initiale (forte incertitude)
-
-// ---------- Etats globaux ----------
-let watchId = null;
-let positionPrev = null;
-let distanceTotale = 0;
-let vitesseMax = 0;
-let vitessesFiltrees = [];
-let tempsDebut = null;
-let lastKalmanTime = 0;
-
-let accel = { x: 0, y: 0, z: 0 };
-let gyro = { x: 0, y: 0, z: 0 };
-let magneto = { x: 0, y: 0, z: 0 };
-let baro = null;
-
-// Capteurs détectés / utilisés (affichage)
-const detected = {
-  accelerometer: false,
-  gyroscope: false,
-  magnetometer: false,
-  barometer: false,
-  ambientLight: false,
-  microphone: false
+// Capteurs activables
+let capteurs = {
+  gps: true,
+  accel: true,
+  gyro: true,
+  baro: true
 };
 
-// KalmanState (1D : position cumulative en m & vitesse m/s)
-let kalmanState = { x: 0, v: 0, P: KALMAN_P_INIT };
-
-// ---------- UTIL (importées depuis utils.js) ----------
-/* safeSetText, msToKmh, haversine3D are available from utils.js */
-
-// ---------- Fonctions de calcul ----------
-function calculerVitesse3DAndDelta(pos) {
-  if (!positionPrev) {
-    positionPrev = pos;
-    return { v: 0, d: 0, dt: 0 };
+// Kalman
+class Kalman {
+  constructor(r = 0.2, q = 1.0) {
+    this.R = r; this.Q = q; this.A = 1; this.C = 1;
+    this.cov = NaN; this.x = NaN;
   }
-  const dt = (pos.timestamp - positionPrev.timestamp) / 1000;
-  if (dt <= 0) {
-    positionPrev = pos;
-    return { v: 0, d: 0, dt: 0 };
+  filter(z) {
+// --- Kalman class (complète) ---
+class Kalman {
+  constructor(r = 0.2, q = 1.0) {
+    // r : variance processus (how much we trust model)
+    // q : variance mesure (how noisy measurements are)
+    this.R = r; // processus noise (we'll treat as process covariance increment)
+    this.Q = q; // measurement noise
+    this.A = 1;
+    this.C = 1;
+    this.cov = NaN;
+    this.x = NaN;
   }
-  const d = haversine3D(positionPrev, pos); // metres
-  const v = d / dt; // m/s
-  positionPrev = pos;
-  return { v, d, dt };
+
+  // z : measurement (we use speed in km/h as measurement here)
+  // returns filtered value
+  filter(z) {
+    if (isNaN(this.x)) {
+      // first measurement initialization
+      this.x = z;
+      this.cov = this.Q;
+    } else {
+      // Predict (here trivial because A=1 and no control input)
+      const predX = this.A * this.x;
+      const predCov = this.A * this.cov * this.A + this.R;
+
+      // Kalman gain
+      const K = predCov * this.C / (this.C * predCov * this.C + this.Q);
+
+      // Update
+      this.x = predX + K * (z - this.C * predX);
+      this.cov = (1 - K * this.C) * predCov;
+    }
+    return this.x;
+  }
+
+  // optional: allow external reset
+  reset(x0 = NaN) {
+    this.x = x0;
+    this.cov = isNaN(x0) ? NaN : this.Q;
+  }
 }
 
-function kalmanPredict(dt, accAlong = 0) {
-  // x = x + v*dt + 0.5*acc*dt^2  (we use accAlong to nudge v)
-  kalmanState.x += kalmanState.v * dt + 0.5 * accAlong * dt * dt;
-  kalmanState.v += accAlong * dt;
-  kalmanState.P += KALMAN_Q;
-}
+const kalman = new Kalman(0.02, 0.5); // params tuned for smoothing behavior
 
-function kalmanUpdate(measValue, measVariance) {
-  const R = Math.max(1e-6, measVariance); // avoid 0
-  const K = kalmanState.P / (kalmanState.P + R);
-  kalmanState.x += K * (measValue - kalmanState.x);
-  // Joseph form simplified
-  kalmanState.P = (1 - K) * kalmanState.P;
-  return K;
-}
+// === Inertial dead-reckoning state (for souterrain mode) ===
+let inertial = {
+  enabled: false,
+  lastTime: null,
+  vx: 0, // m/s horizontal estimated speed
+  vy: 0, // if needed vertical
+  x: 0,  // cumulative inertial distance (m)
+  y: 0
+};
 
-// ---------- Capteurs : détection et listeners ----------
+// === Sensor state ===
+let accelState = { ax: 0, ay: 0, az: 0 }; // m/s² (accelerationIncludingGravity or acceleration if available)
+let hasLinearAcceleration = false;
+let barometerPressure = null;
+let gyroState = { gx: 0, gy: 0, gz: 0 };
+let sensorListenersActive = false;
+
+// === Timers & thresholds ===
+const GPS_TIMEOUT_MS = 3000; // si pas de mise à jour GPS pendant 3s => mode souterrain
+let lastGpsTimestamp = 0;
+let gpsTimeoutHandle = null;
+
+// === Utility small functions ===
+function nowMs() { return performance.now(); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+// === Sensor starters ===
 function startSensors() {
-  // Accelerometer (DeviceMotion)
+  if (sensorListenersActive) return;
+  sensorListenersActive = true;
+
+  // DeviceMotion: prefer .acceleration (without gravity) if available
   if ('DeviceMotionEvent' in window) {
-    detected.accelerometer = true;
     window.addEventListener('devicemotion', e => {
-      accel.x = e.accelerationIncludingGravity?.x ?? 0;
-      accel.y = e.accelerationIncludingGravity?.y ?? 0;
-      accel.z = e.accelerationIncludingGravity?.z ?? 0;
-      safeSetText('accel-z', `Accélération Z : ${accel.z.toFixed(2)} m/s²`);
+      // prefer e.acceleration (non-gravity) if present; fallback to accelerationIncludingGravity
+      const accObj = e.acceleration && (e.acceleration.x !== null) ? e.acceleration : e.accelerationIncludingGravity;
+      if (accObj) {
+        accelState.ax = accObj.x || 0;
+        accelState.ay = accObj.y || 0;
+        accelState.az = accObj.z || 0;
+        hasLinearAcceleration = !!(e.acceleration && (e.acceleration.x !== null));
+      }
     });
   }
 
-  // Gyroscope (Generic Sensor API)
+  // Gyroscope
   if ('Gyroscope' in window) {
     try {
-      detected.gyroscope = true;
       const g = new Gyroscope({ frequency: 60 });
       g.addEventListener('reading', () => {
-        gyro.x = g.x; gyro.y = g.y; gyro.z = g.z;
-        // optionally show gyro values if you add UI
+        gyroState.gx = g.x || 0;
+        gyroState.gy = g.y || 0;
+        gyroState.gz = g.z || 0;
       });
       g.start();
     } catch (e) {
-      detected.gyroscope = false;
+      // ignore if not permitted
     }
   }
 
-  // Magnetometer
-  if ('Magnetometer' in window) {
-    try {
-      detected.magnetometer = true;
-      const m = new Magnetometer({ frequency: 10 });
-      m.addEventListener('reading', () => {
-        magneto.x = m.x; magneto.y = m.y; magneto.z = m.z;
-        safeSetText('cap-magneto', `${Math.round(Math.sqrt(m.x*m.x + m.y*m.y + m.z*m.z))} µT`);
-      });
-      m.start();
-    } catch (e) {
-      detected.magnetometer = false;
-    }
-  } else if ('ondeviceorientationabsolute' in window) {
-    // fallback to deviceorientation for coarse magneto / heading
-    window.addEventListener('deviceorientationabsolute', ev => {
-      detected.magnetometer = true;
-      magneto.x = ev.alpha ?? 0;
-      magneto.y = ev.beta ?? 0;
-      magneto.z = ev.gamma ?? 0;
-      safeSetText('cap-magneto', `heading:${Math.round(magneto.x)}`);
-    });
-  }
-
-  // Ambient light
-  if ('AmbientLightSensor' in window) {
-    try {
-      detected.ambientLight = true;
-      const light = new AmbientLightSensor();
-      light.addEventListener('reading', () => safeSetText('cap-lumiere', `${Math.round(light.illuminance)} lux`));
-      light.start();
-    } catch (e) {
-      detected.ambientLight = false;
-    }
-  }
-
-  // Microphone (sound level via analyser)
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      detected.microphone = true;
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024;
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      function sampleSound() {
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a,b)=>a+b,0) / data.length;
-        safeSetText('cap-son', `${Math.round(20 * Math.log10(avg || 1))} dB`);
-        requestAnimationFrame(sampleSound);
-      }
-      sampleSound();
-    }).catch(()=>{ detected.microphone = false; });
-  }
-
-  // Barometer (experimental - not available in many browsers)
+  // Barometer / PressureSensor (experimental)
   if ('PressureSensor' in window) {
     try {
-      detected.barometer = true;
-      const b = new PressureSensor({ frequency: 1 });
-      b.addEventListener('reading', () => {
-        baro = b.pressure;
-        safeSetText('cap-baro', `${baro.toFixed(1)} hPa`);
+      const p = new PressureSensor({ frequency: 1 });
+      p.addEventListener('reading', () => {
+        barometerPressure = p.pressure;
+        safeSetText('altitude', `Altitude : (baro) ${barometerPressure.toFixed(1)} hPa`);
       });
-      b.start();
+      p.start();
     } catch (e) {
-      detected.barometer = false;
+      // not available
     }
   }
 
-  // Update detected list UI
-  updateDetectedUI();
+  // Note: other sensors (Infrared, Ultrasonic, RayonsX) typically not accessible from browser
+  // and require external hardware + native app. We keep placeholders in the UI.
 }
 
-function updateDetectedUI() {
-  const used = Object.entries(detected).filter(([k,v]) => v).map(([k]) => k).join(', ') || '--';
-  safeSetText('capteurs-utilises', used);
+// === Stop sensors (listeners cleanup) ===
+function stopSensors() {
+  // We don't remove DeviceMotion/other listeners aggressively to keep example simple.
+  // For production, keep references and removeEventListener appropriately.
+  sensorListenersActive = false;
 }
 
-// ---------- Main: mise à jour GPS callback ----------
+// === GPS callbacks & mode switching ===
+function enterSouterrainMode() {
+  if (souterrain) return;
+  souterrain = true;
+  inertial.enabled = true;
+  inertial.lastTime = nowMs();
+  inertial.vx = 0;
+  inertial.x = 0;
+  safeSetText('mode', 'Mode : 🕳️ Souterrain (inertiel)');
+  // start inertial integration loop
+  inertialLoop();
+}
+
+function exitSouterrainMode() {
+  if (!souterrain) return;
+  souterrain = false;
+  inertial.enabled = false;
+  inertial.lastTime = null;
+  safeSetText('mode', 'Mode : 🌐 Surface');
+  // On exit, we will reconcile inertial state with GPS in onPosition
+}
+
+// inertial integration using accelState; called by requestAnimationFrame
+function inertialLoop() {
+  if (!inertial.enabled) return;
+  const t = nowMs();
+  const dt = (inertial.lastTime) ? (t - inertial.lastTime) / 1000 : 0;
+  inertial.lastTime = t;
+
+  // approximate horizontal acceleration magnitude
+  // If device provides linear acceleration (no gravity) use that, else try to remove gravity roughly.
+  let ax = accelState.ax || 0;
+  let ay = accelState.ay || 0;
+
+  if (!hasLinearAcceleration) {
+    // attempt to remove gravity using device orientation is complex; we approximate by subtracting 0 on Z
+    // This is a rough approach — expect drift over time.
+    // Use az solely for vertical; horizontals are less reliable without sensor fusion.
+  }
+
+  // integrate speed: simple Euler integration (vx += ax*dt)
+  inertial.vx += ax * dt; // m/s
+  inertial.vy += ay * dt || 0;
+
+  // integrate position: x += vx*dt
+  inertial.x += inertial.vx * dt;
+  inertial.y += inertial.vy * dt || 0;
+
+  // update UI to show inertial estimate
+  const inertialSpeedKmh = inertial.vx * 3.6;
+  safeSetText('vitesse-filtrée', `Vitesse filtrée (inertiel): ${inertialSpeedKmh.toFixed(2)} km/h (est.)`);
+  safeSetText('vitesse-precision', `Vitesse parfaite : --% (inertiel)`);
+
+  // schedule next
+  requestAnimationFrame(inertialLoop);
+}
+
+// Called when geolocation gives a new position
 function onPosition(pos) {
-  // pos is GeolocationPosition
-  const now = pos.timestamp;
+  lastGpsTimestamp = nowMs();
+  // clear any pending timeout that would enter souterrain mode
+  if (gpsTimeoutHandle) {
+    clearTimeout(gpsTimeoutHandle);
+    gpsTimeoutHandle = null;
+  }
+  // set a new timeout to detect GPS loss
+  gpsTimeoutHandle = setTimeout(() => {
+    // if no GPS update in GPS_TIMEOUT_MS ms, enter souterrain mode
+    enterSouterrainMode();
+  }, GPS_TIMEOUT_MS);
+
+  // if souterrain was active, we'll exit and reconcile
+  if (souterrain) {
+    // exit early from souterrain active (we have GPS again)
+    exitSouterrainMode();
+    // reconcile: we have inertial.x (meters) and distance since start; we can nudge Kalman state
+    // Simple strategy: set kalman state position to cumulative GPS distance (we will compute below)
+    // and set kalman.x = totalDistance to remove drift
+  }
+
+  // compute raw speed from pos.coords.speed if available else from distance/time
+  const coords = pos.coords;
   const gpsPoint = {
-    latitude: pos.coords.latitude,
-    longitude: pos.coords.longitude,
-    altitude: pos.coords.altitude ?? 0,
-    accuracy: pos.coords.accuracy ?? 999,
-    timestamp: now,
-    speed: pos.coords.speed ?? null
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    altitude: coords.altitude || 0,
+    accuracy: coords.accuracy || 999,
+    timestamp: pos.timestamp
   };
 
-  // 1) brut : distance/time
-  const { v: v_raw_ms, d: delta_m, dt } = calculerVitesse3DAndDelta(gpsPoint);
-  distanceTotale += delta_m;
-  const v_raw_kmh = msToKmh(v_raw_ms);
+  // compute 3D delta distance & dt
+  const dt = lastPos && lastPos.timestamp ? (pos.timestamp - lastPos.timestamp) / 1000 : 0;
+  let delta_m = 0;
+  if (lastPos && dt > 0) {
+    delta_m = distance3D(lastPos.latitude, lastPos.longitude, lastPos.altitude || 0,
+                        gpsPoint.latitude, gpsPoint.longitude, gpsPoint.altitude || 0);
+    totalDistance += delta_m;
+  }
+  lastPos = { latitude: gpsPoint.latitude, longitude: gpsPoint.longitude, altitude: gpsPoint.altitude, timestamp: pos.timestamp };
 
-  // 2) kalman predict+update
-  const measPos = distanceTotale;           // position 1D = distance cumulative (m)
-  const measVar = (gpsPoint.accuracy ?? 10) ** 2;
-  const dtKal = lastKalmanTime ? (now - lastKalmanTime)/1000 : 0.05;
-  lastKalmanTime = now;
+  // speed in m/s: prefer coords.speed if available, otherwise delta/dt
+  let speedMs = (typeof coords.speed === 'number' && !isNaN(coords.speed)) ? coords.speed : (dt > 0 ? delta_m / dt : 0);
+  let speedKmh = speedMs * 3.6;
 
-  // choose accAlong: project accel on travel direction — simple approx: use accel.z magnitude
-  const accAlong = accel.z || 0;
+  // If souterrain was active and we have inertial estimates, blend inertial and GPS speeds gently
+  if (inertial.enabled && inertial.x) {
+    // simple blending weight based on how long GPS was lost (shorter loss => trust GPS more)
+    const lostDuration = (nowMs() - lastGpsTimestamp) || 0; // but lastGpsTimestamp was just set above, so approx 0
+    // We'll use GPS primarily because it just returned; but nudge Kalman with inertial velocity to avoid jump
+    const inertialSpeedKmh = inertial.vx * 3.6;
+    // blending factor alpha in [0..1] (1 => GPS), we trust GPS more as accuracy is better
+    const gpsReliability = clamp(1 - (gpsPoint.accuracy / 50), 0, 1); // accuracy 0..50 -> 1..0
+    const alpha = 0.7 * gpsReliability + 0.3; // bias toward GPS
+    speedKmh = alpha * speedKmh + (1 - alpha) * inertialSpeedKmh;
+    speedMs = speedKmh / 3.6;
+    // reset inertial integration to avoid double-counting
+    inertial.vx = speedMs;
+    inertial.x = 0;
+  }
 
-  // Predict
-  kalmanPredict(dtKal, accAlong);
+  // Kalman filtering: use speedKmh as measurement
+  const filteredSpeed = kalman.filter(speedKmh);
 
-  // Update with GNSS measurement (distance cumulative)
-  const K = kalmanUpdate(measPos, measVar);
+  // Update stats & UI
+  if (!startTime) startTime = Date.now();
+  const elapsed = (Date.now() - startTime) / 1000;
+  safeSetText('temps', `Temps écoulé : ${elapsed.toFixed(2)} s`);
+  safeSetText('vitesse-brute', `Vitesse brute : ${speedKmh.toFixed(2)} km/h`);
+  safeSetText('vitesse-filtrée', `Vitesse filtrée : ${filteredSpeed.toFixed(2)} km/h`);
+  safeSetText('distance', `Distance totale : ${(totalDistance / 1000).toFixed(3)} km`);
+  maxSpeed = Math.max(maxSpeed, speedKmh, filteredSpeed);
+  safeSetText('vitesse-max', `Vitesse max : ${maxSpeed.toFixed(2)} km/h`);
+  safeSetText('gps', `GPS : Lat:${gpsPoint.latitude.toFixed(6)} | Lon:${gpsPoint.longitude.toFixed(6)} | Alt:${gpsPoint.altitude.toFixed(1)} m`);
+  safeSetText('precision', `Précision : ${gpsPoint.accuracy.toFixed(1)} m`);
+  safeSetText('kalman-gain', `Gain K : ${(kalman.cov || 0).toFixed(4)}`);
+  safeSetText('kalman-error', `Erreur P : ${(kalman.Q || 0).toFixed(4)}`);
 
-  // Filtered speed (m/s) from Kalman state
-  const v_filt_kmh = msToKmh(kalmanState.v);
+  // percentege of "perfect" speed: compare filtered vs brute
+  const percentPerfect = speedKmh > 0 ? clamp((filteredSpeed / speedKmh) * 100, 0, 200) : 100;
+  safeSetText('vitesse-precision', `Vitesse parfaite : ${percentPerfect.toFixed(1)}%`);
 
-  // Update stats
-  vitesseMax = Math.max(vitesseMax, v_filt_kmh);
-  vitessesFiltrees.push(v_filt_kmh);
-  if (vitessesFiltrees.length > 60) vitessesFiltrees.shift();
-
-  // Percentage of "perfect" speed : compare filtered vs raw (if raw non-zero)
-  const percentPerfect = v_raw_kmh > 0 ? Math.min(100, Math.max(0, (v_filt_kmh / v_raw_kmh) * 100)) : 100;
-
-  // UI updates
-  safeSetText('vitesse-raw', `Vitesse GPS Brute : ${v_raw_kmh.toFixed(2)} km/h`);
-  safeSetText('vitesse-kalman', `Vitesse Filtrée : ${v_filt_kmh.toFixed(2)} km/h`);
-  safeSetText('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
-  safeSetText('distance', `Distance totale : ${(distanceTotale/1000).toFixed(3)} km`);
-  safeSetText('temps', `Temps écoulé : ${tempsDebut ? ((now - tempsDebut)/1000).toFixed(2) : '0.00'} s`);
-  safeSetText('vitesse-precision', `Pourcentage de vitesse parfaite : ${percentPerfect.toFixed(1)}%`);
-  safeSetText('kalman-gain', `Gain Kalman K : ${K.toFixed(4)}`);
-  safeSetText('kalman-error', `Erreur P : ${kalmanState.P.toFixed(2)} m²`);
-  safeSetText('gps', `GPS : Lat:${gpsPoint.latitude.toFixed(6)} | Lon:${gpsPoint.longitude.toFixed(6)} | Alt:${gpsPoint.altitude.toFixed(1)} m | Acc:${gpsPoint.accuracy.toFixed(1)} m`);
-  // capteurs detail will be filled by sensor listeners
-  updateDetectedUI();
+  // update capteurs UI
+  let used = ['GPS'];
+  if (capteurs.accel) used.push('Accéléro');
+  if (capteurs.gyro) used.push('Gyro');
+  if (capteurs.baro) used.push('Baro');
+  safeSetText('capteurs', `Capteurs actifs : ${used.join(', ')}`);
 }
 
-// ---------- start / stop / reset ----------
-function startCockpit() {
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    alert('⚠️ Pour accéder aux capteurs et au GPS, utilise HTTPS ou localhost.');
+// === GPS error handler ===
+function onPositionError(err) {
+  console.warn('GPS error', err);
+  // if GPS error occurs, schedule entering souterrain mode
+  if (!gpsTimeoutHandle) {
+    gpsTimeoutHandle = setTimeout(() => enterSouterrainMode(), GPS_TIMEOUT_MS);
+  }
+}
+
+// === Toggle functions for sensors (buttons) ===
+document.getElementById('toggle-gps').onclick = (e) => {
+  capteurs.gps = !capteurs.gps;
+  e.target.textContent = `GPS : ${capteurs.gps ? '✅' : '❌'}`;
+  if (!capteurs.gps && watchID) {
+    navigator.geolocation.clearWatch(watchID);
+    watchID = null;
+  }
+  if (capteurs.gps && !watchID) {
+    // re-enable if previously disabled
+    startWatchingGPS();
+  }
+};
+
+document.getElementById('toggle-accel').onclick = (e) => {
+  capteurs.accel = !capteurs.accel;
+  e.target.textContent = `Accéléromètre : ${capteurs.accel ? '✅' : '❌'}`;
+  if (capteurs.accel) startSensors();
+};
+
+document.getElementById('toggle-gyro').onclick = (e) => {
+  capteurs.gyro = !capteurs.gyro;
+  e.target.textContent = `Gyroscope : ${capteurs.gyro ? '✅' : '❌'}`;
+  if (capteurs.gyro) startSensors();
+};
+
+document.getElementById('toggle-baro').onclick = (e) => {
+  capteurs.baro = !capteurs.baro;
+  e.target.textContent = `Baromètre : ${capteurs.baro ? '✅' : '❌'}`;
+  if (capteurs.baro) startSensors();
+};
+
+// === Start / stop GPS watching ===
+function startWatchingGPS() {
+  if (!('geolocation' in navigator)) {
+    alert('Géolocalisation non disponible dans ce navigateur.');
     return;
   }
-  if (!navigator.geolocation) {
-    alert('GPS non disponible dans ce navigateur.');
-    return;
-  }
-  if (watchId !== null) return;
-
-  // reset state
-  tempsDebut = Date.now();
-  positionPrev = null;
-  distanceTotale = 0;
-  vitesseMax = 0;
-  vitessesFiltrees = [];
-  kalmanState = { x: 0, v: 0, P: KALMAN_P_INIT };
-  lastKalmanTime = 0;
-
-  // start sensors
-  startSensors();
-
-  // start watchPosition
-  watchId = navigator.geolocation.watchPosition(onPosition, err => {
-    safeSetText('gps', `Erreur GPS: ${err.message || err.code}`);
-  }, {
+  if (watchID) return;
+  startSensors(); // start sensors when we start GPS
+  watchID = navigator.geolocation.watchPosition(onPosition, onPositionError, {
     enableHighAccuracy: true,
     maximumAge: 0,
     timeout: 10000
   });
 }
 
-function stopCockpit() {
-  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-  watchId = null;
-  positionPrev = null;
-  tempsDebut = null;
-  distanceTotale = 0;
-  vitesseMax = 0;
-  vitessesFiltrees = [];
-  kalmanState = { x: 0, v: 0, P: KALMAN_P_INIT };
-  lastKalmanTime = 0;
+function stopWatchingGPS() {
+  if (watchID) {
+    navigator.geolocation.clearWatch(watchID);
+    watchID = null;
+  }
+  // stopSensors(); // keep sensors active — user may want to test inertial
+}
 
-  // reset UI
-  safeSetText('vitesse-raw', 'Vitesse GPS Brute : -- km/h');
-  safeSetText('vitesse-kalman', 'Vitesse Filtrée : -- km/h');
-  safeSetText('vitesse-max', 'Vitesse max : -- km/h');
+// === Start / Stop buttons (main control) ===
+document.getElementById('demarrer').onclick = () => {
+  if (!capteurs.gps) {
+    alert('Activer le GPS pour démarrer');
+    return;
+  }
+  if (!watchID) {
+    startTime = null;
+    startWatchingGPS();
+    startTime = Date.now();
+    safeSetText('mode', 'Mode : 🌐 Surface');
+  }
+};
+
+document.getElementById('arreter').onclick = () => {
+  if (watchID) navigator.geolocation.clearWatch(watchID);
+  watchID = null;
+  if (gpsTimeoutHandle) { clearTimeout(gpsTimeoutHandle); gpsTimeoutHandle = null; }
+  // stop inertial
+  inertial.enabled = false;
+  souterrain = false;
+  // reset UI or leave last values — we reset here
+  safeSetText('vitesse-brute', 'Vitesse brute : -- km/h');
+  safeSetText('vitesse-filtrée', 'Vitesse filtrée (Kalman) : -- km/h');
   safeSetText('distance', 'Distance totale : -- km');
-  safeSetText('temps', 'Temps écoulé : 0.00 s');
-  safeSetText('vitesse-precision', 'Pourcentage de vitesse parfaite : --%');
-  safeSetText('kalman-gain', 'Gain Kalman K : --');
-  safeSetText('kalman-error', 'Erreur P : --');
-  safeSetText('accel-z', 'Accélération Z : 0.00 m/s²');
-  safeSetText('capteurs-utilises', '--');
-}
+  safeSetText('vitesse-max', 'Vitesse max : -- km/h');
+  safeSetText('mode', 'Mode : ⛔ Arrêté');
+};
 
-function resetVitesseMax() {
-  vitesseMax = 0;
-  safeSetText('vitesse-max', 'Vitesse max : 0.00 km/h');
-}
+document.getElementById('reset').onclick = () => {
+  totalDistance = 0;
+  maxSpeed = 0;
+  kalman.reset(NaN);
+  inertial.x = 0;
+  inertial.vx = 0;
+  safeSetText('vitesse-max', 'Vitesse max : -- km/h');
+  safeSetText('distance', 'Distance totale : 0.000 km');
+  safeSetText('vitesse-filtrée', 'Vitesse filtrée (Kalman) : -- km/h');
+  safeSetText('vitesse-brute', 'Vitesse brute : -- km/h');
+};
 
-// ---------- events ----------
+// === on load: initialize UI and sensors availability display ===
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('marche').addEventListener('click', startCockpit);
-  document.getElementById('arreter').addEventListener('click', stopCockpit);
-  document.getElementById('reset').addEventListener('click', resetVitesseMax);
-  // initial UI blank
-  stopCockpit();
+  // set initial button labels (reflect default true values)
+  document.getElementById('toggle-gps').textContent = `GPS : ${capteurs.gps ? '✅' : '❌'}`;
+  document.getElementById('toggle-accel').textContent = `Accéléromètre : ${capteurs.accel ? '✅' : '❌'}`;
+  document.getElementById('toggle-gyro').textContent = `Gyroscope : ${capteurs.gyro ? '✅' : '❌'}`;
+  document.getElementById('toggle-baro').textContent = `Baromètre : ${capteurs.baro ? '✅' : '❌'}`;
+  safeSetText('mode', 'Mode : ⛳ Prêt');
+
+  // quick detection of sensor availability for UI hints
+  let available = [];
+  if ('DeviceMotionEvent' in window) available.push('Accéléromètre');
+  if ('Gyroscope' in window) available.push('Gyroscope');
+  if ('Magnetometer' in window || 'ondeviceorientationabsolute' in window) available.push('Magnétomètre');
+  if ('AmbientLightSensor' in window) available.push('Luminosité');
+  if ('PressureSensor' in window) available.push('Baromètre');
+  safeSetText('capteurs', `Capteurs détectés : ${available.join(', ') || '--'}`);
+
+  // ensure sensors started if toggles true
+  if (capteurs.accel || capteurs.gyro || capteurs.baro) startSensors();
 });
-      
+                 
+  
