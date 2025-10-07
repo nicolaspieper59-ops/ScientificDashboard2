@@ -34,10 +34,11 @@ function miseAJour(pos){
   const dist = positionPrev? haversine3D(positionPrev,gpsData):0;
   positionPrev=gpsData;
   distanceTotale+=dist;
-  const vitesseBrute = dt>0? dist/dt : 0;
-  const accelZ = Sensors.getAccelZ();
 
-  // Kalman
+  const vitesseBrute = dt>0? dist/dt : 0;
+  const sensors = Sensors.getAll();
+  const accelZ = sensors.accel.z;
+
   if(!tempsDebut) Kalman2.reset();
   Kalman2.predict(dt, accelZ);
   const K = Kalman2.update(distanceTotale, gpsData.accuracy**2);
@@ -60,7 +61,8 @@ function demarrerCockpit(){
   if(watchId!==null) return;
 
   tempsDebut=Date.now(); distanceTotale=0; vitesseMax=0; positionPrev=null;
-  Sensors.startAccelerometer();
+  Sensors.startAll();
+
   watchId = navigator.geolocation.watchPosition(miseAJour, e=>safeSetText('gps','Erreur GPS'), {enableHighAccuracy:true,maximumAge:0,timeout:10000});
 }
 
