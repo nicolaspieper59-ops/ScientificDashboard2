@@ -1,1 +1,23 @@
- 
+body {
+  background: #111;
+  color: #0ff;
+  font-family: monospace;
+  padding: 20px;
+}
+h1 { color: #ffd700; }
+button {
+  background:#222;
+  color:#0ff;
+  border:2px solid #0ff;
+  padding:10px;
+  cursor:pointer;
+  margin:5px;
+  font-family: monospace;
+  font-weight:bold;
+}
+#infos {
+  margin-top: 15px;
+  border-top: 1px solid #333;
+  padding-top: 10px;
+}
+#infos div { margin:5px 0; }
