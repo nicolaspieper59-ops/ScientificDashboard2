@@ -1,23 +1,25 @@
+/* style.css */
 body {
-  background: #111;
-  color: #0ff;
-  font-family: monospace;
+  background: #0b0f12;
+  color: #00f2d7;
+  font-family: "Courier New", monospace;
+  margin: 0;
   padding: 20px;
 }
-h1 { color: #ffd700; }
+main { max-width: 820px; margin: 0 auto; }
+h1 { color: #ffd24d; margin-bottom: 12px; }
+.controls { margin-bottom: 12px; }
 button {
-  background:#222;
-  color:#0ff;
-  border:2px solid #0ff;
-  padding:10px;
-  cursor:pointer;
-  margin:5px;
-  font-family: monospace;
-  font-weight:bold;
+  background: #111;
+  color: #00f2d7;
+  border: 2px solid #00f2d7;
+  padding: 10px 12px;
+  margin-right: 8px;
+  cursor: pointer;
+  border-radius: 6px;
 }
-#infos {
-  margin-top: 15px;
-  border-top: 1px solid #333;
-  padding-top: 10px;
-}
-#infos div { margin:5px 0; }
+#infos { margin-top: 10px; border-top: 1px solid #223; padding-top: 12px; }
+#infos h2 { color: #ffd24d; margin-top: 8px; }
+#infos div { margin: 6px 0; }
+#capteurs { margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 6px; }
+#avertissement { margin-top: 12px; color: #ffb3b3; font-size: 0.95rem; }
