@@ -1,62 +1,55 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>Cockpit Cosmique 3D – Fusion Capteurs</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  body { background:#111; color:#0ff; font-family: monospace; padding: 20px; }
-  h1 { color:#ffd700; }
-  button {
-    background:#222; color:#0ff; border:2px solid #0ff; padding:10px;
-    cursor:pointer; margin:5px; font-family: monospace; font-weight:bold;
-  }
-  #infos { margin-top:15px; border-top:1px solid #333; padding-top:10px; }
-  #infos div { margin:5px 0; }
-</style>
+  <meta charset="utf-8" />
+  <title>🌌 Cockpit Cosmique 3D</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique 3D – Fusion Capteurs</h1>
+  <main>
+    <h1>🌌 Cockpit Cosmique 3D – Kalman & Capteurs</h1>
 
-  <section>
-    <button id="marche">▶️ Démarrer</button>
-    <button id="arreter">⏹️ Arrêter</button>
-    <button id="reset">🔄 Réinitialiser vitesse max</button>
-  </section>
+    <section class="controls">
+      <button id="marche">▶️ Démarrer</button>
+      <button id="arreter">⏹️ Arrêter</button>
+      <button id="reset">🔄 Réinitialiser vitesse max</button>
+    </section>
 
-  <div id="infos">
-    <h2>🚀 Vitesse & Distance</h2>
-    <div id="temps">Temps écoulé : 0.00 s</div>
-    <div id="vitesse-kalman">Vitesse Filtrée (Kalman) : -- km/h</div>
-    <div id="vitesse-raw">Vitesse GPS Brute : -- km/h</div>
-    <div id="vitesse-max">Vitesse max : -- km/h</div>
-    <div id="distance">Distance totale : -- km</div>
+    <section id="infos">
+      <h2>🚀 Vitesse & Distance</h2>
+      <div id="temps">Temps écoulé : 0.00 s</div>
+      <div id="vitesse-raw">Vitesse GPS Brute : -- km/h</div>
+      <div id="vitesse-kalman">Vitesse Filtrée : -- km/h</div>
+      <div id="vitesse-max">Vitesse max : -- km/h</div>
+      <div id="distance">Distance totale : -- km</div>
+      <div id="vitesse-precision">Pourcentage de vitesse parfaite : --%</div>
 
-    <h2>📍 Précision & Capteurs</h2>
-    <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Précision: -- m</div>
-    <div id="accel-z">Accélération Z : 0.00 m/s²</div>
-    <div id="kalman-gain">Gain de Kalman : --</div>
-    <div id="kalman-error">Erreur estimée : --</div>
-    <div id="capteurs">
-      <div>Accéléromètre : --</div>
-      <div>Gyroscope : --</div>
-      <div>Magnétomètre : --</div>
-      <div>Baromètre : --</div>
-      <div>Infra-rouge : --</div>
-            <div>Ultra-sons : --</div>
-      <div>Rayons X : --</div>
-      <div>Autres capteurs : --</div>
-    </div>
+      <h2>📍 Précision & Capteurs</h2>
+      <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Acc: -- m</div>
+      <div id="kalman-gain">Gain Kalman K : --</div>
+      <div id="kalman-error">Erreur P : --</div>
+      <div id="accel-z">Accélération Z : 0.00 m/s²</div>
 
-    <h2>📊 Qualité & Confiance</h2>
-    <div id="vitesse-precision">Pourcentage de vitesse parfaite : --%</div>
-    <div id="capteurs-utilises">Capteurs utilisés : --</div>
-    <div id="avertissement">⚠️ Tous les capteurs nécessitent HTTPS pour fonctionner</div>
-  </div>
+      <div id="capteurs">
+        <h3>Capteurs détectés / utilisés</h3>
+        <div id="capteurs-utilises">--</div>
+        <div id="capteurs-detail">
+          <div>Lumière : <span id="cap-lumiere">--</span></div>
+          <div>Micro / Son : <span id="cap-son">--</span></div>
+          <div>Magnétisme : <span id="cap-magneto">--</span></div>
+          <div>Baromètre : <span id="cap-baro">--</span></div>
+          <div>Ultrasons : <span id="cap-ultra">--</span></div>
+          <div>Rayons-X : <span id="cap-x">--</span></div>
+        </div>
+      </div>
 
-  <!-- Lien vers le fichier JS principal -->
-  <script src="./kalmanFusion.js"></script>
+      <div id="avertissement">⚠️ Le site doit être servi en <strong>HTTPS</strong> pour accéder aux capteurs (ou utiliser `localhost`).</div>
+    </section>
+  </main>
+
+  <script src="js/utils.js"></script>
+  <script src="js/kalmanFusion.js"></script>
 </body>
-</html>
-
-        
+  </html>
+  
