@@ -2,56 +2,39 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Cockpit Cosmique 3D</title>
+<title>Cockpit GPS 3D</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { background:#0a0a0a; color:#00fff2; font-family:monospace; padding:20px; }
-  h1 { color:#ffd700; }
-  button {
-    background:#111; color:#0ff; border:1px solid #0ff;
-    padding:10px; margin:5px; border-radius:8px; cursor:pointer;
-  }
-  #infos { margin-top:20px; border-top:1px solid #222; padding-top:10px; }
+  body { background: #111; color: #0ff; font-family: monospace; padding: 20px; }
+  h1 { color: #ffd700; }
+  button { background:#222; color:#0ff; border:2px solid #0ff; padding:10px; cursor:pointer; margin:5px; font-family: monospace; font-weight: bold; }
+  #infos { margin-top: 15px; border-top: 1px solid #333; padding-top: 10px; }
   #infos div { margin:5px 0; }
-  .mode-souterrain { color:#ff5; font-weight:bold; }
 </style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique 3D – Fusion GPS & Kalman</h1>
+<h1>🌌 Cockpit GPS 3D</h1>
 
-  <section>
-    <button id="demarrer">▶️ Démarrer</button>
-    <button id="arreter">⏹️ Arrêter</button>
-    <button id="reset">🔄 Réinitialiser</button>
-  </section>
+<section>
+  <button id="marche">▶️ Démarrer</button>
+  <button id="arreter">⏹️ Arrêter</button>
+  <button id="reset">🔄 Réinitialiser vitesse max</button>
+</section>
 
-  <div id="infos">
-    <h2>🚀 Vitesse & Distance</h2>
-    <div id="temps">Temps écoulé : 0.00 s</div>
-    <div id="vitesse-brute">Vitesse brute : -- km/h</div>
-    <div id="vitesse-filtrée">Vitesse filtrée (Kalman) : -- km/h</div>
-    <div id="distance">Distance totale : -- km</div>
-    <div id="vitesse-max">Vitesse max : -- km/h</div>
-    <div id="vitesse-precision">Vitesse parfaite : --%</div>
+<div id="infos">
+  <h2>🚀 Vitesse & Distance</h2>
+  <div id="temps">Temps écoulé : 0.00 s</div>
+  <div id="vitesse-brute">Vitesse brute : -- km/h</div>
+  <div id="vitesse-filtre">Vitesse filtrée : -- km/h</div>
+  <div id="vitesse-max">Vitesse max : -- km/h</div>
+  <div id="distance">Distance totale : -- km</div>
 
-    <h2>📍 Précision & Capteurs</h2>
-    <div id="gps">GPS : --</div>
-    <div id="altitude">Altitude : -- m</div>
-    <div id="precision">Précision : -- m</div>
-    <div id="mode">Mode : 🌐 Surface</div>
+  <h2>📍 GPS & Capteurs</h2>
+  <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Précision: -- m</div>
+  <div id="accel-z">Accélération Z : 0.00 m/s²</div>
+  <div id="capteurs">Capteurs activés : --</div>
+</div>
 
-    <h2>⚙️ Contrôle des capteurs</h2>
-    <button id="toggle-gps">GPS : ✅</button>
-    <button id="toggle-accel">Accéléromètre : ✅</button>
-    <button id="toggle-gyro">Gyroscope : ✅</button>
-    <button id="toggle-baro">Baromètre : ✅</button>
-
-    <h2>📊 Données Kalman</h2>
-    <div id="kalman-gain">Gain K : --</div>
-    <div id="kalman-error">Erreur P : --</div>
-  </div>
-
-  <script src="kalmanFusion.js"></script>
+<script src="./cockpit.js"></script>
 </body>
-      </html>
-  
+</html>
