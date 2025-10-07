@@ -1,41 +1,152 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>Cockpit Android 3D - Tous Capteurs</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-body{background:#111;color:#0ff;font-family:monospace;padding:20px;}
-h1{color:#ffd700;}
-button{background:#222;color:#0ff;border:2px solid #0ff;padding:10px;cursor:pointer;margin:5px;font-weight:bold;}
-#infos div{margin:5px 0;}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cockpit Fusion Capteurs</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(180deg, #0a0a0a, #1a1a1a);
+      color: #e8e8e8;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+    }
+    header {
+      width: 100%;
+      text-align: center;
+      background: #111;
+      padding: 12px 0;
+      font-size: 1.4em;
+      font-weight: bold;
+      color: #4de1ff;
+      letter-spacing: 0.5px;
+    }
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      width: 90%;
+      max-width: 600px;
+      margin-top: 20px;
+    }
+    section {
+      background: rgba(255,255,255,0.05);
+      border-radius: 14px;
+      padding: 15px 20px;
+      width: 100%;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+    h2 {
+      font-size: 1.2em;
+      margin-bottom: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding-bottom: 5px;
+      color: #4de1ff;
+    }
+    .value {
+      font-size: 1.1em;
+      margin: 4px 0;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+    button {
+      background: #222;
+      color: #eee;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.95em;
+      transition: all 0.2s;
+    }
+    button:hover { background: #333; }
+    button.active {
+      background: #4de1ff;
+      color: #000;
+      border-color: #4de1ff;
+    }
+    input[type="number"] {
+      background: #111;
+      color: #eee;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px;
+      width: 70px;
+      text-align: center;
+    }
+    footer {
+      font-size: 0.8em;
+      color: #777;
+      margin-top: 20px;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-<h1>🚀 Cockpit Android 3D – Tous Capteurs</h1>
+  <header>🛰️ Cockpit Fusion Capteurs</header>
 
-<section>
-<button id="marche">▶️ Démarrer</button>
-<button id="arreter">⏹️ Arrêter</button>
-<button id="reset">🔄 Réinitialiser vitesse max</button>
-</section>
+  <main>
+    <section id="vitesse">
+      <h2>Vitesses</h2>
+      <div class="value">Brute : <span id="vitesse-brute">--</span></div>
+      <div class="value">Filtrée : <span id="vitesse-filtree">--</span></div>
+      <div class="value">Verticale : <span id="vitesse-verticale">--</span></div>
+      <div class="value">Max : <span id="vitesse-max">--</span></div>
+      <div class="value">Distance : <span id="distance">--</span></div>
+    </section>
 
-<div id="infos">
-<h2>Vitesse & Distance</h2>
-<div id="temps">--</div>
-<div id="vitesse-brute">--</div>
-<div id="vitesse-filtre">--</div>
-<div id="vitesse-max">--</div>
-<div id="distance">--</div>
+    <section id="infos">
+      <h2>Infos GPS & Précision</h2>
+      <div class="value" id="gps">--</div>
+      <div class="value">Précision : <span id="precision">--</span></div>
+      <div class="value">Fréquence : <span id="frequence">--</span></div>
+    </section>
 
-<h2>Capteurs & Précision</h2>
-<div id="gps">--</div>
-<div id="accel">--</div>
-<div id="gyro">--</div>
-<div id="precision">--</div>
-<div id="capteurs">--</div>
-</div>
+    <section id="capteurs">
+      <h2>Capteurs</h2>
+      <div id="capteurs-list" class="value">aucun</div>
+      <div class="controls">
+        <button id="btn-gps" class="active" onclick="toggleCapteur('gps')">GPS</button>
+        <button id="btn-accel" class="active" onclick="toggleCapteur('accel')">Accéléro</button>
+        <button id="btn-baro" onclick="toggleCapteur('baro')">Baro</button>
+        <button id="btn-gyro" onclick="toggleCapteur('gyro')">Gyro</button>
+        <button id="btn-magnet" onclick="toggleCapteur('magnet')">Magnéto</button>
+        <button id="btn-lum" onclick="toggleCapteur('lum')">Lumière</button>
+        <button id="btn-mic" onclick="toggleCapteur('mic')">Micro</button>
+        <button id="btn-infra" onclick="toggleCapteur('infra')">Infra</button>
+      </div>
+    </section>
 
-<script src="cockpit.js"></script>
+    <section id="controle">
+      <h2>Contrôle</h2>
+      <div class="controls">
+        <button onclick="startTracking()">Démarrer</button>
+        <button onclick="stopTracking()">Arrêter</button>
+      </div>
+      <div class="controls">
+        <label for="hz">Rafraîchissement (Hz) :</label>
+        <input type="number" id="hz" value="5" min="1" max="60" step="1" onchange="changerFrequenceFromInput()" />
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Fusion des capteurs (GPS + inertiels) — mode auto-calibré et ajustement dynamique de la fréquence.
+  </footer>
+
+  <script src="cockpit.js"></script>
 </body>
-</html>
+        </html>
+                                                                                         
