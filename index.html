@@ -1,61 +1,64 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Cockpit Sensor Fusion</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { background: #111; color: #0ff; font-family: monospace; padding: 20px; }
-        h1 { color: #ffd700; }
-        section { margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333; }
-        button { background: #222; color: #0ff; border: 2px solid #0ff; padding: 10px; cursor: pointer; margin-right: 5px; font-family: monospace; }
-        button.sensor-btn { margin-top: 5px; margin-right: 10px; }
-        button.sensor-btn.active { background: #008080; border-color: #0ff; }
-        div { margin-top: 5px; }
-    </style>
+<meta charset="UTF-8">
+<title>Cockpit Cosmique 3D - Filtre de Kalman Final</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { 
+    background: #111; 
+    color: #0ff; 
+    font-family: monospace; 
+    padding: 20px; 
+  }
+  h1 { 
+    color: #ffd700; 
+  }
+  button { 
+    background: #222; 
+    color: #0ff; 
+    border: 2px solid #0ff; 
+    padding: 10px; 
+    cursor: pointer; 
+    margin: 5px; 
+    font-family: monospace; 
+    font-weight: bold; 
+  }
+  #infos { 
+    margin-top: 15px; 
+    border-top: 1px solid #333; 
+    padding-top: 10px; 
+  }
+  #infos div { 
+    margin: 5px 0; 
+  }
+</style>
 </head>
 <body>
-    <h1>🛰️ Cockpit Sensor Fusion (JS)</h1>
+  <h1>🌌 Cockpit Cosmique 3D – Kalman Stable</h1>
+  
+  <section>
+    <button id="marche">▶️ Démarrer</button>
+    <button id="arreter">⏹️ Arrêter</button>
+    <button id="reset">🔄 Réinitialiser vitesse max</button>
+  </section>
+
+  <div id="infos">
+    <h2>🚀 Vitesse & Distance</h2>
+    <div id="vitesse-kalman">Vitesse Filtrée (Kalman) : -- km/h</div>
+    <div id="vitesse-raw">Vitesse GPS Brute : -- km/h</div>
+    <div id="vitesse-max">Vitesse max (Filtrée) : -- km/h</div>
+    <div id="distance">Distance totale : -- km</div>
     
-    <section>
-        <button id="start-btn" onclick="startTracking()">▶️ Démarrer Suivi</button>
-        <button onclick="stopTracking()">⏹️ Arrêter Suivi</button>
-        <div style="margin-top: 10px;">
-            <label for="hz">Fréquence Max (Hz) : </label>
-            <input type="number" id="hz" value="5" min="1" max="60" onchange="changerFrequenceFromInput()" style="background: #222; color: #0ff; border: 1px solid #0ff; width: 60px;">
-        </div>
-    </section>
+    <h2>📍 Précision & Capteurs</h2>
+    <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Précision: -- m</div>
+    <div id="accel-z">Accélération Z : 0.00 m/s²</div>
+    <div id="kalman-gain">Gain de Kalman (K) : --</div>
+    <div id="kalman-error">Erreur Estimée (P) : --</div>
+    <div id="temps">Temps écoulé : 0.00 s</div>
+    <div id="avertissement">⚠️ Géolocalisation et Capteurs nécessitent **HTTPS**</div>
+  </div>
 
-    <section>
-        <h2>📡 Capteurs Actifs</h2>
-        <div id="capteurs-list">aucun</div>
-        <button id="btn-gps" class="sensor-btn active" onclick="toggleCapteur('gps')">GPS</button>
-        <button id="btn-accel" class="sensor-btn active" onclick="toggleCapteur('accel')">Accéléromètre</button>
-        <button id="btn-baro" class="sensor-btn" onclick="toggleCapteur('baro')">Baromètre</button>
-        </section>
-
-    <section>
-        <h2>📈 Données de Vol</h2>
-        <div id="frequence">5 Hz</div>
-        <div id="precision">-- %</div>
-        <div id="distance">Distance : -- km</div>
-        <div id="vitesse-max">Vitesse Max : -- km/h</div>
-    </section>
-
-    <section>
-        <h2>🚀 Vitesse (m/s & km/h)</h2>
-        <div id="vitesse-filtree">Vitesse Filtrée : -- km/h</div>
-        <div id="vitesse-brute">Vitesse Brute : -- km/h</div>
-        <div id="vitesse-verticale">Vitesse Verticale : -- m/s</div>
-    </section>
-
-    <section>
-        <h2>📍 GPS & Accel</h2>
-        <div id="gps">Lat:-- Lon:-- Alt:-- m Acc:-- m</div>
-        <div id="accel-data">Accel XYZ : --, --, -- m/s²</div>
-        <div id="filtre-info">Gain: ${filterGain} | Cov: ${kalmanCov}</div>
-    </section>
-    
-    <script src="cockpit.js"></script>
+  <script src="./kalman_logic.js"></script>
 </body>
 </html>
