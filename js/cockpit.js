@@ -1,26 +1,24 @@
-// kalman.js
+// kalman_logic.js
 
 // ========================
 // PARAMÈTRES DU FILTRE DE KALMAN
 // ========================
-// Q (Process Noise): Bruit du modèle d'accélération (Petit)
 const KALMAN_Q = 0.0001;
-// P (Estimation Error): Erreur initiale de l'état (Position), grande pour faire confiance au premier GPS
 const KALMAN_P_INIT = 1000;
 
 // ========================
 // ÉTAT GLOBAL
 // ========================
 let watchId = null;
-let positionPrecedente = null; // {latitude, longitude, altitude, timestamp}
-let vitesseMax = 0;
-let vitessesFiltrees = [];
+let positionPrecedente = null; 
+let vitesseMax = 0; // en km/h
+let vitessesFiltrees = []; // en km/h
 let distanceTotale = 0; // en mètres
 let tempsDebut = null;
 
-let accel = { z: 0 }; // accélération Z (m/s²) pour la correction d'altitude
+let accel = { z: 0 }; // accélération Z (m/s²)
 
-// État du Filtre de Kalman (pour la position 1D)
+// État du Filtre de Kalman (position 1D)
 let kalmanState = {
     x: 0,   // Position estimée (distance totale en mètres)
     P: KALMAN_P_INIT, // Erreur de covariance (m²)
@@ -30,7 +28,7 @@ let lastKalmanTime = 0;
 
 
 // ========================
-// UTILS DOM & MATHS
+// UTILITAIRES DOM & MATHS
 // ========================
 function safeSetText(id, text) {
   const e = document.getElementById(id);
@@ -65,45 +63,28 @@ function calculerVitesse3D(pos) {
 
   const dist = haversine3D(positionPrecedente, pos);
   
-  // Met à jour la position précédente *après* avoir calculé la distance
   positionPrecedente = pos; 
   return { vitesse: dist/dt, distance: dist, dt: dt }; // Vitesse en m/s
 }
 
 
 // ========================
-// FILTRE DE KALMAN (1D pour Position)
+// FILTRE DE KALMAN (1D pour Position/Vitesse)
 // ========================
 function kalmanFilterUpdate(posGPS, dt, accZ, accGPS) {
-    // --- Phase 1: Prédiction (Estimation de l'état futur) ---
-    
-    // Prediction de la Position: x_k = x_{k-1} + v_{k-1} * dt
+    // --- Phase 1: Prédiction ---
     kalmanState.x = kalmanState.x + kalmanState.v * dt;
-    
-    // Prediction de la Vitesse: v_k = v_{k-1} + Accélération * dt
-    // L'accélération 'accZ' est l'entrée de contrôle du filtre.
     kalmanState.v = kalmanState.v + accZ * dt; 
-
-    // Prediction de la Covariance (incertitude): P_k = P_{k-1} + Q
     kalmanState.P = kalmanState.P + KALMAN_Q;
 
-    
-    // --- Phase 2: Correction (Intégration de la mesure GPS) ---
-    
-    // Erreur R (Bruit de la mesure GPS). R = accuracy^2
+    // --- Phase 2: Correction ---
     const R_current = accGPS * accGPS; 
-
-    // Calcul du gain de Kalman (K): K = P_k / (P_k + R)
     const K = kalmanState.P / (kalmanState.P + R_current);
 
-    // Mise à jour de la Position (Correction): x_k = x_k + K * (z_k - x_k)
-    // z_k est la mesure (posGPS)
     kalmanState.x = kalmanState.x + K * (posGPS - kalmanState.x);
-    
-    // Mise à jour de la Covariance: P_k = (1 - K) * P_k
     kalmanState.P = (1 - K) * kalmanState.P;
     
-    return K; // Retourne le Gain pour l'affichage
+    return K; 
 }
 
 
@@ -116,21 +97,26 @@ function miseAJour(pos) {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
         altitude: pos.coords.altitude,
-        accuracy: pos.coords.accuracy, // Précision GPS (m)
+        accuracy: pos.coords.accuracy,
         timestamp: now,
-        speed: pos.coords.speed // Vitesse native (m/s)
+        speed: pos.coords.speed // vitesse native en m/s
     };
+    
+    // Si la vitesse native est nulle et la précision mauvaise, on ne fait rien
+    if (gpsData.speed === 0 && gpsData.accuracy > 50 && vitesseMax === 0) {
+        // Cela évite les faux départs et les mises à jour inutiles à l'arrêt
+        return;
+    }
 
     // 1. Calculs Bruts pour la Distance Totale
-    // On utilise les données brutes pour mettre à jour la distance totale parcourue
     const { vitesse: v_raw_ms, distance: d_delta } = calculerVitesse3D(gpsData);
     const v_raw_kmh = v_raw_ms * 3.6;
     distanceTotale += d_delta;
     
     
-    // --- 2. Préparation pour le Kalman ---
+    // --- 2. Préparation et Exécution du Kalman ---
     
-    const posGPS_m = distanceTotale; // Distance totale = Position 1D de la mesure
+    const posGPS_m = distanceTotale; 
     let dt_kalman = 0;
     
     if (lastKalmanTime !== 0) {
@@ -142,21 +128,16 @@ function miseAJour(pos) {
     }
     lastKalmanTime = now;
     
-    
-    // --- 3. Exécution du Filtre de Kalman ---
-    
-    // Utilise l'accélération Z pour la prédiction d'altitude/verticalité.
     const K = kalmanFilterUpdate(posGPS_m, dt_kalman, accel.z, gpsData.accuracy);
 
     // Vitesse Filtrée (m/s) et conversion en km/h
-    const v_kalman_kmh = kalmanState.v * 3.6;
+    const v_kalman_ms = kalmanState.v;
+    const v_kalman_kmh = v_kalman_ms * 3.6;
     
     
-    // --- 4. Mise à jour de l'affichage ---
+    // --- 3. Mise à jour de l'affichage ---
     
     vitesseMax = Math.max(vitesseMax, v_kalman_kmh);
-    vitessesFiltrees.push(v_kalman_kmh);
-    if (vitessesFiltrees.length > 60) vitessesFiltrees.shift();
     
     // Affichage des résultats
     safeSetText('vitesse-kalman', `Vitesse Filtrée (Kalman) : ${v_kalman_kmh.toFixed(2)} km/h`);
@@ -178,17 +159,14 @@ function miseAJour(pos) {
 function activerAccelerometre() {
     if ('DeviceMotionEvent' in window) {
         window.addEventListener('devicemotion', e => {
-            // Utilise Z (vertical) comme entrée de contrôle pour la correction d'altitude/vitesse
             accel.z = e.accelerationIncludingGravity?.z ?? 0; 
         });
-    } else {
-        safeSetText('accel-z', 'Accélération Z : **NON SUPPORTÉ**');
     }
 }
 
 function demarrerCockpit() {
-    if (window.location.protocol !== 'https:') {
-        alert("⚠️ ERREUR : Le GPS et les capteurs nécessitent une connexion sécurisée (HTTPS).");
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        alert("⚠️ ERREUR : Le GPS et les capteurs nécessitent une connexion sécurisée (HTTPS) ou localhost.");
         safeSetText('gps', 'GPS : **HTTPS REQUIS**');
         return;
     }
@@ -203,9 +181,8 @@ function demarrerCockpit() {
     kalmanState.v = 0;
     lastKalmanTime = 0;
     
-    vitesseMax = 0; vitessesFiltrees = []; distanceTotale = 0; positionPrecedente = null;
+    vitesseMax = 0; distanceTotale = 0; positionPrecedente = null;
 
-    // Utilisation de navigator.geolocation.watchPosition
     watchId = navigator.geolocation.watchPosition(
         miseAJour,
         err => safeSetText('gps',`Erreur GPS (${err.code}): ${err.message}`),
@@ -218,12 +195,11 @@ function demarrerCockpit() {
 function arreterCockpit() {
     if (watchId!==null) navigator.geolocation.clearWatch(watchId);
     
-    // Nettoyage des états
     watchId = null; 
     positionPrecedente = null; 
     tempsDebut = null;
 
-    // Réinitialisation de l'affichage aux valeurs par défaut
+    // Réinitialisation de l'affichage
     safeSetText('temps', 'Temps écoulé : 0.00 s');
     safeSetText('vitesse-kalman','Vitesse Filtrée (Kalman) : -- km/h');
     safeSetText('vitesse-raw','Vitesse GPS Brute : -- km/h');
@@ -248,6 +224,5 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('arreter').addEventListener('click',arreterCockpit);
     document.getElementById('reset').addEventListener('click',resetVitesseMax);
     
-    // Initialisation de l'affichage
-    arreterCockpit(); 
+    arreterCockpit(); // Initialisation de l'affichage
 });
