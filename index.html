@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Cockpit Cosmique 3D - Filtre de Kalman Final</title>
+<title>Cockpit de Fusion GPS/Inertiel - COMPLET</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body { 
@@ -32,33 +32,39 @@
   #infos div { 
     margin: 5px 0; 
   }
+  .highlight {
+    color: #f00;
+    font-weight: bold;
+  }
 </style>
 </head>
 <body>
-  <h1>🌌 Cockpit Cosmique 3D – Kalman Stable</h1>
+  <h1>🛰️ Cockpit de Fusion : GPS & Inertiel</h1>
   
   <section>
-    <button id="marche">▶️ Démarrer</button>
+    <button id="marche">▶️ Démarrer (Fusion GPS/Kalman)</button>
+    <button id="marche-inertiel">▶️ Démarrer (Inertiel/ZUPT)</button>
     <button id="arreter">⏹️ Arrêter</button>
     <button id="reset">🔄 Réinitialiser vitesse max</button>
   </section>
 
   <div id="infos">
     <h2>🚀 Vitesse & Distance</h2>
-    <div id="vitesse-kalman">Vitesse Filtrée (Kalman) : -- km/h</div>
-    <div id="vitesse-raw">Vitesse GPS Brute : -- km/h</div>
-    <div id="vitesse-max">Vitesse max (Filtrée) : -- km/h</div>
+    <div id="mode-actuel" class="highlight">Mode actuel : INACTIF</div>
+    <div id="vitesse-filtree">Vitesse Estimée : -- km/h</div>
+    <div id="vitesse-raw">Vitesse GPS/Inertiel Brute : -- km/h</div>
+    <div id="vitesse-max">Vitesse max : -- km/h</div>
     <div id="distance">Distance totale : -- km</div>
     
-    <h2>📍 Précision & Capteurs</h2>
+    <h2>📍 Capteurs & État du Système</h2>
+    <div id="connexion-etat">Statut Réseau : --</div>
     <div id="gps">GPS : Lat: -- | Lon: -- | Alt: -- m | Précision: -- m</div>
-    <div id="accel-z">Accélération Z : 0.00 m/s²</div>
-    <div id="kalman-gain">Gain de Kalman (K) : --</div>
-    <div id="kalman-error">Erreur Estimée (P) : --</div>
+    <div id="accel-data">Accélération Linéaire (X,Y,Z) : 0.00, 0.00, 0.00 m/s²</div>
+    <div id="kalman-etat">Kalman/ZUPT État : --</div>
     <div id="temps">Temps écoulé : 0.00 s</div>
     <div id="avertissement">⚠️ Géolocalisation et Capteurs nécessitent **HTTPS**</div>
   </div>
 
-  <script src="./kalman_logic.js"></script>
+  <script src="./fusion_logic.js"></script>
 </body>
 </html>
