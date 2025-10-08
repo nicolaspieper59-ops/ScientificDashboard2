@@ -45,3 +45,4 @@ function calculerTempsSolaire() {
     `🌞 Midi Solaire Vrai: ${midiSolaire.toFixed(2)}h\n` +
     `🔧 Ajustement Solaire Suggéré: ${suggestion}`;
 }
+  
