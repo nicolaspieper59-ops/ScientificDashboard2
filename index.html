@@ -15,10 +15,10 @@
     <label for="heure">⏰ Heure Légale (HH:MM)</label>
     <input type="time" id="heure" value="16:47">
 
-    <label for="longitude">🧭 Longitude (Ex: 5.38)</label>
+    <label for="longitude">🧭 Longitude (° Est)</label>
     <input type="number" id="longitude" step="0.01" placeholder="0.00">
 
-    <label for="latitude">🧭 Latitude (Ex: 43.3)</label>
+    <label for="latitude">🧭 Latitude (° Nord)</label>
     <input type="number" id="latitude" step="0.01" placeholder="0.00">
 
     <label for="decalage">🌍 Décalage Fuseau Horaire (UTC)</label>
@@ -28,7 +28,7 @@
     <button onclick="calculerTempsSolaire()">⚙️ Calculer le Temps Solaire</button>
 
     <p id="statutGPS">Statut GPS: Non encore obtenu.</p>
-    <p id="resultats">Résultats du Jour Solaire: Veuillez obtenir la position GPS et lancer le calcul.</p>
+    <pre id="resultats">Résultats du Jour Solaire: Veuillez obtenir la position GPS et lancer le calcul.</pre>
   </section>
 
   <script src="calcul-solaire.js"></script>
