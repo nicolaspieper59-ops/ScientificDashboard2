@@ -1,30 +1,19 @@
-// kalman_logic.js
-
-// ========================
-// PARAMÈTRES DU FILTRE DE KALMAN
-// ========================
-const KALMAN_Q = 0.0001;
-const KALMAN_P_INIT = 1000;
+// kalman_logic.js - ACCÉLÉROMÈTRE ET GYROSCOPE (Meilleure Précision Inertielle)
 
 // ========================
 // ÉTAT GLOBAL
 // ========================
 let watchId = null;
-let positionPrecedente = null; 
+let modeGPSActif = true;
+
+// Capteurs
+let accel = { x: 0, y: 0, z: 0 }; // Accélération linéaire (sans gravité, si dispo)
+let orientation = { alpha: 0, beta: 0, gamma: 0 }; // Orientation (Gyroscope)
+
+// Estimation Inertielle
+let inertialState = { vx: 0, vy: 0, vz: 0, lastTime: 0 };
 let vitesseMax = 0; // en km/h
-let vitessesFiltrees = []; // en km/h
-let distanceTotale = 0; // en mètres
-let tempsDebut = null;
-
-let accel = { z: 0 }; // accélération Z (m/s²)
-
-// État du Filtre de Kalman (position 1D)
-let kalmanState = {
-    x: 0,   // Position estimée (distance totale en mètres)
-    P: KALMAN_P_INIT, // Erreur de covariance (m²)
-    v: 0    // Vitesse estimée (m/s)
-};
-let lastKalmanTime = 0; 
+let distanceEstimée = 0; // en mètres
 
 
 // ========================
@@ -34,171 +23,170 @@ function safeSetText(id, text) {
   const e = document.getElementById(id);
   if (e) e.textContent = text;
 }
-
-const R_TERRE = 6371e3; // Rayon de la Terre en mètres
-
-function toRad(degrees) {
-    return degrees * Math.PI / 180;
-}
-
-function haversine3D(p1, p2) {
-  const φ1 = toRad(p1.latitude);
-  const φ2 = toRad(p2.latitude);
-  const Δφ = toRad(p2.latitude - p1.latitude);
-  const Δλ = toRad(p2.longitude - p1.longitude);
-  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  const c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  const d2D = R_TERRE * c;
-  const dz = (p2.altitude ?? 0) - (p1.altitude ?? 0);
-  return Math.sqrt(d2D*d2D + dz*dz);
-}
-
-function calculerVitesse3D(pos) {
-  if (!positionPrecedente) {
-    positionPrecedente = pos;
-    return { vitesse: 0, distance: 0, dt: 0 };
-  }
-  const dt = (pos.timestamp - positionPrecedente.timestamp)/1000;
-  if (dt <= 0) return { vitesse: 0, distance: 0, dt: 0 };
-
-  const dist = haversine3D(positionPrecedente, pos);
-  
-  positionPrecedente = pos; 
-  return { vitesse: dist/dt, distance: dist, dt: dt }; // Vitesse en m/s
-}
+function toRad(degrees) { return degrees * Math.PI / 180; }
+const G = 9.81; // Gravité standard
 
 
 // ========================
-// FILTRE DE KALMAN (1D pour Position/Vitesse)
+// LOGIQUE DE DÉTECTION ET DE CORRECTION
 // ========================
-function kalmanFilterUpdate(posGPS, dt, accZ, accGPS) {
-    // --- Phase 1: Prédiction ---
-    kalmanState.x = kalmanState.x + kalmanState.v * dt;
-    kalmanState.v = kalmanState.v + accZ * dt; 
-    kalmanState.P = kalmanState.P + KALMAN_Q;
 
-    // --- Phase 2: Correction ---
-    const R_current = accGPS * accGPS; 
-    const K = kalmanState.P / (kalmanState.P + R_current);
+// Tente de soustraire la gravité pour obtenir l'accélération linéaire pure
+function getLinearAcceleration(accelInclGravity) {
+    if (!accelInclGravity) return { x: 0, y: 0, z: 0 };
 
-    kalmanState.x = kalmanState.x + K * (posGPS - kalmanState.x);
-    kalmanState.P = (1 - K) * kalmanState.P;
+    // Si le navigateur fournit déjà l'accélération sans gravité
+    if ('acceleration' in accelInclGravity && accelInclGravity.acceleration) {
+        return { 
+            x: accelInclGravity.acceleration.x || 0,
+            y: accelInclGravity.acceleration.y || 0,
+            z: accelInclGravity.acceleration.z || 0
+        };
+    }
     
-    return K; 
-}
+    // Si nous avons l'orientation (gyro), nous pouvons tenter la soustraction (méthode simplifiée)
+    // NOTE: Ceci nécessite une calibration précise et est très imprécis sur de longues périodes.
+    const radBeta = toRad(orientation.beta);
+    const radGamma = toRad(orientation.gamma);
+    
+    // Projection simplifiée de la gravité sur les axes du téléphone (x et y)
+    // C'est la partie la plus difficile sans un filtre de fusion comme un Madgwick.
+    const gravX = G * Math.sin(radGamma);
+    const gravY = G * Math.sin(radBeta); 
+    // La gravité en Z est souvent la plus stable pour l'altitude, mais nous nous concentrons sur le plan horizontal.
 
-
-// ========================
-// MISE À JOUR GPS (NAVIGATOR.GEOLOCATION)
-// ========================
-function miseAJour(pos) {
-    const now = pos.timestamp;
-    const gpsData = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        altitude: pos.coords.altitude,
-        accuracy: pos.coords.accuracy,
-        timestamp: now,
-        speed: pos.coords.speed // vitesse native en m/s
+    return {
+        x: accelInclGravity.accelerationIncludingGravity.x - gravX,
+        y: accelInclGravity.accelerationIncludingGravity.y - gravY,
+        z: accelInclGravity.accelerationIncludingGravity.z - G // très simpliste pour Z
     };
+}
+
+
+// Estimation de la position et de la vitesse par intégration
+function estimateInertialMovement() {
+    const now = performance.now();
     
-    // Si la vitesse native est nulle et la précision mauvaise, on ne fait rien
-    if (gpsData.speed === 0 && gpsData.accuracy > 50 && vitesseMax === 0) {
-        // Cela évite les faux départs et les mises à jour inutiles à l'arrêt
-        return;
+    if (inertialState.lastTime === 0) {
+        inertialState.lastTime = now;
+        return 0;
     }
 
-    // 1. Calculs Bruts pour la Distance Totale
-    const { vitesse: v_raw_ms, distance: d_delta } = calculerVitesse3D(gpsData);
-    const v_raw_kmh = v_raw_ms * 3.6;
-    distanceTotale += d_delta;
-    
-    
-    // --- 2. Préparation et Exécution du Kalman ---
-    
-    const posGPS_m = distanceTotale; 
-    let dt_kalman = 0;
-    
-    if (lastKalmanTime !== 0) {
-        dt_kalman = (now - lastKalmanTime) / 1000;
-    } else {
-        // Initialisation de l'état du filtre
-        kalmanState.x = posGPS_m;
-        kalmanState.v = v_raw_ms;
-    }
-    lastKalmanTime = now;
-    
-    const K = kalmanFilterUpdate(posGPS_m, dt_kalman, accel.z, gpsData.accuracy);
+    const dt = (now - inertialState.lastTime) / 1000;
+    inertialState.lastTime = now;
 
-    // Vitesse Filtrée (m/s) et conversion en km/h
-    const v_kalman_ms = kalmanState.v;
-    const v_kalman_kmh = v_kalman_ms * 3.6;
+    // 1. Obtenir l'accélération sans gravité
+    const ax = accel.x;
+    const ay = accel.y;
     
+    // 2. Seuil de bruit (filtration)
+    const ACC_THRESHOLD = 0.08; // m/s² (toute accélération inférieure est ignorée)
     
-    // --- 3. Mise à jour de l'affichage ---
-    
-    vitesseMax = Math.max(vitesseMax, v_kalman_kmh);
-    
-    // Affichage des résultats
-    safeSetText('vitesse-kalman', `Vitesse Filtrée (Kalman) : ${v_kalman_kmh.toFixed(2)} km/h`);
-    safeSetText('vitesse-raw', `Vitesse GPS Brute : ${v_raw_kmh.toFixed(2)} km/h`);
-    safeSetText('vitesse-max', `Vitesse max (Filtrée) : ${vitesseMax.toFixed(2)} km/h`);
-    safeSetText('distance', `Distance totale : ${(distanceTotale/1000).toFixed(3)} km`);
-    safeSetText('temps', `Temps écoulé : ${tempsDebut ? ((now - tempsDebut)/1000).toFixed(2) : '0.00'} s`);
+    const horizAcc = Math.sqrt(ax * ax + ay * ay);
+    const effectiveAcc = Math.max(0, horizAcc - ACC_THRESHOLD);
 
-    safeSetText('gps', `GPS : Lat: ${gpsData.latitude.toFixed(6)} | Lon: ${gpsData.longitude.toFixed(6)} | Alt: ${gpsData.altitude?.toFixed(1) ?? '--'} m | Précision: ${gpsData.accuracy?.toFixed(0) ?? '--'} m`);
-    safeSetText('kalman-gain', `Gain de Kalman (K) : ${K.toFixed(4)}`);
-    safeSetText('kalman-error', `Erreur Estimée (P) : ${kalmanState.P.toFixed(2)} m²`);
-    safeSetText('accel-z', `Accélération Z : ${accel.z.toFixed(2)} m/s²`);
+    // 3. Mise à jour de la vitesse (Intégration)
+    // La vitesse intégrale est utilisée comme notre Vitesse Filtrée (vitesse inertielle).
+    const prevSpeed = Math.sqrt(inertialState.vx**2 + inertialState.vy**2);
+    const newSpeed = prevSpeed + effectiveAcc * dt;
+
+    // 4. Damping (pour contrer la dérive)
+    // La vitesse doit décroître si aucune accélération significative n'est détectée.
+    const DAMPING_FACTOR = 0.999;
+    inertialState.vx = effectiveAcc > 0 ? newSpeed : newSpeed * DAMPING_FACTOR;
+    inertialState.vy = 0; // Simplification pour ne garder qu'une vitesse 1D
+
+    // 5. Mise à jour de la distance
+    distanceEstimée += newSpeed * dt;
+
+    return Math.abs(newSpeed); // Vitesse estimée en m/s
+}
+
+
+// ========================
+// MISE À JOUR PRINCIPALE (Capteurs uniquement)
+// ========================
+function miseAJourInertielle(now) {
+    
+    if (!modeGPSActif) {
+        // --- MODE SANS GPS (Inertiel) ---
+        const v_inertial_ms = estimateInertialMovement();
+        const v_inertial_kmh = v_inertial_ms * 3.6;
+
+        // Mise à jour des statistiques
+        vitesseMax = Math.max(vitesseMax, v_inertial_kmh);
+        
+        // Affichage
+        safeSetText('vitesse-kalman', `Vitesse Filtrée (Inertiel) : ${v_inertial_kmh.toFixed(2)} km/h`);
+        safeSetText('vitesse-raw', `Vitesse GPS Brute : -- km/h`);
+        safeSetText('vitesse-max', `Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
+        safeSetText('distance', `Distance totale : ${(distanceEstimée/1000).toFixed(3)} km`);
+        safeSetText('temps', `Temps écoulé : ${tempsDebut ? ((now - tempsDebut)/1000).toFixed(2) : '0.00'} s`);
+        safeSetText('gps', `GPS : **INACTIF** | Gyro: ${orientation.alpha.toFixed(1)}°`);
+        safeSetText('accel-z', `Accélération Linéaire X/Y/Z : ${accel.x.toFixed(2)}, ${accel.y.toFixed(2)}, ${accel.z.toFixed(2)} m/s²`);
+        safeSetText('kalman-gain', `Gain de Kalman (K) : N/A`);
+        safeSetText('kalman-error', `Erreur Estimée (P) : N/A`);
+    } 
+    // NOTE: Le code pour le mode GPS a été retiré pour se concentrer uniquement sur la demande (sans GPS).
 }
 
 
 // ========================
 // CAPTEURS & CONTRÔLE
 // ========================
-function activerAccelerometre() {
+function activerCapteurs() {
+    // 1. Accéléromètre et Accélération Linéaire
     if ('DeviceMotionEvent' in window) {
         window.addEventListener('devicemotion', e => {
-            accel.z = e.accelerationIncludingGravity?.z ?? 0; 
+            const linearAcc = getLinearAcceleration(e);
+            accel.x = linearAcc.x;
+            accel.y = linearAcc.y;
+            accel.z = linearAcc.z;
+        });
+    }
+
+    // 2. Gyroscope (Orientation pour correction de gravité)
+    if ('DeviceOrientationEvent' in window) {
+        window.addEventListener('deviceorientation', e => {
+            orientation.alpha = e.alpha || 0;
+            orientation.beta = e.beta || 0;
+            orientation.gamma = e.gamma || 0;
         });
     }
 }
 
-function demarrerCockpit() {
+function demarrerCockpitSansGPS() {
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-        alert("⚠️ ERREUR : Le GPS et les capteurs nécessitent une connexion sécurisée (HTTPS) ou localhost.");
-        safeSetText('gps', 'GPS : **HTTPS REQUIS**');
+        alert("⚠️ Le mode inertiel nécessite l'accès aux capteurs et donc HTTPS.");
         return;
     }
-    if (!navigator.geolocation) { safeSetText('gps','GPS non disponible'); return; }
-    if (watchId!==null) return;
-
+    
+    modeGPSActif = false;
+    // Réinitialisation de l'état
+    inertialState = { vx: 0, vy: 0, vz: 0, lastTime: 0 };
+    vitesseMax = 0; distanceEstimée = 0;
+    
+    activerCapteurs(); // Active l'écoute des capteurs
+    
+    // Le 'watchId' est utilisé ici pour l'intervalle de temps, pas pour le GPS
+    if (watchId) clearInterval(watchId);
     tempsDebut = Date.now();
     
-    // Réinitialisation de l'état du filtre
-    kalmanState.x = 0; 
-    kalmanState.P = KALMAN_P_INIT;
-    kalmanState.v = 0;
-    lastKalmanTime = 0;
+    console.log("Démarrage du mode inertiel (100ms intervalle)...");
     
-    vitesseMax = 0; distanceTotale = 0; positionPrecedente = null;
+    // Utilise setInterval pour forcer les mises à jour régulières
+    watchId = setInterval(() => miseAJourInertielle(Date.now()), 100); 
 
-    watchId = navigator.geolocation.watchPosition(
-        miseAJour,
-        err => safeSetText('gps',`Erreur GPS (${err.code}): ${err.message}`),
-        { enableHighAccuracy:true, maximumAge:0, timeout:10000 }
-    );
-    
-    activerAccelerometre();
+    safeSetText('avertissement', '⚠️ Mode Inertiel Actif. La **dérive** sera rapide. Agitez le téléphone!');
+    safeSetText('vitesse-kalman', `Vitesse Filtrée (Inertiel) : 0.00 km/h`);
 }
 
+
 function arreterCockpit() {
-    if (watchId!==null) navigator.geolocation.clearWatch(watchId);
+    if (watchId!==null) clearInterval(watchId); // Arrête l'intervalle en mode inertiel
     
     watchId = null; 
-    positionPrecedente = null; 
-    tempsDebut = null;
-
+    
     // Réinitialisation de l'affichage
     safeSetText('temps', 'Temps écoulé : 0.00 s');
     safeSetText('vitesse-kalman','Vitesse Filtrée (Kalman) : -- km/h');
@@ -209,6 +197,7 @@ function arreterCockpit() {
     safeSetText('kalman-gain', 'Gain de Kalman (K) : --');
     safeSetText('kalman-error', 'Erreur Estimée (P) : --');
     safeSetText('accel-z', 'Accélération Z : 0.00 m/s²');
+    safeSetText('avertissement', '⚠️ Géolocalisation et Capteurs nécessitent **HTTPS**');
 }
 
 function resetVitesseMax() { 
@@ -220,9 +209,16 @@ function resetVitesseMax() {
 // Événements DOM
 // ========================
 document.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('marche').addEventListener('click',demarrerCockpit);
+    const marcheBtn = document.getElementById('marche');
+    if(marcheBtn) {
+        // Le bouton par défaut démarre le mode inertiel
+        marcheBtn.textContent = '▶️ Démarrer (Mode Inertiel)';
+        marcheBtn.removeEventListener('click', demarrerCockpit); // Retire l'ancien listener GPS
+        marcheBtn.addEventListener('click', demarrerCockpitSansGPS);
+    }
+    
     document.getElementById('arreter').addEventListener('click',arreterCockpit);
     document.getElementById('reset').addEventListener('click',resetVitesseMax);
     
-    arreterCockpit(); // Initialisation de l'affichage
+    arreterCockpit();
 });
