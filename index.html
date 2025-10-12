@@ -3,104 +3,74 @@
 <head>
 <meta charset="UTF-8">
 <title>Cockpit Cosmique</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-body{font-family:Arial,sans-serif;margin:20px;background:#f0f2f5}
-.card{background:#fff;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);padding:15px;margin-bottom:20px}
-h2,h3{margin:0 0 10px 0}
-#map{width:100%;height:300px;margin-bottom:10px}
-button{padding:5px 10px;border-radius:5px;border:none;background:#007BFF;color:#fff;cursor:pointer;margin-right:5px}
-button:hover{background:#0056b3}
-.small{font-size:0.85rem;color:#555}
+body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f0f2f5; }
+.card { background: #fff; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 15px; margin-bottom: 15px; width: 100%; box-sizing: border-box; }
+h2,h3 { margin: 0 0 10px 0; }
+#map { width: 100%; height: 40vh; margin-bottom:10px; }
+canvas { width: 100%; height: 30vh; margin-bottom:10px; display:block; }
+button { padding: 5px 10px; border-radius:5px; border:none; background:#007BFF; color:#fff; cursor:pointer; margin-right:5px; }
+button:hover { background:#0056b3; }
+.small { font-size: 0.85rem; color:#555; }
+@media (max-width: 768px) { #map { height: 35vh; } canvas { height: 25vh; } }
 </style>
 </head>
 <body>
 <h2>🪐 Cockpit Cosmique</h2>
 
 <div class="card">
-<h3>🚀 Vitesse & GPS</h3>
-<p class="small">
-<span id="temps">Temps : 0.00 s</span><br>
-<span id="vitesse">Vitesse instantanée : -- km/h</span><br>
-<span id="vitesse-moy">Vitesse moyenne : -- km/h</span><br>
-<span id="vitesse-max">Vitesse max : -- km/h</span><br>
-<span id="vitesse-ms">Vitesse : -- m/s | -- mm/s</span><br>
-<span id="pourcentage">% Lumière : --% | % Son : --%</span><br>
-<span id="distance">Distance : -- km | -- m | -- mm</span><br>
-<span id="distance-cosmique">Distance cosmique : -- s lumière | -- al</span><br>
-<span id="gps">GPS : --</span>
-</p>
+<h3>🚀 Vitesse</h3>
+<p class="small" id="vitesse">Vitesse instantanée : -- km/h</p>
+<p class="small" id="vitesse-moy">Vitesse moyenne : -- km/h</p>
+<p class="small" id="vitesse-max">Vitesse max : -- km/h</p>
+<p class="small" id="vitesse-ms">Vitesse : -- m/s | -- mm/s</p>
+<p class="small" id="pourcentage">% Lumière : --% | % Son : --%</p>
+<p class="small" id="distance">Distance : -- km | -- m | -- mm</p>
+<p class="small" id="distance-cosmique">Distance cosmique : -- s lumière | -- al</p>
+<p class="small" id="gps">GPS : --</p>
 <button onclick="demarrerCockpit()">▶️ Marche</button>
 <button onclick="arreterCockpit()">⏹️ Arrêt</button>
 <button onclick="resetCockpit()">⚙️ Réinitialiser</button>
-<button id="toggle-souterrain" onclick="toggleModeSouterrain()">🚫 Mode Souterrain : OFF</button>
-</div>
-
-<div class="card">
-<h3>💫 Médaillon céleste</h3>
-<p class="small">
-<span id="heure-vraie">Heure Solaire Vraie : --</span><br>
-<span id="heure-moyenne">Heure Solaire Moyenne : --</span><br>
-<span id="equation-temps">Équation du Temps : --</span><br>
-<span id="soleil-lever">Lever Soleil HSLV : -- | HSML : --</span><br>
-<span id="soleil-coucher">Coucher Soleil HSLV : -- | HSML : --</span><br>
-<span id="lune-phase">Phase Lune : --</span><br>
-<span id="lune-lever">Lever Lune HSLV : -- | HSML : --</span><br>
-<span id="lune-coucher">Coucher Lune HSLV : -- | HSML : --</span><br>
-<span id="lune-mag">Magnitude Lune : --</span><br>
-<span id="lune-culmination">Culmination Lune : --</span>
-</p>
 </div>
 
 <div class="card">
 <h3>🧭 Carte Cosmique</h3>
-<p>Point de Rendez-vous (Lat, Lon):</p>
-<input type="text" id="target-coord" value="48.8584, 2.2945" />
-<button onclick="setTargetCoords()">🎯 Cible</button>
-<p class="small">
-<span id="bearing-display">Relèvement vers la cible : --° | Distance : -- km</span><br>
-<span id="compass-display">Boussole (Nord Vrai) : --°</span>
-</p>
+<p class="small">Point de Rendez-vous (Lat, Lon): 48.8584, 2.2945</p>
+<p class="small" id="bearing-display">Relèvement vers la cible : --° | Distance : -- km</p>
+<p class="small" id="compass-display">Boussole (Nord Vrai) : --°</p>
 <div id="map"></div>
 </div>
 
 <div class="card">
+<h3>💫 Médaillon céleste</h3>
+<p class="small" id="heure-vraie">Heure Solaire Vraie : --</p>
+<p class="small" id="heure-moyenne">Heure Solaire Moyenne : --</p>
+<p class="small" id="equation-temps">Équation du Temps : --</p>
+<p class="small" id="soleil-lever">Lever Soleil HSLV : -- | HSML : --</p>
+<p class="small" id="soleil-coucher">Coucher Soleil HSLV : -- | HSML : --</p>
+<p class="small" id="lune-phase">Phase Lune : --</p>
+<p class="small" id="lune-lever">Lever Lune HSLV : -- | HSML : --</p>
+<p class="small" id="lune-coucher">Coucher Lune HSLV : -- | HSML : --</p>
+<p class="small" id="lune-mag">Magnitude Lune : --</p>
+<p class="small" id="lune-culmination">Culmination Lune : --</p>
+</div>
+
+<div class="card">
 <h3>⏱️ Horloge Système & Minecraft</h3>
-<p class="small">
-<span id="horloge">--:--:-- (Système)</span><br>
-<span id="horloge-atomique">Heure atomique (UTC) : --</span>
-</p>
-<canvas id="minecraft-clock" width="100" height="100"></canvas>
-<span id="minecraft-time-display" class="small"></span>
+<p class="small" id="horloge">⏰ --:--:-- (Système)</p>
+<p class="small" id="horloge-atomique">Heure atomique (UTC) : --</p>
+<p class="small" id="minecraft-time-display">Jour/Nuit : --</p>
+<canvas id="minecraft-clock"></canvas>
 </div>
 
 <div class="card">
 <h3>🔋 Capteurs</h3>
-<p class="small">
-<span id="lux">Lumière : -- lux</span> | <span id="dB">Son : -- dB</span> | <span id="niveau">Niveau : --°</span> | <span id="gyro">Gyro : --</span> | <span id="magneto">Magnétomètre : --</span> | <span id="batterie">Batterie : --%</span> | <span id="reseau">Réseau : --</span>
-</p>
+<p class="small" id="grandeurs">Pression Est. : -- hPa | Énergie cinétique Est. : -- J</p>
 </div>
 
-<div class="card">
-<h3>⚛️ Grandeurs</h3>
-<p class="small">
-<span id="grandeurs">Pression Est. : -- hPa | Énergie cinétique Est. : -- J</span>
-</p>
-</div>
-
-<div class="card">
-<h3>🛠️ Contrôle</h3>
-<p class="small">
-<button onclick="toggleRituel()">✅ Rituel cosmique : ON</button>
-<button onclick="window.settings.showPhysique=!window.settings.showPhysique">🧪 Physique : ON</button>
-<button onclick="window.settings.showChimie=!window.settings.showChimie">⚗️ Chimie : ON</button>
-<button onclick="window.settings.showSVT=!window.settings.showSVT">🌿 SVT : ON</button>
-</p>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="script.js"></script>
+<script src="cockpit_cosmique_app.js"></script>
 </body>
     </html>
     
