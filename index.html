@@ -1,102 +1,124 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>Cockpit Cosmique</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.cdnfonts.com/css/minecraftia" rel="stylesheet" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Cockpit Scientifique — Pro</title>
+
+<!-- style.css est chargé par défaut, on peut le désactiver via l'UI -->
+<link id="main-style" rel="stylesheet" href="style.css">
+
+<!-- Leaflet / Chart.js CDN -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <header>
-    <h1>🪐 Cockpit Cosmique</h1>
+  <header class="topbar">
+    <h1>Full Cockpit Scientifique — Pro</h1>
+    <div class="top-controls">
+      <button id="btn-start" class="primary">Marche</button>
+      <button id="btn-stop">Arrêt</button>
+      <button id="btn-reset">Réinitialiser</button>
+      <button id="btn-mode-souterrain">Mode Souterrain</button>
+      <button id="btn-toggle-style">Désactiver le style</button>
+    </div>
   </header>
 
-  <main>
-    <section aria-labelledby="vitesse-heading">
-      <h2 id="vitesse-heading">🚀 Vitesse</h2>
-      <div id="temps">Temps : 0.00 s</div>
-      <div id="vitesse">Vitesse instantanée : -- km/h</div>
-      <div id="vitesse-moy">Vitesse moyenne : -- km/h</div>
-      <div id="vitesse-max">Vitesse max : -- km/h</div>
-      <div id="vitesse-ms">Vitesse : -- m/s | -- mm/s</div>
-      <div id="pourcentage">% Lumière : --% | % Son : --%</div>
-      <div id="distance">Distance : -- km | -- m | -- mm</div>
-      <div id="distance-cosmique">Distance cosmique : -- s lumière | -- al</div>
-      <div id="gps">GPS : --</div>
-      <div id="mode-souterrain-indicator" style="color: #ff4500; margin-top: 10px; display: none;">
-        ⚠️ <strong>MODE SOUTERRAIN</strong> : GPS COUPÉ ⚠️
+  <main class="layout">
+    <section class="col-left">
+      <div class="card">
+        <h2>Carte & GPS</h2>
+        <div id="map" class="map"></div>
+        <p class="small" id="gps">GPS : —</p>
+        <p class="small" id="bearing-display">Relèvement : —</p>
       </div>
-      <div class="controls">
-        <button id="marche" class="pulsation">▶️ Marche</button>
-        <button id="stop">⏹️ Arrêt</button>
-        <button id="reset">⚙️ Réinitialiser</button>
-        <button id="toggle-souterrain" style="background: #440000; border-color: #ff4500;">🚫 Mode Souterrain : OFF</button>
+
+      <div class="card">
+        <h2>Temps & Vitesse</h2>
+        <p id="temps">Temps : 0.00 s</p>
+        <p id="vitesse">Vitesse instantanée : -- km/h</p>
+        <p id="vitesse-moy">Vitesse moyenne : -- km/h</p>
+        <p id="vitesse-max">Vitesse max : -- km/h</p>
+        <p id="distance">Distance : -- km</p>
       </div>
-    </section>
 
-    <section aria-labelledby="medaillon-heading">
-      <h2 id="medaillon-heading">💫 Médaillon céleste (Heures Solaires & Phases)</h2>
-      <div id="heure-vraie">Heure Solaire Vraie : --</div>
-      <div id="heure-moyenne">Heure Solaire Moyenne : --</div>
-      <div id="equation-temps">Équation du Temps : --</div>
-      <div id="soleil-lever">Lever Soleil HSLV : -- | HSML : --</div>
-      <div id="soleil-coucher">Coucher Soleil HSLV : -- | HSML : --</div>
-      <div id="lune-phase">Phase Lune : --</div>
-      <div id="lune-lever">Lever Lune HSLV : -- | HSML : --</div>
-      <div id="lune-coucher">Coucher Lune HSLV : -- | HSML : --</div>
-      <div id="lune-mag">Magnitude Lune : --</div>
-      <div id="lune-culmination">Culmination Lune : --</div>
-    </section>
-
-    <section aria-labelledby="carte-heading">
-      <h2 id="carte-heading">🧭 Carte Cosmique</h2>
-      <div id="carte-navigation">
-        <label for="target-coord">Point de Rendez-vous (Lat, Lon):</label>
-        <input type="text" id="target-coord" value="48.8584, 2.2945" placeholder="Lat, Lon" />
-        <button id="set-target">🎯 Cible</button>
-        <div id="bearing-display" style="margin-top: 5px;">Relèvement vers la cible : --° | Distance : -- km</div>
-        <div id="compass-display" style="margin-top: 5px;">Boussole (Nord Vrai) : --°</div>
+      <div class="card">
+        <h2>Météo</h2>
+        <p id="temp">Temp : -- °C</p>
+        <p id="pressure">Pression : -- hPa</p>
+        <p id="hum">Humidité : -- %</p>
+        <p id="wind">Vent : -- km/h</p>
+        <canvas id="tempChart"></canvas>
       </div>
     </section>
 
-    <section aria-labelledby="horloge-heading">
-      <h2 id="horloge-heading">⏱️ Horloge Système & Minecraft</h2>
-      <div id="horloge">⏰ --:--:-- (Système)</div>
-      <div id="horloge-atomique">Heure atomique (UTC) : --</div>
-      <div id="minecraft-clock-container">
-        <canvas id="minecraft-clock" width="100" height="100" aria-label="Horloge Minecraft"></canvas>
-        <div id="minecraft-time-display">Jour/Nuit : --</div>
+    <aside class="col-right">
+      <div class="card">
+        <h2>IMU & Capteurs</h2>
+        <p id="accel">Accel : X=-- Y=-- Z=--</p>
+        <p id="gyro">Gyro : X=-- Y=-- Z=--</p>
+        <p id="lux">Lumière : -- lux</p>
+        <p id="dB">Son : -- dB</p>
       </div>
-    </section>
 
-    <section aria-labelledby="capteurs-heading">
-      <h2 id="capteurs-heading">🔋 Capteurs</h2>
-      <div id="capteurs">
-        Lumière : -- lux | Son : -- dB | Niveau : --° | Gyro : -- | Magnétomètre : -- | Batterie : --% | Réseau : --
+      <div class="card">
+        <h2>Soleil & Lune</h2>
+        <p id="heure-vraie">Heure Solaire Vraie : --</p>
+        <p id="heure-moyenne">Heure Solaire Moyenne : --</p>
+        <p id="equation-temps">Équation du temps : --</p>
+        <p id="soleil-lever">Lever : --</p>
+        <p id="soleil-coucher">Coucher : --</p>
+        <p id="lune-phase">Phase lune : --</p>
       </div>
-    </section>
 
-    <section aria-labelledby="grandeurs-heading">
-      <h2 id="grandeurs-heading">⚛️ Grandeurs</h2>
-      <div id="grandeurs">Pression Est. : -- hPa | Énergie cinétique Est. : -- J</div>
-    </section>
-
-    <section aria-labelledby="controle-heading">
-      <h2 id="controle-heading">🛠️ Contrôle</h2>
-      <div class="controls">
-        <button id="toggle-rituel">✅ Rituel cosmique : ON</button>
-        <button id="toggle-physique">🧪 Physique : ON</button>
-        <button id="toggle-chimie">⚗️ Chimie : ON</button>
-        <button id="toggle-svt">🌿 SVT : ON</button>
+      <div class="card">
+        <h2>Sismogramme</h2>
+        <canvas id="seis"></canvas>
       </div>
-    </section>
+
+      <div class="card">
+        <h2>Settings / Réglages</h2>
+        <div>
+          <label><input type="checkbox" class="mod-toggle" data-mod="gps" checked> GPS</label><br>
+          <label><input type="checkbox" class="mod-toggle" data-mod="imu" checked> IMU (accel/gyro)</label><br>
+          <label><input type="checkbox" class="mod-toggle" data-mod="meteo" checked> Météo</label><br>
+          <label><input type="checkbox" class="mod-toggle" data-mod="astro" checked> Astronomie (Soleil/Lune)</label><br>
+          <label><input type="checkbox" class="mod-toggle" data-mod="sismo" checked> Sismogramme</label><br>
+          <label><input type="checkbox" class="mod-toggle" data-mod="ble" checked> BLE / UWB</label><br>
+          <label><input type="checkbox" class="mod-toggle" data-mod="graph" checked> Graphiques</label>
+        </div>
+
+        <hr>
+
+        <h3>Économie d'énergie</h3>
+        <label>Seuil batterie (%) <input id="battery-threshold" type="number" min="1" max="100" value="20"></label><br>
+        <p class="small">Conserver quand économie :</p>
+        <div id="preserve-list">
+          <label><input type="checkbox" class="preserve" data-preserve="gps"> GPS</label><br>
+          <label><input type="checkbox" class="preserve" data-preserve="imu"> IMU</label><br>
+          <label><input type="checkbox" class="preserve" data-preserve="meteo"> Météo</label><br>
+          <label><input type="checkbox" class="preserve" data-preserve="astro"> Astronomie</label><br>
+          <label><input type="checkbox" class="preserve" data-preserve="sismo"> Sismo</label><br>
+          <label><input type="checkbox" class="preserve" data-preserve="graph"> Graphiques</label><br>
+        </div>
+        <button id="save-settings">Enregistrer réglages</button>
+        <p id="settings-status" class="small"></p>
+      </div>
+
+      <div class="card">
+        <h2>Debug & Statuts</h2>
+        <p id="batt-status">Batterie : --</p>
+        <p id="status-log">Statut : prêt</p>
+      </div>
+    </aside>
   </main>
 
-  <footer>
-    <!-- Optionally, add copyright or info here -->
+  <footer class="footer">
+    <small>Remplace <code>YOUR_OPENWEATHERMAP_API_KEY</code> dans <code>app.js</code>.</small>
   </footer>
 
-  <script src="script.js"></script>
+  <script src="app.js"></script>
 </body>
-  </html>
+                                </html>
+                   
