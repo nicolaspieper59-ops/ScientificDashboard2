@@ -1,457 +1,172 @@
-/* app.js
-   Cockpit Scientifique Pro
-   - sauvegarde réglages (localStorage)
-   - économie d'énergie (via navigator.getBattery si dispo)
-   - activation / désactivation modules
-   - GPS réel avec fallback simulation
-*/
+// =====================================================================================
+// Full Cockpit Scientifique - GPS + IMU + Astronomie + BLE/UWB
+// =====================================================================================
 
-/* ============ Configuration ============ */
-const OPENWEATHER_API_KEY = "YOUR_OPENWEATHERMAP_API_KEY"; // <---- remplace ici
-const DEFAULT_COORDS = { latitude: 48.8566, longitude: 2.3522 }; // Paris par défaut
-const SETTINGS_KEY = "cockpit_settings_v1";
+// ========================
+// ETAT GLOBAL
+// ========================
+let watchId = null;
+let positionPrecedente = null;
+let vitesseMax = 0;
+let vitesses = [];
+let distanceTotale = 0;
+let tempsDebut = null;
+let historiqueVitesse = [];
+let intervalleSysteme = null;
+let modeSouterrainActif = false;
 
-/* ============ Etat interne ============ */
-let state = {
-  running: false,
-  gpsWatchId: null,
-  prevPos: null,
-  totalDistance: 0,
-  vitesseMax: 0,
-  vitesses: [],
-  startTime: null,
-  modules: { gps:true, imu:true, meteo:true, astro:true, sismo:true, ble:true, graph:true },
-  preserveOnBattery: { gps:true, imu:false, meteo:false, astro:false, sismo:false, graph:false },
-  batteryThreshold: 20,
-  batteryInfo: null,
-  styleEnabled: true
+// BLE/UWB générique
+let bleDevice = null;
+const BLE_SERVICE_UUID = '00001234-0000-1000-8000-00805f9b34fb';
+const BLE_CHAR_UUID = '00005678-0000-1000-8000-00805f9b34fb';
+let bleValue = null;
+
+// Fusion GPS + IMU (Kalman simplifié)
+let state = { x: 0, y: 0, vx: 0, vy: 0 };
+const dt = 0.1; // intervalle en sec pour Dead Reckoning
+
+// Réglages utilisateur pour économie batterie
+const settings = {
+    style: true,
+    vitesseInstant: true,
+    vitesseMoy: true,
+    vitesseMax: true,
+    distance: true,
+    temps: true,
+    astronomie: true,
+    imu: true,
+    ble: true
 };
 
-/* ============ Utilitaires DOM ============ */
-function byId(id){ return document.getElementById(id); }
-function logStatus(s){ byId('status-log').textContent = "Statut : " + s; }
-function setText(id, txt){ const el = byId(id); if(el) el.textContent = txt; }
-
-/* ============ Sauvegarde / Chargement réglages ============ */
-function saveSettings(){
-  const settings = {
-    modules: state.modules,
-    preserveOnBattery: state.preserveOnBattery,
-    batteryThreshold: state.batteryThreshold,
-    styleEnabled: state.styleEnabled
-  };
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  byId('settings-status').textContent = "Réglages sauvegardés.";
-  setTimeout(()=> byId('settings-status').textContent = "", 2500);
+// Charger les réglages
+if(localStorage.getItem('cockpitSettings')){
+    Object.assign(settings, JSON.parse(localStorage.getItem('cockpitSettings')));
 }
 
-function loadSettings(){
-  const raw = localStorage.getItem(SETTINGS_KEY);
-  if(!raw) return;
-  try{
-    const s = JSON.parse(raw);
-    state.modules = Object.assign(state.modules, s.modules ?? {});
-    state.preserveOnBattery = Object.assign(state.preserveOnBattery, s.preserveOnBattery ?? {});
-    state.batteryThreshold = s.batteryThreshold ?? state.batteryThreshold;
-    state.styleEnabled = (typeof s.styleEnabled === 'boolean') ? s.styleEnabled : state.styleEnabled;
-  }catch(e){ console.warn("err load settings", e); }
+// ========================
+// UTILS
+// ========================
+function safeSetText(id,text){ const e=document.getElementById(id); if(e) e.textContent=text; }
+function toRadians(deg){return deg*Math.PI/180;}
+function toDegrees(rad){return rad*180/Math.PI;}
+function calculerDistanceHaversine(p1,p2){
+    const R=6371e3;
+    const φ1=toRadians(p1.latitude),φ2=toRadians(p2.latitude);
+    const Δφ=toRadians(p2.latitude-p1.latitude);
+    const Δλ=toRadians(p2.longitude-p1.longitude);
+    const a=Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+    const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    return R*c;
 }
 
-/* ============ UI initialization ============ */
-function initUI(){
-  // attach buttons
-  byId('btn-start').addEventListener('click', startCockpit);
-  byId('btn-stop').addEventListener('click', stopCockpit);
-  byId('btn-reset').addEventListener('click', resetCockpit);
-  byId('btn-mode-souterrain').addEventListener('click', toggleSouterrain);
-  byId('btn-toggle-style').addEventListener('click', toggleStyle);
-
-  // module toggles
-  document.querySelectorAll('.mod-toggle').forEach(cb=>{
-    const mod = cb.dataset.mod;
-    cb.checked = state.modules[mod];
-    cb.addEventListener('change', ()=> {
-      state.modules[mod] = cb.checked;
-      saveSettings();
-      applyModuleVisibility();
-    });
-  });
-
-  // preserve list
-  document.querySelectorAll('.preserve').forEach(cb=>{
-    const p = cb.dataset.preserve;
-    cb.checked = state.preserveOnBattery[p];
-    cb.addEventListener('change', ()=> {
-      state.preserveOnBattery[p] = cb.checked;
-      saveSettings();
-    });
-  });
-
-  byId('battery-threshold').value = state.batteryThreshold;
-  byId('battery-threshold').addEventListener('change', (e)=>{
-    const v = parseInt(e.target.value) || 1;
-    state.batteryThreshold = Math.max(1, Math.min(100, v));
-    saveSettings();
-  });
-
-  byId('save-settings').addEventListener('click', saveSettings);
-
-  // style switch
-  applyStyle(state.styleEnabled);
-
-  // load settings to check
-  applyModuleVisibility();
+// ========================
+// FUSION GPS + IMU (Dead Reckoning)
+// ========================
+function updateFusionGPSIMU(accelX, accelY){
+    // Position estimée
+    state.vx += accelX*dt;
+    state.vy += accelY*dt;
+    state.x += state.vx*dt;
+    state.y += state.vy*dt;
 }
 
-/* ============ Style toggle ============ */
-function applyStyle(enable){
-  const link = document.getElementById('main-style');
-  if(!link) return;
-  if(enable){
-    if(!document.head.contains(link)) document.head.appendChild(link);
-    byId('btn-toggle-style').textContent = 'Désactiver le style';
-  } else {
-    if(document.head.contains(link)) document.head.removeChild(link);
-    byId('btn-toggle-style').textContent = 'Activer le style';
-  }
-  state.styleEnabled = enable;
-  saveSettings();
+// ========================
+// MISE A JOUR VITESSE
+// ========================
+function miseAJourVitesse(pos){
+    const gps=pos.coords;
+    let vitesse_ms = gps.speed || 0;
+
+    if(positionPrecedente){
+        const dtGPS=(pos.timestamp-positionPrecedente.timestamp)/1000;
+        const dist = calculerDistanceHaversine(gps,positionPrecedente);
+        distanceTotale+=dist;
+        if(!vitesse_ms && dtGPS>0) vitesse_ms = dist/dtGPS;
+    }
+
+    positionPrecedente=gps;
+    const vitesse_kmh=vitesse_ms*3.6;
+    vitesseMax=Math.max(vitesseMax,vitesse_kmh);
+    vitesses.push(vitesse_kmh);
+    historiqueVitesse.push(vitesse_kmh);
+    if(vitesses.length>30) vitesses.shift();
+    if(historiqueVitesse.length>100) historiqueVitesse.shift();
+
+    // Affichage selon réglages
+    if(settings.vitesseInstant) safeSetText('vitesse',`Vitesse instantanée : ${vitesse_kmh.toFixed(2)} km/h`);
+    if(settings.vitesseMoy){ const moy=vitesses.reduce((a,b)=>a+b,0)/vitesses.length; safeSetText('vitesse-moy',`Vitesse moyenne : ${moy.toFixed(2)} km/h`);}
+    if(settings.vitesseMax) safeSetText('vitesse-max',`Vitesse max : ${vitesseMax.toFixed(2)} km/h`);
+    if(settings.distance){ const km=distanceTotale/1000; safeSetText('distance',`Distance : ${km.toFixed(3)} km`);}
+    if(settings.temps && tempsDebut){ const t=(Date.now()-tempsDebut)/1000; safeSetText('temps',`Temps : ${t.toFixed(2)} s`);}
+
+    updateGraphique();
+    updateIndicator(vitesse_kmh);
+    if(settings.astronomie) activerAstronomie(gps.latitude,gps.longitude);
 }
 
-function toggleStyle(){
-  applyStyle(!state.styleEnabled);
+// ========================
+// INDICATEUR MARCHE/ARRET
+// ========================
+function updateIndicator(v){
+    let ind=document.getElementById('indicator');
+    if(!ind){ ind=document.createElement('div'); ind.id='indicator'; ind.style.width='20px'; ind.style.height='20px'; ind.style.borderRadius='50%'; ind.style.display='inline-block'; ind.style.marginLeft='10px'; document.querySelector('h2').appendChild(ind); }
+    ind.style.backgroundColor = watchId?'#0f0':'#f00';
 }
 
-/* ============ Battery management ============ */
-async function initBattery(){
-  if (!('getBattery' in navigator)) {
-    setText('batt-status', "Batterie : API non disponible");
-    return;
-  }
-  try {
-    const batt = await navigator.getBattery();
-    state.batteryInfo = batt;
-    function onBatChange(){ checkBatteryMode(); updateBatteryUI(); }
-    batt.addEventListener('levelchange', onBatChange);
-    batt.addEventListener('chargingchange', onBatChange);
-    updateBatteryUI();
-    checkBatteryMode();
-  } catch (e) {
-    console.warn("Battery API error", e);
-  }
-}
-function updateBatteryUI(){
-  const b = state.batteryInfo;
-  if(!b){ setText('batt-status', "Batterie : inconnu"); return; }
-  setText('batt-status', `Batterie : ${(b.level*100).toFixed(0)}% ${b.charging ? '(en charge)' : ''}`);
-}
-function checkBatteryMode(){
-  const b = state.batteryInfo;
-  if(!b) return;
-  const levelPct = b.level*100;
-  if(levelPct <= state.batteryThreshold && !b.charging){
-    // apply economy: disable modules except preserveOnBattery
-    Object.keys(state.modules).forEach(m => {
-      if(!state.preserveOnBattery[m]){
-        state.modules[m] = false;
-        // uncheck UI if present
-        const cb = document.querySelector(`.mod-toggle[data-mod="${m}"]`);
-        if(cb) cb.checked = false;
-      }
-    });
-    applyModuleVisibility();
-    logStatus("Mode économie activé (niveau batterie bas)");
-  } else {
-    // do nothing automatic, allow user to re-enable
-    logStatus("Batterie OK");
-  }
+// ========================
+// GRAPHIQUE HISTORIQUE VITESSE
+// ========================
+function updateGraphique(){
+    let canvas=document.getElementById('graphVitesse');
+    if(!canvas){ canvas=document.createElement('canvas'); canvas.id='graphVitesse'; canvas.style.width='100%'; canvas.style.height='150px'; document.querySelector('.card').appendChild(canvas);}
+    const ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.beginPath(); ctx.strokeStyle='#007bff';
+    const stepX=canvas.width/100;
+    const maxV=Math.max(...historiqueVitesse,50);
+    historiqueVitesse.forEach((v,i)=>{const x=i*stepX; const y=canvas.height-(v/maxV)*canvas.height; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);});
+    ctx.stroke();
 }
 
-/* ============ Map & graphs init ============ */
-let map, marker, polyline, tempChart;
-function initMapAndCharts(){
-  map = L.map('map').setView([DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude], 15);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
-  marker = L.marker([DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude]).addTo(map);
-  polyline = L.polyline([], {color:'blue'}).addTo(map);
-
-  // Chart
-  const ctx = byId('tempChart').getContext('2d');
-  tempChart = new Chart(ctx, {
-    type:'line',
-    data:{
-      labels: Array(50).fill(''),
-      datasets:[
-        {label:'Temp °C', data: [], borderColor:'red', fill:false},
-        {label:'Vitesse km/h', data: [], borderColor:'blue', fill:false}
-      ]
-    },
-    options:{animation:false, scales:{x:{display:false}}}
-  });
+// ========================
+// DÉMARRER/ARRÊTER/RÉINITIALISER
+// ========================
+function demarrerCockpit(){
+    if(watchId) return;
+    if(!tempsDebut) tempsDebut=Date.now();
+    watchId = navigator.geolocation.watchPosition(miseAJourVitesse,(err)=>{console.error(err); safeSetText('vitesse','GPS indisponible');},{enableHighAccuracy:true,maximumAge:0,timeout:5000});
+    document.getElementById('toggleBtn').textContent='Arrêt';
 }
-
-/* ============ Simple sismograph draw ============ */
-function drawSismograph(){
-  if(!state.modules.sismo) return;
-  const canvas = byId('seis');
-  if(!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width = canvas.clientWidth;
-  const h = canvas.height = canvas.clientHeight;
-  ctx.clearRect(0,0,w,h);
-  ctx.beginPath();
-  for(let i=0;i<w;i+=2){
-    const y = h/2 + Math.sin(Date.now()/500 + i/20) * (h*0.12);
-    if(i===0) ctx.moveTo(i,y); else ctx.lineTo(i,y);
-  }
-  ctx.strokeStyle = 'tomato';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+function arreterCockpit(){
+    if(watchId) navigator.geolocation.clearWatch(watchId);
+    watchId=null; document.getElementById('toggleBtn').textContent='Démarrer';
 }
-
-/* ============ Sensors: GPS + IMU + Météo ============ */
-function startCockpit(){
-  if(state.running) return;
-  state.running = true;
-  state.startTime = state.startTime || Date.now();
-  byId('status-log').textContent = "Statut : démarrage...";
-
-  if(state.modules.gps) startGPS();
-  if(state.modules.imu) startIMU();
-  // initial weather fetch
-  if(state.modules.meteo) updateWeather();
-
-  // animate sismograph
-  state.sismoInterval = setInterval(()=>{
-    if(state.modules.sismo) drawSismograph();
-  }, 200);
-
-  // update UI loop
-  state.uiInterval = setInterval(updateUI, 1000);
-
-  byId('status-log').textContent = "Statut : running";
-}
-
-function stopCockpit(){
-  state.running = false;
-  if(state.gpsWatchId !== null){
-    navigator.geolocation.clearWatch(state.gpsWatchId);
-    state.gpsWatchId = null;
-  }
-  if(state.imuListener) {
-    window.removeEventListener('devicemotion', state.imuListener);
-    state.imuListener = null;
-  }
-  clearInterval(state.uiInterval);
-  clearInterval(state.sismoInterval);
-  byId('status-log').textContent = "Statut : arrêté";
-}
-
 function resetCockpit(){
-  stopCockpit();
-  state.prevPos = null;
-  state.totalDistance = 0;
-  state.vitesses = [];
-  state.vitesseMax = 0;
-  state.startTime = null;
-  setText('temps','Temps : 0.00 s');
-  setText('vitesse','Vitesse instantanée : -- km/h');
-  setText('vitesse-moy','Vitesse moyenne : -- km/h');
-  setText('vitesse-max','Vitesse max : -- km/h');
-  setText('distance','Distance : -- km');
-  setText('gps','GPS : --');
-  polyline && polyline.setLatLngs([]);
+    arreterCockpit(); positionPrecedente=null; vitesseMax=0; vitesses=[]; distanceTotale=0; tempsDebut=null; historiqueVitesse=[];
+    safeSetText('vitesse','Vitesse instantanée : -- km/h');
+    safeSetText('vitesse-moy','Vitesse moyenne : -- km/h');
+    safeSetText('vitesse-max','Vitesse max : -- km/h');
+    safeSetText('distance','Distance : -- km'); safeSetText('temps','Temps : 0.00 s');
+    const canvas=document.getElementById('graphVitesse'); if(canvas) canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+    updateIndicator(0);
 }
 
-/* ----- GPS ----- */
-function startGPS(){
-  if(!('geolocation' in navigator)){
-    setText('gps','GPS non disponible (navigateur)');
-    return;
-  }
-  const opts = { enableHighAccuracy:true, maximumAge:0, timeout:5000 };
-  state.gpsWatchId = navigator.geolocation.watchPosition(handlePosition, errPos, opts);
-  setText('gps','GPS : recherche position...');
-}
-
-function errPos(err){
-  console.warn('GPS error', err);
-  setText('gps', `GPS erreur: ${err.message}`);
-}
-
-/* position handler */
-function handlePosition(pos){
-  if(!state.modules.gps) return;
-  const coords = pos.coords;
-  // compute distance/speed
-  if(state.prevPos){
-    const dt = (pos.timestamp - state.prevPos.timestamp)/1000;
-    const d = haversineDistance(state.prevPos.coords, coords); // meters
-    if(!isNaN(d) && dt>0){
-      state.totalDistance += d;
-      const v_ms = (coords.speed && !isNaN(coords.speed)) ? coords.speed : (d/dt);
-      const v_kmh = v_ms * 3.6;
-      state.vitesses.push(v_kmh);
-      if(state.vitesses.length>60) state.vitesses.shift();
-      state.vitesseMax = Math.max(state.vitesseMax, v_kmh);
-      setText('vitesse', `Vitesse instantanée : ${v_kmh.toFixed(2)} km/h`);
-      const moy = state.vitesses.reduce((a,b)=>a+b,0)/state.vitesses.length;
-      setText('vitesse-moy', `Vitesse moyenne : ${moy.toFixed(2)} km/h`);
-      setText('vitesse-max', `Vitesse max : ${state.vitesseMax.toFixed(2)} km/h`);
-      setText('distance', `Distance : ${(state.totalDistance/1000).toFixed(3)} km`);
-      // update chart
-      if(state.modules.graph && tempChart){
-        tempChart.data.datasets[1].data.push(v_kmh);
-        if(tempChart.data.datasets[1].data.length>50) tempChart.data.datasets[1].data.shift();
-      }
-    }
-  }
-  state.prevPos = pos;
-  // update map
-  const lat = coords.latitude, lon = coords.longitude;
-  setText('gps', `GPS : Lat : ${lat.toFixed(6)} | Lon : ${lon.toFixed(6)} | Acc : ${coords.accuracy.toFixed(0)} m`);
-  marker && marker.setLatLng([lat,lon]);
-  polyline && polyline.addLatLng([lat,lon]);
-
-  // trigger astro updates if enabled
-  if(state.modules.astro) updateAstronomy(lat, lon);
-}
-
-/* haversine (coords objects with latitude, longitude) */
-function haversineDistance(c1, c2){
-  const R = 6371000;
-  const φ1 = toRad(c1.latitude), φ2 = toRad(c2.latitude);
-  const dφ = toRad(c2.latitude - c1.latitude);
-  const dλ = toRad(c2.longitude - c1.longitude);
-  const a = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-function toRad(d){ return d * Math.PI/180; }
-
-/* ----- IMU ----- */
-function startIMU(){
-  if(!('DeviceMotionEvent' in window)){
-    setText('accel','Accel : non supporté');
-    return;
-  }
-  state.imuListener = (e)=>{
-    const a = e.accelerationIncludingGravity;
-    const g = e.rotationRate;
-    if(a) setText('accel', `Accel : X=${a.x?.toFixed(2)||'--'} Y=${a.y?.toFixed(2)||'--'} Z=${a.z?.toFixed(2)||'--'}`);
-    if(g) setText('gyro', `Gyro : α=${g.alpha?.toFixed(2)||'--'} β=${g.beta?.toFixed(2)||'--'} γ=${g.gamma?.toFixed(2)||'--'}`);
-  };
-  window.addEventListener('devicemotion', state.imuListener);
-}
-
-/* ----- Météo (OpenWeatherMap) ----- */
-async function updateWeather(){
-  if(!state.modules.meteo) return;
-  const lat = state.prevPos ? state.prevPos.coords.latitude : DEFAULT_COORDS.latitude;
-  const lon = state.prevPos ? state.prevPos.coords.longitude : DEFAULT_COORDS.longitude;
-  if(!OPENWEATHER_API_KEY || OPENWEATHER_API_KEY === "YOUR_OPENWEATHERMAP_API_KEY"){
-    setText('temp','Temp : clé API non définie');
-    return;
-  }
-  try{
-    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${OPENWEATHER_API_KEY}`);
-    if(!res.ok) throw new Error("OWM error");
-    const d = await res.json();
-    setText('temp', `Temp : ${d.main.temp.toFixed(1)} °C`);
-    setText('pressure', `Pression : ${d.main.pressure} hPa`);
-    setText('hum', `Humidité : ${d.main.humidity}%`);
-    setText('wind', `Vent : ${d.wind.speed} m/s`);
-    // chart push
-    if(state.modules.graph && tempChart){
-      tempChart.data.datasets[0].data.push(d.main.temp);
-      if(tempChart.data.datasets[0].data.length>50) tempChart.data.datasets[0].data.shift();
-      tempChart.update();
-    }
-  }catch(e){
-    setText('temp', 'Temp : erreur API');
-    console.warn(e);
-  }
-}
-
-/* ============ Astronomy ============ */
-function updateAstronomy(lat, lon){
-  // call simplified calculations from your code (sun/moon) — here we call a lightweight function
-  try{
-    const now = new Date();
-    calculerHeuresSolaires(now, lat, lon);
-  }catch(e){ console.warn('astro err', e); }
-}
-
-/* ============ Module visibility apply ============ */
-function applyModuleVisibility(){
-  // simply hide/show card sections based on state.modules
-  const mapCard = byId('map').closest('.card');
-  mapCard.style.display = state.modules.gps ? 'block' : 'none';
-  byId('accel').closest('.card').style.display = state.modules.imu ? 'block' : 'none';
-  byId('temp').closest('.card').style.display = state.modules.meteo ? 'block' : 'none';
-  byId('seis').closest('.card').style.display = state.modules.sismo ? 'block' : 'none';
-  // astro and graph handled by update functions
-}
-
-/* ============ UI update loop ============ */
-function updateUI(){
-  // time
-  if(state.startTime){
-    const elapsed = (Date.now() - state.startTime)/1000;
-    setText('temps', `Temps : ${elapsed.toFixed(2)} s`);
-  }
-  // battery UI already updated by battery events
-  // periodically fetch weather if module enabled
-  if(state.modules.meteo) updateWeather();
-}
-
-/* ============ Souterrain toggle ============ */
-let souterrainOn = false;
-function toggleSouterrain(){
-  souterrainOn = !souterrainOn;
-  if(souterrainOn){
-    // disable GPS watch, enable IMU-based DR if available (not full implementation here)
-    if(state.gpsWatchId !== null){ navigator.geolocation.clearWatch(state.gpsWatchId); state.gpsWatchId = null; }
-    byId('btn-mode-souterrain').textContent = "Souterrain ON";
-    logStatus("Mode souterrain activé (Dead Reckoning limité)");
-  } else {
-    byId('btn-mode-souterrain').textContent = "Mode Souterrain";
-    // restart GPS if running
-    if(state.running && state.modules.gps) startGPS();
-    logStatus("Mode souterrain désactivé");
-  }
-}
-
-/* ============ Init app ============ */
-function initApp(){
-  loadSettings();
-  initUI();
-  initMapAndCharts();
-  initBattery();
-  // if state.styleEnabled false apply to UI
-  applyStyle(state.styleEnabled);
-}
-
-/* small helpers: use some astronomy code from earlier (expose calculerHeuresSolaires) */
-/* For brevity, re-use a basic implementation that updates the DOM. 
-   You had an elaborate implementation; if you want it exact we can paste it here. */
-function calculerHeuresSolaires(now, latitude, longitude){
-  // simplified: show local solar noon approx and equation of time placeholder
-  const utcHours = now.getUTCHours() + now.getUTCMinutes()/60;
-  const eqTime = 0; // placeholder
-  setText('heure-vraie', `Heure Solaire Vraie : --:--`);
-  setText('heure-moyenne', `Heure Solaire Moyenne : --:--`);
-  setText('equation-temps', `Équation du temps : ${eqTime} s`);
-  // simple moon placeholder
-  setText('lune-phase', `Phase lune : --`);
-}
-
-/* ============ Helpers reuse from earlier ============ */
-function toRad(d){return d*Math.PI/180;}
-
-/* ============ Start ============ */
-document.addEventListener('DOMContentLoaded', ()=>{
-  initApp();
-  // If user wants auto-start, you can call startCockpit() here,
-  // but many browsers require a user gesture for geolocation/microphone.
-});
-                          
+// ========================
+// ASTRONOMIE
+// ========================
+function activerAstronomie(lat,lon){
+    const now=new Date(); calculerHeuresSolaires(now,lat,lon); const lune=calculerLune(now); safeSetText('lune-phase',`Phase Lune : ${lune.phase}`); }
+function calculerHeuresSolaires(now,lat,lon){
+    const Jd=(now.getTime()/(24*60*60*1000))+2440587.5;
+    const T=(Jd-2451545.0)/36525;
+    const M=357.52911 + 35999.05029*T - 0.0001537*T*T;
+    const M_rad=toRadians(M%360);
+    const L0=280.46646 + 36000.76983*T + 0.0003032*T*T;
+    const L0_mod=L0%360;
+    const C=(1.9146-0.004817*T)*Math.sin(M_rad)+(0.01994-0.000101*T)*Math.sin(2*M_rad);
+    const lambda=L0_mod+C; const lambda_rad=toRadians(lambda);
+    const epsilon=23.439291-0.013004*T; const epsilon_rad=toRadians(epsilon);
+    const alpha_rad=Math.atan2(Math.cos(epsilon_rad)*Math.sin(lambda_rad),Math.cos(lambda_rad));
+    const alpha_deg=toDegrees(alpha_rad); const alpha_norm=alpha_deg<0?alpha_deg+360:alpha_deg;
+    let EqT_deg=L0_mod-alpha_norm; if(EqT_deg>180) EqT_deg-=360; if(EqT_deg<-180) EqT_deg+=360;
+    const EqT_sec=EqT_deg*240; safeSetText('equation-temps',`Eq Temps
