@@ -1,124 +1,72 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Cockpit Scientifique — Pro</title>
-
-<!-- style.css est chargé par défaut, on peut le désactiver via l'UI -->
-<link id="main-style" rel="stylesheet" href="style.css">
-
-<!-- Leaflet / Chart.js CDN -->
+<meta charset="UTF-8">
+<title>Cockpit Scientifique Live</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; }
+.card { background: #fff; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 15px; margin-bottom: 20px; }
+h2, h3 { margin: 0 0 10px 0; }
+#map { width: 100%; height: 300px; margin-bottom:10px; }
+canvas { width: 100%; height: 180px; background: #fafafa; margin-bottom:10px; }
+.small { font-size: 0.85rem; color: #555; }
+button { padding: 5px 10px; border-radius: 5px; border: none; background: #007BFF; color: #fff; cursor: pointer; margin-right:5px; }
+button:hover { background: #0056b3; }
+</style>
 </head>
 <body>
-  <header class="topbar">
-    <h1>Full Cockpit Scientifique — Pro</h1>
-    <div class="top-controls">
-      <button id="btn-start" class="primary">Marche</button>
-      <button id="btn-stop">Arrêt</button>
-      <button id="btn-reset">Réinitialiser</button>
-      <button id="btn-mode-souterrain">Mode Souterrain</button>
-      <button id="btn-toggle-style">Désactiver le style</button>
-    </div>
-  </header>
+<h2>Full Cockpit Scientifique Live</h2>
 
-  <main class="layout">
-    <section class="col-left">
-      <div class="card">
-        <h2>Carte & GPS</h2>
-        <div id="map" class="map"></div>
-        <p class="small" id="gps">GPS : —</p>
-        <p class="small" id="bearing-display">Relèvement : —</p>
-      </div>
+<div class="card">
+<h3>Carte GPS & Trajectoire</h3>
+<div id="map"></div>
+<p class="small">
+<span id="gps">GPS : --</span><br>
+<span id="vitesse">Vitesse instantanée : -- km/h</span><br>
+<span id="vitesse-moy">Vitesse moyenne : -- km/h</span><br>
+<span id="vitesse-max">Vitesse max : -- km/h</span><br>
+<span id="distance">Distance : -- km</span><br>
+<span id="temps">Temps : 0.00 s</span>
+</p>
+<button id="toggleBtn">Démarrer</button>
+<button id="resetBtn">Réinitialiser</button>
+<button id="bleBtn">Connecter BLE/UWB</button>
+</div>
 
-      <div class="card">
-        <h2>Temps & Vitesse</h2>
-        <p id="temps">Temps : 0.00 s</p>
-        <p id="vitesse">Vitesse instantanée : -- km/h</p>
-        <p id="vitesse-moy">Vitesse moyenne : -- km/h</p>
-        <p id="vitesse-max">Vitesse max : -- km/h</p>
-        <p id="distance">Distance : -- km</p>
-      </div>
+<div class="card">
+<h3>Horloge Minecraft</h3>
+<canvas id="minecraft-clock"></canvas>
+<p class="small" id="minecraft-time-display">--</p>
+</div>
 
-      <div class="card">
-        <h2>Météo</h2>
-        <p id="temp">Temp : -- °C</p>
-        <p id="pressure">Pression : -- hPa</p>
-        <p id="hum">Humidité : -- %</p>
-        <p id="wind">Vent : -- km/h</p>
-        <canvas id="tempChart"></canvas>
-      </div>
-    </section>
+<div class="card">
+<h3>Astronomie</h3>
+<p class="small">
+<span id="equation-temps">Équation du temps : --</span><br>
+<span id="lune-phase">Phase Lune : --</span>
+</p>
+</div>
 
-    <aside class="col-right">
-      <div class="card">
-        <h2>IMU & Capteurs</h2>
-        <p id="accel">Accel : X=-- Y=-- Z=--</p>
-        <p id="gyro">Gyro : X=-- Y=-- Z=--</p>
-        <p id="lux">Lumière : -- lux</p>
-        <p id="dB">Son : -- dB</p>
-      </div>
+<div class="card">
+<h3>Graphique Historique Vitesse</h3>
+<canvas id="graphVitesse"></canvas>
+</div>
 
-      <div class="card">
-        <h2>Soleil & Lune</h2>
-        <p id="heure-vraie">Heure Solaire Vraie : --</p>
-        <p id="heure-moyenne">Heure Solaire Moyenne : --</p>
-        <p id="equation-temps">Équation du temps : --</p>
-        <p id="soleil-lever">Lever : --</p>
-        <p id="soleil-coucher">Coucher : --</p>
-        <p id="lune-phase">Phase lune : --</p>
-      </div>
-
-      <div class="card">
-        <h2>Sismogramme</h2>
-        <canvas id="seis"></canvas>
-      </div>
-
-      <div class="card">
-        <h2>Settings / Réglages</h2>
-        <div>
-          <label><input type="checkbox" class="mod-toggle" data-mod="gps" checked> GPS</label><br>
-          <label><input type="checkbox" class="mod-toggle" data-mod="imu" checked> IMU (accel/gyro)</label><br>
-          <label><input type="checkbox" class="mod-toggle" data-mod="meteo" checked> Météo</label><br>
-          <label><input type="checkbox" class="mod-toggle" data-mod="astro" checked> Astronomie (Soleil/Lune)</label><br>
-          <label><input type="checkbox" class="mod-toggle" data-mod="sismo" checked> Sismogramme</label><br>
-          <label><input type="checkbox" class="mod-toggle" data-mod="ble" checked> BLE / UWB</label><br>
-          <label><input type="checkbox" class="mod-toggle" data-mod="graph" checked> Graphiques</label>
-        </div>
-
-        <hr>
-
-        <h3>Économie d'énergie</h3>
-        <label>Seuil batterie (%) <input id="battery-threshold" type="number" min="1" max="100" value="20"></label><br>
-        <p class="small">Conserver quand économie :</p>
-        <div id="preserve-list">
-          <label><input type="checkbox" class="preserve" data-preserve="gps"> GPS</label><br>
-          <label><input type="checkbox" class="preserve" data-preserve="imu"> IMU</label><br>
-          <label><input type="checkbox" class="preserve" data-preserve="meteo"> Météo</label><br>
-          <label><input type="checkbox" class="preserve" data-preserve="astro"> Astronomie</label><br>
-          <label><input type="checkbox" class="preserve" data-preserve="sismo"> Sismo</label><br>
-          <label><input type="checkbox" class="preserve" data-preserve="graph"> Graphiques</label><br>
-        </div>
-        <button id="save-settings">Enregistrer réglages</button>
-        <p id="settings-status" class="small"></p>
-      </div>
-
-      <div class="card">
-        <h2>Debug & Statuts</h2>
-        <p id="batt-status">Batterie : --</p>
-        <p id="status-log">Statut : prêt</p>
-      </div>
-    </aside>
-  </main>
-
-  <footer class="footer">
-    <small>Remplace <code>YOUR_OPENWEATHERMAP_API_KEY</code> dans <code>app.js</code>.</small>
-  </footer>
-
-  <script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="script.js"></script>
+<script>
+// Liaisons boutons
+document.getElementById('toggleBtn').addEventListener('click',()=>{
+    if(window.watchId) window.arreterCockpit(); else window.demarrerCockpit();
+});
+document.getElementById('resetBtn').addEventListener('click',()=>{
+    window.resetCockpit();
+});
+document.getElementById('bleBtn').addEventListener('click',()=>{
+    if(window.settings.ble) window.connectBLE();
+});
+</script>
 </body>
-                                </html>
-                   
+</html>
