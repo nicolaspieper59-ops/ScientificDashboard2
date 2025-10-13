@@ -2,76 +2,75 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Cockpit Cosmique</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cockpit Cosmique PWA</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="manifest" href="manifest.json">
 <style>
-body { font-family: Arial, sans-serif; margin: 10px; background: #f0f2f5; }
-.card { background: #fff; border-radius: 10px; padding: 15px; margin-bottom: 10px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
-h2, h3 { margin:0 0 10px 0; }
-button { padding: 5px 10px; margin:2px; border-radius:5px; border:none; background:#007bff; color:#fff; cursor:pointer; }
+body { font-family: Arial,sans-serif; margin:0; padding:0; background:#f0f2f5; }
+.card { background:#fff; border-radius:10px; padding:15px; margin:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+h2,h3{margin:0 0 10px 0;}
+button{padding:5px 10px; border-radius:5px; border:none; background:#007BFF; color:#fff; cursor:pointer; margin-right:5px;}
 button:hover{background:#0056b3;}
-#map { width:100%; height:250px; margin-bottom:10px;}
-canvas { width:100%; height:150px; background:#fafafa; margin-bottom:10px; }
-.small { font-size:0.85rem; color:#555; }
+canvas{width:100%; height:180px; background:#fafafa; margin-bottom:10px;}
+.small{font-size:0.85rem;color:#555;}
+#map{width:100%; height:300px; margin-bottom:10px;}
 </style>
 </head>
 <body>
+
 <h2>🪐 Cockpit Cosmique</h2>
 
 <div class="card">
-<h3>🚀 Vitesse & Distance</h3>
-<p class="small" id="vitesse">Vitesse instantanée : -- km/h</p>
-<p class="small" id="vitesse-moy">Vitesse moyenne : -- km/h</p>
-<p class="small" id="vitesse-max">Vitesse max : -- km/h</p>
-<p class="small" id="vitesse-ms">Vitesse : -- m/s | -- mm/s</p>
+<h3>🚀 Vitesse & GPS</h3>
+<p class="small" id="vitesse">-- km/h</p>
+<p class="small" id="vitesse-moy">-- km/h</p>
+<p class="small" id="vitesse-max">-- km/h</p>
+<p class="small" id="vitesse-ms">-- m/s | -- mm/s</p>
 <p class="small" id="pourcentage">% Lumière : --% | % Son : --%</p>
-<p class="small" id="distance">Distance : -- km | -- m | -- mm</p>
-<p class="small" id="distance-cosmique">Distance cosmique : -- s lumière | -- al</p>
-<p class="small" id="gps">GPS : --</p>
-<button id="toggleBtn">▶️ Marche ⏹️ Arrêt</button>
-<button id="resetBtn">⚙️ Réinitialiser</button>
+<p class="small" id="distance">--</p>
+<p class="small" id="distance-cosmique">--</p>
+<p class="small" id="temps">-- s</p>
+<p class="small" id="gps">--</p>
+<button id="marche">▶️ Marche</button>
+<button id="reset">⚙️ Réinitialiser</button>
 <button id="toggle-souterrain">🚫 Mode Souterrain : OFF</button>
 </div>
 
 <div class="card">
-<h3>💫 Médaillon Céleste</h3>
-<p class="small" id="heure-vraie">Heure Solaire Vraie : --</p>
-<p class="small" id="heure-moyenne">Heure Solaire Moyenne : --</p>
-<p class="small" id="equation-temps">Équation du Temps : --</p>
-<p class="small" id="soleil-lever">Lever Soleil HSLV : -- | HSML : --</p>
-<p class="small" id="soleil-coucher">Coucher Soleil HSLV : -- | HSML : --</p>
-<p class="small" id="lune-phase">Phase Lune : --</p>
-<p class="small" id="lune-lever">Lever Lune HSLV : -- | HSML : --</p>
-<p class="small" id="lune-coucher">Coucher Lune HSLV : -- | HSML : --</p>
-<p class="small" id="lune-mag">Magnitude Lune : --</p>
-<p class="small" id="lune-culmination">Culmination Lune : --</p>
+<h3>💫 Médaillon céleste & Horloge Minecraft</h3>
+<p class="small" id="heure-vraie">--</p>
+<p class="small" id="heure-moyenne">--</p>
+<p class="small" id="equation-temps">--</p>
+<p class="small" id="soleil-lever">--</p>
+<p class="small" id="soleil-coucher">--</p>
+<p class="small" id="lune-phase">--</p>
+<p class="small" id="lune-lever">--</p>
+<p class="small" id="lune-coucher">--</p>
+<p class="small" id="lune-mag">--</p>
+<p class="small" id="lune-culmination">--</p>
 <canvas id="minecraft-clock"></canvas>
-<p class="small" id="minecraft-time-display"></p>
 </div>
 
 <div class="card">
 <h3>🧭 Carte Cosmique</h3>
-<p>Point de Rendez-vous (Lat, Lon): <input id="target-coord" value="48.8584, 2.2945"/></p>
+<p>Point de Rendez-vous (Lat, Lon): <input type="text" id="target-coord" value="48.8584, 2.2945"><button onclick="setTargetCoords()">🎯 Cible</button></p>
 <p class="small" id="bearing-display">Relèvement vers la cible : --° | Distance : -- km</p>
 <p class="small" id="compass-display">Boussole (Nord Vrai) : --°</p>
 <div id="map"></div>
 </div>
 
-<div class="card">
-<h3>⏱️ Horloge & Capteurs</h3>
-<p class="small" id="horloge">--:--:-- (Système)</p>
-<p class="small" id="horloge-atomique">Heure atomique (UTC) : --</p>
-<p class="small" id="capteurs">Lumière : -- lux | Son : -- dB | Niveau : --° | Gyro : -- | Magnétomètre : -- | Batterie : --% | Réseau : --</p>
-<p class="small" id="grandeurs">Pression Est. : -- hPa | Énergie cinétique Est. : -- J</p>
-<button id="bleBtn">Connecter BLE/UWB</button>
-<button id="toggle-vitesse">✅ Vitesse</button>
-<button id="toggle-astro">✅ Astro</button>
-<button id="toggle-carte">✅ Carte</button>
-<button id="toggle-capteurs">✅ Capteurs</button>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="script.js"></script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('service-worker.js')
+    .then(reg=>console.log('Service Worker enregistré',reg))
+    .catch(err=>console.error('Erreur SW:',err));
+  });
+}
+</script>
 </body>
-</html>
+  </html>
+  
