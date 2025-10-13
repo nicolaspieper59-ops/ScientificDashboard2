@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cockpit Cosmique PWA</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.extramarkers/dist/css/leaflet.extra-markers.min.css"> <link rel="manifest" href="manifest.json">
 <style>
 body { font-family: Arial,sans-serif; margin:0; padding:0; background:#f0f2f5; }
 .card { background:#fff; border-radius:10px; padding:15px; margin:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
 h2,h3{margin:0 0 10px 0;}
 button{padding:5px 10px; border-radius:5px; border:none; background:#007BFF; color:#fff; cursor:pointer; margin-right:5px;}
 button:hover{background:#0056b3;}
-canvas{width:100%; height:180px; background:#fafafa; margin-bottom:10px;}
+canvas{width:100px; height:100px; background:#fafafa; margin-bottom:10px; display: block;} /* Taille fixe pour le canvas */
 .small{font-size:0.85rem;color:#555;}
 #map{width:100%; height:300px; margin-bottom:10px;}
 </style>
@@ -49,20 +49,19 @@ canvas{width:100%; height:180px; background:#fafafa; margin-bottom:10px;}
 <p class="small" id="lune-coucher">--</p>
 <p class="small" id="lune-mag">--</p>
 <p class="small" id="lune-culmination">--</p>
-<canvas id="minecraft-clock"></canvas>
+<canvas id="minecraft-clock" width="100" height="100"></canvas>
 </div>
 
 <div class="card">
 <h3>🧭 Carte Cosmique</h3>
 <p>Point de Rendez-vous (Lat, Lon): <input type="text" id="target-coord" value="48.8584, 2.2945"><button onclick="setTargetCoords()">🎯 Cible</button></p>
 <p class="small" id="bearing-display">Relèvement vers la cible : --° | Distance : -- km</p>
-<p class="small" id="compass-display">Boussole (Nord Vrai) : --°</p>
+<p class="small" id="compass-display">Boussole (Cap GPS) : --°</p>
 <div id="map"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="script.js"></script>
-<script>
+<script src="https://unpkg.com/leaflet.extramarkers/dist/js/leaflet.extra-markers.min.js"></script> <script src="script.js"></script> <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('service-worker.js')
@@ -72,5 +71,4 @@ if('serviceWorker' in navigator){
 }
 </script>
 </body>
-  </html>
-  
+                                                                                                                                        </html>
