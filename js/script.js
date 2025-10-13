@@ -23,7 +23,7 @@ const ANNEE_LUMIERE_SECONDES = 3600*24*365.25;
 // Constantes Barométriques
 const P0 = 1013.25; 
 
-// Variables de Carte (Déclarées mais non utilisées dans cette version simplifiée)
+// Variables de Carte (Laissées nulles pour éviter les erreurs si la logique Leaflet n'est pas complète)
 let map = null; 
 let marker = null; 
 
@@ -32,12 +32,7 @@ let marker = null;
 // ========================
 function safeSetText(id,text){ 
     const e=document.getElementById(id); 
-    if(e && e.tagName === 'SPAN'){
-        e.textContent=text;
-    } else if (e) {
-        // Pour les balises simples comme <p id="gps">
-        e.textContent=text; 
-    }
+    if(e) e.textContent=text;
 }
 function toRadians(d){return d*Math.PI/180;}
 
@@ -52,6 +47,22 @@ function calculerAltitudeBarometrique(pressionHpa, pBase = P0) {
   return 44330 * (1 - Math.pow(pressionHpa / pBase, 1 / 5.255));
 }
 
+function toDegrees(r){return r*180/Math.PI;}
+
+function calculerRelèvement(p1, p2) {
+    const λ1 = toRadians(p1.longitude);
+    const λ2 = toRadians(p2.longitude);
+    const φ1 = toRadians(p1.latitude);
+    const φ2 = toRadians(p2.latitude);
+
+    const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+    let brng = Math.atan2(y, x);
+
+    brng = toDegrees(brng);
+    return (brng + 360) % 360;
+}
+
 
 // ========================
 // GPS & vitesse
@@ -60,14 +71,12 @@ function miseAJourVitesse(pos){
   const now = Date.now();
   if(!tempsDebut) tempsDebut = now;
 
-  // Filtre mode souterrain
   if(modeSouterrainActif) {
     resetDisplayToZero();
     safeSetText('gps',`GPS : Mode Souterrain - Données Figées`);
     return;
   }
   
-  // Filtre de précision
   if(pos.coords.accuracy > 25) {
     safeSetText('gps', `GPS : Signal faible (${pos.coords.accuracy.toFixed(0)} m). Attente de précision...`);
     return; 
@@ -94,10 +103,8 @@ function miseAJourVitesse(pos){
     const dist=calculerDistanceHaversine(gps,positionPrecedente);
     distanceTotale+=dist;
     
-    // Calcul de la Vitesse Horizontale
     vitesse_ms=(gps.speed>0 && gps.speed<VITESSE_LUMIERE) ? gps.speed : (dt > 0 ? dist/dt : 0);
     
-    // Calcul de la Vitesse Verticale GPS
     const deltaAltitudeGPS = gps.altitude - positionPrecedente.altitude;
     vitesse_verticale_gps = (dt > 0) ? deltaAltitudeGPS / dt : 0;
     
@@ -109,8 +116,7 @@ function miseAJourVitesse(pos){
     vitesseVerticaleBaro = (dt > 0) ? deltaAltitudeBaro / dt : 0;
 
   } else {
-    // Initialisation
-    // initialiserCarte(gps); // Laisser en commentaire pour le moment
+    // initialiserCarte(gps); // Commenté
   }
   
   positionPrecedente = {...gps, pression: pressionAtmospherique}; 
@@ -124,8 +130,8 @@ function miseAJourVitesse(pos){
   afficherDistance();
   afficherTemps();
   afficherGPS(gps);
-  // mettreAJourCarte(gps); // Laisser en commentaire pour le moment
-  // calculerCible(gps); // Laisser en commentaire pour le moment
+  // mettreAJourCarte(gps); // Commenté
+  calculerCible(gps); 
 }
 
 function afficherVitesse(v_kmh,v_ms, v_verticale_gps, v_verticale_baro){
@@ -140,11 +146,8 @@ function afficherVitesse(v_kmh,v_ms, v_verticale_gps, v_verticale_baro){
   safeSetText('vitesse-max',`${vitesseMax.toFixed(2)} km/h`);
   safeSetText('vitesse-ms',`${v_ms.toFixed(2)} m/s | ${(v_ms*1000).toFixed(0)} mm/s`);
   
-  // Affichage Barométrique
   safeSetText('vitesse-verticale-baro',`${v_vert_baro_m_min.toFixed(1)} m/min (${v_verticale_baro.toFixed(2)} m/s) ${direction_baro}`);
   safeSetText('pression-air', `${pressionAtmospherique.toFixed(2)} hPa | Alt Baro: ${calculerAltitudeBarometrique(pressionAtmospherique).toFixed(0)} m`);
-  
-  // Affichage GPS (pour comparaison)
   safeSetText('vitesse-verticale-gps', `${v_vert_gps_m_min.toFixed(1)} m/min (${v_verticale_gps.toFixed(2)} m/s)`);
 
   safeSetText('pourcentage',`${(v_ms/VITESSE_LUMIERE*100).toExponential(2)}% | ${(v_ms/VITESSE_SON*100).toFixed(2)}%`);
@@ -160,12 +163,31 @@ function afficherDistance(){
 function afficherTemps(){
   if(!tempsDebut) return;
   const t=(Date.now()-tempsDebut)/1000;
-  safeSetText('temps',`Temps de mission : ${t.toFixed(2)} s`);
+  safeSetText('temps',`${t.toFixed(2)} s`);
 }
 
 function afficherGPS(g){
   safeSetText('gps',`GPS : Lat : ${g.latitude.toFixed(6)} | Lon : ${g.longitude.toFixed(6)} | Alt : ${g.altitude.toFixed(0)} m | Préc. : ${g.accuracy.toFixed(0)} m`);
   safeSetText('compass-display',`Boussole (Cap GPS) : ${g.heading.toFixed(1)}°`);
+}
+
+function calculerCible(pos) {
+    const bearing = calculerRelèvement(pos, targetCoords);
+    const distance_m = calculerDistanceHaversine(pos, targetCoords);
+    const distance_km = distance_m / 1000;
+
+    safeSetText('bearing-display', `Relèvement vers la cible : ${bearing.toFixed(1)}° | Distance : ${distance_km.toFixed(3)} km`);
+}
+
+function setTargetCoords() {
+    const input = document.getElementById('target-coord').value;
+    const parts = input.split(',').map(p => parseFloat(p.trim()));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        targetCoords = { latitude: parts[0], longitude: parts[1] };
+        alert(`Cible définie : ${targetCoords.latitude}, ${targetCoords.longitude}`);
+    } else {
+        alert("Format de coordonnées invalide. Utilisez 'lat, lon'.");
+    }
 }
 
 
@@ -176,7 +198,15 @@ function demarrerCockpit(){
   if(watchId!==null) return;
   if(!tempsDebut) tempsDebut=Date.now();
   const options={enableHighAccuracy:true,timeout:5000,maximumAge:0};
-  watchId=navigator.geolocation.watchPosition(miseAJourVitesse,(e)=>{console.error(e);safeSetText('gps',`GPS : Erreur (${e.code})`)},options);
+  
+  // L'appel au GPS qui peut déclencher l'invite de permission
+  watchId=navigator.geolocation.watchPosition(
+    miseAJourVitesse,
+    (e)=>{console.error(e);safeSetText('gps',`GPS : Erreur (${e.code})`)},
+    options
+  );
+
+  document.getElementById('marche').textContent = '⏸️ Pause';
 }
 
 function arreterCockpit(){
@@ -208,17 +238,14 @@ function resetCockpit(){
   safeSetText('compass-display','Boussole (Cap GPS) : --°');
   safeSetText('bearing-display', 'Relèvement vers la cible : --° | Distance : -- km');
 
-  // If map functions were defined:
-  // if(marker) map.removeLayer(marker);
-  // map = null; 
+  if(marker && map) map.removeLayer(marker);
+  map = null; 
 }
 
-// Fonctions non essentielles (doivent être implémentées si vous les utilisez)
-function initialiserCarte(pos) { /* ... */ }
-function mettreAJourCarte(pos) { /* ... */ }
-function calculerCible(pos) { /* ... */ }
-function setTargetCoords() { /* ... */ }
-function drawMinecraftClock() { /* ... */ }
+// Fonction de la carte (Laisser vide pour éviter les erreurs)
+function initialiserCarte(pos) {}
+function mettreAJourCarte(pos) {}
+function drawMinecraftClock() {} // Laisser vide
 
 // ========================
 // Écouteurs d'événements
@@ -253,12 +280,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (modeSouterrainActif) {
                 arreterCockpit();
             } else {
-                // Relance le GPS si on sort du mode souterrain
                 marcheButton.textContent = '▶️ Marche';
             }
         });
     }
 
-    // Initialisation au chargement
     resetCockpit();
 });
