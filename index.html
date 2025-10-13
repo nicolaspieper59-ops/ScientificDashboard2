@@ -2,18 +2,17 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Cockpit Cosmique App</title>
+<title>Cockpit Cosmique</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-body { font-family: Arial; margin:0; padding:10px; background:#f0f2f5; }
-.card { background:#fff; border-radius:10px; padding:15px; margin-bottom:15px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
-h2,h3 { margin:0 0 10px 0; }
-#map { width:100%; height:40vh; margin-bottom:10px; }
-canvas { width:100%; height:25vh; margin-bottom:10px; display:block; }
-button { padding:5px 10px; border:none; border-radius:5px; background:#007BFF; color:#fff; cursor:pointer; margin-right:5px; }
+body { font-family: Arial, sans-serif; margin: 10px; background: #f0f2f5; }
+.card { background: #fff; border-radius: 10px; padding: 15px; margin-bottom: 10px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+h2, h3 { margin:0 0 10px 0; }
+button { padding: 5px 10px; margin:2px; border-radius:5px; border:none; background:#007bff; color:#fff; cursor:pointer; }
 button:hover{background:#0056b3;}
-.small{font-size:0.85rem; color:#555;}
-@media (max-width:768px){#map{height:35vh;} canvas{height:20vh;}}
+#map { width:100%; height:250px; margin-bottom:10px;}
+canvas { width:100%; height:150px; background:#fafafa; margin-bottom:10px; }
+.small { font-size:0.85rem; color:#555; }
 </style>
 </head>
 <body>
@@ -29,22 +28,13 @@ button:hover{background:#0056b3;}
 <p class="small" id="distance">Distance : -- km | -- m | -- mm</p>
 <p class="small" id="distance-cosmique">Distance cosmique : -- s lumière | -- al</p>
 <p class="small" id="gps">GPS : --</p>
-<button onclick="demarrerCockpit()">▶️ Marche</button>
-<button onclick="arreterCockpit()">⏹️ Arrêt</button>
-<button onclick="resetCockpit()">⚙️ Réinitialiser</button>
-<button onclick="toggleModeSouterrain()" id="toggle-souterrain">🚫 Mode Souterrain : OFF</button>
+<button id="toggleBtn">▶️ Marche ⏹️ Arrêt</button>
+<button id="resetBtn">⚙️ Réinitialiser</button>
+<button id="toggle-souterrain">🚫 Mode Souterrain : OFF</button>
 </div>
 
 <div class="card">
-<h3>🧭 Carte Cosmique</h3>
-<p class="small">Point de Rendez-vous (Lat,Lon): 48.8584,2.2945</p>
-<p class="small" id="bearing-display">Relèvement vers la cible : --° | Distance : -- km</p>
-<p class="small" id="compass-display">Boussole (Nord Vrai) : --°</p>
-<div id="map"></div>
-</div>
-
-<div class="card">
-<h3>💫 Médaillon céleste</h3>
+<h3>💫 Médaillon Céleste</h3>
 <p class="small" id="heure-vraie">Heure Solaire Vraie : --</p>
 <p class="small" id="heure-moyenne">Heure Solaire Moyenne : --</p>
 <p class="small" id="equation-temps">Équation du Temps : --</p>
@@ -55,23 +45,33 @@ button:hover{background:#0056b3;}
 <p class="small" id="lune-coucher">Coucher Lune HSLV : -- | HSML : --</p>
 <p class="small" id="lune-mag">Magnitude Lune : --</p>
 <p class="small" id="lune-culmination">Culmination Lune : --</p>
-</div>
-
-<div class="card">
-<h3>⏱️ Horloge Système & Minecraft</h3>
-<p class="small" id="horloge">⏰ --:--:-- (Système)</p>
-<p class="small" id="horloge-atomique">Heure atomique (UTC) : --</p>
-<p class="small" id="minecraft-time-display">Jour/Nuit : --</p>
 <canvas id="minecraft-clock"></canvas>
+<p class="small" id="minecraft-time-display"></p>
 </div>
 
 <div class="card">
-<h3>🔋 Capteurs & Grandeurs</h3>
-<p class="small" id="grandeurs">Pression Est. : -- hPa | Énergie cinétique Est. : -- J</p>
+<h3>🧭 Carte Cosmique</h3>
+<p>Point de Rendez-vous (Lat, Lon): <input id="target-coord" value="48.8584, 2.2945"/></p>
+<p class="small" id="bearing-display">Relèvement vers la cible : --° | Distance : -- km</p>
+<p class="small" id="compass-display">Boussole (Nord Vrai) : --°</p>
+<div id="map"></div>
 </div>
 
+<div class="card">
+<h3>⏱️ Horloge & Capteurs</h3>
+<p class="small" id="horloge">--:--:-- (Système)</p>
+<p class="small" id="horloge-atomique">Heure atomique (UTC) : --</p>
+<p class="small" id="capteurs">Lumière : -- lux | Son : -- dB | Niveau : --° | Gyro : -- | Magnétomètre : -- | Batterie : --% | Réseau : --</p>
+<p class="small" id="grandeurs">Pression Est. : -- hPa | Énergie cinétique Est. : -- J</p>
+<button id="bleBtn">Connecter BLE/UWB</button>
+<button id="toggle-vitesse">✅ Vitesse</button>
+<button id="toggle-astro">✅ Astro</button>
+<button id="toggle-carte">✅ Carte</button>
+<button id="toggle-capteurs">✅ Capteurs</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="cockpit_cosmique_app.js"></script>
+<script src="script.js"></script>
 </body>
-    </html>
-                              
+</html>
