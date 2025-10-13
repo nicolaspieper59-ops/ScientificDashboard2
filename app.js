@@ -137,3 +137,4 @@ document.getElementById('toggle-souterrain').addEventListener('click',()=>{
   document.getElementById('toggle-souterrain').textContent=modeSouterrainActif?'✅ Mode Souterrain : ON':'🚫 Mode Souterrain : OFF';
   if(modeSouterrainActif) arreterCockpit(); else if(!watchId) demarrerCockpit();
 });
+  
