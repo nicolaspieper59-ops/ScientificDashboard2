@@ -1,10 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cockpit Cosmique PWA</title>
+
+<meta name="theme-color" content="#2c3e50">
+<link rel="manifest" href="manifest.json">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAo9T0oJ3u02HwYt2yWqDzhK1MHS0g4fR6w2sB1G="
+      crossorigin="anonymous"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.extramarkers/dist/css/leaflet.extra-markers.min.css">
+
+<style>
+/* Styles de base pour une meilleure lisibilité */
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #2c3e50; color: #ecf0f1; }
+.cockpit-container { max-width: 600px; margin: 0 auto; padding: 10px; }
+.card { background: #34495e; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); }
+h2, h3, h4 { margin: 0 0 10px 0; color: #3498db; }
+button { padding: 8px 15px; border-radius: 5px; border: none; background: #2ecc71; color: #fff; cursor: pointer; margin-right: 5px; font-weight: bold; }
+button:hover { background: #27ae60; }
+canvas { width: 100px; height: 100px; background: #293847; margin-bottom: 10px; display: block; border-radius: 50%; border: 3px solid #3498db; }
+.display { font-size: 0.95rem; color: #ecf0f1; margin: 5px 0; }
+.display span { font-weight: bold; color: #f1c40f; }
+#map { width: 100%; height: 300px; margin-bottom: 10px; border-radius: 5px; background: #455a64; } /* Ajout d'un fond pour la carte même si non fonctionnelle */
+</style>
+</head>
+<body>
+
 <div class="cockpit-container">
     <h2>🚀 Cockpit Cosmique</h2>
 
     <div class="card">
         <h3>🧭 Navigation & Contrôles</h3>
         <p class="display" id="gps">GPS : En attente...</p>
-        <p class="display" id="temps">Temps de mission : 0.00 s</p>
+        <p class="display" id="temps">Temps de mission : <span>0.00 s</span></p>
         
         <button id="marche">▶️ Marche</button>
         <button id="reset">⚙️ Réinitialiser</button>
@@ -13,15 +44,15 @@
 
     <div class="card">
         <h3>🛰️ Vitesse & Performance</h3>
-        <p class="display" id="vitesse">Vitesse instantanée : <span>0.00 km/h</span></p>
-        <p class="display" id="vitesse-moy">Vitesse moyenne (30s) : <span>0.00 km/h</span></p>
-        <p class="display" id="vitesse-max">Vitesse max : <span>0.00 km/h</span></p>
+        <p class="display">Vitesse instantanée : <span id="vitesse">0.00 km/h</span></p>
+        <p class="display">Vitesse moyenne (30s) : <span id="vitesse-moy">0.00 km/h</span></p>
+        <p class="display">Vitesse max : <span id="vitesse-max">0.00 km/h</span></p>
         <hr style="border-color:#3498db;">
 
         <h4>📏 Horizontale</h4>
         <p class="display" id="vitesse-ms">Vitesse Horizontale : <span>0.00 m/s | 0 mm/s</span></p>
 
-        <h4>⛰️ Verticale & Baromètre</h4>
+        <h4>⛰️ Verticale & Baromètre (Simulé)</h4>
         <p class="display" id="vitesse-verticale-baro">Vitesse Verticale Baro : <span>0.0 m/min (0.00 m/s) ↔️ Stable</span></p>
         <p class="display" id="pression-air">Pression : <span>1013.25 hPa | Alt Baro: 0 m</span></p> 
         <p class="display" id="vitesse-verticale-gps">Vitesse Verticale GPS : <span>0.0 m/min (0.00 m/s)</span></p>
@@ -48,4 +79,28 @@
         <h3>💫 Médaillon Céleste</h3>
         <canvas id="minecraft-clock" width="100" height="100"></canvas>
     </div>
-              </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20n69z7Kz7pI6x7k3+4gBvK8/TqIuM69e4Mv3H/yN6w="
+      crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.extramarkers/dist/js/leaflet.extra-markers.min.js"></script>
+
+<script src="script.js"></script> 
+<script>
+    // Enregistrement du Service Worker (pour la PWA)
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(reg => {
+                    console.log('SW enregistré:', reg.scope);
+                })
+                .catch(err => {
+                    console.error('Échec SW:', err);
+                });
+        });
+    }
+</script>
+</body>
+</html>
