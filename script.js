@@ -7,7 +7,6 @@ let intervalId = null;
 let timeElapsed = 0; // en secondes
 let startTime = 0;
 
-// Utilisation de l'heure système réelle (pas de simulation)
 let currentLat = 43.2965; // Marseille Lat (Défaut)
 let currentLon = 5.3698;  // Marseille Lon (Défaut) 
 
@@ -15,20 +14,20 @@ let currentSpeedMS = 0;
 let maxSpeedKPH = 0;
 let distanceTraveled = 0; // en km
 
-// --- DONNÉES ASTRONOMIQUES (Basé sur le 14 Octobre 2025, Marseille) ---
-// Utilisation de données statiques pour les calculs célestes car la librairie SunCalc est absente.
+// --- DONNÉES ASTRONOMIQUES (14 Octobre 2025, Marseille - Heures CEST) ---
 const AstroData = {
-    leverSoleil: "07:54:00",    // Heure de lever du soleil (CEST)
-    coucherSoleil: "18:41:00",  // Heure de coucher du soleil (CEST)
+    // Les heures de lever/coucher du soleil sont des heures LOCALES (CEST/CET)
+    leverSoleil: "07:54:00",    
+    coucherSoleil: "18:41:00",  
     dureeJourSolaire: "10:47:00",
     lonSolaire: 201.2,           
-    edt: 107,                    // Équation du Temps (en secondes)
+    edt: 107,                   // Équation du Temps (en secondes)
     phaseLune: "Lune Croissante 🌔",
     culminationLune: "20:30:00",
     saison: "Automne 🍂" 
 };
 
-// --- GESTION DES CAPTEURS (Prise en charge au mieux) ---
+// --- GESTION DES CAPTEURS (Prise en charge réelle et progressive) ---
 
 let lastAccelTime = 0;
 
@@ -52,6 +51,7 @@ function initAccelerometer() {
                 .catch(console.error);
             };
         } else {
+            // Android ou navigateurs sans gestion des permissions au clic
             window.addEventListener('devicemotion', handleMotion);
             document.getElementById('accel-status').textContent = 'Actif (m/s²)';
             document.getElementById('accel-status').classList.remove('warning');
@@ -69,6 +69,7 @@ function handleMotion(event) {
     const currentAccelTime = performance.now();
     const deltaTime = (currentAccelTime - lastAccelTime) / 1000;
     
+    // Utilise l'accélération fournie par l'API
     const acc = event.accelerationIncludingGravity || event.acceleration;
     
     if (acc) {
@@ -78,7 +79,9 @@ function handleMotion(event) {
         
         const acceleration = Math.sqrt(accX * accX + accY * accY + accZ * accZ);
         
+        // Vitesse = Vitesse précédente + Accélération * Temps
         currentSpeedMS += acceleration * deltaTime;
+        // Distance = Distance précédente + Vitesse * Temps
         distanceTraveled += (currentSpeedMS / 1000) * deltaTime;
     }
 
@@ -135,7 +138,7 @@ function calculateLorentzFactor(v_ms) {
 function updateNavigationData() {
     if (!intervalId) return;
 
-    // 1. Calculs
+    // Calculs de Vitesse/Relativité basés sur les données de l'Accéléromètre
     const V_KPH = currentSpeedMS * 3.6;
     const V_MMS = currentSpeedMS * 1000;
     const V_LIGHT_RATIO = currentSpeedMS / C_LIGHT_MS;
@@ -151,7 +154,7 @@ function updateNavigationData() {
     const DISTANCE_SL = distanceTraveled * 1000 / C_LIGHT_MS; 
     const DISTANCE_AL = DISTANCE_SL / (3600 * 24 * 365.25); 
     
-    // 2. Mise à jour du HTML
+    // Mise à jour du HTML
     document.getElementById('time-s').textContent = `${timeElapsed.toFixed(0)} s`;
     document.getElementById('vitesse-inst').textContent = `${V_KPH.toFixed(2)} km/h`;
     document.getElementById('vitesse-moy').textContent = `${avgSpeedKPH.toFixed(2)} km/h`;
@@ -159,7 +162,6 @@ function updateNavigationData() {
     document.getElementById('vitesse-ms').textContent = `${currentSpeedMS.toFixed(2)} m/s`;
     document.getElementById('vitesse-mms').textContent = `${V_MMS.toFixed(0)} mm/s`;
 
-    // RELATIVITÉ
     document.getElementById('gamma-factor').textContent = LORENTZ_FACTOR.toFixed(4);
     document.getElementById('pourcent-lumiere').textContent = `${(V_LIGHT_RATIO * 100).toFixed(4)}%`;
     document.getElementById('pourcent-lumiere-precise').textContent = `${V_LIGHT_RATIO.toFixed(8)} c`;
@@ -190,7 +192,6 @@ function updateCelestialData() {
     document.getElementById('date').textContent = now.toLocaleDateString('fr-FR');
     
     // 2. Calcul Heure Solaire Moyenne (HSM) et Vraie (HSV)
-    // L'heure locale est utilisée pour le calcul du temps solaire moyen (HSM)
     const hour = now.getHours();
     const minute = now.getMinutes();
     const second = now.getSeconds();
@@ -209,7 +210,7 @@ function updateCelestialData() {
     // 3. Statut Jour/Nuit et Médaillon
     const sunrise = parseTime(AstroData.leverSoleil);
     const sunset = parseTime(AstroData.coucherSoleil);
-    const currentTimeSeconds = (hour * 3600) + (minute * 60) + second;
+    const currentTimeSeconds = (hour * 3600) + (minute * 60) + second; 
     
     let isDay = (currentTimeSeconds > sunrise) && (currentTimeSeconds < sunset);
     let jourNuitStatus = isDay ? "Jour ☀️" : "Nuit 🌑";
@@ -233,10 +234,9 @@ function updateCelestialData() {
 /** Bascule le chronomètre (Démarrer/Arrêter). */
 function toggleMovement(start) {
     if (start) {
+        // Démarre la référence de temps pour l'intégration de l'accéléromètre
         if (!lastAccelTime) lastAccelTime = performance.now();
-        startTime = Date.now() - (timeElapsed * 1000); 
         
-        // Un seul intervalle pour tout mettre à jour chaque seconde
         intervalId = setInterval(() => {
             updateCelestialData(); 
             updateNavigationData();
@@ -283,16 +283,16 @@ function resetData() {
 
 // --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
 function initializeCockpit() {
-    updateCelestialData(); // Mise à jour immédiate du temps et des astres
+    updateCelestialData(); // Mise à jour immédiate du temps/astres avec l'heure réelle
 
     getGeoLocation();
     updateBatteryStatus();
     initAccelerometer(); 
     
-    // Timer pour la mise à jour constante du temps/astres
+    // Garde le temps et les données célestes à jour chaque seconde même sans mouvement
     setInterval(updateCelestialData, 1000);
 
-    // Timer pour la mise à jour des capteurs non critiques (batterie)
+    // Mise à jour de la batterie chaque minute
     setInterval(updateBatteryStatus, 60000); 
 }
 
