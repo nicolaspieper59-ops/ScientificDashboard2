@@ -8,94 +8,182 @@ let vitesses = [];
 let distanceTotale = 0;
 let tempsDebut = null;
 let modeSouterrainActif = false;
+let map = null;
+let marker = null;
 let targetCoords = { latitude: 48.8584, longitude: 2.2945 };
 
 // Constantes physiques
 const VITESSE_LUMIERE = 299792458;
 const VITESSE_SON = 343;
 const R_TERRE = 6371e3; 
-const ANNEE_LUMIERE_SECONDES = 3600*24*365.25;
+const ANNEE_LUMIERE_SECONDES = 3600 * 24 * 365.25;
+const SUN_RISE_SET_ALTITUDE = -0.833; // Altitude pour Lever/Coucher Soleil
+const JD2000 = 2451545.0; // Jour Julien de J2000.0
+
+// CLÉ API MÉTÉO (REMPLACEZ CETTE VALEUR)
+const METEO_API_KEY = "VOTRE_CLE_API_ICI"; 
+const METEO_API_URL = "https://api.openweathermap.org/data/2.5/weather?"; 
 
 // ========================
-// 2. Utilitaires
+// 2. Utilitaires & Géométrie
 // ========================
 function safeSetText(id, text) { 
     const e = document.getElementById(id); 
-    // Assure qu'on écrit dans le span si l'ID est sur le conteneur <p>
     const target = e?.querySelector('span') || e;
     if(target) target.textContent = text;
 }
-function toRadians(d){return d*Math.PI/180;}
-function toDegrees(r){return r*180/Math.PI;}
+function toRadians(d){return d * Math.PI / 180;}
+function toDegrees(r){return r * 180 / Math.PI;}
 
-// Calculs Haversine (distance) et Relèvement (angle vers la cible)
-function calculerDistanceHaversine(p1,p2){ /* ... */ return 0;} 
-function calculerRelèvement(p1, p2) { /* ... */ return 0;}
-
-
-// ========================
-// 3. Calculs Astronomiques (Simplifiés)
-// Basé sur des algorithmes standard pour l'Équation du Temps (EoT)
-// ========================
-
-// Convertit une Date JavaScript en Jour Julien (utilisé en astronomie)
-function dateToJD(date) {
-    // Calcul simplifié pour l'astronomie de la position (suffisant pour EoT)
-    const msSinceEpoch = date.getTime();
-    return 2440587.5 + (msSinceEpoch / 86400000); 
+function calculerDistanceHaversine(p1,p2){
+  const φ1=toRadians(p1.latitude), φ2=toRadians(p2.latitude);
+  const Δφ=toRadians(p2.latitude-p1.latitude), Δλ=toRadians(p2.longitude-p1.longitude);
+  const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R_TERRE*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-// Calcul de l'Équation du Temps (EoT) et de la Longitude Solaire
+function calculerRelèvement(p1, p2) {
+    const λ1 = toRadians(p1.longitude);
+    const λ2 = toRadians(p2.longitude);
+    const φ1 = toRadians(p1.latitude);
+    const φ2 = toRadians(p2.latitude);
+    const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+    let brng = Math.atan2(y, x);
+    brng = toDegrees(brng);
+    return (brng + 360) % 360;
+}
+
+function setTargetCoords() {
+    const input = document.getElementById('target-coord').value;
+    const parts = input.split(',').map(p => parseFloat(p.trim()));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        targetCoords = { latitude: parts[0], longitude: parts[1] };
+        alert(`Cible définie : ${targetCoords.latitude.toFixed(4)}, ${targetCoords.longitude.toFixed(4)}`);
+        if (positionPrecedente && watchId !== null) {
+            calculerCible(positionPrecedente);
+        }
+    } else {
+        alert("Format de coordonnées invalide. Utilisez 'lat, lon'.");
+    }
+}
+
+// ========================
+// 3. Pression et Température Réelles (API MÉTÉO)
+// ========================
+
+/**
+ * Télécharge la pression (P_SL) et la température (T_local) via l'API Météo.
+ */
+async function telechargerPressionMeteo(latitude, longitude) {
+    if (!METEO_API_KEY || METEO_API_KEY === "VOTRE_CLE_API_ICI") {
+        return { pressionSL: 1013.25, temperatureC: 15, error: "Clé API manquante" };
+    }
+    const url = `${METEO_API_URL}lat=${latitude}&lon=${longitude}&appid=${METEO_API_KEY}&units=metric`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP: ${response.status}`);
+        }
+        const data = await response.json();
+        
+        // Pression SL en hPa (hectopascals) et Température locale en Celsius
+        return { 
+            pressionSL: data.main.pressure, 
+            temperatureC: data.main.temp,
+            error: null
+        };
+
+    } catch (error) {
+        console.error("Échec du téléchargement des données météo:", error);
+        return { pressionSL: 1013.25, temperatureC: 15, error: "Échec API" };
+    }
+}
+
+/**
+ * Déduit la pression locale (Pression Station) à partir de la Pression SL, de l'Altitude GPS et de la Température API.
+ */
+function deduirePressionLocale(p_sl, altitude, t_local) {
+    if (altitude <= 0) {
+        return p_sl;
+    }
+    
+    const T_Kelvin = t_local + 273.15; 
+    const exposant = 5.257; 
+    
+    // Formule barométrique ajustée (simplifiée ISA)
+    const p_local = p_sl * Math.pow(1 - (0.0065 * altitude) / T_Kelvin, exposant);
+    
+    return p_local;
+}
+
+
+// ========================
+// 4. Calculs Astronomiques Réels
+// ========================
+
+function dateToJD(date) { 
+    return (date.getTime() / 86400000.0) + 2440587.5;
+}
+
 function calculerHeuresSolaires(date, latitude, longitude) {
     const jd = dateToJD(date);
-    const n = jd - 2451545.0; // Jours depuis J2000.0
+    const n = jd - JD2000;
+    const J = n / 36525.0;
 
-    // Anomalie moyenne du Soleil (M)
-    const M_deg = 357.5291 + 0.98560028 * n;
-    const M = toRadians(M_deg % 360);
+    const L_deg = (280.46646 + 36000.76983 * J + 0.0003032 * J * J) % 360;
+    const M_deg = (357.52911 + 35999.05034 * J - 0.0001559 * J * J - 0.00000048 * J * J * J) % 360;
+    const C = (1.914602 - 0.004817 * J - 0.000014 * J * J) * Math.sin(toRadians(M_deg)) +
+              (0.019993 - 0.000101 * J) * Math.sin(toRadians(2 * M_deg)) +
+              0.000289 * Math.sin(toRadians(3 * M_deg));
+    const λ_s = L_deg + C;
+    const ϵ = toRadians(23.439291 - 0.0130042 * J - 0.00000016 * J * J + 0.000000504 * J * J * J);
 
-    // Longitude écliptique du Soleil (L)
-    const L_deg = 280.459 + 0.98564736 * n;
-    const L = toRadians(L_deg % 360);
-
-    // Composante de l'excentricité (C) - Correction du centre
-    const C = toDegrees(1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+    const RA = toDegrees(Math.atan2(Math.cos(ϵ) * Math.sin(toRadians(λ_s)), Math.cos(toRadians(λ_s))));
+    const RA_hours = (RA % 360) / 15;
     
-    // Longitude Solaire (L_s)
-    const L_s = (L_deg + C) % 360;
-
-    // Angle Solaire Vrai (RA) - Équivalent de l'ascension droite
-    const RA = toDegrees(Math.atan2(
-        Math.cos(toRadians(23.44)) * Math.sin(toRadians(L_s)), 
-        Math.cos(toRadians(L_s))
-    ));
+    const EoT_hours = (L_deg % 360) / 15 - RA_hours;
+    const EoT_seconds = EoT_hours * 3600;
     
-    // Équation du Temps (EoT) en minutes
-    // EoT = 4 * (Heure Solaire Moyenne - Heure Solaire Vraie)
-    const EoT_min = (L_deg % 360) / 15 - RA / 15;
-    
-    // Heure Solaire Moyenne (HSM) - Heure locale corrigée par la longitude
     const heureUTC = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
-    const t_HSM = heureUTC + longitude / 15;
-    const HSM = (t_HSM % 24 + 24) % 24;
-    
-    // Heure Solaire Vraie (HSV)
-    const HSV = (HSM + EoT_min / 60) % 24;
+    const HSM = (heureUTC + longitude / 15);
+    const HSV = (HSM + EoT_hours) % 24;
 
-    // Affichage des données (Simplifié)
-    safeSetText('date-display', date.toLocaleString());
+    // Lever/Coucher du Soleil
+    const cosH_num = Math.sin(toRadians(SUN_RISE_SET_ALTITUDE)) - Math.sin(toRadians(latitude)) * Math.sin(ϵ);
+    const cosH_den = Math.cos(toRadians(latitude)) * Math.cos(ϵ);
+    // Vérifie si le soleil se lève/couche (pas de soleil de minuit)
+    if (Math.abs(cosH_num) < Math.abs(cosH_den)) {
+        const H_deg = toDegrees(Math.acos(cosH_num / cosH_den));
+        const T_rise_HSM = (12 - H_deg / 15) - EoT_hours;
+        const T_set_HSM = (12 + H_deg / 15) - EoT_hours;
+        const T_rise_locale = (T_rise_HSM - longitude / 15) % 24;
+        const T_set_locale = (T_set_HSM - longitude / 15) % 24;
+        safeSetText('lever-soleil', formatHeure(T_rise_locale));
+        safeSetText('coucher-soleil', formatHeure(T_set_locale));
+        safeSetText('solar-day-duration', formatHeure((T_set_locale - T_rise_locale) % 24)); 
+    } else {
+        safeSetText('lever-soleil', latitude > 0 ? "Jamais" : "Toujours");
+        safeSetText('coucher-soleil', latitude > 0 ? "Toujours" : "Jamais");
+        safeSetText('solar-day-duration', '24h 00min 00s');
+    }
+
+    // Affichage des données astronomiques
+    safeSetText('date-display', date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
     safeSetText('hsv', formatHeure(HSV));
     safeSetText('hsm', formatHeure(HSM));
-    safeSetText('eq-temps', `${(EoT_min * 60).toFixed(1)} s`);
-    safeSetText('solar-lon', `${L_s.toFixed(2)}°`);
-    safeSetText('solar-day-duration', `24h 00min 00s`); // Simplifié pour le moment
-
-    return { EoT_min, L_s };
+    safeSetText('eq-temps', `${(EoT_seconds).toFixed(2)} s`);
+    safeSetText('solar-lon', `${λ_s.toFixed(2)}°`);
+    
+    // Placeholder Lunaire (Calculs complexes non inclus)
+    safeSetText('phase-lune', `Non calculé`);
+    safeSetText('culmination-lune', `Non calculé`);
+    safeSetText('mag-lune', `Non calculé`);
 }
 
-// Formatage de l'heure flottante en HH:MM:SS
 function formatHeure(heureFloat) {
-    const totalSecs = heureFloat * 3600;
+    const totalSecs = Math.round(heureFloat * 3600);
     const h = Math.floor(totalSecs / 3600);
     const m = Math.floor((totalSecs % 3600) / 60);
     const s = Math.floor(totalSecs % 60);
@@ -104,52 +192,70 @@ function formatHeure(heureFloat) {
 
 
 // ========================
-// 4. Fonctions GPS & Cinématique
+// 5. Fonctions GPS & Orchestration
 // ========================
-function miseAJourVitesse(pos) {
+async function miseAJourVitesse(pos) { // Déclaré async pour 'await'
     const now = Date.now();
     if (!tempsDebut) tempsDebut = now;
 
-    // ... (Logique Mode Souterrain, Filtre de Précision) ...
+    // Filtre de base de précision (si la précision est trop mauvaise, ignorer)
+    if (pos.coords.accuracy > 50 && !modeSouterrainActif) {
+        console.warn(`Position ignorée: Précision de ${pos.coords.accuracy.toFixed(0)}m.`);
+        return;
+    }
 
     const gps = {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
-        altitude: pos.coords.altitude || 0,
+        // Utiliser l'altitude GPS pour la correction barométrique
+        altitude: pos.coords.altitude || 0, 
         accuracy: pos.coords.accuracy,
         speed: pos.coords.speed || 0,
         heading: pos.coords.heading || 0
     };
 
     let vitesse_ms = gps.speed; 
-    
     if (positionPrecedente) {
-        // ... (Calculs de Vitesse/Distance si gps.speed n'est pas fiable) ...
+        // Calcul de distance cumulée si la position est valide
+        distanceTotale += calculerDistanceHaversine(positionPrecedente, gps);
+    } else {
+        initialiserCarte(gps);
     }
-    
     positionPrecedente = gps;
 
     const vitesse_kmh = vitesse_ms * 3.6;
     vitesseMax = Math.max(vitesseMax, vitesse_kmh);
     vitesses.push(vitesse_kmh); if (vitesses.length > 30) vitesses.shift();
 
-    // MISE À JOUR ASTRONOMIE
-    calculerHeuresSolaires(new Date(), gps.latitude, gps.longitude);
 
-    // MISE À JOUR CAPTEURS NATIFS SIMULÉS
-    simulerCapteursNatifs(vitesse_kmh); 
+    // ********* DÉMARCHE NON-SIMULÉE *********
+    // 1. Récupération de la Pression et de la Température (API)
+    const meteoData = await telechargerPressionMeteo(gps.latitude, gps.longitude);
     
-    // Affichage Cinématique
+    // 2. Déduction de la Pression Locale (Corrigée par Altitude et Température)
+    const pressionLocaleEstimee = deduirePressionLocale(
+        meteoData.pressionSL, 
+        gps.altitude, 
+        meteoData.temperatureC
+    );
+
+    // 3. Mise à jour des Capteurs (Réels ou API)
+    afficherCapteurs(vitesse_kmh, pressionLocaleEstimee, meteoData.pressionSL, meteoData.temperatureC);
+    
+    // 4. Mise à jour Cinématique et Astro
     afficherVitesse(vitesse_kmh, vitesse_ms);
     afficherDistance();
     afficherTemps();
     afficherGPS(gps);
-    // ... (Mettre à jour la carte et la cible)
+    calculerHeuresSolaires(new Date(), gps.latitude, gps.longitude);
+    
+    // 5. Carte et Cible
+    mettreAJourCarte(gps); 
+    calculerCible(gps);
 }
 
 function afficherVitesse(v_kmh, v_ms) {
     const moyenne_kmh = vitesses.reduce((a, b) => a + b, 0) / vitesses.length || 0;
-    
     safeSetText('vitesse', `${v_kmh.toFixed(2)} km/h`);
     safeSetText('vitesse-moy', `${moyenne_kmh.toFixed(2)} km/h`);
     safeSetText('vitesse-max', `${vitesseMax.toFixed(2)} km/h`);
@@ -172,63 +278,77 @@ function afficherTemps() {
 
 function afficherGPS(g) {
     safeSetText('gps', `Lat : ${g.latitude.toFixed(4)} | Lon : ${g.longitude.toFixed(4)} | Alt : ${g.altitude.toFixed(0)} m | Préc. : ${g.accuracy.toFixed(0)} m`);
-    safeSetText('compass-display', `${g.heading.toFixed(1)}°`);
+    safeSetText('compass-display', `${g.heading ? g.heading.toFixed(1) : '--'}° (GPS)`); // Utilise le heading GPS
 }
 
+function calculerCible(pos) {
+    const bearing = calculerRelèvement(pos, targetCoords);
+    const distance_m = calculerDistanceHaversine(pos, targetCoords);
+    const distance_km = distance_m / 1000;
+    safeSetText('bearing-display', `${bearing.toFixed(1)}° | Distance : ${distance_km.toFixed(3)} km`);
+}
 
 // ========================
-// 5. Simulation des Capteurs (Natif)
-// Ces fonctions nécessitent une API native (Capacitor/Cordova) pour être réelles.
+// 6. Carte & Affichage des Capteurs
 // ========================
-let batterie = 85; 
+function initialiserCarte(pos) {
+    if (map) return;
+    map = L.map('map').setView([pos.latitude, pos.longitude], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    marker = L.marker([pos.latitude, pos.longitude]).addTo(map);
+}
 
-function simulerCapteursNatifs(v_kmh) {
-    // Lumière : Simule en fonction de l'heure du jour (basé sur un simple sinusoïde)
-    const now = new Date();
-    const h = now.getHours() + now.getMinutes() / 60;
-    const lux = 100 + 40000 * Math.sin(Math.PI * (h - 6) / 12) + Math.random() * 50; 
-    safeSetText('cap-lumiere', `${lux < 0 ? 0 : lux.toFixed(0)} lux`);
+function mettreAJourCarte(pos) {
+    if (!map) initialiserCarte(pos);
+    if (marker) {
+        marker.setLatLng([pos.latitude, pos.longitude]);
+        map.setView([pos.latitude, pos.longitude], map.getZoom(), { animate: true, pan: { duration: 0.5 } });
+    }
+}
 
-    // Pression Est. : Simplifiée, juste une constante
-    safeSetText('pression-est', `1013.25 hPa`);
+/**
+ * Affiche les valeurs de capteurs (Réels via API ou Non Supportés)
+ */
+let batterie = 85; // Simple simulation pour la batterie
+function afficherCapteurs(v_kmh, pressionLocale, pressionSL, temperatureC) {
+    // Pression & Température (via API)
+    safeSetText('pression-est', `SL: ${pressionSL.toFixed(2)} hPa | Local: ${pressionLocale.toFixed(2)} hPa`);
+    safeSetText('cap-lumiere', `${temperatureC.toFixed(1)} °C (API)`); // Réutilise le champ lumière pour afficher la température
 
-    // Énergie Cinétique Est. : E = 0.5 * m * v^2 (Simule une masse de 80 kg)
+    // Énergie Cinétique Est. : E = 0.5 * m * v^2 (Masse corps + équipement ≈ 80 kg)
     const energie = 0.5 * 80 * (v_kmh / 3.6)**2;
     safeSetText('energie-cinetique', `${energie.toFixed(0)} J`);
 
-    // Batterie : Simule une décharge lente
-    batterie = Math.max(0, batterie - 0.0001);
-    safeSetText('cap-batterie', `${batterie.toFixed(1)}%`);
-
-    // Affichage des autres placeholders pour compléter l'interface
-    safeSetText('cap-son', `-- dB`);
-    safeSetText('cap-niveau', `--°`);
-    safeSetText('cap-gyro', `--`);
-    safeSetText('cap-mag', `--`);
-    safeSetText('cap-reseau', `4G (Simulé)`);
+    // Autres Capteurs (Impossible en PWA sans API native)
+    safeSetText('cap-son', `Non supporté`);
+    safeSetText('cap-niveau', `Non supporté`);
+    safeSetText('cap-gyro', `Non supporté`);
+    safeSetText('cap-mag', `Non supporté`);
+    safeSetText('cap-reseau', `API Externe`);
+    
+    // Heure et Jour/Nuit
+    const now = new Date();
     safeSetText('heure-atomique', `${now.toUTCString().split(' ')[4]} UTC`);
     safeSetText('jour-nuit', (now.getHours() > 6 && now.getHours() < 20) ? 'Jour ☀️' : 'Nuit 🌙');
-    
-    // Placeholder Lunaire (Calculs complexes non inclus)
-    safeSetText('phase-lune', `Nouvelle Lune (Simulé)`);
-    safeSetText('culmination-lune', `-- (Simulé)`);
-    safeSetText('mag-lune', `-12.7 (Simulé)`);
-    safeSetText('lever-soleil', `06h 00min`);
-    safeSetText('coucher-soleil', `18h 00min`);
+
+    // Batterie (Simulation)
+    batterie = Math.max(0, batterie - 0.0001);
+    safeSetText('cap-batterie', `${batterie.toFixed(1)}%`);
 }
 
 
 // ========================
-// 6. Contrôles & Initialisation
+// 7. Contrôles & Initialisation
 // ========================
 function demarrerCockpit(){
   if(watchId!==null) return;
   if(!tempsDebut) tempsDebut=Date.now();
-  const options={enableHighAccuracy:true,timeout:5000,maximumAge:0};
+  const options={enableHighAccuracy:true,timeout:10000,maximumAge:0}; // Timeout augmenté
   
+  // Utilisation de la fonction asynchrone pour watchPosition
   watchId=navigator.geolocation.watchPosition(
-    miseAJourVitesse,
-    (e)=>{console.error(e);safeSetText('gps',`Erreur GPS (${e.code})`)},
+    (pos) => miseAJourVitesse(pos),
+    (e)=>{console.error(e);safeSetText('gps',`Erreur GPS (${e.code}) : ${e.message}`)},
     options
   );
 
@@ -244,10 +364,8 @@ function arreterCockpit(){
 function resetCockpit(){
     arreterCockpit(); positionPrecedente=null; vitesseMax=0; vitesses=[]; distanceTotale=0; tempsDebut=null;
     
-    // Reset affichages
     const initialText = ' --';
-    safeSetText('vitesse', initialText + ' km/h'); 
-    safeSetText('vitesse-moy', initialText + ' km/h'); 
+    safeSetText('vitesse', initialText + ' km/h'); safeSetText('vitesse-moy', initialText + ' km/h'); 
     safeSetText('vitesse-max', initialText + ' km/h'); 
     safeSetText('vitesse-ms', initialText + ' m/s |' + initialText + ' mm/s'); 
     safeSetText('pourcentage', initialText + '% |' + initialText + '%');
@@ -255,20 +373,24 @@ function resetCockpit(){
     safeSetText('distance-cosmique', initialText + ' s lumière |' + initialText + ' al');
     safeSetText('temps', initialText + ' s');
     safeSetText('gps', 'En attente...');
+    safeSetText('compass-display', initialText + '°');
+    safeSetText('bearing-display', initialText + '° | Distance : ' + initialText + ' km');
     
     // Reset Astro/Capteurs
-    safeSetText('eq-temps', initialText);
-    safeSetText('solar-lon', initialText);
+    safeSetText('eq-temps', initialText + ' s');
+    safeSetText('solar-lon', initialText + '°');
     safeSetText('hsv', initialText);
     safeSetText('hsm', initialText);
-    safeSetText('date-display', new Date().toLocaleDateString());
+    safeSetText('lever-soleil', initialText);
+    safeSetText('coucher-soleil', initialText);
+    safeSetText('solar-day-duration', initialText);
     safeSetText('pression-est', initialText + ' hPa');
-    // ... (Réinitialiser tous les autres champs si nécessaire)
-
-    // Logique de carte non incluse.
+    safeSetText('energie-cinetique', initialText + ' J');
+    
+    // Initialisation des valeurs non supportées
+    afficherCapteurs(0, 1013.25, 1013.25, 15);
 }
 
-// Initialisation des écouteurs d'événements
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('marche').addEventListener('click', demarrerCockpit);
     document.getElementById('arreter').addEventListener('click', arreterCockpit);
@@ -279,10 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modeSouterrainActif) arreterCockpit();
     });
 
-    // Autres écouteurs pour la cible, etc.
     document.getElementById('target-coord').value = `${targetCoords.latitude}, ${targetCoords.longitude}`;
     
-    // Initialisation
     resetCockpit();
-    simulerCapteursNatifs(0); // Afficher les valeurs simulées initiales
 });
