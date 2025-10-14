@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cockpit Cosmique PWA Complet</title>
+<title>Cockpit Cosmique PWA Complet & Optimisé</title>
 
 <meta name="theme-color" content="#1a237e">
 <link rel="manifest" href="manifest.json">
@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAo9T0oJ3u02HwYt2yWqDzhK1MHS0g4fR6w2sB1G="
       crossorigin="anonymous"/>
 <style>
-/* Styles généraux pour le Cockpit */
+/* Styles généraux pour le Cockpit (Même que précédemment) */
 body { font-family: 'Space Mono', monospace, sans-serif; margin: 0; padding: 0; background: #121212; color: #00ff66; }
 .cockpit-container { max-width: 650px; margin: 0 auto; padding: 15px; }
 .card { background: #1e1e1e; border: 1px solid #00ff6633; border-radius: 6px; padding: 15px; margin-bottom: 15px; box-shadow: 0 0 10px rgba(0, 255, 102, 0.2); }
@@ -32,7 +32,7 @@ button:hover { background: #00cc52; }
 
     <div class="card">
         <h3>🚀 Vitesse & Navigation</h3>
-        <p class="display" id="temps">Temps : <span>0.00 s</span></p>
+        <p class="display" id="temps">Temps : <span>-- s</span></p>
         <p class="display" id="gps">GPS : <span>--</span></p>
         <p class="display">Vitesse instantanée : <span id="vitesse">-- km/h</span></p>
         <p class="display">Vitesse moyenne : <span id="vitesse-moy">-- km/h</span></p>
@@ -53,22 +53,20 @@ button:hover { background: #00cc52; }
         <h3>💫 Médaillon Céleste</h3>
         <div class="grid-2">
             <div>
+                <p class="display">Date : <span id="date-display">--</span></p>
                 <p class="display">Heure Solaire Vraie : <span id="hsv">--</span></p>
                 <p class="display">Heure Solaire Moyenne : <span id="hsm">--</span></p>
-                <p class="display">Équation du Temps : <span id="eq-temps">--</span></p>
-                <p class="display">Longitude Solaire : <span id="solar-lon">--</span></p>
-                <p class="display">Durée Jour Solaire : <span id="solar-day-duration">--</span></p>
+                <p class="display">Équation du Temps : <span id="eq-temps">-- s</span></p>
+                <p class="display">Longitude Solaire : <span id="solar-lon">--°</span></p>
             </div>
             <div>
+                <p class="display">Durée Jour Solaire : <span id="solar-day-duration">--</span></p>
                 <p class="display">Lever Soleil : <span id="lever-soleil">--</span></p>
                 <p class="display">Coucher Soleil : <span id="coucher-soleil">--</span></p>
                 <p class="display">Phase Lune : <span id="phase-lune">--</span></p>
                 <p class="display">Culmination Lune : <span id="culmination-lune">--</span></p>
-                <p class="display">Magnitude Lune : <span id="mag-lune">--</span></p>
             </div>
         </div>
-        <hr style="border-color:#00ff661a; margin: 10px 0;">
-        <p class="display">Date : <span id="date-display">--</span></p>
     </div>
 
     <div class="card">
@@ -83,21 +81,21 @@ button:hover { background: #00cc52; }
         <h3>🔋 Capteurs & ⚛️ Grandeurs</h3>
         <div class="grid-2">
             <div>
-                <h4>Capteurs</h4>
-                <p class="display">Lumière : <span id="cap-lumiere">-- lux</span></p>
-                <p class="display">Son : <span id="cap-son">-- dB</span></p>
-                <p class="display">Niveau : <span id="cap-niveau">--°</span></p>
-                <p class="display">Gyro : <span id="cap-gyro">--</span></p>
-                <p class="display">Magnétomètre : <span id="cap-mag">--</span></p>
+                <h4>Capteurs (PWA/API)</h4>
+                <p class="display">Température : <span id="cap-lumiere">-- °C (API)</span></p>
+                <p class="display">Son : <span id="cap-son">Non supporté</span></p>
+                <p class="display">Niveau : <span id="cap-niveau">Non supporté</span></p>
+                <p class="display">Gyro : <span id="cap-gyro">Non supporté</span></p>
+                <p class="display">Magnétomètre : <span id="cap-mag">Non supporté</span></p>
                 <p class="display">Batterie : <span id="cap-batterie">--%</span></p>
-                <p class="display">Réseau : <span id="cap-reseau">--</span></p>
-                <p class="display">Heure Atomique (UTC) : <span id="heure-atomique">--</span></p>
+                <p class="display">Réseau : <span id="cap-reseau">API Externe</span></p>
             </div>
             <div>
-                <h4>Grandeurs Est.</h4>
+                <h4>Grandeurs Calculées</h4>
                 <p class="display">Pression Est. : <span id="pression-est">-- hPa</span></p>
                 <p class="display">Énergie cinétique Est. : <span id="energie-cinetique">-- J</span></p>
                 <p class="display">Jour/Nuit : <span id="jour-nuit">--</span></p>
+                <p class="display">Heure atomique (UTC) : <span id="heure-atomique">--</span></p>
             </div>
         </div>
     </div>
