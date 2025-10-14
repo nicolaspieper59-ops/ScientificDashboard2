@@ -2,21 +2,21 @@
 const C_LIGHT_KMS = 299792.458; 
 const C_LIGHT_MS = 299792458;  
 const MASS_KG = 70;             
-const EARTH_RADIUS_M = 6371000; 
+const EARTH_RADIUS_M = 6371000; // Rayon moyen de la Terre en mètres
 
 let intervalId = null;
 let timeElapsed = 0; // en secondes
 
-// Variables pour le calcul de la vitesse et de la distance
-let currentSpeedMS = 0;         // Vitesse horizontale lue directement du GPS (m/s)
-let currentVerticalSpeedMS = 0; // Vitesse verticale calculée (m/s)
+// Variables pour le calcul de la vitesse par changement de position (3D)
+let currentSpeedMS = 0; 
 let maxSpeedKPH = 0;
 let distanceTraveled = 0; // en km
 
-let lastLat = null; 
+// Variables de la position précédente pour le calcul de la vitesse 3D
+let lastLat = null;
 let lastLon = null;
 let lastAlt = null;
-let lastTimestamp = null; // Nécessaire pour le calcul de la vitesse verticale
+let lastTimestamp = null;
 let gpsWatchId = null;
 
 // --- DONNÉES ASTRONOMIQUES (Statiques) ---
@@ -38,8 +38,11 @@ function toRad(degrees) {
     return degrees * (Math.PI / 180);
 }
 
-/** Calcule la distance horizontale 2D (Haversine) en mètres. */
-function calculate2dDistance(lat1, lon1, lat2, lon2) {
+/** * Calcule la distance horizontale (2D) entre deux points GPS (formule Haversine) 
+ * et combine avec la différence d'altitude pour obtenir la distance 3D totale en mètres.
+ */
+function calculate3dDistance(lat1, lon1, alt1, lat2, lon2, alt2) {
+    // 1. Calcul de la distance horizontale (Haversine)
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
     
@@ -48,13 +51,23 @@ function calculate2dDistance(lat1, lon1, lat2, lon2) {
         Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return EARTH_RADIUS_M * c; // Distance horizontale en mètres
+    const distance2d = EARTH_RADIUS_M * c; // Distance en mètres
+
+    // 2. Calcul de la distance verticale
+    // Si l'une des altitudes est manquante, la distance verticale est 0.
+    // L'altitude est soustraite pour obtenir la différence entre les deux points.
+    const altDiff = (alt1 !== null && alt2 !== null) ? Math.abs(alt2 - alt1) : 0;
+
+    // 3. Calcul de la distance 3D (Pythagore dans l'espace)
+    return Math.sqrt(distance2d * distance2d + altDiff * altDiff);
 }
+
 
 // --- GESTION DES CAPTEURS (GPS & Accéléromètre) ---
 
 let accelListenerActive = false;
 
+/** Initialise l'accès à l'accéléromètre. */
 function initAccelerometer() {
     if ('DeviceMotionEvent' in window) {
         if (typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -86,10 +99,13 @@ function initAccelerometer() {
     }
 }
 
+/** Gère les données de mouvement (lecture brute de l'accélération). */
 function handleMotion(event) {
-    // Lecture brute de l'accélération
+    // Cette fonction ne calcule PAS la vitesse (qui vient du GPS)
+    // Elle est conservée pour la lecture brute de l'accélération si besoin.
 }
 
+/** Tente d'obtenir le niveau de la batterie. */
 function updateBatteryStatus() {
     if ('getBattery' in navigator) {
         navigator.getBattery().then(function(battery) {
@@ -103,8 +119,8 @@ function updateBatteryStatus() {
     }
 }
 
-/** * Met à jour la position, lit la vitesse horizontale du GPS, 
- * et calcule la vitesse verticale et la distance totale parcourue (incluant verticalement).
+/** * Utilise watchPosition pour calculer la vitesse et la distance en 3D (comme Google Maps) 
+ * en utilisant la différence de position et le temps écoulé entre les mises à jour.
  */
 function getGeoLocation() {
     if (!("geolocation" in navigator)) {
@@ -112,10 +128,12 @@ function getGeoLocation() {
         return;
     }
     
+    // Arrête la surveillance précédente si elle existe
     if (gpsWatchId) {
         navigator.geolocation.clearWatch(gpsWatchId);
     }
     
+    // Démarre la surveillance de la position
     gpsWatchId = navigator.geolocation.watchPosition(
         (position) => {
             const currentTimestamp = position.timestamp;
@@ -123,43 +141,36 @@ function getGeoLocation() {
             const currentLon = position.coords.longitude;
             const currentAlt = position.coords.altitude !== null ? position.coords.altitude : null; 
             
-            // 1. Vitesse Horizontale (lecture directe du GPS, la plus stable)
-            if (position.coords.speed !== null && position.coords.speed !== undefined) {
-                currentSpeedMS = Math.max(0, position.coords.speed); 
-            } else {
-                currentSpeedMS = 0;
-            }
-
-            // 2. Vitesse Verticale et Distance Totale (calculs)
-            if (lastTimestamp !== null && lastAlt !== null && currentAlt !== null) {
-                const deltaTime = (currentTimestamp - lastTimestamp) / 1000; // en secondes
-                
-                if (deltaTime > 0) {
-                    // Calcul de la vitesse verticale (taux de montée)
-                    const altDiff = currentAlt - lastAlt; // Différence d'altitude
-                    currentVerticalSpeedMS = altDiff / deltaTime;
-
-                    // Calcul de la distance totale 3D
-                    const distHorizontal = calculate2dDistance(lastLat, lastLon, currentLat, currentLon);
-                    const distVertical = Math.abs(altDiff);
-                    const dist3D = Math.sqrt(distHorizontal * distHorizontal + distVertical * distVertical);
-
-                    // Accumulation de la distance totale (en km)
-                    distanceTraveled += dist3D / 1000; 
-                } else {
-                     currentVerticalSpeedMS = 0;
-                }
-            } else {
-                currentVerticalSpeedMS = 0;
-            }
-            
-            // 3. Mise à jour de l'affichage
+            // Affichage de la position
             const altDisplay = currentAlt !== null ? `, ${currentAlt.toFixed(1)} m` : '';
             document.getElementById('rendez-vous').textContent = `${currentLat.toFixed(4)}, ${currentLon.toFixed(4)}${altDisplay}`;
             document.getElementById('gps-status').textContent = `OK (${currentLat.toFixed(4)}, ${currentLon.toFixed(4)})`;
             document.getElementById('gps-status').classList.remove('warning');
 
-            // 4. Mise à jour des variables de l'état précédent
+            // Calcul de la vitesse et de la distance si le mouvement est en marche
+            if (intervalId && lastTimestamp !== null && lastLat !== null) {
+                // Temps écoulé en secondes
+                const deltaTime = (currentTimestamp - lastTimestamp) / 1000; 
+
+                if (deltaTime > 0) {
+                    // Calcul de la distance 3D parcourue en mètres
+                    const distanceMeters = calculate3dDistance(
+                        lastLat, lastLon, lastAlt, 
+                        currentLat, currentLon, currentAlt
+                    );
+                    
+                    // Vitesse = Distance / Temps (en m/s)
+                    const calculatedSpeed = distanceMeters / deltaTime;
+
+                    // Mise à jour de la vitesse instantanée (filtrage minimal)
+                    currentSpeedMS = Math.max(0, calculatedSpeed); 
+                    
+                    // Accumulation de la distance totale (en km)
+                    distanceTraveled += distanceMeters / 1000; 
+                }
+            }
+
+            // Mise à jour de la position précédente pour le prochain calcul
             lastLat = currentLat;
             lastLon = currentLon;
             lastAlt = currentAlt;
@@ -168,9 +179,9 @@ function getGeoLocation() {
         (error) => {
             document.getElementById('gps-status').textContent = `Erreur GPS: ${error.message}`;
             currentSpeedMS = 0; 
-            currentVerticalSpeedMS = 0;
-            lastTimestamp = null;
+            lastTimestamp = null; // Réinitialise l'état pour éviter les faux calculs
         },
+        // Options pour la haute précision (nécessaire pour l'altitude) et des mises à jour optimales
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } 
     );
 }
@@ -190,7 +201,7 @@ function calculateLorentzFactor(v_ms) {
 function updateNavigationData() {
     if (!intervalId) return;
 
-    // 1. Calculs (basés sur la vitesse horizontale)
+    // 1. Calculs
     const V_KPH = currentSpeedMS * 3.6;
     const V_MMS = currentSpeedMS * 1000;
     const V_LIGHT_RATIO = currentSpeedMS / C_LIGHT_MS;
@@ -200,10 +211,8 @@ function updateNavigationData() {
         maxSpeedKPH = V_KPH;
     }
     
-    // Vitesse moyenne basée sur la distance totale (3D) et le temps écoulé du chronomètre
+    // Vitesse moyenne basée sur la distance totale et le temps écoulé du chronomètre
     const avgSpeedKPH = timeElapsed > 0 ? distanceTraveled / (timeElapsed / 3600) : 0;
-    
-    // L'énergie cinétique est calculée avec la vitesse horizontale seule.
     const E_KINETIC = 0.5 * MASS_KG * (currentSpeedMS * currentSpeedMS);
     
     const DISTANCE_M = distanceTraveled * 1000;
@@ -212,12 +221,6 @@ function updateNavigationData() {
     
     // 2. Mise à jour du HTML
     document.getElementById('time-s').textContent = `${timeElapsed.toFixed(0)} s`;
-    
-    // Vitesse Verticale
-    const verticalSign = currentVerticalSpeedMS >= 0 ? '⬆️' : '⬇️';
-    document.getElementById('vitesse-vert').textContent = `${currentVerticalSpeedMS.toFixed(2)} m/s (${verticalSign})`;
-
-    // Vitesse Horizontale (instantanée)
     document.getElementById('vitesse-inst').textContent = `${V_KPH.toFixed(2)} km/h`;
     document.getElementById('vitesse-moy').textContent = `${avgSpeedKPH.toFixed(2)} km/h`;
     document.getElementById('vitesse-max').textContent = `${maxSpeedKPH.toFixed(2)} km/h`;
@@ -228,7 +231,6 @@ function updateNavigationData() {
     document.getElementById('pourcent-lumiere').textContent = `${(V_LIGHT_RATIO * 100).toFixed(4)}%`;
     document.getElementById('pourcent-lumiere-precise').textContent = `${V_LIGHT_RATIO.toFixed(8)} c`;
     
-    // Distance (Distance 3D totale parcourue)
     document.getElementById('distance-km').textContent = `${distanceTraveled.toFixed(2)} km`;
     document.getElementById('distance-m').textContent = `${DISTANCE_M.toFixed(0)} m`;
     document.getElementById('distance-mm').textContent = `${(DISTANCE_M * 1000).toFixed(0)} mm`;
@@ -245,7 +247,7 @@ function updateNavigationData() {
 /** Bascule le chronomètre (Démarrer/Arrêter). */
 function toggleMovement(start) {
     if (start) {
-        // Le code doit TOUJOURS appeler getGeoLocation d'abord pour commencer à surveiller la position
+        // Démarre la surveillance GPS et le calcul de vitesse/distance
         getGeoLocation(); 
         
         intervalId = setInterval(() => {
@@ -253,13 +255,13 @@ function toggleMovement(start) {
             updateNavigationData();
         }, 1000);
         
-        document.getElementById('gps-status').textContent = 'Acquisition GPS (Mode Direct + Vert)';
+        document.getElementById('gps-status').textContent = 'Acquisition GPS (Calcul 3D)...';
         document.getElementById('gps-status').classList.add('warning');
     } else {
         clearInterval(intervalId);
         intervalId = null;
         
-        // Arrête la surveillance GPS pour économiser la batterie
+        // Arrête la surveillance GPS
         if (gpsWatchId) {
             navigator.geolocation.clearWatch(gpsWatchId);
             gpsWatchId = null;
@@ -269,11 +271,10 @@ function toggleMovement(start) {
         document.getElementById('gps-status').classList.remove('warning');
         
         currentSpeedMS = 0; 
-        currentVerticalSpeedMS = 0;
+        lastTimestamp = null; // Important : réinitialise l'état précédent à l'arrêt
         lastLat = null;
         lastLon = null;
         lastAlt = null;
-        lastTimestamp = null;
     }
     document.getElementById('start-btn').disabled = start;
     document.getElementById('stop-btn').disabled = !start;
@@ -286,7 +287,6 @@ function resetData() {
     // Réinitialisation des variables de navigation
     timeElapsed = 0;
     currentSpeedMS = 0;
-    currentVerticalSpeedMS = 0;
     maxSpeedKPH = 0;
     distanceTraveled = 0;
     lastLat = null;
@@ -298,12 +298,11 @@ function resetData() {
     document.getElementById('gps-status').textContent = 'En attente...';
     document.getElementById('gps-status').classList.add('warning');
     
-    const zeroFields = ['vitesse-inst', 'vitesse-vert', 'vitesse-moy', 'vitesse-max', 'vitesse-ms', 'vitesse-mms', 
+    const zeroFields = ['vitesse-inst', 'vitesse-moy', 'vitesse-max', 'vitesse-ms', 'vitesse-mms', 
                        'pourcent-lumiere', 'pourcent-lumiere-precise', 'distance-km', 'distance-m', 
                        'distance-mm', 'distance-sl', 'distance-al', 'energie-cinetique'];
     zeroFields.forEach(id => {
         let value = '0';
-        if (id === 'vitesse-vert') value = '0 m/s';
         if (id.includes('lumiere')) value = '0%';
         if (id.includes('sl') || id.includes('al')) value = '0 s lumière';
         if (id.includes('energie-cinetique')) value = '0 J';
@@ -369,16 +368,16 @@ function updateCelestialData() {
 // --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
 function initializeCockpit() {
     updateCelestialData(); 
+
+    getGeoLocation(); // Démarre la surveillance GPS de base pour la position initiale
     updateBatteryStatus();
     initAccelerometer(); 
     
-    // Démarre la surveillance GPS initiale pour obtenir la position de départ AVANT d'appuyer sur le bouton
-    getGeoLocation(); 
-    
-    // Met à jour le temps et la batterie indépendamment du mouvement
+    // Garde le temps et les données célestes à jour chaque seconde
     setInterval(updateCelestialData, 1000);
+
+    // Mise à jour de la batterie chaque minute
     setInterval(updateBatteryStatus, 60000); 
 }
 
-// Cette ligne garantit que tout le code est chargé avant d'essayer de lier les boutons
 window.onload = initializeCockpit;
