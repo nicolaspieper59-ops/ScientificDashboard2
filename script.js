@@ -1,364 +1,142 @@
-// --- CONSTANTES ET VARIABLES GLOBALES ---
-const C_LIGHT_KMS = 299792.458; 
-const C_LIGHT_MS = 299792458;  
-const MASS_KG = 70;             
-const EARTH_RADIUS_M = 6371000; 
-const NOISE_THRESHOLD_M = 0.5; // Ajout : Ignorer les mouvements inférieurs à 50 cm (bruit GPS)
-
-let intervalId = null;
-let timeElapsed = 0; 
-
-// Variables pour le calcul de la vitesse par changement de position (3D)
-let currentSpeedMS = 0; 
-let maxSpeedKPH = 0;
-let distanceTraveled = 0; 
-
-// Variables de la position précédente pour le calcul de la vitesse 3D
-let lastLat = null;
-let lastLon = null;
-let lastAlt = null;
-let lastTimestamp = null;
-let gpsWatchId = null;
-
-// --- DONNÉES ASTRONOMIQUES (Statiques) ---
-// ... (pas de changement)
-
-// --- FONCTIONS UTILITAIRES ---
-
-/** Convertit les degrés en radians. */
-function toRad(degrees) {
-    return degrees * (Math.PI / 180);
-}
-
-/** * Calcule la distance horizontale (2D) entre deux points GPS (formule Haversine) 
- * et combine avec la différence d'altitude pour obtenir la distance 3D totale en mètres.
- */
-function calculate3dDistance(lat1, lon1, alt1, lat2, lon2, alt2) {
-    // 1. Calcul de la distance horizontale (Haversine)
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    
-    const a = 
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance2d = EARTH_RADIUS_M * c; // Distance en mètres
-
-    // 2. Calcul de la distance verticale
-    const altDiff = (alt1 !== null && alt2 !== null) ? Math.abs(alt2 - alt1) : 0;
-
-    // 3. Calcul de la distance 3D (Pythagore dans l'espace)
-    return Math.sqrt(distance2d * distance2d + altDiff * altDiff);
-}
-
-
-// --- GESTION DES CAPTEURS (GPS & Accéléromètre) ---
-
-let accelListenerActive = false;
-
-/** Initialise l'accès à l'accéléromètre. */
-function initAccelerometer() {
-    // ... (Code inchangé)
-    if ('DeviceMotionEvent' in window) {
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-            document.getElementById('accel-status').textContent = 'Autorisation requise (cliquez)';
-            document.getElementById('accel-status').onclick = () => {
-                DeviceOrientationEvent.requestPermission()
-                .then(permissionState => {
-                    if (permissionState === 'granted') {
-                        window.addEventListener('devicemotion', handleMotion);
-                        document.getElementById('accel-status').textContent = 'Actif (m/s²)';
-                        document.getElementById('accel-status').classList.remove('warning');
-                        document.getElementById('accel-status').onclick = null;
-                        accelListenerActive = true;
-                    } else {
-                        document.getElementById('accel-status').textContent = 'Refusé';
-                    }
-                })
-                .catch(console.error);
-            };
-        } else {
-            window.addEventListener('devicemotion', handleMotion);
-            document.getElementById('accel-status').textContent = 'Actif (m/s²)';
-            document.getElementById('accel-status').classList.remove('warning');
-            accelListenerActive = true;
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cockpit Cosmique 🚀 V. FINALE (Vitesse Verticale Calculée)</title>
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Consolas', 'Courier New', monospace;
+            padding: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            margin: 0;
         }
-    } else {
-        document.getElementById('accel-status').textContent = 'N/A (Non supporté)';
-        document.getElementById('accel-status').classList.add('warning');
-    }
-}
-
-/** Gère les données de mouvement (lecture brute de l'accélération). */
-function handleMotion(event) {
-    // Code inchangé
-}
-
-/** Tente d'obtenir le niveau de la batterie. */
-function updateBatteryStatus() {
-    // Code inchangé
-    if ('getBattery' in navigator) {
-        navigator.getBattery().then(function(battery) {
-            const level = (battery.level * 100).toFixed(0);
-            document.getElementById('batterie').textContent = `${level}%`;
-            document.getElementById('batterie').classList.remove('warning');
-        });
-    } else {
-         document.getElementById('batterie').textContent = 'N/A (API)';
-         document.getElementById('batterie').classList.add('warning');
-    }
-}
-
-/** * Utilise watchPosition pour calculer la vitesse et la distance en 3D, 
- * en filtrant les erreurs de positionnement lorsque l'appareil est immobile.
- */
-function getGeoLocation() {
-    if (!("geolocation" in navigator)) {
-        document.getElementById('gps-status').textContent = 'N/A (Non supporté)';
-        return;
-    }
-    
-    if (gpsWatchId) {
-        navigator.geolocation.clearWatch(gpsWatchId);
-    }
-    
-    gpsWatchId = navigator.geolocation.watchPosition(
-        (position) => {
-            const currentTimestamp = position.timestamp;
-            const currentLat = position.coords.latitude;
-            const currentLon = position.coords.longitude;
-            const currentAlt = position.coords.altitude !== null ? position.coords.altitude : null; 
-            
-            // Affichage de la position
-            const altDisplay = currentAlt !== null ? `, ${currentAlt.toFixed(1)} m` : '';
-            document.getElementById('rendez-vous').textContent = `${currentLat.toFixed(4)}, ${currentLon.toFixed(4)}${altDisplay}`;
-            document.getElementById('gps-status').textContent = `OK (${currentLat.toFixed(4)}, ${currentLon.toFixed(4)})`;
-            document.getElementById('gps-status').classList.remove('warning');
-
-            // Calcul de la vitesse et de la distance si le mouvement est en marche
-            if (intervalId && lastTimestamp !== null && lastLat !== null) {
-                const deltaTime = (currentTimestamp - lastTimestamp) / 1000; // en secondes
-
-                if (deltaTime > 0) {
-                    const distanceMeters = calculate3dDistance(
-                        lastLat, lastLon, lastAlt, 
-                        currentLat, currentLon, currentAlt
-                    );
-                    
-                    let calculatedSpeed = 0;
-                    
-                    // --- NOUVEAU FILTRAGE DU BRUIT GPS ---
-                    if (distanceMeters > NOISE_THRESHOLD_M) {
-                        calculatedSpeed = distanceMeters / deltaTime;
-                        // Accumulation de la distance totale (en km)
-                        distanceTraveled += distanceMeters / 1000; 
-                    } else {
-                        // Si le mouvement est sous le seuil de bruit, on suppose que l'appareil est immobile
-                        calculatedSpeed = 0;
-                    }
-                    
-                    // Mise à jour de la vitesse instantanée
-                    currentSpeedMS = Math.max(0, calculatedSpeed); 
-                }
-            }
-
-            // Mise à jour de la position précédente pour le prochain calcul
-            lastLat = currentLat;
-            lastLon = currentLon;
-            lastAlt = currentAlt;
-            lastTimestamp = currentTimestamp;
-        },
-        (error) => {
-            document.getElementById('gps-status').textContent = `Erreur GPS: ${error.message}`;
-            currentSpeedMS = 0; 
-            lastTimestamp = null; 
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } 
-    );
-}
-
-// --- FONCTIONS DE MISE À JOUR & RELATIVITÉ ---
-
-/** Calcule le Facteur de Lorentz (Dilatation du Temps). */
-function calculateLorentzFactor(v_ms) {
-    // Code inchangé
-    const v_ratio_squared = (v_ms * v_ms) / (C_LIGHT_MS * C_LIGHT_MS);
-    if (v_ratio_squared >= 1) {
-        return Infinity;
-    }
-    return 1 / Math.sqrt(1 - v_ratio_squared);
-}
-
-/** Met à jour la section Vitesse & Navigation. */
-function updateNavigationData() {
-    if (!intervalId) return;
-    // Code inchangé
-    const V_KPH = currentSpeedMS * 3.6;
-    const V_MMS = currentSpeedMS * 1000;
-    const V_LIGHT_RATIO = currentSpeedMS / C_LIGHT_MS;
-    const LORENTZ_FACTOR = calculateLorentzFactor(currentSpeedMS);
-
-    if (V_KPH > maxSpeedKPH) {
-        maxSpeedKPH = V_KPH;
-    }
-    
-    const avgSpeedKPH = timeElapsed > 0 ? distanceTraveled / (timeElapsed / 3600) : 0;
-    const E_KINETIC = 0.5 * MASS_KG * (currentSpeedMS * currentSpeedMS);
-    
-    const DISTANCE_M = distanceTraveled * 1000;
-    const DISTANCE_SL = DISTANCE_M / C_LIGHT_MS; 
-    const DISTANCE_AL = DISTANCE_SL / (3600 * 24 * 365.25); 
-    
-    // 2. Mise à jour du HTML
-    document.getElementById('time-s').textContent = `${timeElapsed.toFixed(0)} s`;
-    document.getElementById('vitesse-inst').textContent = `${V_KPH.toFixed(2)} km/h`;
-    document.getElementById('vitesse-moy').textContent = `${avgSpeedKPH.toFixed(2)} km/h`;
-    document.getElementById('vitesse-max').textContent = `${maxSpeedKPH.toFixed(2)} km/h`;
-    document.getElementById('vitesse-ms').textContent = `${currentSpeedMS.toFixed(2)} m/s`;
-    document.getElementById('vitesse-mms').textContent = `${V_MMS.toFixed(0)} mm/s`;
-
-    document.getElementById('gamma-factor').textContent = LORENTZ_FACTOR.toFixed(4);
-    document.getElementById('pourcent-lumiere').textContent = `${(V_LIGHT_RATIO * 100).toFixed(4)}%`;
-    document.getElementById('pourcent-lumiere-precise').textContent = `${V_LIGHT_RATIO.toFixed(8)} c`;
-    
-    document.getElementById('distance-km').textContent = `${distanceTraveled.toFixed(2)} km`;
-    document.getElementById('distance-m').textContent = `${DISTANCE_M.toFixed(0)} m`;
-    document.getElementById('distance-mm').textContent = `${(DISTANCE_M * 1000).toFixed(0)} mm`;
-    
-    document.getElementById('distance-sl').textContent = `${DISTANCE_SL.toPrecision(4)} s lumière`;
-    document.getElementById('distance-al').textContent = `${DISTANCE_AL.toPrecision(4)} al`;
-    document.getElementById('energie-cinetique').textContent = `${E_KINETIC.toFixed(0)} J`;
-    
-    timeElapsed++; 
-}
-
-// --- CHRONOMÈTRE ET CONTRÔLES ---
-// ... (Fonctions inchangées)
-
-/** Bascule le chronomètre (Démarrer/Arrêter). */
-function toggleMovement(start) {
-    if (start) {
-        getGeoLocation(); 
-        intervalId = setInterval(() => {
-            updateCelestialData(); 
-            updateNavigationData();
-        }, 1000);
-        document.getElementById('gps-status').textContent = 'Acquisition GPS (Calcul 3D)...';
-        document.getElementById('gps-status').classList.add('warning');
-    } else {
-        clearInterval(intervalId);
-        intervalId = null;
-        if (gpsWatchId) {
-            navigator.geolocation.clearWatch(gpsWatchId);
-            gpsWatchId = null;
+        .cockpit-section {
+            border: 1px solid #005500;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
         }
-        document.getElementById('gps-status').textContent = 'Arrêté';
-        document.getElementById('gps-status').classList.remove('warning');
-        currentSpeedMS = 0; 
-        lastTimestamp = null; 
-        lastLat = null;
-        lastLon = null;
-        lastAlt = null;
-    }
-    document.getElementById('start-btn').disabled = start;
-    document.getElementById('stop-btn').disabled = !start;
-}
+        h2 {
+            color: #00ffff;
+            border-bottom: 2px solid #00ffff;
+            padding-bottom: 5px;
+            margin-top: 0;
+        }
+        .controls button {
+            background-color: #005500;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px 15px;
+            cursor: pointer;
+            margin-right: 10px;
+            border-radius: 3px;
+            margin-top: 10px;
+        }
+        .controls button:hover {
+            background-color: #008800;
+        }
+        .data-label {
+            display: inline-block;
+            width: 250px;
+        }
+        .warning {
+            color: #ffaa00;
+            font-weight: bold;
+        }
+        #gamma-factor {
+            color: #ff00ff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
 
-/** Réinitialise toutes les données de navigation. */
-function resetData() {
-    toggleMovement(false); 
-    timeElapsed = 0;
-    currentSpeedMS = 0;
-    maxSpeedKPH = 0;
-    distanceTraveled = 0;
-    lastLat = null;
-    lastLon = null;
-    lastAlt = null;
-    lastTimestamp = null;
-    
-    document.getElementById('time-s').textContent = '0 s';
-    document.getElementById('gps-status').textContent = 'En attente...';
-    document.getElementById('gps-status').classList.add('warning');
-    
-    const zeroFields = ['vitesse-inst', 'vitesse-moy', 'vitesse-max', 'vitesse-ms', 'vitesse-mms', 
-                       'pourcent-lumiere', 'pourcent-lumiere-precise', 'distance-km', 'distance-m', 
-                       'distance-mm', 'distance-sl', 'distance-al', 'energie-cinetique'];
-    zeroFields.forEach(id => {
-        let value = '0';
-        if (id.includes('lumiere')) value = '0%';
-        if (id.includes('sl') || id.includes('al')) value = '0 s lumière';
-        if (id.includes('energie-cinetique')) value = '0 J';
-        
-        document.getElementById(id).textContent = value;
-    });
-    document.getElementById('gamma-factor').textContent = '1.0000';
-}
+    <div id="cockpit">
+        <div class="cockpit-section">
+            <h2>🚀 Vitesse & Navigation</h2>
+            <div id="navigation-data">
+                <span class="data-label">Temps de voyage :</span> <span id="time-s">0 s</span><br>
+                <span class="data-label">GPS :</span> <span id="gps-status" class="warning">En attente...</span><br>
+                <span class="data-label">Vitesse instantanée (Horizontale):</span> <span id="vitesse-inst">0 km/h</span><br>
+                <span class="data-label">Vitesse verticale ($\text{V}_{\text{z}}$ - Taux montée):</span> <span id="vitesse-vert">0 m/s</span><br>
+                <span class="data-label">Vitesse moyenne :</span> <span id="vitesse-moy">0 km/h</span><br>
+                <span class="data-label">Vitesse max :</span> <span id="vitesse-max">0 km/h</span><br>
+                <span class="data-label">Vitesse (m/s | mm/s) :</span> <span id="vitesse-ms">0 m/s</span> | <span id="vitesse-mms">0 mm/s</span><br>
+                <span class="data-label">Facteur Lorentz ($\gamma$) :</span> <span id="gamma-factor">1.0000</span><br>
+                <span class="data-label">% Lumière (Ratio | Précis) :</span> <span id="pourcent-lumiere">0%</span> | <span id="pourcent-lumiere-precise">0 c</span><br>
+                <span class="data-label">Distance (km | m | mm) :</span> <span id="distance-km">0 km</span> | <span id="distance-m">0 m</span> | <span id="distance-mm">0 mm</span><br>
+                <span class="data-label">Distance cosmique (s-lumière | al) :</span> <span id="distance-sl">0 s lumière</span> | <span id="distance-al">0 al</span>
+            </div>
+            <div class="controls">
+                <button id="start-btn" onclick="toggleMovement(true)">▶️ Marche</button>
+                <button id="stop-btn" onclick="toggleMovement(false)" disabled>⏹️ Arrêt</button>
+                <button onclick="resetData()">⚙️ Réinitialiser</button>
+                <span class="data-label" style="width: 150px;">🚫 Mode Souterrain :</span> OFF
+            </div>
+        </div>
 
-// --- FONCTIONS CÉLESTES (inchangées) ---
+        <div class="cockpit-section">
+            <h2>💫 Médaillon Céleste</h2>
+            <div id="celestial-data">
+                <span class="data-label">Date :</span> <span id="date">--</span><br>
+                <span class="data-label">Heure Solaire Vraie :</span> <span id="hsv">--</span><br>
+                <span class="data-label">Heure Solaire Moyenne :</span> <span id="hsm">--</span><br>
+                <span class="data-label">Équation du Temps :</span> <span id="edt">-- s</span><br>
+                <span class="data-label">Longitude Solaire :</span> <span id="lon-solaire">--°</span><br>
+                <span class="data-label">Durée Jour Solaire :</span> <span id="djs">--</span><br>
+                <span class="data-label">Lever Soleil :</span> <span id="lever-soleil">--</span><br>
+                <span class="data-label">Coucher Soleil :</span> <span id="coucher-soleil">--</span><br>
+                <span class="data-label">Horloge Cosmique (Statut du Médaillon) :</span> <span id="horloge-cosmique">--</span><br>
+                <span class="data-label">Étoile Polaire (N) 🌠 :</span> <span id="polaire">--</span><br>
+                <span class="data-label">Phase Lune (Élément Magique) :</span> <span id="phase-lune">--</span><br>
+                <span class="data-label">Culmination Lune :</span> <span id="culmination-lune">--</span>
+            </div>
+        </div>
 
-/** Parse un temps HH:MM:SS en secondes depuis minuit. */
-function parseTime(timeStr) {
-    const parts = timeStr.split(':');
-    return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
-}
+        <div class="cockpit-section">
+            <h2>🧭 Carte Cosmique</h2>
+            <div id="map-data">
+                <span class="data-label">Point de Rendez-vous (Lat, Lon, Alt):</span> <span id="rendez-vous">43.2965, 5.3698</span><br>
+                <span class="data-label">🎯 Cible</span><br>
+                <span class="data-label">Relèvement vers la cible :</span> N/A | Distance : N/A<br>
+                <span class="data-label">Boussole (Nord Vrai) :</span> <span id="boussole">N/A</span>
+            </div>
+        </div>
 
-/** Met à jour le temps et les données célestes. */
-function updateCelestialData() {
-    // Code inchangé
-    const now = new Date(); 
-    
-    // 1. Heure Atomique (UTC) et Date Locale
-    document.getElementById('utc-time').textContent = now.toUTCString().split(' ')[4] + " UTC";
-    document.getElementById('date').textContent = now.toLocaleDateString('fr-FR');
-    
-    // 2. Calcul Heure Solaire Moyenne (HSM) et Vraie (HSV)
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-    const second = now.getSeconds();
+        <div class="cockpit-section">
+            <h2>🔋 Capteurs & ⚛️ Grandeurs</h2>
+            <h3>Capteurs (PWA/API)</h3>
+            <div id="sensors-data">
+                <span class="data-label">Accéléromètre (m/s²):</span> <span id="accel-status" class="warning">N/A (Autorisation Requise)</span><br>
+                <span class="data-label">Température :</span> <span id="temp">N/A</span><br>
+                <span class="data-label">Son :</span> N/A<br>
+                <span class="data-label">Gyro :</span> N/A<br>
+                <span class="data-label">Magnétomètre :</span> N/A<br>
+                <span class="data-label">Batterie :</span> <span id="batterie">N/A</span><br>
+                <span class="data-label">Réseau :</span> API Externe
+            </div>
+            <h3>Grandeurs Calculées</h3>
+            <div id="calculated-data">
+                <span class="data-label">Pression Est. :</span> SL: <span id="pression-sl">1013.25 hPa</span> | Local: <span id="pression-local">N/A</span><br>
+                <span class="data-label">Énergie cinétique Est. :</span> <span id="energie-cinetique">0 J</span><br>
+                <span class="data-label">Jour/Nuit :</span> <span id="jour-nuit">--</span><br>
+                <span class="data-label">Heure atomique (UTC) :</span> <span id="utc-time">-- UTC</span>
+            </div>
+        </div>
 
-    const hsmTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`;
-    
-    let hsvSeconds = (hour * 3600) + (minute * 60) + second + AstroData.edt;
-    const hsvDate = new Date(hsvSeconds * 1000); 
-    const hsvTimeStr = `${String(hsvDate.getUTCHours()).padStart(2, '0')}:${String(hsvDate.getUTCMinutes()).padStart(2, '0')}:${String(hsvDate.getUTCSeconds()).padStart(2, '0')}`;
-    
-    document.getElementById('hsm').textContent = hsmTime;
-    document.getElementById('hsv').textContent = hsvTimeStr;
-    document.getElementById('edt').textContent = `+${AstroData.edt} s`;
+        <div class="cockpit-section">
+            <h2>🛠️ Contrôle Scientifique</h2>
+            <div id="control-data">
+                ✅ Rituel cosmique : ON 🧪 Physique : ON ⚗️ Chimie : ON 🌿 SVT : ON
+            </div>
+        </div>
+    </div>
 
-    // 3. Statut Jour/Nuit et Médaillon
-    const sunrise = parseTime(AstroData.leverSoleil);
-    const sunset = parseTime(AstroData.coucherSoleil);
-    const currentTimeSeconds = (hour * 3600) + (minute * 60) + second; 
-    
-    let isDay = (currentTimeSeconds > sunrise) && (currentTimeSeconds < sunset);
-    let jourNuitStatus = isDay ? "Jour ☀️" : "Nuit 🌑";
-    document.getElementById('jour-nuit').textContent = jourNuitStatus;
-    document.getElementById('horloge-cosmique').textContent = `${AstroData.saison} ${jourNuitStatus}`;
-    
-    // 4. Autres données
-    const isVisible = (currentTimeSeconds < sunrise) || (currentTimeSeconds > sunset);
-    document.getElementById('polaire').textContent = isVisible ? "Visible" : "N/A (Invisible)";
-    document.getElementById('lon-solaire').textContent = `${AstroData.lonSolaire.toFixed(1)}°`;
-    document.getElementById('djs').textContent = AstroData.dureeJourSolaire;
-    document.getElementById('lever-soleil').textContent = AstroData.leverSoleil;
-    document.getElementById('coucher-soleil').textContent = AstroData.coucherSoleil;
-    document.getElementById('phase-lune').textContent = AstroData.phaseLune + (isDay ? " (Visible de Jour !)" : "");
-    document.getElementById('culmination-lune').textContent = AstroData.culminationLune;
-}
-
-
-// --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
-function initializeCockpit() {
-    updateCelestialData(); 
-
-    getGeoLocation(); 
-    updateBatteryStatus();
-    initAccelerometer(); 
-    
-    setInterval(updateCelestialData, 1000);
-    setInterval(updateBatteryStatus, 60000); 
-}
-
-window.onload = initializeCockpit;
+    <script src="cockpit.js"></script>
+</body>
+</html>
