@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cockpit Cosmique 🚀 V. FINALE (Capteurs & Solaire)</title>
     <style>
+        /* Styles CSS inchangés */
         body {
             background-color: #1a1a1a;
             color: #00ff00;
@@ -52,14 +53,14 @@
     <div id="cockpit">
         
         <div class="cockpit-section">
-            <h3>⏱️ Temps & Vitesse</h3>
+            <h3>⏱️ Temps & Vitesse (Ground Speed)</h3>
             <span class="data-label">Temps :</span> <span id="time-s">-- s</span><br>
             <span class="data-label">Vitesse instantanée :</span> <span id="vitesse-inst">-- km/h</span><br>
             <span class="data-label">Vitesse moyenne :</span> <span id="vitesse-moy">-- km/h</span><br>
             <span class="data-label">Vitesse max :</span> <span id="vitesse-max">-- km/h</span><br>
             <span class="data-label">Vitesse :</span> <span id="vitesse-ms">-- m/s</span> | <span id="vitesse-mms">-- mm/s</span><br>
+            <span class="data-label">Nombre de Mach (M) :</span> <span id="mach-number">--</span><br> 
             <span class="data-label">% Lumière :</span> <span id="pourcent-lumiere">--%</span><br>
-            <span class="data-label">% Son :</span> <span id="pourcent-son">--%</span><br>
             <span class="data-label">Distance :</span> <span id="distance-km">-- km</span> | <span id="distance-m">-- m</span> | <span id="distance-mm">-- mm</span><br>
             <span class="data-label">Distance cosmique :</span> <span id="distance-sl">-- s lumière</span> | <span id="distance-al">-- al</span><br>
             <span class="data-label">Précision GPS :</span> <span id="prec-gps">--</span><br>
@@ -72,19 +73,20 @@
 
         <div class="cockpit-section">
             <h3>☀️🌙 Soleil & Lune</h3>
-            <span class="data-label">Culmination soleil :</span> <span id="culm-soleil">--</span><br>
+            <span class="data-label">Culmination soleil :</span> <span id="culm-soleil">--:--:--</span><br>
             <span class="data-label">Heure solaire vraie :</span> <span id="hsv">--:--:--</span><br>
             <span class="data-label">Heure solaire moyenne :</span> <span id="hsm">--:--:--</span><br>
             <span class="data-label">Équation du temps :</span> <span id="edt">-- s</span><br>
             <span class="data-label">Lune phase :</span> <span id="phase-lune">--%</span><br>
             <span class="data-label">Lune magnitude :</span> <span id="mag-lune">--</span><br>
-            <span class="data-label">Lever lune :</span> <span id="lever-lune">--</span><br>
-            <span class="data-label">Coucher lune :</span> <span id="coucher-lune">--</span><br>
-            <span class="data-label">Culmination lune :</span> <span id="culmination-lune">--</span>
+            <span class="data-label">Lever lune :</span> <span id="lever-lune">--:--:--</span><br>
+            <span class="data-label">Coucher lune :</span> <span id="coucher-lune">--:--:--</span><br>
+            <span class="data-label">Culmination lune :</span> <span id="culmination-lune">--:--:--</span>
         </div>
         
         <div class="cockpit-section">
-            <h3>🪐 Dynamique Orbitale</h3>
+            <h3>🪐 Dynamique Orbitale (Données NASA - Jours)</h3>
+            <span class="data-label">Équation du temps :</span> <span id="edt">-- s</span><br>
             <span class="data-label">Composante Excentricité :</span> <span id="eccentricity-comp">-- s</span><br>
             <span class="data-label">Composante Obliquité :</span> <span id="obliquity-comp">-- s</span><br>
             <span class="data-label">Longitude Solaire :</span> <span id="solar-longitude">--°</span><br>
@@ -129,11 +131,12 @@
         </div>
 
         <div class="cockpit-section">
-            <h3>📊 Vue brute GPS</h3>
+            <h3>📊 Vue brute GPS (Aviation)</h3>
             <span class="data-label">Statut GPS :</span> <span id="gps-status" class="warning">En attente...</span><br>
             <span class="data-label">Latitude :</span> <span id="latitude">--</span><br>
             <span class="data-label">Longitude :</span> <span id="longitude">--</span><br>
-            <span class="data-label">Altitude :</span> <span id="altitude">--</span><br>
+            <span class="data-label">Altitude (m) :</span> <span id="altitude">-- m</span><br>
+            <span class="data-label">Altitude (ft) :</span> <span id="altitude-ft">-- ft</span><br> 
             <span class="data-label">Précision (m) :</span> <span id="precision-m">-- m</span><br>
             <span class="data-label">Souterrain :</span> <span id="souterrain">Non</span>
         </div>
@@ -142,4 +145,4 @@
 
     <script src="cockpit.js"></script>
 </body>
-                                                                                                  </html>
+                </html>
