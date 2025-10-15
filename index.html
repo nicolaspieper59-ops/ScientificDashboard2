@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cockpit Cosmique 🚀 V. ATOMIQUE & ÉTALONNÉE</title>
+    <title>Cockpit Cosmique 🚀 V. STABLE & PRÉCISE</title>
     <style>
-        /* Styles CSS inchangés */
+        /* Styles CSS pour l'affichage "cosmique" */
         body {
             background-color: #1a1a1a;
             color: #00ff00;
@@ -33,8 +33,9 @@
             display: inline-block;
             width: 200px;
         }
+        /* Classe essentielle pour signaler les données peu fiables */
         .warning {
-            color: #ffaa00; /* Jaune/Orange pour avertissement */
+            color: #ffaa00; 
             font-weight: bold;
         }
         .controls button {
@@ -64,81 +65,22 @@
 
         <div class="cockpit-section">
             <h3>⏱️ Temps & Vitesse (Ground Speed)</h3>
-            <span class="data-label">Temps :</span> <span id="time-s">-- s</span><br>
-            <span class="data-label">Vitesse instantanée (Horiz) :</span> <span id="vitesse-inst">-- km/h</span><br>
-            <span class="data-label">Vitesse verticale :</span> <span id="vitesse-vert">-- m/s</span><br>
-            <span class="data-label">Vitesse 3D (Totale) :</span> <span id="vitesse-3d">-- km/h</span><br>
-            <span class="data-label">Vitesse moyenne :</span> <span id="vitesse-moy">-- km/h</span><br>
-            <span class="data-label">Vitesse max :</span> <span id="vitesse-max">-- km/h</span><br>
-            <span class="data-label">Vitesse (m/s) :</span> <span id="vitesse-ms">-- m/s</span> | <span id="vitesse-mms">-- mm/s</span><br>
-            <span class="data-label">Nombre de Mach (M) :</span> <span id="mach-number">--</span><br> 
-            <span class="data-label">% Lumière :</span> <span id="pourcent-lumiere">--%</span><br>
-            <span class="data-label">Distance :</span> <span id="distance-km">-- km</span> | <span id="distance-m">-- m</span> | <span id="distance-mm">-- mm</span><br>
-            <span class="data-label">Distance cosmique :</span> <span id="distance-sl">-- s lumière</span> | <span id="distance-al">-- al</span><br>
-            <span class="data-label">Précision GPS :</span> <span id="prec-gps">--</span><br>
+            <span class="data-label">Temps total écoulé :</span> <span id="time-s">0.00 s</span><br>
+            <span class="data-label">Vitesse instantanée (Horiz) :</span> <span id="vitesse-inst">0.00 km/h</span><br>
+            <span class="data-label">Vitesse verticale :</span> <span id="vitesse-vert">0.00 m/s</span><br>
+            <span class="data-label">Vitesse 3D (Totale) :</span> <span id="vitesse-3d">0.00 km/h</span><br>
+            <span class="data-label">Vitesse moyenne :</span> <span id="vitesse-moy">0.00 km/h</span><br>
+            <span class="data-label">Vitesse max :</span> <span id="vitesse-max">0.00 km/h</span><br>
+            <span class="data-label">Vitesse (m/s) :</span> <span id="vitesse-ms">0.00 m/s</span> | <span id="vitesse-mms">0 mm/s</span><br>
+            <span class="data-label">Nombre de Mach (M) :</span> <span id="mach-number">0.000</span><br> 
+            <span class="data-label">% Lumière :</span> <span id="pourcent-lumiere">0.00000000%</span><br>
+            <span class="data-label">Distance totale :</span> <span id="distance-km">0.000 km</span><br>
+            
             <div class="controls">
                 <button id="start-btn" onclick="toggleMovement(true)">Marche</button>
                 <button id="stop-btn" onclick="toggleMovement(false)" disabled>Arrêt</button>
                 <button onclick="resetData()">Réinitialiser max</button>
             </div>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>☀️🌙 Soleil & Lune (Heure Solaire Locale)</h3>
-            <span class="data-label">Culmination soleil :</span> <span id="culm-soleil">--:--:--</span><br>
-            <span class="data-label">Heure solaire vraie :</span> <span id="hsv">--:--:--</span><br>
-            <span class="data-label">Heure solaire moyenne :</span> <span id="hsm">--:--:--</span><br>
-            <span class="data-label">Équation du temps :</span> <span id="edt">-- s</span><br>
-            <span class="data-label">Lune phase :</span> <span id="phase-lune">--%</span><br>
-            <span class="data-label">Lune magnitude :</span> <span id="mag-lune">--</span><br>
-            <span class="data-label">Lever lune :</span> <span id="lever-lune">--:--:--</span><br>
-            <span class="data-label">Coucher lune :</span> <span id="coucher-lune">--:--:--</span><br>
-            <span class="data-label">Culmination lune :</span> <span id="culmination-lune">--:--:--</span>
-        </div>
-        
-        <div class="cockpit-section">
-            <h3>🪐 Dynamique Orbitale (Composantes Étalonnées)</h3>
-            <span class="data-label">Composante Excentricité :</span> <span id="eccentricity-comp">-- s</span><br>
-            <span class="data-label">Composante Obliquité :</span> <span id="obliquity-comp">-- s</span><br>
-            <span class="data-label">Longitude Solaire :</span> <span id="solar-longitude">--°</span><br>
-            <span class="data-label">Durée Jour Solaire :</span> <span id="solar-day-duration">--:--:--</span>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>⏰ Horloge Minecraft</h3>
-            <span id="horloge-minecraft">00:00:00</span>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>🌡️ Météo</h3>
-            <span class="data-label">Température :</span> <span id="temp">-- °C</span><br>
-            <span class="data-label">Pression :</span> <span id="pression">-- hPa</span><br>
-            <span class="data-label">Humidité :</span> <span id="humidite">--%</span><br>
-            <span class="data-label">Vent :</span> <span id="vent">-- km/h</span><br>
-            <span class="data-label">Nuages :</span> <span id="nuages">--%</span><br>
-            <span class="data-label">Pluie :</span> <span id="pluie">-- mm</span><br>
-            <span class="data-label">Neige :</span> <span id="neige">-- mm</span><br>
-            <span class="data-label">Indice UV :</span> <span id="uv">--</span><br>
-            <span class="data-label">Qualité air :</span> <span id="air-qual">--</span><br>
-            <span class="data-label">Point d’ébullition :</span> <span id="point-ebullition">-- °C</span>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>🧭 Boussole</h3>
-            <span class="data-label">Cap :</span> <span id="cap">--°</span><br>
-            <span class="data-label">Vers lat :</span> <span id="vers-lat">--</span><br>
-            <span class="data-label">Vers lon :</span> <span id="vers-lon">--</span><br>
-            <span class="data-label">Cap vers destination :</span> <span id="cap-dest">--°</span><br>
-            <span class="data-label">Distance destination :</span> <span id="dist-dest">-- km</span><br>
-            <button>Aller</button>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>📐 Capteurs</h3>
-            <span class="data-label">Niveau à bulle :</span> <span id="niveau-bulle">--°</span><br>
-            <span class="data-label">Lumière :</span> <span id="lumiere">-- lux</span><br>
-            <span class="data-label">Son :</span> <span id="son">-- dB</span><br>
-            <span class="data-label">Fréquence :</span> <span id="frequence">-- Hz</span>
         </div>
 
         <div class="cockpit-section">
@@ -149,11 +91,31 @@
             <span class="data-label">Altitude (m) :</span> <span id="altitude">-- m</span><br>
             <span class="data-label">Altitude (ft) :</span> <span id="altitude-ft">-- ft</span><br>
             <span class="data-label">Précision (m) :</span> <span id="precision-m">-- m</span><br>
+            <span class="data-label">Précision (% affichée) :</span> <span id="prec-gps">-- %</span><br>
             <span class="data-label">Souterrain :</span> <span id="souterrain">Non</span>
+        </div>
+        
+        <div class="cockpit-section">
+            <h3>☀️🌙 Soleil & Lune (Heure Solaire Locale)</h3>
+            <span class="data-label">Culmination soleil :</span> <span id="culm-soleil">--:--:--</span><br>
+            <span class="data-label">Heure solaire vraie :</span> <span id="hsv">--:--:--</span><br>
+            <span class="data-label">Heure solaire moyenne :</span> <span id="hsm">--:--:--</span><br>
+            <span class="data-label">Équation du temps :</span> <span id="edt">-- s</span><br>
+            <span class="data-label">Lune phase :</span> <span id="phase-lune">--%</span><br>
+            <span class="data-label">Lune magnitude :</span> <span id="mag-lune">--</span><br>
+            <span class="data-label">Durée Jour Solaire :</span> <span id="solar-day-duration">--:--:--</span>
+        </div>
+        
+        <div class="cockpit-section">
+            <h3>🔭 Cosmique / Secondaire</h3>
+            <span class="data-label">Distance (m) :</span> <span id="distance-m">-- m</span><br>
+            <span class="data-label">Distance (lumière) :</span> <span id="distance-sl">-- s lumière</span><br>
+            <span class="data-label">Niveau à bulle :</span> <span id="niveau-bulle">--°</span><br>
+            <span class="data-label">Horloge Minecraft :</span> <span id="horloge-minecraft">00:00:00</span>
         </div>
         
     </div>
 
     <script src="cockpit.js"></script>
 </body>
-                                                                                                  </html>
+                                                                                          </html>
