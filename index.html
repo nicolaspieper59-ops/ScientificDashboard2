@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cockpit Cosmique 🚀 V. FINALE (Capteurs & Solaire)</title>
+    <title>Cockpit Cosmique 🚀 V. FINALE ATOMIQUE</title>
     <style>
         /* Styles CSS inchangés */
         body {
@@ -46,12 +46,23 @@
             margin-right: 5px;
             border-radius: 3px;
         }
+        /* Style pour l'horloge atomique, plus grande pour l'effet time.is */
+        #atomic-time {
+            font-size: 20px;
+            font-weight: bold;
+            color: #ff00ff; /* Magenta pour distinguer */
+        }
     </style>
 </head>
 <body>
 
     <div id="cockpit">
         
+        <div class="cockpit-section">
+            <h3>⏰ Horloge Atomique (UTC)</h3>
+            <span id="atomic-time">--:--:--.--</span>
+        </div>
+
         <div class="cockpit-section">
             <h3>⏱️ Temps & Vitesse (Ground Speed)</h3>
             <span class="data-label">Temps :</span> <span id="time-s">-- s</span><br>
@@ -72,7 +83,7 @@
         </div>
 
         <div class="cockpit-section">
-            <h3>☀️🌙 Soleil & Lune</h3>
+            <h3>☀️🌙 Soleil & Lune (Heure Solaire Locale)</h3>
             <span class="data-label">Culmination soleil :</span> <span id="culm-soleil">--:--:--</span><br>
             <span class="data-label">Heure solaire vraie :</span> <span id="hsv">--:--:--</span><br>
             <span class="data-label">Heure solaire moyenne :</span> <span id="hsm">--:--:--</span><br>
@@ -85,8 +96,7 @@
         </div>
         
         <div class="cockpit-section">
-            <h3>🪐 Dynamique Orbitale (Données NASA - Jours)</h3>
-            <span class="data-label">Équation du temps :</span> <span id="edt">-- s</span><br>
+            <h3>🪐 Dynamique Orbitale (Composantes NASA)</h3>
             <span class="data-label">Composante Excentricité :</span> <span id="eccentricity-comp">-- s</span><br>
             <span class="data-label">Composante Obliquité :</span> <span id="obliquity-comp">-- s</span><br>
             <span class="data-label">Longitude Solaire :</span> <span id="solar-longitude">--°</span><br>
@@ -98,48 +108,10 @@
             <span id="horloge-minecraft">00:00:00</span>
         </div>
 
-        <div class="cockpit-section">
-            <h3>🌡️ Météo (MOCK)</h3>
-            <span class="data-label">Température :</span> <span id="temp">-- °C</span><br>
-            <span class="data-label">Pression :</span> <span id="pression">-- hPa</span><br>
-            <span class="data-label">Humidité :</span> <span id="humidite">--%</span><br>
-            <span class="data-label">Vent :</span> <span id="vent">-- km/h</span><br>
-            <span class="data-label">Nuages :</span> <span id="nuages">--%</span><br>
-            <span class="data-label">Pluie :</span> <span id="pluie">-- mm</span><br>
-            <span class="data-label">Neige :</span> <span id="neige">-- mm</span><br>
-            <span class="data-label">Indice UV :</span> <span id="uv">--</span><br>
-            <span class="data-label">Qualité air :</span> <span id="air-qual">--</span><br>
-            <span class="data-label">Point d’ébullition :</span> <span id="point-ebullition">-- °C</span>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>🧭 Boussole (MOCK)</h3>
-            <span class="data-label">Cap :</span> <span id="cap">--°</span><br>
-            <span class="data-label">Vers lat :</span> <span id="vers-lat">--</span><br>
-            <span class="data-label">Vers lon :</span> <span id="vers-lon">--</span><br>
-            <span class="data-label">Cap vers destination :</span> <span id="cap-dest">--°</span><br>
-            <span class="data-label">Distance destination :</span> <span id="dist-dest">-- km</span><br>
-            <button>Aller</button>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>📐 Capteurs</h3>
-            <span class="data-label">Niveau à bulle :</span> <span id="niveau-bulle">--°</span><br>
-            <span class="data-label">Lumière (MOCK) :</span> <span id="lumiere">-- lux</span><br>
-            <span class="data-label">Son (MOCK) :</span> <span id="son">-- dB</span><br>
-            <span class="data-label">Fréquence (MOCK) :</span> <span id="frequence">-- Hz</span>
-        </div>
-
-        <div class="cockpit-section">
-            <h3>📊 Vue brute GPS (Aviation)</h3>
-            <span class="data-label">Statut GPS :</span> <span id="gps-status" class="warning">En attente...</span><br>
-            <span class="data-label">Latitude :</span> <span id="latitude">--</span><br>
-            <span class="data-label">Longitude :</span> <span id="longitude">--</span><br>
-            <span class="data-label">Altitude (m) :</span> <span id="altitude">-- m</span><br>
-            <span class="data-label">Altitude (ft) :</span> <span id="altitude-ft">-- ft</span><br> 
-            <span class="data-label">Précision (m) :</span> <span id="precision-m">-- m</span><br>
-            <span class="data-label">Souterrain :</span> <span id="souterrain">Non</span>
-        </div>
+        <div class="cockpit-section"><h3>🌡️ Météo (MOCK)</h3><span class="data-label">Température :</span> <span id="temp">-- °C</span><br><span class="data-label">Pression :</span> <span id="pression">-- hPa</span><br><span class="data-label">Humidité :</span> <span id="humidite">--%</span><br><span class="data-label">Vent :</span> <span id="vent">-- km/h</span><br><span class="data-label">Nuages :</span> <span id="nuages">--%</span><br><span class="data-label">Pluie :</span> <span id="pluie">-- mm</span><br><span class="data-label">Neige :</span> <span id="neige">-- mm</span><br><span class="data-label">Indice UV :</span> <span id="uv">--</span><br><span class="data-label">Qualité air :</span> <span id="air-qual">--</span><br><span class="data-label">Point d’ébullition :</span> <span id="point-ebullition">-- °C</span></div>
+        <div class="cockpit-section"><h3>🧭 Boussole (MOCK)</h3><span class="data-label">Cap :</span> <span id="cap">--°</span><br><span class="data-label">Vers lat :</span> <span id="vers-lat">--</span><br><span class="data-label">Vers lon :</span> <span id="vers-lon">--</span><br><span class="data-label">Cap vers destination :</span> <span id="cap-dest">--°</span><br><span class="data-label">Distance destination :</span> <span id="dist-dest">-- km</span><br><button>Aller</button></div>
+        <div class="cockpit-section"><h3>📐 Capteurs</h3><span class="data-label">Niveau à bulle :</span> <span id="niveau-bulle">--°</span><br><span class="data-label">Lumière (MOCK) :</span> <span id="lumiere">-- lux</span><br><span class="data-label">Son (MOCK) :</span> <span id="son">-- dB</span><br><span class="data-label">Fréquence (MOCK) :</span> <span id="frequence">-- Hz</span></div>
+        <div class="cockpit-section"><h3>📊 Vue brute GPS (Aviation)</h3><span class="data-label">Statut GPS :</span> <span id="gps-status" class="warning">En attente...</span><br><span class="data-label">Latitude :</span> <span id="latitude">--</span><br><span class="data-label">Longitude :</span> <span id="longitude">--</span><br><span class="data-label">Altitude (m) :</span> <span id="altitude">-- m</span><br><span class="data-label">Altitude (ft) :</span> <span id="altitude-ft">-- ft</span><br><span class="data-label">Précision (m) :</span> <span id="precision-m">-- m</span><br><span class="data-label">Souterrain :</span> <span id="souterrain">Non</span></div>
         
     </div>
 
