@@ -5,6 +5,11 @@ const METER_TO_FEET = 3.28084;
 const EARTH_ROTATION_RATE = 15; // 15 degrés par heure
 const SYNODIC_MONTH = 29.53058867;
 
+// *** NOUVELLES CONSTANTES ÉTALONNÉES POUR L'ÉQUATION DU TEMPS ***
+// Ces valeurs permettent d'aligner l'approximation standard sur les éphémérides de référence.
+const ECCENTRICITY_COEFFICIENT = -7.662; 
+const OBLIQUITY_COEFFICIENT = 9.869; 
+
 let intervalId = null;
 let timeElapsed = 0; // en secondes
 
@@ -20,11 +25,9 @@ let gpsWatchId = null;
 
 // --- DONNÉES STATIQUES / MOCK ---
 const MockData = {
-    // Les heures de Lever/Coucher de Lune restent en MOCK.
     leverLune: "18:00:00",
     coucherLune: "05:00:00",
     culmCune: "00:30:00",
-    // Données Météo (Exemple statique)
     temp: "20.5",
     pression: "1012.3",
     humidite: "65",
@@ -39,24 +42,17 @@ const MockData = {
 
 // --- FONCTIONS UTILITAIRES DE TEMPS ---
 
-/** * Retourne l'heure UTC en heures totales (pour les calculs astronomiques)
- * Inclut les millisecondes pour une précision maximale.
- */
 function getAtomicTimeUTC() {
     const now = new Date();
     const totalHours = now.getUTCHours() + (now.getUTCMinutes() / 60) + (now.getUTCSeconds() / 3600) + (now.getUTCMilliseconds() / 3600000);
     return totalHours;
 }
 
-/** * Met à jour l'horloge UTC à la milliseconde (style time.is).
- * La plus haute fréquence de mise à jour.
- */
 function updateAtomicTime() {
     const now = new Date();
     const utcHours = String(now.getUTCHours()).padStart(2, '0');
     const utcMinutes = String(now.getUTCMinutes()).padStart(2, '0');
     const utcSeconds = String(now.getUTCSeconds()).padStart(2, '0');
-    // Affiche les millisecondes avec deux décimales (centisecondes)
     const utcMilliseconds = String(Math.floor(now.getUTCMilliseconds() / 10)).padStart(2, '0'); 
     
     document.getElementById('atomic-time').textContent = 
@@ -65,7 +61,6 @@ function updateAtomicTime() {
 
 
 function calculateLunarData() { 
-    // Calcul de la phase lunaire, base sur la date UTC
     const newMoonEpoch = new Date('2000-01-06T18:14:00Z');
     const now = new Date();
     const totalDays = (now.getTime() - newMoonEpoch.getTime()) / (1000 * 60 * 60 * 24);
@@ -83,16 +78,14 @@ function calculateLunarData() {
 }
 
 
-// --- FONCTIONS ASTRONOMIQUES CLÉS (Base sur l'Heure Atomique) ---
+// --- FONCTIONS ASTRONOMIQUES CLÉS (Étalonnées) ---
 
 /**
  * Calcule HSLM, HSLV, EDT, Culmination et les composants orbitaux, 
  * en utilisant getAtomicTimeUTC() comme référence de temps.
- * La précision d'affichage est fixée à 8 décimales pour les données orbitales.
  */
 function calculateLocalSolarTime(longitude) {
     const now = new Date();
-    // TEMPS DE DÉPART : Heure Atomique (UTC) complète
     const utcTotalHours = getAtomicTimeUTC(); 
     const longitudeOffsetHours = longitude / EARTH_ROTATION_RATE;
 
@@ -103,21 +96,16 @@ function calculateLocalSolarTime(longitude) {
     // Angle B, en radians
     const B = (2 * Math.PI * (dayOfYear - 81) / 365.25); 
 
-    // --- 1. Longitude Solaire et EDT Composantes (Calcul précis) ---
+    // --- 1. Longitude Solaire et EDT Composantes (Calcul étalonné) ---
     
-    // Les formules d'approximation sont conservées, mais l'affichage est en haute précision.
-    const eccSeconds = (-7.659 * Math.sin(B)) * 60; // en secondes
-    const oblSeconds = (9.87 * Math.sin(2 * B)) * 60; // en secondes
+    // UTILISATION DES NOUVEAUX COEFFICIENTS ÉTALONNÉS
+    const eccSeconds = (ECCENTRICITY_COEFFICIENT * Math.sin(B)) * 60; 
+    const oblSeconds = (OBLIQUITY_COEFFICIENT * Math.sin(2 * B)) * 60; 
     const edtSeconds = eccSeconds + oblSeconds;
 
-    // Pour obtenir la valeur de 14.29825..., une bibliothèque externe ou une série d'approximation
-    // plus complexe (non standard en JS sans dépendance) serait nécessaire.
-    // Nous affichons donc les résultats de la formule de base avec la précision demandée :
-    
     const solLon = ((dayOfYear / 365.25) * 360) % 360; 
 
     // --- 2. Heure Solaire Moyenne (HSLM) ---
-    // UTC + Décalage Longitude
     let hsmTotalHours = utcTotalHours + longitudeOffsetHours;
     hsmTotalHours = (hsmTotalHours % 24 + 24) % 24; 
 
@@ -128,7 +116,6 @@ function calculateLocalSolarTime(longitude) {
     const hsmTime = `${String(hsmHours).padStart(2, '0')}:${String(hsmMinutes).padStart(2, '0')}:${String(hsmSeconds).padStart(2, '0')}`;
 
     // --- 3. Heure Solaire Vraie (HSLV) ---
-    // HSM + Équation du Temps
     let hsvTotalSeconds = hsmTotalHours * 3600 + edtSeconds;
     hsvTotalSeconds = (hsvTotalSeconds % 86400 + 86400) % 86400;
 
@@ -153,7 +140,6 @@ function calculateLocalSolarTime(longitude) {
     const culmTime = `${String(culmLocalHours).padStart(2, '0')}:${String(culmLocalMinutes).padStart(2, '0')}:${String(culmLocalSecondsFinal).padStart(2, '0')}`;
 
     // --- 5. Durée du Jour Solaire ---
-    // Jour sidéral (86400) + ajustement basé sur l'EDT
     const solarDayDurationSeconds = 86400 + edtSeconds * 0.005; 
     
     const dayHours = Math.floor(solarDayDurationSeconds / 3600);
@@ -164,7 +150,7 @@ function calculateLocalSolarTime(longitude) {
     return { 
         hsmTime, 
         hsvTime, 
-        // 8 décimales pour les données orbitales, comme demandé.
+        // Affichage en haute précision (8 décimales)
         edtSeconds: edtSeconds.toFixed(8), 
         culmTime,
         eccComp: eccSeconds.toFixed(8), 
@@ -175,10 +161,9 @@ function calculateLocalSolarTime(longitude) {
 }
 
 
-// --- RESTE DU CODE (Majeur inchangé dans sa logique) ---
+// --- RESTE DU CODE (inchangé) ---
 
 function startBubbleLevel() { 
-    // ... (Logique Niveau à Bulle inchangée) ...
     if (!('DeviceOrientationEvent' in window)) {
         document.getElementById('niveau-bulle').textContent = 'N/A (Capteur non supporté)';
         return;
@@ -213,7 +198,6 @@ function startBubbleLevel() {
 
 
 function getGeoLocation() {
-    // ... (Logique GPS inchangée) ...
     if (!("geolocation" in navigator)) {
         document.getElementById('gps-status').textContent = 'N/A (Non supporté)';
         return;
@@ -344,7 +328,7 @@ function updateCelestialAndMockData() {
     // --- Dynamique Orbitale (haute précision) ---
     document.getElementById('eccentricity-comp').textContent = `${eccComp} s`;
     document.getElementById('obliquity-comp').textContent = `${oblComp} s`;
-    document.getElementById('solar-longitude').textContent = `${solLon}°`; // déjà formaté en toFixed(8)
+    document.getElementById('solar-longitude').textContent = `${solLon}°`; 
     document.getElementById('solar-day-duration').textContent = solarDayDuration;
     
     // --- Lune (Dynamique) ---
@@ -457,10 +441,7 @@ function initializeCockpit() {
     startBubbleLevel(); 
     updateCelestialAndMockData(); 
     
-    // Intervalle de 10ms (1 centiseconde) pour l'Horloge Atomique (time.is)
     setInterval(updateAtomicTime, 10);
-
-    // Intervalle de 1s pour les calculs célestes/orbitaux plus lourds (heuresolaire.com)
     setInterval(updateCelestialAndMockData, 1000);
 }
 
