@@ -46,11 +46,10 @@
             margin-right: 5px;
             border-radius: 3px;
         }
-        /* Style pour l'horloge atomique, plus grande pour l'effet time.is */
         #atomic-time {
             font-size: 20px;
             font-weight: bold;
-            color: #ff00ff; /* Magenta pour distinguer */
+            color: #ff00ff; 
         }
     </style>
 </head>
@@ -66,10 +65,12 @@
         <div class="cockpit-section">
             <h3>⏱️ Temps & Vitesse (Ground Speed)</h3>
             <span class="data-label">Temps :</span> <span id="time-s">-- s</span><br>
-            <span class="data-label">Vitesse instantanée :</span> <span id="vitesse-inst">-- km/h</span><br>
+            <span class="data-label">Vitesse instantanée (Horiz) :</span> <span id="vitesse-inst">-- km/h</span><br>
+            <span class="data-label">Vitesse verticale :</span> <span id="vitesse-vert">-- m/s</span><br>
+            <span class="data-label">Vitesse 3D (Totale) :</span> <span id="vitesse-3d">-- km/h</span><br>
             <span class="data-label">Vitesse moyenne :</span> <span id="vitesse-moy">-- km/h</span><br>
             <span class="data-label">Vitesse max :</span> <span id="vitesse-max">-- km/h</span><br>
-            <span class="data-label">Vitesse :</span> <span id="vitesse-ms">-- m/s</span> | <span id="vitesse-mms">-- mm/s</span><br>
+            <span class="data-label">Vitesse (m/s) :</span> <span id="vitesse-ms">-- m/s</span> | <span id="vitesse-mms">-- mm/s</span><br>
             <span class="data-label">Nombre de Mach (M) :</span> <span id="mach-number">--</span><br> 
             <span class="data-label">% Lumière :</span> <span id="pourcent-lumiere">--%</span><br>
             <span class="data-label">Distance :</span> <span id="distance-km">-- km</span> | <span id="distance-m">-- m</span> | <span id="distance-mm">-- mm</span><br>
@@ -155,4 +156,4 @@
 
     <script src="cockpit.js"></script>
 </body>
-                                                                                                     </html> 
+    </html>
