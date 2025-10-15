@@ -2,6 +2,7 @@
 const C_LIGHT_MS = 299792458;  
 const C_SON_MS = 343;           
 const EARTH_ROTATION_RATE = 15; // Taux de rotation de la Terre en degrés par heure
+const SYNODIC_MONTH = 29.53058867; // Période synodique de la Lune en jours
 
 let intervalId = null;
 let timeElapsed = 0; // en secondes
@@ -16,14 +17,13 @@ let currentLon = null;
 let currentAlt = null;
 let gpsWatchId = null;
 
-// --- DONNÉES STATIQUES / MOCK (inchangées) ---
+// --- DONNÉES STATIQUES / MOCK (Mis à jour) ---
 const MockData = {
-    // Données Célestes
+    // Les heures de Lever/Coucher de Lune sont TRES complexes, elles restent en MOCK.
     leverLune: "18:00:00",
     coucherLune: "05:00:00",
     culmCune: "00:30:00",
-    magLune: "0.9",
-    phaseLune: "75",
+    // Les autres données de Lune sont maintenant calculées (Phase, Mag)
     // Données Météo (Exemple statique)
     temp: "20.5",
     pression: "1012.3",
@@ -46,14 +46,46 @@ function getAtomicTimeUTC() {
     return utcHours + (utcMinutes / 60) + (utcSeconds / 3600);
 }
 
+// --- NOUVELLE FONCTION : CALCUL LUNAIRE DYNAMIQUE ---
+
+/**
+ * Calcule la phase de la Lune (en %) et sa magnitude (brillance).
+ * @returns {object} {phasePercent, magnitude}
+ */
+function calculateLunarData() {
+    // 1. Calcul du Jour (Epoch)
+    // Éphéméride de la nouvelle lune (par exemple, 6 janvier 2000, 18:14 UTC)
+    const newMoonEpoch = new Date('2000-01-06T18:14:00Z');
+    const now = new Date();
+    
+    // Différence en jours entre maintenant et l'équinoxe
+    const totalDays = (now.getTime() - newMoonEpoch.getTime()) / (1000 * 60 * 60 * 24);
+    
+    // Jour dans le cycle synodique (0 = Nouvelle Lune, 14.76 = Pleine Lune)
+    let daysIntoCycle = totalDays % SYNODIC_MONTH;
+    if (daysIntoCycle < 0) {
+        daysIntoCycle += SYNODIC_MONTH;
+    }
+
+    // 2. Calcul de la Phase (%)
+    // La phase est un cosinus (ou sin carré) du cycle lunaire
+    const phasePercent = ((1 - Math.cos(2 * Math.PI * daysIntoCycle / SYNODIC_MONTH)) / 2) * 100;
+
+    // 3. Calcul de la Magnitude
+    // Une approximation simple utilise la phase (la brillance varie avec la phase)
+    // Magnitude absolue de la Pleine Lune est -12.74, Nouvelle Lune est faible.
+    // Pour l'affichage, on utilise une valeur relative (0.0 à 1.0)
+    const magnitude = (phasePercent / 100) * (0.5) + 0.5; // Approximation simple pour affichage
+
+    return { 
+        phasePercent: phasePercent.toFixed(1), 
+        magnitude: magnitude.toFixed(1) 
+    };
+}
+
 
 // --- FONCTIONS ASTRONOMIQUES CLÉS (Mise à jour pour Dynamique Orbitale) ---
 
-/**
- * Calcule HSLM, HSLV, EDT, Culmination et les composants orbitaux.
- * @param {number} longitude - Longitude actuelle de l'appareil en degrés décimaux.
- * @returns {object} {hsmTime, hsvTime, edtSeconds, culmTime, eccComp, oblComp, solLon, solarDayDuration}
- */
 function calculateLocalSolarTime(longitude) {
     const now = new Date();
     const utcTotalHours = getAtomicTimeUTC();
@@ -69,18 +101,18 @@ function calculateLocalSolarTime(longitude) {
 
     // --- 1. Longitude Solaire et EDT Composantes ---
     
-    // Composante Excentricité (due à la forme elliptique de l'orbite)
+    // Composante Excentricité (Elliptique)
     const eccMinutes = -7.659 * Math.sin(B);
     const eccComp = Math.round(eccMinutes * 60); // en secondes
     
-    // Composante Obliquité (due à l'inclinaison de l'axe de la Terre)
+    // Composante Obliquité (Inclinaison de l'axe)
     const oblMinutes = 9.87 * Math.sin(2 * B);
     const oblComp = Math.round(oblMinutes * 60); // en secondes
     
     // Équation du Temps Totale
     const edtSeconds = eccComp + oblComp;
     
-    // Longitude Solaire (position angulaire du Soleil, approximation en degrés)
+    // Longitude Solaire (position angulaire du Soleil)
     const solLon = ((dayOfYear / 365.25) * 360) % 360; 
 
 
@@ -118,16 +150,7 @@ function calculateLocalSolarTime(longitude) {
 
 
     // --- 3. Durée du Jour Solaire (Solar Day Duration) ---
-
-    // La durée du jour solaire est de 86400s (24h) +/- EDT.
-    // L'approximation simple est la durée du jour sidéral (23h 56m 4s) + la variation de l'EDT.
-    // Pour afficher la durée du jour solaire *réel*, on utilise l'EDT.
-    // Un jour solaire moyen est de 24:00:00. Un jour solaire vrai varie autour de cette valeur.
-    
-    // Approximation : on utilise la formule dérivée de l'EDT pour la durée du jour
-    // Le jour solaire dure 24h + (EDT du jour N+1 - EDT du jour N)
-    // Nous allons utiliser une valeur théorique pour la simplicité:
-    const solarDayDurationSeconds = 86400 + edtSeconds * 0.005; // Très faible correction
+    const solarDayDurationSeconds = 86400 + edtSeconds * 0.005; // Utilise une faible correction basée sur l'EDT
     
     const dayHours = Math.floor(solarDayDurationSeconds / 3600);
     const dayMinutes = Math.floor((solarDayDurationSeconds % 3600) / 60);
@@ -149,13 +172,14 @@ function calculateLocalSolarTime(longitude) {
 }
 
 
-// --- GESTION DES CAPTEURS (inchangées) ---
+// --- GESTION DES CAPTEURS (GPS et Niveau à Bulle inchangés) ---
+
 function startBubbleLevel() { /* ... inchangée ... */ }
 function getGeoLocation() { /* ... inchangée ... */ }
 function updateNavigationData() { /* ... inchangée ... */ }
 
 
-/** Met à jour les données célestes, y compris la nouvelle Dynamique Orbitale */
+/** Met à jour les données célestes, y compris la nouvelle Dynamique Orbitale et Lunaire */
 function updateCelestialAndMockData() {
     const now = new Date(); 
     
@@ -167,6 +191,9 @@ function updateCelestialAndMockData() {
     let oblComp = '--';
     let solLon = '--';
     let solarDayDuration = '--:--:--';
+
+    // --- Calcul Lunaire (Dynamique) ---
+    const lunarData = calculateLunarData();
     
     if (currentLon !== null) {
         const solarTimes = calculateLocalSolarTime(currentLon);
@@ -186,12 +213,16 @@ function updateCelestialAndMockData() {
     document.getElementById('hsv').textContent = hsvTime;
     document.getElementById('edt').textContent = `${edtSeconds} s`;
 
-    // --- Dynamique Orbitale (NOUVEAU) ---
+    // --- Dynamique Orbitale ---
     document.getElementById('eccentricity-comp').textContent = `${eccComp} s`;
     document.getElementById('obliquity-comp').textContent = `${oblComp} s`;
     document.getElementById('solar-longitude').textContent = `${solLon.toFixed(2)}°`;
     document.getElementById('solar-day-duration').textContent = solarDayDuration;
-
+    
+    // --- Lune (Dynamique) ---
+    document.getElementById('phase-lune').textContent = `${lunarData.phasePercent}%`;
+    document.getElementById('mag-lune').textContent = lunarData.magnitude;
+    
     // --- Horloge Minecraft et Mocks ---
     const hour = now.getHours();
     const minute = now.getMinutes();
@@ -208,8 +239,7 @@ function updateCelestialAndMockData() {
     document.getElementById('horloge-minecraft').textContent = mcTimeStr;
 
 
-    document.getElementById('phase-lune').textContent = `${MockData.phaseLune}%`;
-    document.getElementById('mag-lune').textContent = MockData.magLune;
+    // Reste des Mocks (Lever/Coucher Lune & Météo)
     document.getElementById('lever-lune').textContent = MockData.leverLune;
     document.getElementById('coucher-lune').textContent = MockData.coucherLune;
     document.getElementById('culmination-lune').textContent = MockData.culmCune;
@@ -231,4 +261,16 @@ function updateCelestialAndMockData() {
     document.getElementById('souterrain').textContent = currentAlt === null ? 'Oui' : 'Non'; 
 }
 
-// ... (fonctions toggleMovement, resetData et initializeCockpit inchangées) ...
+// --- CHRONOMÈTRE ET CONTRÔLES (inchangées) ---
+
+function toggleMovement(start) { /* ... inchangée ... */ }
+function resetData() { /* ... inchangée ... */ }
+
+// --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
+function initializeCockpit() {
+    getGeoLocation(); 
+    startBubbleLevel(); 
+    setInterval(updateCelestialAndMockData, 1000);
+}
+
+window.onload = initializeCockpit;
