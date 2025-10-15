@@ -1,4 +1,4 @@
-1// --- CONSTANTES GLOBALES ET ASTRONOMIQUES ---
+// --- CONSTANTES GLOBALES ET ASTRONOMIQUES ---
 const C_LIGHT_MS = 299792458;  // Vitesse de la lumière en m/s
 const C_SON_MS_SEA_LEVEL = 343; // Vitesse du son en m/s
 const METER_TO_FEET = 3.28084;  
@@ -6,9 +6,10 @@ const EARTH_ROTATION_RATE = 15; // 15 degrés par heure (Rotation de la Terre)
 const SYNODIC_MONTH = 29.53058867; // Durée moyenne d'un cycle lunaire
 
 // *** SEUILS DE FILTRAGE CRITIQUES ***
-// Si l'imprécision de l'altitude est supérieure à ce seuil (en mètres), on considère Vz = 0
-const ALTITUDE_ACCURACY_THRESHOLD = 5.0; 
-// Si la précision horizontale est supérieure à ce seuil (en mètres), on force Vx = 0
+// NOUVEAU SEUIL pour rendre Vz plus fonctionnelle.
+// Si l'imprécision de l'altitude est supérieure à 10.0 mètres, on considère Vz = 0
+const ALTITUDE_ACCURACY_THRESHOLD = 10.0; 
+// Si la précision horizontale est supérieure à 50.0 mètres, on force Vx = 0
 const HORIZONTAL_ACCURACY_THRESHOLD = 50.0; 
 
 // --- Variables de contrôle et de navigation ---
@@ -45,7 +46,6 @@ function updateAtomicTime() {
     const utcHours = String(now.getUTCHours()).padStart(2, '0');
     const utcMinutes = String(now.getUTCMinutes()).padStart(2, '0');
     const utcSeconds = String(now.getUTCSeconds()).padStart(2, '0');
-    // Affiche les centièmes de seconde
     const utcMilliseconds = String(Math.floor(now.getUTCMilliseconds() / 10)).padStart(2, '0'); 
     
     document.getElementById('atomic-time').textContent = 
@@ -74,14 +74,14 @@ function calculateLunarData() {
 function calculateLocalSolarTime(longitude) {
     const now = new Date();
     const utcTotalHours = getAtomicTimeUTC(); 
-    const longitudeOffsetHours = longitude / EARTH_ROTATION_RATE; // Correction longitude vers temps
+    const longitudeOffsetHours = longitude / EARTH_ROTATION_RATE; 
 
     const yearStart = new Date(now.getUTCFullYear(), 0, 1);
     const dayOfYear = (now.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24);
     
     const B = (2 * Math.PI * (dayOfYear - 81) / 365.25); 
 
-    // Composantes d'Excentricité et d'Obliquité pour l'Équation du Temps (très simplifié)
+    // Constantes et formules pour l'Équation du Temps (très simplifié)
     const ECCENTRICITY_APPROX_FACTOR = -7.38217; 
     const OBLIQUITY_APPROX_FACTOR = 9.869;
     const EARTH_ORBITAL_ECCENTRICITY = 0.0167; 
@@ -89,7 +89,7 @@ function calculateLocalSolarTime(longitude) {
     const eccSeconds = (ECCENTRICITY_APPROX_FACTOR * EARTH_ORBITAL_ECCENTRICITY * Math.sin(B)) * 60; 
     const oblSeconds = (OBLIQUITY_APPROX_FACTOR * Math.sin(2 * B)) * 60; 
     
-    const edtSeconds = eccSeconds + oblSeconds; // Équation du temps
+    const edtSeconds = eccSeconds + oblSeconds; 
 
     // Heure Solaire Moyenne (HSM) = UTC + Longitude
     let hsmTotalHours = utcTotalHours + longitudeOffsetHours;
@@ -106,12 +106,12 @@ function calculateLocalSolarTime(longitude) {
     const noonUTCSec = 12 * 3600; 
     const longitudeOffsetSeconds = longitudeOffsetHours * 3600;
     let culmTotalSeconds = noonUTCSec - longitudeOffsetSeconds - edtSeconds;
-    const localOffset = now.getTimezoneOffset() * 60; // Fuseau horaire local
+    const localOffset = now.getTimezoneOffset() * 60; 
     let culmLocalSeconds = culmTotalSeconds - localOffset; 
     culmLocalSeconds = (culmLocalSeconds % 86400 + 86400) % 86400;
     const culmTime = formatSecondsToTime(culmLocalSeconds);
 
-    const solarDayDurationSeconds = 86400 + edtSeconds * 0.005; // Durée du jour solaire (très simplifié)
+    const solarDayDurationSeconds = 86400 + edtSeconds * 0.005; 
     const solarDayDuration = formatSecondsToTime(solarDayDurationSeconds);
 
     return { 
@@ -151,7 +151,6 @@ function startBubbleLevel() {
         }
     }, true);
     
-    // Demande de permission sur iOS 13+ (si nécessaire)
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission().catch(() => {}); 
     }
@@ -174,14 +173,13 @@ function getGeoLocation() {
             const currentTimestampMs = position.timestamp;
             
             currentAccuracy = coords.accuracy; 
-            // Estime la précision verticale si non fournie (souvent 1.5x la précision horizontale)
             currentAltAccuracy = coords.altitudeAccuracy !== null ? coords.altitudeAccuracy : currentAccuracy * 1.5;
 
             // --- 1. FILTRE VITESSE HORIZONTALE (Ground Speed) ---
             if (coords.speed !== null && coords.speed !== undefined && currentAccuracy < HORIZONTAL_ACCURACY_THRESHOLD) {
                 currentSpeedMS = Math.max(0, coords.speed); 
             } else {
-                currentSpeedMS = 0; // Force à zéro si trop imprécis
+                currentSpeedMS = 0; 
             }
             
             // --- 2. FILTRE VITESSE VERTICALE (Vz) ---
@@ -196,7 +194,7 @@ function getGeoLocation() {
                     verticalSpeedMS = 0;
                 }
                 
-                // Si l'imprécision d'altitude est trop élevée, on force Vz à zéro
+                // Si l'imprécision d'altitude est trop élevée (seuil de 10m), on force Vz à zéro
                 if (currentAltAccuracy > ALTITUDE_ACCURACY_THRESHOLD) {
                     verticalSpeedMS = 0;
                     document.getElementById('vitesse-vert').classList.add('warning');
@@ -228,7 +226,6 @@ function getGeoLocation() {
             document.getElementById('vitesse-vert').textContent = `${verticalSpeedMS.toFixed(2)} m/s`;
             
             document.getElementById('precision-m').textContent = `${currentAccuracy.toFixed(1)} m`;
-            // Calcule la précision affichée (Précision GPS: 70% équivaut à 30m d'erreur environ)
             document.getElementById('prec-gps').textContent = `${(Math.max(0, 100 - (currentAccuracy / 10) * 10)).toFixed(0)} %`; 
             
             document.getElementById('gps-status').textContent = 'ACTIF';
@@ -237,8 +234,6 @@ function getGeoLocation() {
             updateCelestialData(); 
         },
         (error) => {
-            // Gestion des erreurs GPS
-            // ... (Réinitialisation des variables GPS) ...
             currentLat = null; currentLon = null; currentAlt = null; previousAltitude = null; 
             verticalSpeedMS = 0; currentSpeedMS = 0; 
             currentAccuracy = 9999; currentAltAccuracy = 9999; previousTimestamp = null;
@@ -263,8 +258,6 @@ function updateNavigationData() {
     const totalGroundSpeedSq = Math.pow(currentSpeedMS, 2) + Math.pow(verticalSpeedMS, 2);
     const TOTAL_GROUND_SPEED_MS = Math.sqrt(totalGroundSpeedSq);
     
-    // Utilisation de la Vitesse 3D pour la distance totale parcourue
-    // On suppose un intervalle de 1 seconde entre les mises à jour
     distanceTraveled += (TOTAL_GROUND_SPEED_MS / 1000); 
 
     // --- 3. PLANCHER À ZÉRO pour éviter les vitesses négatives microscopiques ---
@@ -272,7 +265,6 @@ function updateNavigationData() {
     const V_KPH_INST = Math.max(0, currentSpeedMS * 3.6); 
     const V_KPH_3D = Math.max(0, TOTAL_GROUND_SPEED_MS * 3.6); 
     
-    // Mise à jour de la vitesse max (basée sur la vitesse horizontale la plus fiable)
     if (V_KPH_INST > maxSpeedKPH) {
         maxSpeedKPH = V_KPH_INST;
     }
@@ -285,10 +277,9 @@ function updateNavigationData() {
     const avgSpeedKPH = Math.max(0, AVG_SPEED_KPH); 
     const DISTANCE_M = distanceTraveled * 1000;
     const DISTANCE_SL = DISTANCE_M / C_LIGHT_MS; 
-    const DISTANCE_AL = DISTANCE_SL / (3600 * 24 * 365.25); 
     
     // Mise à jour de l'interface
-    document.getElementById('time-s').textContent = `${(timeElapsed + 1).toFixed(0)} s`; // Temps total est incrémenté ici
+    document.getElementById('time-s').textContent = `${(timeElapsed + 1).toFixed(0)} s`; 
     document.getElementById('vitesse-inst').textContent = `${V_KPH_INST.toFixed(2)} km/h`; 
     document.getElementById('vitesse-3d').textContent = `${V_KPH_3D.toFixed(2)} km/h`; 
     document.getElementById('vitesse-moy').textContent = `${avgSpeedKPH.toFixed(2)} km/h`;
@@ -351,7 +342,6 @@ function updateCelestialData() {
 function toggleMovement(start) {
     if (start) {
         getGeoLocation(); 
-        // Mises à jour principales de la navigation chaque seconde
         intervalId = setInterval(() => {
             updateCelestialData(); 
             updateNavigationData(); 
@@ -378,7 +368,6 @@ function toggleMovement(start) {
 }
 
 function resetData() { 
-    // Réinitialise toutes les variables de mouvement
     toggleMovement(false); 
     
     timeElapsed = 0;
@@ -394,7 +383,6 @@ function resetData() {
     currentAltAccuracy = 9999;
     previousTimestamp = null;
     
-    // Réinitialise les affichages
     document.getElementById('time-s').textContent = '0.00 s';
     document.getElementById('vitesse-inst').textContent = '0.00 km/h'; 
     document.getElementById('vitesse-3d').textContent = '0.00 km/h'; 
@@ -417,11 +405,10 @@ function resetData() {
 
 // --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
 function initializeCockpit() {
-    getGeoLocation(); // Commence la surveillance GPS
-    startBubbleLevel(); // Commence la surveillance de l'orientation
-    updateCelestialData(); // Met à jour les données astronomiques initiales
+    getGeoLocation(); 
+    startBubbleLevel(); 
+    updateCelestialData(); 
     
-    // Mises à jour en temps réel (Atomic Time)
     setInterval(updateAtomicTime, 10); 
 }
 
