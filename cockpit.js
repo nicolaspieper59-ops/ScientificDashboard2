@@ -88,6 +88,7 @@ function calculateLunarData() {
 /**
  * Calcule HSLM, HSLV, EDT, Culmination et les composants orbitaux, 
  * en utilisant getAtomicTimeUTC() comme référence de temps.
+ * La précision d'affichage est fixée à 8 décimales pour les données orbitales.
  */
 function calculateLocalSolarTime(longitude) {
     const now = new Date();
@@ -104,10 +105,15 @@ function calculateLocalSolarTime(longitude) {
 
     // --- 1. Longitude Solaire et EDT Composantes (Calcul précis) ---
     
+    // Les formules d'approximation sont conservées, mais l'affichage est en haute précision.
     const eccSeconds = (-7.659 * Math.sin(B)) * 60; // en secondes
     const oblSeconds = (9.87 * Math.sin(2 * B)) * 60; // en secondes
     const edtSeconds = eccSeconds + oblSeconds;
 
+    // Pour obtenir la valeur de 14.29825..., une bibliothèque externe ou une série d'approximation
+    // plus complexe (non standard en JS sans dépendance) serait nécessaire.
+    // Nous affichons donc les résultats de la formule de base avec la précision demandée :
+    
     const solLon = ((dayOfYear / 365.25) * 360) % 360; 
 
     // --- 2. Heure Solaire Moyenne (HSLM) ---
@@ -132,14 +138,11 @@ function calculateLocalSolarTime(longitude) {
     const hsvTime = `${String(hsvHours).padStart(2, '0')}:${String(hsvMinutes).padStart(2, '0')}:${String(hsvSecondsFinal).padStart(2, '0')}`;
 
     // --- 4. Culmination (Midi Solaire Vrai - Heure locale de la machine) ---
-    // Point de la journée où le soleil est au zénith local.
     const noonUTCSec = 12 * 3600; 
     const longitudeOffsetSeconds = longitudeOffsetHours * 3600;
 
-    // Calcul de la culmination en secondes UTC
     let culmTotalSeconds = noonUTCSec - longitudeOffsetSeconds - edtSeconds;
     
-    // CONVERSION EN HEURE LOCALE (fuseau horaire de la machine)
     const localOffset = now.getTimezoneOffset() * 60; 
     let culmLocalSeconds = culmTotalSeconds - localOffset; 
     culmLocalSeconds = (culmLocalSeconds % 86400 + 86400) % 86400;
@@ -150,6 +153,7 @@ function calculateLocalSolarTime(longitude) {
     const culmTime = `${String(culmLocalHours).padStart(2, '0')}:${String(culmLocalMinutes).padStart(2, '0')}:${String(culmLocalSecondsFinal).padStart(2, '0')}`;
 
     // --- 5. Durée du Jour Solaire ---
+    // Jour sidéral (86400) + ajustement basé sur l'EDT
     const solarDayDurationSeconds = 86400 + edtSeconds * 0.005; 
     
     const dayHours = Math.floor(solarDayDurationSeconds / 3600);
@@ -160,17 +164,18 @@ function calculateLocalSolarTime(longitude) {
     return { 
         hsmTime, 
         hsvTime, 
-        edtSeconds: edtSeconds.toFixed(2), // Ex: 14.30 s
+        // 8 décimales pour les données orbitales, comme demandé.
+        edtSeconds: edtSeconds.toFixed(8), 
         culmTime,
-        eccComp: eccSeconds.toFixed(2), 
-        oblComp: oblSeconds.toFixed(2), 
-        solLon,
+        eccComp: eccSeconds.toFixed(8), 
+        oblComp: oblSeconds.toFixed(8), 
+        solLon: solLon.toFixed(8),
         solarDayDuration
     };
 }
 
 
-// --- RESTE DU CODE (inchangé dans sa logique) ---
+// --- RESTE DU CODE (Majeur inchangé dans sa logique) ---
 
 function startBubbleLevel() { 
     // ... (Logique Niveau à Bulle inchangée) ...
@@ -336,10 +341,10 @@ function updateCelestialAndMockData() {
     document.getElementById('hsv').textContent = hsvTime;
     document.getElementById('edt').textContent = `${edtSeconds} s`; 
 
-    // --- Dynamique Orbitale ---
+    // --- Dynamique Orbitale (haute précision) ---
     document.getElementById('eccentricity-comp').textContent = `${eccComp} s`;
     document.getElementById('obliquity-comp').textContent = `${oblComp} s`;
-    document.getElementById('solar-longitude').textContent = `${solLon.toFixed(2)}°`;
+    document.getElementById('solar-longitude').textContent = `${solLon}°`; // déjà formaté en toFixed(8)
     document.getElementById('solar-day-duration').textContent = solarDayDuration;
     
     // --- Lune (Dynamique) ---
