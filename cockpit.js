@@ -7,8 +7,8 @@ const SYNODIC_MONTH = 29.53058867;
 
 // *** NOUVELLES CONSTANTES ÉTALONNÉES POUR L'ÉQUATION DU TEMPS ***
 // Ces valeurs permettent d'aligner l'approximation standard sur les éphémérides de référence.
-const ECCENTRICITY_COEFFICIENT = -7.662; 
-const OBLIQUITY_COEFFICIENT = 9.869; 
+const ECCENTRICITY_COEFFICIENT = 0.0167; 
+const OBLIQUITY_COEFFICIENT = 23.45°; 
 
 let intervalId = null;
 let timeElapsed = 0; // en secondes
