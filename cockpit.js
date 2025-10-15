@@ -1,4 +1,4 @@
-// --- CONSTANTES GLOBALES ET ASTRONOMIQUES ---
+1// --- CONSTANTES GLOBALES ET ASTRONOMIQUES ---
 const C_LIGHT_MS = 299792458;  // Vitesse de la lumière en m/s
 const C_SON_MS_SEA_LEVEL = 343; // Vitesse du son en m/s
 const METER_TO_FEET = 3.28084;  
