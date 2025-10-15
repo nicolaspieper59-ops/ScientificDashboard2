@@ -5,10 +5,9 @@ const METER_TO_FEET = 3.28084;
 const EARTH_ROTATION_RATE = 15; // 15 degrés par heure (Rotation de la Terre)
 const SYNODIC_MONTH = 29.53058867; // Durée moyenne d'un cycle lunaire
 
-// *** SEUILS DE FILTRAGE CRITIQUES ***
-// NOUVEAU SEUIL pour rendre Vz plus fonctionnelle.
-// Si l'imprécision de l'altitude est supérieure à 10.0 mètres, on considère Vz = 0
-const ALTITUDE_ACCURACY_THRESHOLD = 10.0; 
+// *** SEUILS DE FILTRAGE CRITIQUES (AJUSTÉS POUR COMPATIBILITÉ) ***
+// Si l'imprécision de l'altitude est supérieure à 20.0 mètres, on considère Vz = 0 (Était 10.0)
+const ALTITUDE_ACCURACY_THRESHOLD = 20.0; 
 // Si la précision horizontale est supérieure à 50.0 mètres, on force Vx = 0
 const HORIZONTAL_ACCURACY_THRESHOLD = 50.0; 
 
@@ -138,21 +137,34 @@ function startBubbleLevel() {
         return;
     }
     
-    window.addEventListener('deviceorientation', function(event) {
-        const tiltX = event.gamma; 
-        const tiltY = event.beta;
-
-        if (tiltX !== null && tiltY !== null) {
-            const resultX = tiltX.toFixed(1); 
-            const resultY = tiltY.toFixed(1); 
-            
-            document.getElementById('niveau-bulle').textContent = 
-                `Lat: ${resultX}° | Prof: ${resultY}°`;
-        }
-    }, true);
-    
+    // Demander la permission si nécessaire (Android/iOS moderne)
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission().catch(() => {}); 
+        // Idéalement, cet appel devrait être lié à un bouton ou à un événement utilisateur
+        // Pour l'initialisation, nous le laissons ici, mais un échec est possible sans clic
+        DeviceOrientationEvent.requestPermission().then(permissionState => {
+            if (permissionState === 'granted') {
+                window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+            } else {
+                 document.getElementById('niveau-bulle').textContent = '--° (Refusé)';
+            }
+        }).catch(() => {
+             document.getElementById('niveau-bulle').textContent = '--° (Erreur)';
+        });
+    } else {
+        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+    }
+}
+
+function handleDeviceOrientation(event) {
+    const tiltX = event.gamma; 
+    const tiltY = event.beta;
+
+    if (tiltX !== null && tiltY !== null) {
+        const resultX = tiltX.toFixed(1); 
+        const resultY = tiltY.toFixed(1); 
+        
+        document.getElementById('niveau-bulle').textContent = 
+            `Lat: ${resultX}° | Prof: ${resultY}°`;
     }
 }
 
@@ -173,7 +185,8 @@ function getGeoLocation() {
             const currentTimestampMs = position.timestamp;
             
             currentAccuracy = coords.accuracy; 
-            currentAltAccuracy = coords.altitudeAccuracy !== null ? coords.altitudeAccuracy : currentAccuracy * 1.5;
+            // Si altitudeAccuracy est null, on estime, mais c'est moins fiable que d'utiliser la donnée brute
+            currentAltAccuracy = coords.altitudeAccuracy !== null ? coords.altitudeAccuracy : currentAccuracy * 1.5; 
 
             // --- 1. FILTRE VITESSE HORIZONTALE (Ground Speed) ---
             if (coords.speed !== null && coords.speed !== undefined && currentAccuracy < HORIZONTAL_ACCURACY_THRESHOLD) {
@@ -194,7 +207,7 @@ function getGeoLocation() {
                     verticalSpeedMS = 0;
                 }
                 
-                // Si l'imprécision d'altitude est trop élevée (seuil de 10m), on force Vz à zéro
+                // Si l'imprécision d'altitude est trop élevée (seuil de 20m), on force Vz à zéro
                 if (currentAltAccuracy > ALTITUDE_ACCURACY_THRESHOLD) {
                     verticalSpeedMS = 0;
                     document.getElementById('vitesse-vert').classList.add('warning');
@@ -244,7 +257,8 @@ function getGeoLocation() {
             document.getElementById('gps-status').classList.add('warning');
             updateCelestialData(); 
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } 
+        // *** OPTIONS AJUSTÉES POUR COMPATIBILITÉ (Samsung, etc.) ***
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 } // timeout augmenté, maximumAge autorisé (était 0)
     );
 }
 
@@ -335,8 +349,8 @@ function updateCelestialData() {
     const mcTimeStr = `${String(mcHours % 24).padStart(2, '0')}:${String(mcMinutes % 60).padStart(2, '0')}:00`;
     document.getElementById('horloge-minecraft').textContent = mcTimeStr;
 
-    // Indicateur souterrain
-    document.getElementById('souterrain').textContent = currentAlt === null ? 'Oui' : 'Non'; 
+    // Indicateur souterrain (simplifié par rapport à l'altitude)
+    document.getElementById('souterrain').textContent = currentAlt === null || currentAlt <= 0 ? 'Oui' : 'Non'; 
 }
 
 function toggleMovement(start) {
@@ -349,6 +363,9 @@ function toggleMovement(start) {
         
         document.getElementById('gps-status').textContent = 'ACTIF (Acquisition Vitesse)';
         document.getElementById('gps-status').classList.add('warning');
+        
+        // Démarrage forcé pour l'heure atomique dès le clic
+        updateAtomicTime(); 
     } else {
         clearInterval(intervalId);
         intervalId = null;
@@ -383,7 +400,8 @@ function resetData() {
     currentAltAccuracy = 9999;
     previousTimestamp = null;
     
-    document.getElementById('time-s').textContent = '0.00 s';
+    // Réinitialisation de l'affichage
+    document.getElementById('time-s').textContent = '0 s';
     document.getElementById('vitesse-inst').textContent = '0.00 km/h'; 
     document.getElementById('vitesse-3d').textContent = '0.00 km/h'; 
     document.getElementById('vitesse-moy').textContent = '0.00 km/h';
@@ -401,15 +419,23 @@ function resetData() {
     
     document.getElementById('gps-status').textContent = 'En attente...';
     document.getElementById('gps-status').classList.add('warning');
+    
+    // Mise à jour initiale des données
+    updateCelestialData();
 }
 
 // --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
 function initializeCockpit() {
-    getGeoLocation(); 
-    startBubbleLevel(); 
-    updateCelestialData(); 
+    getGeoLocation(); // Tente l'acquisition GPS initiale
+    startBubbleLevel(); // Tente l'acquisition des capteurs
+    updateCelestialData(); // Mise à jour des données astro (sans GPS initial)
     
+    // Horloge atomique très précise
     setInterval(updateAtomicTime, 10); 
+    
+    // Mise à jour de l'état des boutons au départ
+    document.getElementById('start-btn').disabled = false;
+    document.getElementById('stop-btn').disabled = true;
 }
 
 window.onload = initializeCockpit;
