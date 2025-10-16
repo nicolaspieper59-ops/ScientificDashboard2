@@ -1,3 +1,14 @@
+// --- ENREGISTREMENT DU SERVICE WORKER ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js').then(function(registration) {
+            console.log('ServiceWorker enregistré avec le scope:', registration.scope);
+        }, function(err) {
+            console.log('ServiceWorker erreur:', err);
+        });
+    });
+}
+
 // --- CONSTANTES GLOBALES ET ASTRONOMIQUES ---
 const C_LIGHT_MS = 299792458;  // Vitesse de la lumière en m/s
 const C_SON_MS_SEA_LEVEL = 343; // Vitesse du son en m/s
@@ -6,9 +17,7 @@ const EARTH_ROTATION_RATE = 15; // 15 degrés par heure (Rotation de la Terre)
 const SYNODIC_MONTH = 29.53058867; // Durée moyenne d'un cycle lunaire
 
 // *** SEUILS DE FILTRAGE CRITIQUES (VALEURS ORIGINALES RESTAURÉES) ***
-// Si l'imprécision de l'altitude est supérieure à 10.0 mètres, on considère Vz = 0
 const ALTITUDE_ACCURACY_THRESHOLD = 10.0; 
-// Si la précision horizontale est supérieure à 50.0 mètres, on force Vx = 0
 const HORIZONTAL_ACCURACY_THRESHOLD = 50.0; 
 
 // --- Variables de contrôle et de navigation ---
@@ -40,19 +49,17 @@ function getAtomicTimeUTC() {
 }
 
 function updateAtomicTime() {
-    // Utilise l'heure UTC du système, synchronisée par le réseau/GPS
     const now = new Date();
     const utcHours = String(now.getUTCHours()).padStart(2, '0');
     const utcMinutes = String(now.getUTCMinutes()).padStart(2, '0');
     const utcSeconds = String(now.getUTCSeconds()).padStart(2, '0');
     const utcMilliseconds = String(Math.floor(now.getUTCMilliseconds() / 10)).padStart(2, '0'); 
     
-    document.getElementById('atomic-time').textContent = 
-        `${utcHours}:${utcMinutes}:${utcSeconds}.${utcMilliseconds} UTC`;
+    const el = document.getElementById('atomic-time');
+    if (el) el.textContent = `${utcHours}:${utcMinutes}:${utcSeconds}.${utcMilliseconds} UTC`;
 }
 
 function calculateLunarData() { 
-    // Calcul de la phase lunaire (très approximatif et basé sur l'heure système)
     const newMoonEpoch = new Date('2000-01-06T18:14:00Z');
     const now = new Date();
     const totalDays = (now.getTime() - newMoonEpoch.getTime()) / (1000 * 60 * 60 * 24);
@@ -80,7 +87,6 @@ function calculateLocalSolarTime(longitude) {
     
     const B = (2 * Math.PI * (dayOfYear - 81) / 365.25); 
 
-    // Constantes et formules pour l'Équation du Temps (très simplifié)
     const ECCENTRICITY_APPROX_FACTOR = -7.38217; 
     const OBLIQUITY_APPROX_FACTOR = 9.869;
     const EARTH_ORBITAL_ECCENTRICITY = 0.0167; 
@@ -90,18 +96,15 @@ function calculateLocalSolarTime(longitude) {
     
     const edtSeconds = eccSeconds + oblSeconds; 
 
-    // Heure Solaire Moyenne (HSM) = UTC + Longitude
     let hsmTotalHours = utcTotalHours + longitudeOffsetHours;
     hsmTotalHours = (hsmTotalHours % 24 + 24) % 24; 
     const hsmSecondsTotal = hsmTotalHours * 3600;
     const hsmTime = formatSecondsToTime(hsmSecondsTotal);
 
-    // Heure Solaire Vraie (HSV) = HSM + Équation du temps
     let hsvTotalSeconds = hsmTotalHours * 3600 + edtSeconds;
     hsvTotalSeconds = (hsvTotalSeconds % 86400 + 86400) % 86400;
     const hsvTime = formatSecondsToTime(hsvTotalSeconds);
 
-    // Calcul de la Culmination (Midi Solaire)
     const noonUTCSec = 12 * 3600; 
     const longitudeOffsetSeconds = longitudeOffsetHours * 3600;
     let culmTotalSeconds = noonUTCSec - longitudeOffsetSeconds - edtSeconds;
@@ -132,33 +135,57 @@ function formatSecondsToTime(totalSeconds) {
 // --- GESTION DES CAPTEURS ET GPS ---
 
 function startBubbleLevel() { 
+    const el = document.getElementById('niveau-bulle');
     if (!('DeviceOrientationEvent' in window)) {
-        document.getElementById('niveau-bulle').textContent = '--° (N/A)';
+        if (el) el.textContent = '--° (N/A)';
         return;
     }
-    
-    window.addEventListener('deviceorientation', function(event) {
-        const tiltX = event.gamma; 
-        const tiltY = event.beta;
 
-        if (tiltX !== null && tiltY !== null) {
-            const resultX = tiltX.toFixed(1); 
-            const resultY = tiltY.toFixed(1); 
-            
-            document.getElementById('niveau-bulle').textContent = 
-                `Lat: ${resultX}° | Prof: ${resultY}°`;
-        }
-    }, true);
-    
+    function enableOrientation() {
+        window.addEventListener('deviceorientation', function(event) {
+            const tiltX = event.gamma; 
+            const tiltY = event.beta;
+            if (tiltX !== null && tiltY !== null) {
+                const resultX = tiltX.toFixed(1); 
+                const resultY = tiltY.toFixed(1); 
+                if (el) el.textContent = `Lat: ${resultX}° | Prof: ${resultY}°`;
+            }
+        }, true);
+    }
+
+    // iOS requires explicit permission (must be in a user event)
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission().catch(() => {}); 
+        // Show a button to ask for permission if not already present
+        let btn = document.getElementById('sensor-btn');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.id = 'sensor-btn';
+            btn.textContent = 'Activer capteurs';
+            btn.style.margin = "8px";
+            if (el && el.parentElement) el.parentElement.appendChild(btn);
+        }
+        btn.onclick = () => {
+            DeviceOrientationEvent.requestPermission().then(response => {
+                if (response === 'granted') {
+                    enableOrientation();
+                    btn.style.display = 'none';
+                } else {
+                    if (el) el.textContent = '--° (Permission refusée)';
+                }
+            }).catch(() => {
+                if (el) el.textContent = '--° (Erreur permission)';
+            });
+        };
+    } else {
+        enableOrientation();
     }
 }
 
 
 function getGeoLocation() {
+    const gpsStatusEl = document.getElementById('gps-status');
     if (!("geolocation" in navigator)) {
-        document.getElementById('gps-status').textContent = 'N/A (Non supporté)';
+        if (gpsStatusEl) gpsStatusEl.textContent = 'N/A (Non supporté)';
         return;
     }
     
@@ -174,14 +201,12 @@ function getGeoLocation() {
             currentAccuracy = coords.accuracy; 
             currentAltAccuracy = coords.altitudeAccuracy !== null ? coords.altitudeAccuracy : currentAccuracy * 1.5;
 
-            // --- 1. FILTRE VITESSE HORIZONTALE (Ground Speed) ---
             if (coords.speed !== null && coords.speed !== undefined && currentAccuracy < HORIZONTAL_ACCURACY_THRESHOLD) {
                 currentSpeedMS = Math.max(0, coords.speed); 
             } else {
                 currentSpeedMS = 0; 
             }
             
-            // --- 2. FILTRE VITESSE VERTICALE (Vz) ---
             const newAltitude = coords.altitude;
             
             if (previousAltitude !== null && newAltitude !== null && previousTimestamp !== null) {
@@ -193,12 +218,13 @@ function getGeoLocation() {
                     verticalSpeedMS = 0;
                 }
                 
-                // Si l'imprécision d'altitude est trop élevée (seuil de 10m), on force Vz à zéro
                 if (currentAltAccuracy > ALTITUDE_ACCURACY_THRESHOLD) {
                     verticalSpeedMS = 0;
-                    document.getElementById('vitesse-vert').classList.add('warning');
+                    const vvert = document.getElementById('vitesse-vert');
+                    if (vvert) vvert.classList.add('warning');
                 } else {
-                    document.getElementById('vitesse-vert').classList.remove('warning');
+                    const vvert = document.getElementById('vitesse-vert');
+                    if (vvert) vvert.classList.remove('warning');
                 }
                 
             } else {
@@ -207,28 +233,39 @@ function getGeoLocation() {
             
             previousAltitude = newAltitude;
             previousTimestamp = currentTimestampMs;
-            // ----------------------------------------------------
 
             currentLat = coords.latitude;
             currentLon = coords.longitude;
             currentAlt = newAltitude; 
 
-            document.getElementById('latitude').textContent = currentLat !== null ? currentLat.toFixed(6) : '--';
-            document.getElementById('longitude').textContent = currentLon !== null ? currentLon.toFixed(6) : '--';
+            const latEl = document.getElementById('latitude');
+            if (latEl) latEl.textContent = currentLat !== null ? currentLat.toFixed(6) : '--';
+
+            const lonEl = document.getElementById('longitude');
+            if (lonEl) lonEl.textContent = currentLon !== null ? currentLon.toFixed(6) : '--';
             
             const altMeters = currentAlt !== null ? currentAlt.toFixed(1) : '--';
             const altFeet = currentAlt !== null ? (currentAlt * METER_TO_FEET).toFixed(0) : '--';
 
-            document.getElementById('altitude').textContent = `${altMeters} m`;
-            document.getElementById('altitude-ft').textContent = `${altFeet} ft`; 
+            const altEl = document.getElementById('altitude');
+            if (altEl) altEl.textContent = `${altMeters} m`;
+
+            const altFtEl = document.getElementById('altitude-ft');
+            if (altFtEl) altFtEl.textContent = `${altFeet} ft`; 
             
-            document.getElementById('vitesse-vert').textContent = `${verticalSpeedMS.toFixed(2)} m/s`;
+            const vvertEl = document.getElementById('vitesse-vert');
+            if (vvertEl) vvertEl.textContent = `${verticalSpeedMS.toFixed(2)} m/s`;
             
-            document.getElementById('precision-m').textContent = `${currentAccuracy.toFixed(1)} m`;
-            document.getElementById('prec-gps').textContent = `${(Math.max(0, 100 - (currentAccuracy / 10) * 10)).toFixed(0)} %`; 
+            const precMEl = document.getElementById('precision-m');
+            if (precMEl) precMEl.textContent = `${currentAccuracy.toFixed(1)} m`;
+
+            const precGpsEl = document.getElementById('prec-gps');
+            if (precGpsEl) precGpsEl.textContent = `${(Math.max(0, 100 - (currentAccuracy / 10) * 10)).toFixed(0)} %`; 
             
-            document.getElementById('gps-status').textContent = 'ACTIF';
-            document.getElementById('gps-status').classList.remove('warning');
+            if (gpsStatusEl) {
+                gpsStatusEl.textContent = 'ACTIF';
+                gpsStatusEl.classList.remove('warning');
+            }
             
             updateCelestialData(); 
         },
@@ -237,30 +274,28 @@ function getGeoLocation() {
             verticalSpeedMS = 0; currentSpeedMS = 0; 
             currentAccuracy = 9999; currentAltAccuracy = 9999; previousTimestamp = null;
             
-            document.getElementById('vitesse-vert').textContent = '0.00 m/s';
-            document.getElementById('vitesse-vert').classList.add('warning');
-            document.getElementById('gps-status').textContent = `Erreur GPS: ${error.message} - Arrêté`;
-            document.getElementById('gps-status').classList.add('warning');
+            const vvertEl = document.getElementById('vitesse-vert');
+            if (vvertEl) {
+                vvertEl.textContent = '0.00 m/s';
+                vvertEl.classList.add('warning');
+            }
+            if (gpsStatusEl) {
+                gpsStatusEl.textContent = `Erreur GPS: ${error.message} - Arrêté`;
+                gpsStatusEl.classList.add('warning');
+            }
             updateCelestialData(); 
         },
-        // *** OPTIONS GPS ORIGINALES RESTAURÉES ***
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } 
     );
 }
 
-/**
- * Mise à jour des données de navigation (Vitesse/Distance).
- */
 function updateNavigationData() {
     if (!intervalId) return;
     
-    // Calcul de la Vitesse Sol Totale (Vitesse 3D)
     const totalGroundSpeedSq = Math.pow(currentSpeedMS, 2) + Math.pow(verticalSpeedMS, 2);
     const TOTAL_GROUND_SPEED_MS = Math.sqrt(totalGroundSpeedSq);
     
     distanceTraveled += (TOTAL_GROUND_SPEED_MS / 1000); 
-
-    // --- 3. PLANCHER À ZÉRO pour éviter les vitesses négatives microscopiques ---
     
     const V_KPH_INST = Math.max(0, currentSpeedMS * 3.6); 
     const V_KPH_3D = Math.max(0, TOTAL_GROUND_SPEED_MS * 3.6); 
@@ -278,22 +313,41 @@ function updateNavigationData() {
     const DISTANCE_M = distanceTraveled * 1000;
     const DISTANCE_SL = DISTANCE_M / C_LIGHT_MS; 
     
-    // Mise à jour de l'interface
-    document.getElementById('time-s').textContent = `${(timeElapsed + 1).toFixed(0)} s`; 
-    document.getElementById('vitesse-inst').textContent = `${V_KPH_INST.toFixed(2)} km/h`; 
-    document.getElementById('vitesse-3d').textContent = `${V_KPH_3D.toFixed(2)} km/h`; 
-    document.getElementById('vitesse-moy').textContent = `${avgSpeedKPH.toFixed(2)} km/h`;
-    document.getElementById('vitesse-max').textContent = `${maxSpeedKPH.toFixed(2)} km/h`;
-    
-    document.getElementById('vitesse-ms').textContent = `${Math.max(0, TOTAL_GROUND_SPEED_MS).toFixed(2)} m/s`; 
-    document.getElementById('vitesse-mms').textContent = `${V_MMS.toFixed(0)} mm/s`;
+    const timeEl = document.getElementById('time-s');
+    if (timeEl) timeEl.textContent = `${(timeElapsed + 1).toFixed(0)} s`; 
 
-    document.getElementById('mach-number').textContent = `${MACH_NUMBER.toFixed(3)}`; 
-    document.getElementById('pourcent-lumiere').textContent = `${(V_LIGHT_RATIO * 100).toFixed(8)}%`;
-    
-    document.getElementById('distance-km').textContent = `${distanceTraveled.toFixed(3)} km`;
-    document.getElementById('distance-m').textContent = `${DISTANCE_M.toFixed(1)} m`;
-    document.getElementById('distance-sl').textContent = `${DISTANCE_SL.toPrecision(4)} s lumière`;
+    const vinstEl = document.getElementById('vitesse-inst');
+    if (vinstEl) vinstEl.textContent = `${V_KPH_INST.toFixed(2)} km/h`; 
+
+    const v3dEl = document.getElementById('vitesse-3d');
+    if (v3dEl) v3dEl.textContent = `${V_KPH_3D.toFixed(2)} km/h`; 
+
+    const vmoyEl = document.getElementById('vitesse-moy');
+    if (vmoyEl) vmoyEl.textContent = `${avgSpeedKPH.toFixed(2)} km/h`;
+
+    const vmaxEl = document.getElementById('vitesse-max');
+    if (vmaxEl) vmaxEl.textContent = `${maxSpeedKPH.toFixed(2)} km/h`;
+
+    const vmsEl = document.getElementById('vitesse-ms');
+    if (vmsEl) vmsEl.textContent = `${Math.max(0, TOTAL_GROUND_SPEED_MS).toFixed(2)} m/s`; 
+
+    const vmmsEl = document.getElementById('vitesse-mms');
+    if (vmmsEl) vmmsEl.textContent = `${V_MMS.toFixed(0)} mm/s`;
+
+    const machEl = document.getElementById('mach-number');
+    if (machEl) machEl.textContent = `${MACH_NUMBER.toFixed(3)}`; 
+
+    const plEl = document.getElementById('pourcent-lumiere');
+    if (plEl) plEl.textContent = `${(V_LIGHT_RATIO * 100).toFixed(8)}%`;
+
+    const distkmEl = document.getElementById('distance-km');
+    if (distkmEl) distkmEl.textContent = `${distanceTraveled.toFixed(3)} km`;
+
+    const distmEl = document.getElementById('distance-m');
+    if (distmEl) distmEl.textContent = `${DISTANCE_M.toFixed(1)} m`;
+
+    const dslEl = document.getElementById('distance-sl');
+    if (dslEl) dslEl.textContent = `${DISTANCE_SL.toPrecision(4)} s lumière`;
     
     timeElapsed++; 
 }
@@ -318,37 +372,54 @@ function updateCelestialData() {
         solarDayDuration = solarTimes.solarDayDuration;
     }
 
-    document.getElementById('culm-soleil').textContent = culmTime;
-    document.getElementById('hsm').textContent = hsmTime;
-    document.getElementById('hsv').textContent = hsvTime;
-    document.getElementById('edt').textContent = `${edtSeconds} s`; 
-    document.getElementById('solar-day-duration').textContent = solarDayDuration;
-    document.getElementById('phase-lune').textContent = `${lunarData.phasePercent}%`;
-    document.getElementById('mag-lune').textContent = lunarData.magnitude;
+    const culmEl = document.getElementById('culm-soleil');
+    if (culmEl) culmEl.textContent = culmTime;
+
+    const hsmEl = document.getElementById('hsm');
+    if (hsmEl) hsmEl.textContent = hsmTime;
+
+    const hsvEl = document.getElementById('hsv');
+    if (hsvEl) hsvEl.textContent = hsvTime;
+
+    const edtEl = document.getElementById('edt');
+    if (edtEl) edtEl.textContent = `${edtSeconds} s`; 
+
+    const sddEl = document.getElementById('solar-day-duration');
+    if (sddEl) sddEl.textContent = solarDayDuration;
+
+    const phaseEl = document.getElementById('phase-lune');
+    if (phaseEl) phaseEl.textContent = `${lunarData.phasePercent}%`;
+
+    const magEl = document.getElementById('mag-lune');
+    if (magEl) magEl.textContent = lunarData.magnitude;
     
-    // Horloge Minecraft (simplifié)
     const totalSecondsInDay = (now.getHours() * 3600) + (now.getMinutes() * 60) + now.getSeconds();
     const minecraftTimeRatio = 1200 / 86400; 
     const minecraftSeconds = totalSecondsInDay * minecraftTimeRatio;
     const mcHours = Math.floor(minecraftSeconds / 50); 
     const mcMinutes = Math.floor((minecraftSeconds % 50) * 1.2); 
     const mcTimeStr = `${String(mcHours % 24).padStart(2, '0')}:${String(mcMinutes % 60).padStart(2, '0')}:00`;
-    document.getElementById('horloge-minecraft').textContent = mcTimeStr;
+    const mcEl = document.getElementById('horloge-minecraft');
+    if (mcEl) mcEl.textContent = mcTimeStr;
 
-    // Indicateur souterrain
-    document.getElementById('souterrain').textContent = currentAlt === null ? 'Oui' : 'Non'; 
+    const sousEl = document.getElementById('souterrain');
+    if (sousEl) sousEl.textContent = currentAlt === null ? 'Oui' : 'Non'; 
 }
 
 function toggleMovement(start) {
+    const gpsStatusEl = document.getElementById('gps-status');
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
     if (start) {
         getGeoLocation(); 
         intervalId = setInterval(() => {
             updateCelestialData(); 
             updateNavigationData(); 
         }, 1000);
-        
-        document.getElementById('gps-status').textContent = 'ACTIF (Acquisition Vitesse)';
-        document.getElementById('gps-status').classList.add('warning');
+        if (gpsStatusEl) {
+            gpsStatusEl.textContent = 'ACTIF (Acquisition Vitesse)';
+            gpsStatusEl.classList.add('warning');
+        }
     } else {
         clearInterval(intervalId);
         intervalId = null;
@@ -357,14 +428,14 @@ function toggleMovement(start) {
             navigator.geolocation.clearWatch(gpsWatchId);
             gpsWatchId = null;
         }
-
-        document.getElementById('gps-status').textContent = 'Arrêté';
-        document.getElementById('gps-status').classList.remove('warning');
-        
+        if (gpsStatusEl) {
+            gpsStatusEl.textContent = 'Arrêté';
+            gpsStatusEl.classList.remove('warning');
+        }
         currentSpeedMS = 0; 
     }
-    document.getElementById('start-btn').disabled = start;
-    document.getElementById('stop-btn').disabled = !start;
+    if (startBtn) startBtn.disabled = start;
+    if (stopBtn) stopBtn.disabled = !start;
 }
 
 function resetData() { 
@@ -382,25 +453,54 @@ function resetData() {
     currentAccuracy = 9999;
     currentAltAccuracy = 9999;
     previousTimestamp = null;
+
+    const timeEl = document.getElementById('time-s');
+    if (timeEl) timeEl.textContent = '0 s';
+
+    const vinstEl = document.getElementById('vitesse-inst');
+    if (vinstEl) vinstEl.textContent = '0.00 km/h'; 
+
+    const v3dEl = document.getElementById('vitesse-3d');
+    if (v3dEl) v3dEl.textContent = '0.00 km/h'; 
+
+    const vmoyEl = document.getElementById('vitesse-moy');
+    if (vmoyEl) vmoyEl.textContent = '0.00 km/h';
+
+    const vmaxEl = document.getElementById('vitesse-max');
+    if (vmaxEl) vmaxEl.textContent = '0.00 km/h';
+
+    const vmsEl = document.getElementById('vitesse-ms');
+    if (vmsEl) vmsEl.textContent = '0.00 m/s';
+
+    const vmmsEl = document.getElementById('vitesse-mms');
+    if (vmmsEl) vmmsEl.textContent = '0 mm/s';
+
+    const machEl = document.getElementById('mach-number');
+    if (machEl) machEl.textContent = '0.000';
+
+    const plEl = document.getElementById('pourcent-lumiere');
+    if (plEl) plEl.textContent = '0.00000000%';
+
+    const distkmEl = document.getElementById('distance-km');
+    if (distkmEl) distkmEl.textContent = '0.000 km';
+
+    const distmEl = document.getElementById('distance-m');
+    if (distmEl) distmEl.textContent = '-- m';
+
+    const dslEl = document.getElementById('distance-sl');
+    if (dslEl) dslEl.textContent = '-- s lumière';
     
-    document.getElementById('time-s').textContent = '0 s';
-    document.getElementById('vitesse-inst').textContent = '0.00 km/h'; 
-    document.getElementById('vitesse-3d').textContent = '0.00 km/h'; 
-    document.getElementById('vitesse-moy').textContent = '0.00 km/h';
-    document.getElementById('vitesse-max').textContent = '0.00 km/h';
-    document.getElementById('vitesse-ms').textContent = '0.00 m/s';
-    document.getElementById('vitesse-mms').textContent = '0 mm/s';
-    document.getElementById('mach-number').textContent = '0.000';
-    document.getElementById('pourcent-lumiere').textContent = '0.00000000%';
-    document.getElementById('distance-km').textContent = '0.000 km';
-    document.getElementById('distance-m').textContent = '-- m';
-    document.getElementById('distance-sl').textContent = '-- s lumière';
-    
-    document.getElementById('vitesse-vert').textContent = '0.00 m/s'; 
-    document.getElementById('vitesse-vert').classList.remove('warning');
-    
-    document.getElementById('gps-status').textContent = 'En attente...';
-    document.getElementById('gps-status').classList.add('warning');
+    const vvertEl = document.getElementById('vitesse-vert');
+    if (vvertEl) {
+        vvertEl.textContent = '0.00 m/s'; 
+        vvertEl.classList.remove('warning');
+    }
+
+    const gpsStatusEl = document.getElementById('gps-status');
+    if (gpsStatusEl) {
+        gpsStatusEl.textContent = 'En attente...';
+        gpsStatusEl.classList.add('warning');
+    }
 }
 
 // --- INITIALISATION AU CHARGEMENT DE LA PAGE ---
@@ -411,9 +511,10 @@ function initializeCockpit() {
     
     setInterval(updateAtomicTime, 10); 
     
-    // Mise à jour de l'état des boutons
-    document.getElementById('start-btn').disabled = false;
-    document.getElementById('stop-btn').disabled = true;
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
 }
 
 window.onload = initializeCockpit;
