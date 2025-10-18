@@ -137,4 +137,4 @@ if (navigator.geolocation) {
     navigator.geolocation.watchPosition(success, error, options);
 } else {
     document.getElementById('status').textContent = "La géolocalisation n'est pas supportée par ce navigateur.";
-                                                     }
+                                  }
