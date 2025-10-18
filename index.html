@@ -3,108 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracker GPS / Astro / Météo Complet</title>
+    <title>GPS - Vitesse et Position</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
-        h1 { color: #2c3e50; }
-        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #333; margin-top: 30px; }
-        .data-section { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .data-item { margin-bottom: 5px; display: flex; }
-        .label { font-weight: bold; color: #555; display: inline-block; width: 250px; }
-        .value { color: #007bff; }
-        #gps-status-text { font-weight: bold; color: gray; }
-        .controls button {
-            padding: 10px 20px;
-            font-size: 16px;
-            margin-right: 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        #btn-start { background-color: #4CAF50; color: white; }
-        #btn-start:hover { background-color: #45a049; }
-        #btn-stop { background-color: #f44336; color: white; }
-        #btn-stop:hover { background-color: #d32f2f; }
-        #btn-reset { background-color: #ff9800; color: white; }
-        #btn-reset:hover { background-color: #e68a00; }
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        .data-box { border: 1px solid #ccc; padding: 15px; margin: 10px auto; width: 300px; }
+        .data-box h3 { margin-top: 0; }
+        .value { font-size: 2em; font-weight: bold; color: #007bff; }
+        .unit { font-size: 0.8em; color: #6c757d; }
     </style>
-    <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
 </head>
 <body>
 
-    <h1>Tracker GPS / Astro / Météo</h1>
-    
-    <div class="controls">
-        <button id="btn-start" onclick="startGPS()">Démarrer (Marche)</button>
-        <button id="btn-stop" onclick="stopGPS()" disabled>Arrêter (Arrêt)</button>
-        <button id="btn-reset" onclick="resetMax()" disabled>Réinitialiser Max/Moyenne</button>
+    <h1>Mon Compteur GPS</h1>
+
+    <div class="data-box">
+        <h3>Vitesse Instantanée</h3>
+        <span id="speed-current" class="value">0.00</span>
+        <span class="unit">km/h</span>
     </div>
 
-    <p style="margin-top: 15px;"><span class="label">Statut GPS :</span><span id="gps-status-text" class="value">Initialisation...</span></p>
-
-    <input type="hidden" id="watch-id" value="">
-
-    <div class="data-section">
-        <h2>Temps & Vitesse (Ground Speed)</h2>
-        <div class="data-item"><span class="label">Temps total écoulé :</span><span id="elapsed-time" class="value">0 s</span></div>
-        <div class="data-item"><span class="label">Vitesse instantanée (Horiz) :</span><span id="speed-horiz" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse verticale :</span><span id="speed-vert" class="value">0.00 m/s</span></div>
-        <div class="data-item"><span class="label">Vitesse 3D (Totale) :</span><span id="speed-3d" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse moyenne :</span><span id="speed-avg" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse max :</span><span id="speed-max" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse (m/s) :</span><span id="speed-ms" class="value">0.00 m/s</span></div>
-        <div class="data-item"><span class="label">Vitesse (mm/s) :</span><span id="speed-mms" class="value">0 mm/s</span></div>
-    </div>
-    
-    <div class="data-section">
-        <h2>☀️🌙 Soleil & Lune</h2>
-        <div class="data-item"><span class="label">Lever soleil :</span><span id="lever-soleil" class="value">--</span></div>
-        <div class="data-item"><span class="label">Coucher soleil :</span><span id="coucher-soleil" class="value">--</span></div>
-        <div class="data-item"><span class="label">Culmination soleil :</span><span id="culmination-soleil" class="value">--</span></div>
-        <div class="data-item"><span class="label">Heure solaire vraie :</span><span id="hsv" class="value">--</span></div>
-        <div class="data-item"><span class="label">Heure solaire moyenne :</span><span id="hsm" class="value">--</span></div>
-        <div class="data-item"><span class="label">Équation du temps :</span><span id="eq-temps" class="value">--</span></div>
-        <div class="data-item"><span class="label">Lune phase :</span><span id="lune-phase" class="value">--%</span></div>
-        <div class="data-item"><span class="label">Lune magnitude :</span><span id="lune-magnitude" class="value">--</span></div>
-        <div class="data-item"><span class="label">Lever lune :</span><span id="lever-lune" class="value">--</span></div>
-        <div class="data-item"><span class="label">Coucher lune :</span><span id="coucher-lune" class="value">--</span></div>
-        <div class="data-item"><span class="label">Culmination lune :</span><span id="culmination-lune" class="value">--</span></div>
-    </div>
-    
-    <div class="data-section">
-        <h2>🌡️ Météo</h2>
-        <div class="data-item"><span class="label">Température :</span><span id="temperature" class="value">-- °C</span></div>
-        <div class="data-item"><span class="label">Pression :</span><span id="pression" class="value">-- hPa</span></div>
-        <div class="data-item"><span class="label">Humidité :</span><span id="humidite" class="value">--%</span></div>
-        <div class="data-item"><span class="label">Vent :</span><span id="vent" class="value">-- km/h</span></div>
-        <div class="data-item"><span class="label">Nuages :</span><span id="nuages" class="value">--%</span></div>
-        <div class="data-item"><span class="label">Pluie :</span><span id="pluie" class="value">-- mm</span></div>
-        <div class="data-item"><span class="label">Neige :</span><span id="neige" class="value">-- mm</span></div>
-        <div class="data-item"><span class="label">Indice UV :</span><span id="uv-index" class="value">--</span></div>
-        <div class="data-item"><span class="label">Qualité air :</span><span id="air-quality" class="value">--</span></div>
-        <div class="data-item"><span class="label">Point d’ébullition :</span><span id="boiling-point" class="value">-- °C</span></div>
+    <div class="data-box">
+        <h3>Vitesse Moyenne (Corrigée)</h3>
+        <span id="speed-average" class="value">0.00</span>
+        <span class="unit">km/h</span>
     </div>
 
-    <div class="data-section">
-        <h2>🔭 Cosmique / Secondaire</h2>
-        <div class="data-item"><span class="label">Nombre de Mach (M) :</span><span id="mach" class="value">0.000</span></div>
-        <div class="data-item"><span class="label">% Lumière :</span><span id="light-perc" class="value">0.00000000%</span></div>
-        <div class="data-item"><span class="label">Distance totale (km) :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
-        <div class="data-item"><span class="label">Distance (m) :</span><span id="distance-m" class="value">0.00 m</span></div>
-        <div class="data-item"><span class="label">Horloge Minecraft :</span><span id="minecraft-time" class="value">--:--:--</span></div>
+    <div class="data-box">
+        <h3>Vitesse Maximale</h3>
+        <span id="speed-max" class="value">0.00</span>
+        <span class="unit">km/h</span>
     </div>
 
-    <div class="data-section">
-        <h2>📊 Vue brute GPS (Aviation)</h2>
-        <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
-        <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
-        <div class="data-item"><span class="label">Altitude (m) :</span><span id="altitude-m" class="value">-- m</span></div>
-        <div class="data-item"><span class="label">Altitude (ft) :</span><span id="altitude-ft" class="value">-- ft</span></div>
-        <div class="data-item"><span class="label">Précision (Horiz) :</span><span id="accuracy-horiz" class="value">-- m</span></div>
-        <div class="data-item"><span class="label">Niveau à bulle :</span><span id="niveau-bulle" class="value">--°</span></div>
+    <div class="data-box">
+        <h3>Distance Parcourue</h3>
+        <span id="distance-total" class="value">0.00</span>
+        <span class="unit">m</span>
     </div>
-    
+
+    <div class="data-box">
+        <h3>Altitude</h3>
+        <span id="altitude" class="value">N/A</span>
+        <span class="unit">m</span>
+    </div>
+
+    <p id="status">En attente des données GPS...</p>
+
     <script src="script.js"></script>
 </body>
-            </html>
+    </html>
