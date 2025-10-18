@@ -4,7 +4,8 @@ const AIR_SPEED_OF_SOUND = 343; // Vitesse du son dans l'air standard (m/s)
 const MS_TO_KMH = 3.6;
 
 // Variables de suivi globales
-let startTime = 0;
+let totalElapsedTime = 0; // Temps total d'action accumulé (en millisecondes)
+let sessionStartTime = 0; // Timestamp du début de la session d'action actuelle (Date.now())
 let maxSpeed = 0;
 let totalDistance = 0;
 let lastPosition = null;
@@ -14,7 +15,6 @@ let timerInterval = null; // ID pour le setInterval du chronomètre
 // FONCTIONS UTILITAIRES ET DE CONVERSION
 // ===================================================================
 
-/** Convertit les mètres/seconde en kilomètres/heure. */
 function msToKmh(ms) {
     return ms * MS_TO_KMH;
 }
@@ -42,7 +42,25 @@ function calculateDistance3D(pos1, pos2) {
 }
 
 // ===================================================================
-// MISE À JOUR DE L'AFFICHAGE (SUCCESS CALLBACK)
+// GESTION DU CHRONOMÈTRE
+// ===================================================================
+
+/** Met à jour le chronomètre et retourne le temps total en secondes. */
+function updateTime() {
+    let totalTimeSec = totalElapsedTime / 1000;
+
+    if (sessionStartTime > 0) {
+        // Ajoute le temps de la session en cours
+        totalTimeSec += (Date.now() - sessionStartTime) / 1000;
+    }
+    
+    document.getElementById('elapsed-time').textContent = `${totalTimeSec.toFixed(1)} s`;
+    
+    return totalTimeSec;
+}
+
+// ===================================================================
+// MISE À JOUR DE L'AFFICHAGE (SUCCESS CALLBACK GPS)
 // ===================================================================
 
 function updateDisplay(position) {
@@ -65,17 +83,16 @@ function updateDisplay(position) {
     const speedMS = coords.speed !== null ? coords.speed : 0;
     const speedKmh = msToKmh(speedMS);
     
-    // Vitesse verticale (calculée)
     let verticalSpeed = 0;
     if (lastPosition && lastPosition.coords.altitude !== null && coords.altitude !== null) {
         const timeDiff = (position.timestamp - lastPosition.timestamp) / 1000;
-        if (timeDiff > 0.1) { // Évite la division par zéro ou les très petits intervalles
+        if (timeDiff > 0.1) {
              verticalSpeed = (coords.altitude - lastPosition.coords.altitude) / timeDiff;
         }
     }
     document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(2)} m/s`;
 
-    // Vitesse 3D (Totale)
+    // Vitesse 3D (Totale) : Combinaison de la vitesse Horizontale et Verticale
     const speed3D_MS = Math.sqrt(speedMS * speedMS + verticalSpeed * verticalSpeed);
     
     document.getElementById('speed-horiz').textContent = `${speedKmh.toFixed(2)} km/h`;
@@ -93,8 +110,10 @@ function updateDisplay(position) {
         const distanceIncrement = calculateDistance3D(lastPosition, position);
         totalDistance += distanceIncrement;
 
-        const elapsedTimeSec = (Date.now() - startTime) / 1000;
-        const avgSpeedMS = elapsedTimeSec > 0 ? totalDistance / elapsedTimeSec : 0;
+        // Utilise le temps total ACCUMULÉ pour la vitesse moyenne
+        const totalTimeSec = updateTime(); 
+        
+        const avgSpeedMS = totalTimeSec > 0 ? totalDistance / totalTimeSec : 0;
         document.getElementById('speed-avg').textContent = `${msToKmh(avgSpeedMS).toFixed(2)} km/h`;
         
         document.getElementById('distance-totale-km').textContent = `${(totalDistance / 1000).toFixed(3)} km`;
@@ -107,15 +126,6 @@ function updateDisplay(position) {
     lastPosition = position;
 }
 
-/** Met à jour le chronomètre. */
-function updateTime() {
-    if (startTime > 0) {
-        const elapsedTimeSec = (Date.now() - startTime) / 1000;
-        document.getElementById('elapsed-time').textContent = `${elapsedTimeSec.toFixed(1)} s`;
-    }
-}
-
-/** Calcule le Mach et le % de la lumière. */
 function calculateCosmicData(speedMS) {
     const mach = speedMS / AIR_SPEED_OF_SOUND;
     document.getElementById('mach').textContent = mach.toFixed(3);
@@ -130,15 +140,31 @@ function calculateCosmicData(speedMS) {
 
 function errorCallback(error) {
     let message = 'Erreur GPS : ';
-    // ... (Logique d'erreur) ...
+    switch(error.code) {
+        case error.PERMISSION_DENIED:
+            message += "L'utilisateur a refusé l'accès. Veuillez autoriser la géolocalisation.";
+            break;
+        case error.POSITION_UNAVAILABLE:
+            message += "Localisation indisponible. Signal faible.";
+            break;
+        case error.TIMEOUT:
+            message += "La demande a expiré. Réessayez.";
+            break;
+        default:
+            message += "Erreur inconnue.";
+            break;
+    }
     document.getElementById('gps-status-text').textContent = message;
     document.getElementById('gps-status-text').style.color = 'red';
-    stopGPS(false);
+    stopGPS(false); // Arrête le timer sans effacer watchId
 }
 
-/** Démarre la surveillance GPS et le timer. */
+/** Démarre la surveillance GPS et le timer. (Marche) */
 function startGPS() {
     if ('geolocation' in navigator) {
+        // Si le GPS est déjà actif, ne rien faire
+        if (document.getElementById('watch-id').value) return; 
+
         const options = { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
         
         // 1. Démarrer la surveillance et stocker l'ID
@@ -146,9 +172,7 @@ function startGPS() {
         document.getElementById('watch-id').value = watchId;
 
         // 2. Démarrer le chronomètre
-        if (startTime === 0) { // S'assurer qu'on démarre uniquement la première fois (pour le calcul de la moyenne)
-            startTime = Date.now();
-        }
+        sessionStartTime = Date.now(); // Début de la nouvelle session d'action
         timerInterval = setInterval(updateTime, 100);
 
         // 3. Mise à jour de l'UI
@@ -159,23 +183,27 @@ function startGPS() {
         document.getElementById('gps-status-text').style.color = 'orange';
 
     } else {
-        document.getElementById('gps-status-text').textContent = "La géolocalisation n'est pas supportée.";
+        document.getElementById('gps-status-text').textContent = "La géolocalisation n'est pas supportée par ce navigateur.";
         document.getElementById('gps-status-text').style.color = 'red';
     }
 }
 
-/** Arrête la surveillance GPS et le timer. */
+/** Arrête la surveillance GPS et le timer. (Arrêt) */
 function stopGPS(clearWatch = true) {
     const watchId = document.getElementById('watch-id').value;
     
+    // 1. Accumuler le temps écoulé (même si clearWatch est false suite à une erreur)
+    if (sessionStartTime > 0) {
+        totalElapsedTime += (Date.now() - sessionStartTime); // Accumulation du temps
+        sessionStartTime = 0; // Met le chronomètre en pause
+    }
+    clearInterval(timerInterval);
+
     if (watchId && clearWatch) {
-        // 1. Arrêter la surveillance GPS
+        // 2. Arrêter la surveillance GPS
         navigator.geolocation.clearWatch(watchId);
         document.getElementById('watch-id').value = '';
     }
-
-    // 2. Arrêter le chronomètre
-    clearInterval(timerInterval);
 
     // 3. Mise à jour de l'UI
     document.getElementById('btn-start').disabled = false;
@@ -184,15 +212,22 @@ function stopGPS(clearWatch = true) {
     document.getElementById('gps-status-text').style.color = 'gray';
 }
 
-/** Réinitialise les variables de suivi (Max et Moyenne). */
+/** Réinitialise les variables de suivi (Max, Moyenne, Temps). */
 function resetMax() {
-    // Réinitialiser les variables de suivi
+    // 1. Réinitialiser toutes les variables de suivi
     maxSpeed = 0;
     totalDistance = 0;
-    startTime = document.getElementById('watch-id').value ? Date.now() : 0; // Réinitialiser le temps seulement si le GPS est actif
+    totalElapsedTime = 0;
     lastPosition = null;
 
-    // Réinitialiser l'affichage
+    // 2. Redémarrer le temps de session si le GPS est actif (pour le nouveau décompte)
+    if (document.getElementById('watch-id').value) {
+        sessionStartTime = Date.now(); 
+    } else {
+        sessionStartTime = 0;
+    }
+
+    // 3. Réinitialiser l'affichage
     document.getElementById('speed-max').textContent = '0.00 km/h';
     document.getElementById('speed-avg').textContent = '0.00 km/h';
     document.getElementById('distance-totale-km').textContent = '0.000 km';
@@ -200,7 +235,7 @@ function resetMax() {
     document.getElementById('elapsed-time').textContent = '0 s';
 }
 
-// Initialisation au chargement de la page (pour définir le statut initial)
+// Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('gps-status-text').textContent = 'Prêt. Appuyez sur Démarrer.';
     document.getElementById('gps-status-text').style.color = 'gray';
