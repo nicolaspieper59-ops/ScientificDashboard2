@@ -121,8 +121,8 @@ function updateDisplay(position) {
     // --- 3. Mise à jour de l'affichage principal ---
     
     // Vitesse
-    document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(2)} m/s`;
-    document.getElementById('speed-horiz').textContent = `${speedKmh.toFixed(2)} km/h`;
+    document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(4)} m/s`;
+    document.getElementById('speed-horiz').textContent = `${speedKmh.toFixed(4)} km/h`;
     document.getElementById('speed-3d').textContent = `${msToKmh(speed3D_MS).toFixed(2)} km/h`;
     document.getElementById('speed-ms').textContent = `${speedMS.toFixed(2)} m/s`;
     document.getElementById('speed-mms').textContent = `${(speedMS * 1000).toFixed(0)} mm/s`;
