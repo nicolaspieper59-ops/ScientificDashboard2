@@ -1,395 +1,312 @@
 // --- CONSTANTES GLOBALES ---
-const SPEED_OF_LIGHT = 299792458; // Vitesse de la lumière en m/s
-const MACH_1_MS = 343;            // Vitesse du son à 20°C au niveau de la mer (m/s)
-const MINECRAFT_DAY_LENGTH_MS = 1200000; // 20 minutes en millisecondes
+const C_LIGHT = 299792458; // Vitesse de la lumière en m/s
+const AIR_SPEED_OF_SOUND = 343; // Vitesse du son dans l'air standard (m/s)
+const MS_TO_KMH = 3.6;
 const FT_PER_METER = 3.28084;
 
-// --- VARIABLES D'ÉTAT ---
-let watchId = null;            // ID du suivi GPS
-let isTracking = false;
-let startTime = null;
-let lastPosition = null;       // Dernière position (coords)
-let totalDistance = 0;         // Distance 3D totale accumulée (mètres)
-let maxSpeed = 0;              // Vitesse maximale (km/h)
-let lastAltitude = null;       // Dernière altitude pour le calcul de vitesse verticale
-let lastTimestamp = null;      // Dernier timestamp pour le calcul de vitesse verticale
+// --- VARIABLES DE SUIVI GLOBALES ---
+let totalElapsedTime = 0; // Temps total d'action accumulé (en millisecondes)
+let sessionStartTime = 0; // Timestamp du début de la session d'action actuelle (Date.now())
+let maxSpeed = 0;
+let totalDistance = 0;
+let lastPosition = null; // Dernière position complète (objet Position)
+let timerInterval = null; // ID pour le setInterval du chronomètre
+let watchId = null; // ID de la surveillance GPS (remplace l'input hidden)
 
-// --- ELEMENTS DU DOM (Correspondance avec le HTML fourni) ---
-const elements = {
-    statusText: document.getElementById('gps-status-text'),
-    btnStart: document.getElementById('btn-start'),
-    btnStop: document.getElementById('btn-stop'),
-    btnReset: document.getElementById('btn-reset'),
-    
-    // Vitesse et Temps
-    elapsedTime: document.getElementById('elapsed-time'),
-    speedHoriz: document.getElementById('speed-horiz'),
-    speedVert: document.getElementById('speed-vert'),
-    speed3d: document.getElementById('speed-3d'),
-    speedAvg: document.getElementById('speed-avg'),
-    speedMax: document.getElementById('speed-max'),
-    speedMS: document.getElementById('speed-ms'),
-    speedMMS: document.getElementById('speed-mms'),
-
-    // Distance
-    distanceKm: document.getElementById('distance-totale-km'),
-    distanceM: document.getElementById('distance-m'),
-
-    // GPS Brute / Aviation
-    latitude: document.getElementById('latitude'),
-    longitude: document.getElementById('longitude'),
-    altitudeM: document.getElementById('altitude-m'),
-    altitudeFt: document.getElementById('altitude-ft'),
-    accuracyHoriz: document.getElementById('accuracy-horiz'),
-    // Note: Niveau à bulle (niveau-bulle) n'est pas réalisable avec l'API Geolocation.
-
-    // Cosmique
-    mach: document.getElementById('mach'),
-    lightPerc: document.getElementById('light-perc'),
-    minecraftTime: document.getElementById('minecraft-time'),
-    
-    // Astro
-    leverSoleil: document.getElementById('lever-soleil'),
-    coucherSoleil: document.getElementById('coucher-soleil'),
-    culminationSoleil: document.getElementById('culmination-soleil'),
-    leverLune: document.getElementById('lever-lune'),
-    coucherLune: document.getElementById('coucher-lune'),
-    culminationLune: document.getElementById('culmination-lune'),
-    lunePhase: document.getElementById('lune-phase'),
-    luneMagnitude: document.getElementById('lune-magnitude'),
-    
-    // Solaire Vraie/Moyenne (Simulées)
-    hsv: document.getElementById('hsv'),
-    hsm: document.getElementById('hsm'),
-    eqTemps: document.getElementById('eq-temps'),
-    
-    // Météo (Laissé avec -- car nécessite une API externe)
-    temperature: document.getElementById('temperature'),
-    pression: document.getElementById('pression'),
-    humidite: document.getElementById('humidite'),
-    vent: document.getElementById('vent'),
-    nuages: document.getElementById('nuages'),
-    pluie: document.getElementById('pluie'),
-    neige: document.getElementById('neige'),
-    uvIndex: document.getElementById('uv-index'),
-    airQuality: document.getElementById('air-quality'),
-    boilingPoint: document.getElementById('boiling-point'),
-};
-
-
-// --- FONCTIONS UTILITAIRES ---
+// ===================================================================
+// FONCTIONS UTILITAIRES ET DE CONVERSION
+// ===================================================================
 
 function msToKmh(ms) {
-    if (ms === null || isNaN(ms)) return 0;
-    return ms * 3.6;
+    return ms * MS_TO_KMH;
 }
 
+/** Formatte les secondes totales en HH:MM:SS */
 function formatTime(totalSeconds) {
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
     const s = Math.floor(totalSeconds % 60);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    const ms = Math.floor((totalSeconds * 100) % 100);
+
+    const pad = (num) => String(num).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}.${pad(ms)}`;
 }
 
+/** Calcule la distance euclidienne (3D) entre deux objets Position GPS. */
 function calculateDistance3D(pos1, pos2) {
+    // Utiliser les coords directement à partir de l'objet Position
+    const alt1 = pos1.coords.altitude !== null ? pos1.coords.altitude : 0;
+    const alt2 = pos2.coords.altitude !== null ? pos2.coords.altitude : 0;
+
     const R = 6371000;
-    const lat1 = pos1.latitude * (Math.PI / 180);
-    const lat2 = pos2.latitude * (Math.PI / 180);
-    const dLat = (pos2.latitude - pos1.latitude) * (Math.PI / 180);
-    const dLon = (pos2.longitude - pos1.longitude) * (Math.PI / 180);
+    const lat1 = pos1.coords.latitude * (Math.PI / 180);
+    const lat2 = pos2.coords.latitude * (Math.PI / 180);
+    const dLat = (pos2.coords.latitude - pos1.coords.latitude) * (Math.PI / 180);
+    const dLon = (pos2.coords.longitude - pos1.coords.longitude) * (Math.PI / 180);
 
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+              Math.cos(lat1) * Math.cos(lat2) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distanceHorizontal = R * c;
+    const distance2D = R * c; 
 
-    const dAlt = (pos2.altitude !== null && pos1.altitude !== null) ? 
-                 (pos2.altitude - pos1.altitude) : 0;
+    const dAlt = alt2 - alt1;
     
-    return Math.sqrt(distanceHorizontal * distanceHorizontal + dAlt * dAlt);
+    return Math.sqrt(distance2D * distance2D + dAlt * dAlt);
 }
 
-function updateMinecraftTime() {
-    // Calcul de l'heure Minecraft basée sur l'heure réelle
-    const now = new Date();
-    const msSinceMidnight = now.getHours() * 3600000 + now.getMinutes() * 60000 + now.getSeconds() * 1000 + now.getMilliseconds();
-    
-    // Ratio de temps MC : 20 minutes réelles = 24 heures MC
-    const mcTimeRatio = 24000 / MINECRAFT_DAY_LENGTH_MS; 
-    
-    // Le jour MC commence à l'aube (6000 ticks)
-    let mcTicks = (msSinceMidnight * mcTimeRatio + 6000) % 24000;
+// ===================================================================
+// GESTION DU CHRONOMÈTRE
+// ===================================================================
 
-    // Conversion des ticks en heures et minutes MC
-    let mcHours = Math.floor(mcTicks / 1000);
-    let mcMinutes = Math.floor((mcTicks % 1000) * 0.06); 
-    
-    // Ajustement de l'heure MC pour un affichage "logique" (18:00 ticks = 00:00 affichage)
-    if (mcHours >= 18) {
-        mcHours -= 18;
-    } else {
-        mcHours += 6;
+/** Met à jour le chronomètre et retourne le temps total en secondes (précis). */
+function updateTime() {
+    let totalTimeMS = totalElapsedTime;
+
+    if (sessionStartTime > 0) {
+        // Ajoute le temps de la session en cours
+        totalTimeMS += (Date.now() - sessionStartTime);
     }
     
-    elements.minecraftTime.textContent = `${String(mcHours).padStart(2, '0')}:${String(mcMinutes).padStart(2, '0')}:${String(Math.floor(mcTicks % 1000 * 0.0036)).padStart(2, '0')}`;
+    const totalTimeSec = totalTimeMS / 1000;
+
+    document.getElementById('elapsed-time').textContent = formatTime(totalTimeSec);
+    
+    return totalTimeSec;
 }
 
-// Lancement du timer Minecraft (indépendant du GPS)
-setInterval(updateMinecraftTime, 1000);
 
+// ===================================================================
+// MISE À JOUR DE L'AFFICHAGE (SUCCESS CALLBACK GPS)
+// ===================================================================
 
-// --- FONCTION DE MISE À JOUR PRINCIPALE ---
-
-function success(position) {
+function updateDisplay(position) {
     const coords = position.coords;
-    const now = position.timestamp; // Utilisation du timestamp fourni par le GPS
-    const speedMS = coords.speed !== null ? coords.speed : 0;
-    let totalTimeSeconds = startTime ? (now - startTime) / 1000 : 0;
     
-    // --- 1. Calcul des Vitesses et Distances ---
-    
-    // Distance totale (3D)
-    if (lastPosition && isTracking) {
-        const segmentDistance = calculateDistance3D(lastPosition, coords);
-        totalDistance += segmentDistance;
-        
-        // Vitesse verticale et 3D (seulement si le temps écoulé est positif)
-        const timeDiff = (now - lastTimestamp) / 1000;
-        let vertSpeed = 0;
-        let speed3D_MS = speedMS; // Initialisation par défaut à la vitesse horizontale
+    // --- 1. Chronomètre et Temps ---
+    // Le chronomètre est géré par setInterval, mais nous le mettons à jour ici pour le calcul de la moyenne.
+    const totalTimeSec = updateTime(); 
 
-        if (timeDiff > 0 && lastAltitude !== null && coords.altitude !== null) {
-            vertSpeed = (coords.altitude - lastAltitude) / timeDiff;
-            elements.speedVert.textContent = vertSpeed.toFixed(2) + ' m/s';
-            
-            // Vitesse 3D (Totale)
-            speed3D_MS = Math.sqrt(speedMS * speedMS + vertSpeed * vertSpeed);
-            elements.speed3d.textContent = msToKmh(speed3D_MS).toFixed(2) + ' km/h';
-        } else {
-            elements.speedVert.textContent = '0.00 m/s';
-            elements.speed3d.textContent = msToKmh(speed3D_MS).toFixed(2) + ' km/h';
+    // --- 2. Vitesse et Distance ---
+    const speedMS = coords.speed !== null ? coords.speed : 0;
+    const speedKmh = msToKmh(speedMS);
+    
+    let verticalSpeed = 0;
+    let timeDiff = 0;
+
+    if (lastPosition) {
+        // Calcul de l'incrément de distance
+        const distanceIncrement = calculateDistance3D(lastPosition, position);
+        totalDistance += distanceIncrement;
+        
+        // Calcul de la vitesse verticale (plus précis avec timestamp)
+        timeDiff = (position.timestamp - lastPosition.timestamp) / 1000;
+        
+        if (timeDiff > 0.1 && lastPosition.coords.altitude !== null && coords.altitude !== null) {
+             verticalSpeed = (coords.altitude - lastPosition.coords.altitude) / timeDiff;
         }
     }
     
-    // Mise à jour des dernières valeurs
-    lastPosition = coords;
-    lastAltitude = coords.altitude;
-    lastTimestamp = now;
+    // Vitesse 3D (Totale)
+    const speed3D_MS = Math.sqrt(speedMS * speedMS + verticalSpeed * verticalSpeed);
+    
+    // Vitesse Moyenne (Distance Totale / Temps Total d'Activité)
+    const avgSpeedMS = totalTimeSec > 5 ? totalDistance / totalTimeSec : 0; // Évite les pics au démarrage
 
-
-    // Vitesse Instantanée (Horizontale)
-    const speedKmh = msToKmh(speedMS);
-    elements.speedHoriz.textContent = speedKmh.toFixed(2) + ' km/h';
-    elements.speedMS.textContent = speedMS.toFixed(2) + ' m/s';
-    elements.speedMMS.textContent = Math.round(speedMS * 1000) + ' mm/s';
-
-    // Vitesse Maximale
+    // Maximum
     if (speedKmh > maxSpeed) {
         maxSpeed = speedKmh;
     }
-    elements.speedMax.textContent = maxSpeed.toFixed(2) + ' km/h';
 
-    // Vitesse Moyenne (Distance Totale / Temps Total - CORRIGÉE)
-    let averageSpeedKmh = 0;
-    if (totalTimeSeconds > 5 && isTracking) {
-        averageSpeedKmh = (totalDistance / totalTimeSeconds) * 3.6;
-    }
-    elements.speedAvg.textContent = averageSpeedKmh.toFixed(2) + ' km/h';
+    // --- 3. Mise à jour de l'affichage principal ---
     
-    // Mise à jour Distance Totale
-    elements.distanceKm.textContent = (totalDistance / 1000).toFixed(3) + ' km';
-    elements.distanceM.textContent = totalDistance.toFixed(2) + ' m';
-
-
-    // --- 2. Mise à jour des Grandeurs Cosmiques ---
-
-    elements.mach.textContent = (speedMS / MACH_1_MS).toFixed(3);
-    elements.lightPerc.textContent = ((speedMS / SPEED_OF_LIGHT) * 100).toFixed(8) + '%';
-
-
-    // --- 3. Mise à jour des Données Brutes GPS ---
+    // Vitesse
+    document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(2)} m/s`;
+    document.getElementById('speed-horiz').textContent = `${speedKmh.toFixed(2)} km/h`;
+    document.getElementById('speed-3d').textContent = `${msToKmh(speed3D_MS).toFixed(2)} km/h`;
+    document.getElementById('speed-ms').textContent = `${speedMS.toFixed(2)} m/s`;
+    document.getElementById('speed-mms').textContent = `${(speedMS * 1000).toFixed(0)} mm/s`;
     
-    elements.latitude.textContent = coords.latitude.toFixed(6);
-    elements.longitude.textContent = coords.longitude.toFixed(6);
-    
-    if (coords.altitude !== null) {
-        elements.altitudeM.textContent = coords.altitude.toFixed(1) + ' m';
-        elements.altitudeFt.textContent = (coords.altitude * FT_PER_METER).toFixed(1) + ' ft';
-        
-        // Simulation Point d'Ébullition
-        const altKm = coords.altitude / 1000;
-        const boilingPoint = 100 - (altKm * 3.2); 
-        elements.boilingPoint.textContent = boilingPoint.toFixed(1) + ' °C';
-    } else {
-        elements.altitudeM.textContent = elements.altitudeFt.textContent = elements.boilingPoint.textContent = '--';
-    }
-    
-    elements.accuracyHoriz.textContent = coords.accuracy.toFixed(1) + ' m';
-    elements.elapsedTime.textContent = formatTime(totalTimeSeconds);
+    // Agrégats
+    document.getElementById('speed-max').textContent = `${maxSpeed.toFixed(2)} km/h`;
+    document.getElementById('speed-avg').textContent = `${msToKmh(avgSpeedMS).toFixed(2)} km/h`;
+    document.getElementById('distance-totale-km').textContent = `${(totalDistance / 1000).toFixed(3)} km`;
+    document.getElementById('distance-m').textContent = `${totalDistance.toFixed(2)} m`;
 
-
-    // --- 4. Mise à jour de l'Astro (SunCalc) ---
-    // On ne met à jour l'astro que si on est en suivi actif, ou si c'est la première lecture
-    if (isTracking || totalTimeSeconds === 0) {
-        updateAstro(coords.latitude, coords.longitude);
-    }
+    // --- 4. Mise à jour de la Position et précision ---
+    const altitudeM = coords.altitude !== null ? coords.altitude : 0;
     
-    // --- 5. Mise à jour du Statut ---
-    elements.statusText.textContent = `Données GNSS ACTIVES. Précision: ${coords.accuracy.toFixed(1)} m`;
-    elements.statusText.style.color = 'green';
+    document.getElementById('latitude').textContent = coords.latitude !== null ? coords.latitude.toFixed(6) : '--';
+    document.getElementById('longitude').textContent = coords.longitude !== null ? coords.longitude.toFixed(6) : '--';
+    document.getElementById('altitude-m').textContent = `${altitudeM.toFixed(2)} m`;
+    document.getElementById('altitude-ft').textContent = `${(altitudeM * FT_PER_METER).toFixed(2)} ft`;
+    document.getElementById('accuracy-horiz').textContent = `${coords.accuracy.toFixed(2)} m`;
+
+    // --- 5. Données Cosmiques (utiliser speed3D_MS pour Mach/Lumière si possible) ---
+    calculateCosmicData(speed3D_MS);
+    
+    // --- 6. Mises à jour Astro et Météo Simulé ---
+    // Note: Ces fonctions devraient être implémentées dans un script externe comme dans votre HTML
+    updateAstro(coords.latitude, coords.longitude);
+    updateSimulatedMeteo(altitudeM);
+    
+    // --- 7. Statut et Sauvegarde ---
+    document.getElementById('gps-status-text').textContent = 'Actif / Fixe';
+    document.getElementById('gps-status-text').style.color = 'green';
+    
+    lastPosition = position;
 }
 
-// Fonction pour mettre à jour les données astronomiques
+// ===================================================================
+// FONCTIONS DE CALCUL SECONDAIRE
+// ===================================================================
+
+function calculateCosmicData(speedMS) {
+    const mach = speedMS / AIR_SPEED_OF_SOUND;
+    document.getElementById('mach').textContent = mach.toFixed(3);
+
+    const lightPercent = (speedMS / C_LIGHT) * 100;
+    document.getElementById('light-perc').textContent = `${lightPercent.toExponential(8)}%`;
+}
+
+// Fonction placeholder pour l'Astro (nécessite SunCalc.js)
 function updateAstro(lat, lon) {
+    if (typeof SunCalc === 'undefined') return;
+
     const times = SunCalc.getTimes(new Date(), lat, lon);
     const moon = SunCalc.getMoonIllumination(new Date());
-    const moonTimes = SunCalc.getMoonTimes(new Date(), lat, lon);
 
-    const formatTimeAstro = (date) => date ? date.toLocaleTimeString('fr-FR') : '--';
-    const formatTimeAstroSimple = (date) => date ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '--';
+    const formatTimeAstro = (date) => date ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '--';
 
-
-    elements.leverSoleil.textContent = formatTimeAstroSimple(times.sunrise);
-    elements.coucherSoleil.textContent = formatTimeAstroSimple(times.sunset);
-    elements.culminationSoleil.textContent = formatTimeAstroSimple(times.solarNoon); 
-
-    elements.leverLune.textContent = formatTimeAstroSimple(moonTimes.rise);
-    elements.coucherLune.textContent = formatTimeAstroSimple(moonTimes.set);
-    
-    // Culmination lune (transit)
-    const moonTransit = SunCalc.getMoonTimes(new Date(), lat, lon, true).transit;
-    elements.culminationLune.textContent = formatTimeAstroSimple(moonTransit);
-    
-    elements.lunePhase.textContent = (moon.fraction * 100).toFixed(1) + '%';
-    elements.luneMagnitude.textContent = moon.phase.toFixed(2); 
-    
-    // Équation du temps (différence entre heure solaire vraie et moyenne)
-    // C'est très complexe, on va simuler la différence entre midi solaire et midi UTC local
-    const diff = (times.solarNoon.getTime() - new Date(new Date().setHours(12, 0, 0, 0)).getTime()) / 60000;
-    
-    elements.eqTemps.textContent = diff.toFixed(1) + ' min';
-
-    // Heure solaire vraie/moyenne (approximation)
-    elements.hsv.textContent = formatTimeAstro(new Date(Date.now() + (diff * 60000)));
-    elements.hsm.textContent = formatTimeAstro(new Date()); 
+    document.getElementById('lever-soleil').textContent = formatTimeAstro(times.sunrise);
+    document.getElementById('coucher-soleil').textContent = formatTimeAstro(times.sunset);
+    document.getElementById('lune-phase').textContent = (moon.fraction * 100).toFixed(1) + '%';
+    // ... autres champs Astro
 }
 
-// --- FONCTION D'ERREUR ---
-function error(err) {
-    elements.statusText.textContent = `ERREUR: ${err.message || 'Position non disponible.'} Code: ${err.code}`;
-    elements.statusText.style.color = 'red';
+// Fonction pour simuler des données météo basées sur l'altitude (très simplifiée)
+function updateSimulatedMeteo(altitudeM) {
+    // Simulation du Point d'Ébullition
+    const altKm = altitudeM / 1000;
+    const boilingPoint = 100 - (altKm * 3.2); // Environ 3.2°C de moins par km
+    document.getElementById('boiling-point').textContent = boilingPoint.toFixed(1) + ' °C';
+    
+    // Les autres champs Météo sont laissés sur '--' car non mesurables.
 }
 
-// --- FONCTIONS DE CONTRÔLE (Boutons) ---
 
+// ===================================================================
+// GESTIONNAIRES DE CONTRÔLE (Boutons Marche/Arrêt/Réinitialisation)
+// ===================================================================
+
+function errorCallback(error) {
+    let message = 'Erreur GPS : Localisation indisponible ou expirée.';
+    document.getElementById('gps-status-text').textContent = message;
+    document.getElementById('gps-status-text').style.color = 'red';
+    
+    // Arrête la surveillance si une erreur critique se produit
+    if (error.code !== error.TIMEOUT) {
+        stopGPS(false);
+    }
+}
+
+/** Démarre la surveillance GPS et le timer. (Marche) */
 function startGPS() {
-    if (isTracking) return;
+    if (watchId) return; // Déjà actif
 
-    if (!navigator.geolocation) {
-        elements.statusText.textContent = "La géolocalisation n'est pas supportée par ce navigateur.";
-        elements.statusText.style.color = 'red';
-        return;
+    if ('geolocation' in navigator) {
+        const options = { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 };
+        
+        // 1. Démarrer la surveillance
+        watchId = navigator.geolocation.watchPosition(updateDisplay, errorCallback, options);
+
+        // 2. Démarrer le chronomètre
+        sessionStartTime = Date.now(); // Début de la nouvelle session d'action
+        timerInterval = setInterval(updateTime, 100);
+
+        // 3. Mise à jour de l'UI
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = false;
+        document.getElementById('btn-reset').disabled = false;
+        document.getElementById('gps-status-text').textContent = 'Démarrage...';
+        document.getElementById('gps-status-text').style.color = 'orange';
+
+    } else {
+        document.getElementById('gps-status-text').textContent = "La géolocalisation n'est pas supportée.";
+        document.getElementById('gps-status-text').style.color = 'red';
     }
-
-    const options = {
-        enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 0
-    };
-    
-    if (startTime === null) {
-         startTime = Date.now();
-    }
-
-    watchId = navigator.geolocation.watchPosition(success, error, options);
-    isTracking = true;
-
-    elements.btnStart.disabled = true;
-    elements.btnStop.disabled = false;
-    elements.btnReset.disabled = false;
-    elements.statusText.textContent = "Suivi GPS ACTIF. Attente des données...";
-    elements.statusText.style.color = 'orange';
 }
 
-function stopGPS() {
-    if (!isTracking) return;
-    
-    if (watchId !== null) {
+/** Arrête la surveillance GPS et le timer. (Arrêt) */
+function stopGPS(clearGPSWatch = true) {
+    // 1. Accumuler le temps écoulé
+    if (sessionStartTime > 0) {
+        totalElapsedTime += (Date.now() - sessionStartTime); // Accumulation du temps
+        sessionStartTime = 0; // Met le chronomètre en pause
+    }
+    clearInterval(timerInterval);
+
+    if (watchId && clearGPSWatch) {
+        // 2. Arrêter la surveillance GPS
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
     }
-    isTracking = false;
 
-    elements.btnStart.disabled = false;
-    elements.btnStop.disabled = true;
-    elements.statusText.textContent = "Suivi GPS en PAUSE. Données figées.";
-    elements.statusText.style.color = 'gray';
+    // 3. Mise à jour de l'UI
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').disabled = true;
+    document.getElementById('gps-status-text').textContent = 'Arrêté.';
+    document.getElementById('gps-status-text').style.color = 'gray';
 }
 
+/** Réinitialise les variables de suivi (Max, Moyenne, Temps). */
 function resetMax() {
-    // 1. Sauvegarder l'état (Stop si actif)
-    const wasTracking = isTracking;
+    // 1. Sauvegarder l'état et arrêter le suivi si besoin
+    const wasTracking = !!watchId;
     if (wasTracking) stopGPS();
     
-    // 2. Réinitialiser les variables
+    // 2. Réinitialiser toutes les variables
     maxSpeed = 0;
     totalDistance = 0;
-    startTime = null;
+    totalElapsedTime = 0;
     lastPosition = null;
-    lastAltitude = null;
-    lastTimestamp = null;
-    
-    // 3. Réinitialiser l'affichage
-    elements.speedHoriz.textContent = '0.00 km/h';
-    elements.speedVert.textContent = '0.00 m/s';
-    elements.speed3d.textContent = '0.00 km/h';
-    elements.speedAvg.textContent = '0.00 km/h';
-    elements.speedMax.textContent = '0.00 km/h';
-    elements.speedMS.textContent = '0.00 m/s';
-    elements.speedMMS.textContent = '0 mm/s';
-    elements.distanceKm.textContent = '0.000 km';
-    elements.distanceM.textContent = '0.00 m';
-    elements.elapsedTime.textContent = '00:00:00';
-    elements.mach.textContent = '0.000';
-    elements.lightPerc.textContent = '0.00000000%';
-    elements.altitudeM.textContent = '-- m';
-    elements.altitudeFt.textContent = '-- ft';
-    elements.accuracyHoriz.textContent = '-- m';
-    
-    // Météo et Astro (les champs astro seront recalculés au prochain start)
-    elements.boilingPoint.textContent = '-- °C';
-    
-    // 4. Remettre l'état si nécessaire
-    if (wasTracking) startGPS();
 
-    elements.statusText.textContent = "Données réinitialisées. Prêt à commencer.";
-    elements.statusText.style.color = '#2c3e50';
-    elements.btnReset.disabled = true;
+    // 3. Redémarrer la session si le GPS était actif avant reset
+    if (wasTracking) {
+        startGPS(); 
+    } else {
+        // Mettre à jour le temps à 0 (pour l'affichage)
+        updateTime();
+    }
+
+    // 4. Réinitialiser l'affichage
+    document.getElementById('speed-max').textContent = '0.00 km/h';
+    document.getElementById('speed-avg').textContent = '0.00 km/h';
+    document.getElementById('distance-totale-km').textContent = '0.000 km';
+    document.getElementById('distance-m').textContent = '0.00 m';
+    
+    // Statut
+    document.getElementById('gps-status-text').textContent = 'Réinitialisé. Prêt.';
+    document.getElementById('gps-status-text').style.color = 'gray';
 }
 
-// Exposer les fonctions de contrôle aux boutons
-window.startGPS = startGPS;
-window.stopGPS = stopGPS;
-window.resetMax = resetMax;
+// Initialisation au chargement de la page et exposition des fonctions
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialisation des boutons et du statut
+    document.getElementById('btn-start').onclick = startGPS;
+    document.getElementById('btn-stop').onclick = stopGPS;
+    document.getElementById('btn-reset').onclick = resetMax;
 
-// Initialisation au chargement de la page
-window.onload = () => {
-    elements.btnStop.disabled = true;
-    elements.btnReset.disabled = true;
-    elements.statusText.textContent = "Prêt à démarrer. Cliquez sur Démarrer (Marche).";
-    elements.statusText.style.color = '#2c3e50';
+    document.getElementById('btn-stop').disabled = true;
+    document.getElementById('btn-reset').disabled = true;
 
-    // Initialisation des champs Météo
-    elements.temperature.textContent = '-- °C';
-    elements.pression.textContent = '-- hPa';
-    elements.humidite.textContent = '--%';
-    elements.vent.textContent = '-- km/h';
-    elements.nuages.textContent = '--%';
-    elements.pluie.textContent = '-- mm';
-    elements.neige.textContent = '-- mm';
-    elements.uvIndex.textContent = '--';
-    elements.airQuality.textContent = '--';
+    document.getElementById('gps-status-text').textContent = 'Initialisation...';
+    document.getElementById('gps-status-text').style.color = 'gray';
     
-    // Initialisation du champ non supporté par l'API Geolocation
-    document.getElementById('niveau-bulle').textContent = '--°';
-};
+    // Remplissage initial des champs non-GPS
+    document.getElementById('elapsed-time').textContent = formatTime(0);
+
+    // Tentative d'exécution de la première mise à jour Astro (pour avoir les valeurs au démarrage)
+    // Nécessite une position par défaut ou une demande initiale. 
+    // Mieux vaut attendre le premier 'startGPS'.
+});
