@@ -123,13 +123,13 @@ function updateDisplay(position) {
     // Vitesse
     document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(4)} m/s`;
     document.getElementById('speed-horiz').textContent = `${speedKmh.toFixed(4)} km/h`;
-    document.getElementById('speed-3d').textContent = `${msToKmh(speed3D_MS).toFixed(2)} km/h`;
-    document.getElementById('speed-ms').textContent = `${speedMS.toFixed(2)} m/s`;
-    document.getElementById('speed-mms').textContent = `${(speedMS * 1000).toFixed(0)} mm/s`;
+    document.getElementById('speed-3d').textContent = `${msToKmh(speed3D_MS).toFixed(4)} km/h`;
+    document.getElementById('speed-ms').textContent = `${speedMS.toFixed(4)} m/s`;
+    document.getElementById('speed-mms').textContent = `${(speedMS * 1000).toFixed(4)} mm/s`;
     
     // Agrégats
-    document.getElementById('speed-max').textContent = `${maxSpeed.toFixed(2)} km/h`;
-    document.getElementById('speed-avg').textContent = `${msToKmh(avgSpeedMS).toFixed(2)} km/h`;
+    document.getElementById('speed-max').textContent = `${maxSpeed.toFixed(4)} km/h`;
+    document.getElementById('speed-avg').textContent = `${msToKmh(avgSpeedMS).toFixed(4)} km/h`;
     document.getElementById('distance-totale-km').textContent = `${(totalDistance / 1000).toFixed(3)} km`;
     document.getElementById('distance-m').textContent = `${totalDistance.toFixed(2)} m`;
 
