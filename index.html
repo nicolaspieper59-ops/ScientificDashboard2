@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracker GPS et Vitesse Accumulée</title>
+    <title>Tracker GPS / Astro / Météo Complet</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
         h1 { color: #2c3e50; }
-        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #333; }
+        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #333; margin-top: 30px; }
         .data-section { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .data-item { margin-bottom: 5px; }
+        .data-item { margin-bottom: 5px; display: flex; }
         .label { font-weight: bold; color: #555; display: inline-block; width: 250px; }
         .value { color: #007bff; }
         #gps-status-text { font-weight: bold; color: gray; }
@@ -29,10 +29,11 @@
         #btn-reset { background-color: #ff9800; color: white; }
         #btn-reset:hover { background-color: #e68a00; }
     </style>
+    <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
 </head>
 <body>
 
-    <h1>Mon Tracker de Vitesse et GPS</h1>
+    <h1>Tracker GPS / Astro / Météo</h1>
     
     <div class="controls">
         <button id="btn-start" onclick="startGPS()">Démarrer (Marche)</button>
@@ -55,6 +56,35 @@
         <div class="data-item"><span class="label">Vitesse (m/s) :</span><span id="speed-ms" class="value">0.00 m/s</span></div>
         <div class="data-item"><span class="label">Vitesse (mm/s) :</span><span id="speed-mms" class="value">0 mm/s</span></div>
     </div>
+    
+    <div class="data-section">
+        <h2>☀️🌙 Soleil & Lune</h2>
+        <div class="data-item"><span class="label">Lever soleil :</span><span id="lever-soleil" class="value">--</span></div>
+        <div class="data-item"><span class="label">Coucher soleil :</span><span id="coucher-soleil" class="value">--</span></div>
+        <div class="data-item"><span class="label">Culmination soleil :</span><span id="culmination-soleil" class="value">--</span></div>
+        <div class="data-item"><span class="label">Heure solaire vraie :</span><span id="hsv" class="value">--</span></div>
+        <div class="data-item"><span class="label">Heure solaire moyenne :</span><span id="hsm" class="value">--</span></div>
+        <div class="data-item"><span class="label">Équation du temps :</span><span id="eq-temps" class="value">--</span></div>
+        <div class="data-item"><span class="label">Lune phase :</span><span id="lune-phase" class="value">--%</span></div>
+        <div class="data-item"><span class="label">Lune magnitude :</span><span id="lune-magnitude" class="value">--</span></div>
+        <div class="data-item"><span class="label">Lever lune :</span><span id="lever-lune" class="value">--</span></div>
+        <div class="data-item"><span class="label">Coucher lune :</span><span id="coucher-lune" class="value">--</span></div>
+        <div class="data-item"><span class="label">Culmination lune :</span><span id="culmination-lune" class="value">--</span></div>
+    </div>
+    
+    <div class="data-section">
+        <h2>🌡️ Météo</h2>
+        <div class="data-item"><span class="label">Température :</span><span id="temperature" class="value">-- °C</span></div>
+        <div class="data-item"><span class="label">Pression :</span><span id="pression" class="value">-- hPa</span></div>
+        <div class="data-item"><span class="label">Humidité :</span><span id="humidite" class="value">--%</span></div>
+        <div class="data-item"><span class="label">Vent :</span><span id="vent" class="value">-- km/h</span></div>
+        <div class="data-item"><span class="label">Nuages :</span><span id="nuages" class="value">--%</span></div>
+        <div class="data-item"><span class="label">Pluie :</span><span id="pluie" class="value">-- mm</span></div>
+        <div class="data-item"><span class="label">Neige :</span><span id="neige" class="value">-- mm</span></div>
+        <div class="data-item"><span class="label">Indice UV :</span><span id="uv-index" class="value">--</span></div>
+        <div class="data-item"><span class="label">Qualité air :</span><span id="air-quality" class="value">--</span></div>
+        <div class="data-item"><span class="label">Point d’ébullition :</span><span id="boiling-point" class="value">-- °C</span></div>
+    </div>
 
     <div class="data-section">
         <h2>🔭 Cosmique / Secondaire</h2>
@@ -62,6 +92,7 @@
         <div class="data-item"><span class="label">% Lumière :</span><span id="light-perc" class="value">0.00000000%</span></div>
         <div class="data-item"><span class="label">Distance totale (km) :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
         <div class="data-item"><span class="label">Distance (m) :</span><span id="distance-m" class="value">0.00 m</span></div>
+        <div class="data-item"><span class="label">Horloge Minecraft :</span><span id="minecraft-time" class="value">--:--:--</span></div>
     </div>
 
     <div class="data-section">
@@ -71,6 +102,7 @@
         <div class="data-item"><span class="label">Altitude (m) :</span><span id="altitude-m" class="value">-- m</span></div>
         <div class="data-item"><span class="label">Altitude (ft) :</span><span id="altitude-ft" class="value">-- ft</span></div>
         <div class="data-item"><span class="label">Précision (Horiz) :</span><span id="accuracy-horiz" class="value">-- m</span></div>
+        <div class="data-item"><span class="label">Niveau à bulle :</span><span id="niveau-bulle" class="value">--°</span></div>
     </div>
     
     <script src="script.js"></script>
