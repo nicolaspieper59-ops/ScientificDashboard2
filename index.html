@@ -3,146 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Cockpit - Navigation & Astro</title>
-    
-    <!-- Ajout du manifest -->
-    <link rel="manifest" href="manifest.json">
-    <!-- Optionnel : couleur thème pour mobile -->
-    <meta name="theme-color" content="#1a1a1a">
-
+    <title>Tracker GPS et Vitesse</title>
     <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #1a1a1a;
-            color: #00ff00; /* Vert style écran de cockpit */
-            margin: 0;
-            padding: 10px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            font-size: 14px;
-        }
-        h2 {
-            grid-column: 1 / -1;
-            color: #00cc00;
-            border-bottom: 1px solid #005500;
-            padding-bottom: 5px;
-            margin-top: 15px;
-            font-size: 18px;
-        }
-        .section-box {
-            background-color: #0d0d0d;
-            border: 1px solid #005500;
-            padding: 10px;
-            border-radius: 4px;
-        }
-        .data-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 4px;
-        }
-        .data-label {
-            color: #99ff99;
-        }
-        .data-value {
-            font-weight: bold;
-            text-align: right;
-        }
-        .warning {
-            color: #ffcc00 !important; /* Jaune pour les avertissements/erreurs */
-        }
-        #controls {
-            grid-column: 1 / -1;
-            text-align: center;
-            margin: 10px 0;
-        }
-        button {
-            padding: 8px 15px;
-            margin: 0 5px;
-            background-color: #005500;
-            color: #fff;
-            border: 1px solid #00ff00;
-            border-radius: 4px;
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        h1 { color: #2c3e50; }
+        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #333; }
+        .data-section { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .data-item { margin-bottom: 5px; }
+        .label { font-weight: bold; color: #555; display: inline-block; width: 250px; }
+        .value { color: #007bff; }
+        #gps-status-text { font-weight: bold; color: gray; }
+        .controls button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
+            transition: background-color 0.3s;
         }
-        button:disabled {
-            background-color: #333;
-            color: #999;
-            border-color: #555;
-            cursor: not-allowed;
-        }
+        #btn-start { background-color: #4CAF50; color: white; }
+        #btn-start:hover { background-color: #45a049; }
+        #btn-stop { background-color: #f44336; color: white; }
+        #btn-stop:hover { background-color: #d32f2f; }
+        #btn-reset { background-color: #ff9800; color: white; }
+        #btn-reset:hover { background-color: #e68a00; }
     </style>
 </head>
 <body>
 
-    <div id="controls">
-        <button id="start-btn" onclick="toggleMovement(true)">Marche</button>
-        <button id="stop-btn" onclick="toggleMovement(false)" disabled>Arrêt</button>
-        <button onclick="resetData()">Réinitialiser max</button>
+    <h1>Mon Tracker de Vitesse et GPS</h1>
+    
+    <div class="controls">
+        <button id="btn-start" onclick="startGPS()">Démarrer (Marche)</button>
+        <button id="btn-stop" onclick="stopGPS()" disabled>Arrêter (Arrêt)</button>
+        <button id="btn-reset" onclick="resetMax()" disabled>Réinitialiser Max/Moyenne</button>
     </div>
 
-    <h2><span id="atomic-time">--:--:--.--- UTC</span></h2>
+    <p style="margin-top: 15px;"><span class="label">Statut GPS :</span><span id="gps-status-text" class="value">Initialisation...</span></p>
 
-    <div class="section-box">
-        <h3>⏱️ Temps & Vitesse (Ground Speed)</h3>
-        <div class="data-row"><span class="data-label">Temps total écoulé :</span><span id="time-s" class="data-value">0 s</span></div>
-        <div class="data-row"><span class="data-label">Vitesse instantanée (Horiz) :</span><span id="vitesse-inst" class="data-value">0.00 km/h</span></div>
-        <div class="data-row"><span class="data-label">Vitesse verticale :</span><span id="vitesse-vert" class="data-value">0.00 m/s</span></div>
-        <div class="data-row"><span class="data-label">Vitesse 3D (Totale) :</span><span id="vitesse-3d" class="data-value">0.00 km/h</span></div>
-        <div class="data-row"><span class="data-label">Vitesse moyenne :</span><span id="vitesse-moy" class="data-value">0.00 km/h</span></div>
-        <div class="data-row"><span class="data-label">Vitesse max :</span><span id="vitesse-max" class="data-value">0.00 km/h</span></div>
-        <div class="data-row"><span class="data-label">Vitesse (m/s) :</span><span id="vitesse-ms" class="data-value">0.00 m/s</span></div>
-        <div class="data-row"><span class="data-label">Vitesse (mm/s) :</span><span id="vitesse-mms" class="data-value">0 mm/s</span></div>
-        <div class="data-row"><span class="data-label">Nombre de Mach (M) :</span><span id="mach-number" class="data-value">0.000</span></div>
-        <div class="data-row"><span class="data-label">% Lumière :</span><span id="pourcent-lumiere" class="data-value">0.00000000%</span></div>
+    <input type="hidden" id="watch-id" value="">
+    <input type="hidden" id="timer-id" value="">
+
+    <div class="data-section">
+        <h2>Temps & Vitesse (Ground Speed)</h2>
+        <div class="data-item"><span class="label">Temps total écoulé :</span><span id="elapsed-time" class="value">0 s</span></div>
+        <div class="data-item"><span class="label">Vitesse instantanée (Horiz) :</span><span id="speed-horiz" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse verticale :</span><span id="speed-vert" class="value">0.00 m/s</span></div>
+        <div class="data-item"><span class="label">Vitesse 3D (Totale) :</span><span id="speed-3d" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse moyenne :</span><span id="speed-avg" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse max :</span><span id="speed-max" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse (m/s) :</span><span id="speed-ms" class="value">0.00 m/s</span></div>
+        <div class="data-item"><span class="label">Vitesse (mm/s) :</span><span id="speed-mms" class="value">0 mm/s</span></div>
     </div>
 
-    <div class="section-box">
-        <h3>📊 Vue brute GPS (Aviation)</h3>
-        <div class="data-row"><span class="data-label">Statut GPS :</span><span id="gps-status" class="data-value warning">En attente...</span></div>
-        <div class="data-row"><span class="data-label">Latitude :</span><span id="latitude" class="data-value">--</span></div>
-        <div class="data-row"><span class="data-label">Longitude :</span><span id="longitude" class="data-value">--</span></div>
-        <div class="data-row"><span class="data-label">Altitude (m) :</span><span id="altitude" class="data-value">-- m</span></div>
-        <div class="data-row"><span class="data-label">Altitude (ft) :</span><span id="altitude-ft" class="data-value">-- ft</span></div>
-        <div class="data-row"><span class="data-label">Précision (Horiz) :</span><span id="precision-m" class="data-value">-- m</span></div>
-        <div class="data-row"><span class="data-label">Précision (% affichée) :</span><span id="prec-gps" class="data-value">-- %</span></div>
-        <div class="data-row"><span class="data-label">Souterrain (Altitude 0):</span><span id="souterrain" class="data-value">Non</span></div>
-        <div class="data-row"><span class="data-label">Niveau à bulle :</span><span id="niveau-bulle" class="data-value">--°</span></div>
+    <div class="data-section">
+        <h2>🔭 Cosmique / Secondaire</h2>
+        <div class="data-item"><span class="label">Nombre de Mach (M) :</span><span id="mach" class="value">0.000</span></div>
+        <div class="data-item"><span class="label">% Lumière :</span><span id="light-perc" class="value">0.00000000%</span></div>
+        <div class="data-item"><span class="label">Distance totale (km) :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
+        <div class="data-item"><span class="label">Distance (m) :</span><span id="distance-m" class="value">0.00 m</span></div>
+    </div>
+
+    <div class="data-section">
+        <h2>📊 Vue brute GPS (Aviation)</h2>
+        <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
+        <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
+        <div class="data-item"><span class="label">Altitude (m) :</span><span id="altitude-m" class="value">-- m</span></div>
+        <div class="data-item"><span class="label">Altitude (ft) :</span><span id="altitude-ft" class="value">-- ft</span></div>
+        <div class="data-item"><span class="label">Précision (Horiz) :</span><span id="accuracy-horiz" class="value">-- m</span></div>
     </div>
     
-    <div class="section-box">
-        <h3>☀️🌙 Soleil & Lune (Heure Solaire Locale)</h3>
-        <div class="data-row"><span class="data-label">Culmination soleil :</span><span id="culm-soleil" class="data-value">--:--:--</span></div>
-        <div class="data-row"><span class="data-label">Heure solaire vraie (HSV) :</span><span id="hsv" class="data-value">--:--:--</span></div>
-        <div class="data-row"><span class="data-label">Heure solaire moyenne (HSM) :</span><span id="hsm" class="data-value">--:--:--</span></div>
-        <div class="data-row"><span class="data-label">Équation du temps :</span><span id="edt" class="data-value">-- s</span></div>
-        <div class="data-row"><span class="data-label">Lune phase :</span><span id="phase-lune" class="data-value">--%</span></div>
-        <div class="data-row"><span class="data-label">Lune magnitude :</span><span id="mag-lune" class="data-value">--</span></div>
-        <div class="data-row"><span class="data-label">Durée Jour Solaire :</span><span id="solar-day-duration" class="data-value">--:--:--</span></div>
-    </div>
-
-    <div class="section-box">
-        <h3>🔭 Cosmique / Secondaire</h3>
-        <div class="data-row"><span class="data-label">Distance totale (km) :</span><span id="distance-km" class="data-value">0.000 km</span></div>
-        <div class="data-row"><span class="data-label">Distance (m) :</span><span id="distance-m" class="data-value">-- m</span></div>
-        <div class="data-row"><span class="data-label">Distance (lumière) :</span><span id="distance-sl" class="data-value">-- s lumière</span></div>
-        <div class="data-row"><span class="data-label">Horloge Minecraft :</span><span id="horloge-minecraft" class="data-value">--:--:--</span></div>
-    </div>
-
-    <script src="navigation.js"></script> 
-
-    <!-- Enregistrement du Service Worker -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('sw.js')
-                .then(function(registration) {
-                    console.log('ServiceWorker enregistré avec le scope:', registration.scope);
-                }, function(err) {
-                    console.log('ServiceWorker non enregistré:', err);
-                });
-            });
-        }
-    </script>
+    <script src="script.js"></script>
 </body>
-                                                                                  </html>
+                                                                                                                                  </html>
