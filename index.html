@@ -9,10 +9,10 @@
         h1 { color: #2c3e50; }
         h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #333; margin-top: 30px; }
         .data-section { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .data-item { margin-bottom: 5px; display: flex; }
-        .label { font-weight: bold; color: #555; display: inline-block; width: 250px; }
-        .value { color: #007bff; }
-        #gps-status-text { font-weight: bold; color: gray; }
+        .data-item { margin-bottom: 5px; display: flex; flex-wrap: wrap; }
+        .label { font-weight: bold; color: #555; display: inline-block; width: 250px; min-width: 150px; }
+        .value { color: #007bff; font-weight: 600; }
+        #gps-status-text { font-weight: bold; }
         .controls button {
             padding: 10px 20px;
             font-size: 16px;
@@ -43,11 +43,11 @@
 
     <p style="margin-top: 15px;"><span class="label">Statut GPS :</span><span id="gps-status-text" class="value">Initialisation...</span></p>
 
-    <input type="hidden" id="watch-id" value="">
+    <input type="hidden" id="watch-id" value=""> 
 
     <div class="data-section">
         <h2>Temps & Vitesse (Ground Speed)</h2>
-        <div class="data-item"><span class="label">Temps total écoulé :</span><span id="elapsed-time" class="value">0 s</span></div>
+        <div class="data-item"><span class="label">Temps total écoulé :</span><span id="elapsed-time" class="value">00:00:00.00</span></div>
         <div class="data-item"><span class="label">Vitesse instantanée (Horiz) :</span><span id="speed-horiz" class="value">0.00 km/h</span></div>
         <div class="data-item"><span class="label">Vitesse verticale :</span><span id="speed-vert" class="value">0.00 m/s</span></div>
         <div class="data-item"><span class="label">Vitesse 3D (Totale) :</span><span id="speed-3d" class="value">0.00 km/h</span></div>
@@ -73,7 +73,7 @@
     </div>
     
     <div class="data-section">
-        <h2>🌡️ Météo</h2>
+        <h2>🌡️ Météo (Simulée/Incomplète)</h2>
         <div class="data-item"><span class="label">Température :</span><span id="temperature" class="value">-- °C</span></div>
         <div class="data-item"><span class="label">Pression :</span><span id="pression" class="value">-- hPa</span></div>
         <div class="data-item"><span class="label">Humidité :</span><span id="humidite" class="value">--%</span></div>
@@ -83,14 +83,14 @@
         <div class="data-item"><span class="label">Neige :</span><span id="neige" class="value">-- mm</span></div>
         <div class="data-item"><span class="label">Indice UV :</span><span id="uv-index" class="value">--</span></div>
         <div class="data-item"><span class="label">Qualité air :</span><span id="air-quality" class="value">--</span></div>
-        <div class="data-item"><span class="label">Point d’ébullition :</span><span id="boiling-point" class="value">-- °C</span></div>
+        <div class="data-item"><span class="label">Point d’ébullition (simulé) :</span><span id="boiling-point" class="value">-- °C</span></div>
     </div>
 
     <div class="data-section">
         <h2>🔭 Cosmique / Secondaire</h2>
         <div class="data-item"><span class="label">Nombre de Mach (M) :</span><span id="mach" class="value">0.000</span></div>
         <div class="data-item"><span class="label">% Lumière :</span><span id="light-perc" class="value">0.00000000%</span></div>
-        <div class="data-item"><span class="label">Distance totale (km) :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
+        <div class="data-item"><span class="label">Distance totale :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
         <div class="data-item"><span class="label">Distance (m) :</span><span id="distance-m" class="value">0.00 m</span></div>
         <div class="data-item"><span class="label">Horloge Minecraft :</span><span id="minecraft-time" class="value">--:--:--</span></div>
     </div>
@@ -102,10 +102,9 @@
         <div class="data-item"><span class="label">Altitude (m) :</span><span id="altitude-m" class="value">-- m</span></div>
         <div class="data-item"><span class="label">Altitude (ft) :</span><span id="altitude-ft" class="value">-- ft</span></div>
         <div class="data-item"><span class="label">Précision (Horiz) :</span><span id="accuracy-horiz" class="value">-- m</span></div>
-        <div class="data-item"><span class="label">Niveau à bulle :</span><span id="niveau-bul
-Commle" class="value">--°</span></div>
+        <div class="data-item"><span class="label">Niveau à bulle (Simulé) :</span><span id="niveau-bulle" class="value">--°</span></div>
     </div>
     
     <script src="script.js"></script>
 </body>
-</html>
+                                                                                     </html>
