@@ -64,19 +64,58 @@
         hr {
             border-color: #30363d;
         }
+        /* Styles des boutons */
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .controls button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        #start-btn {
+            background-color: #3fb950; /* Vert */
+            color: white;
+        }
+        #start-btn:hover:enabled {
+            background-color: #2da44e;
+        }
+        #stop-btn {
+            background-color: #f85149; /* Rouge */
+            color: white;
+        }
+        #stop-btn:hover:enabled {
+            background-color: #d73a49;
+        }
+        button:disabled {
+            background-color: #30363d;
+            cursor: not-allowed;
+            color: #8b949e;
+        }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
         <h1>🛰️ Tableau de Bord Espace-Temps</h1>
-        <p>Affiche les données de votre mouvement par rapport à l'espace-temps, selon la Relativité d'Einstein.</p>
+        <p>Contrôlez le suivi GPS pour démarrer et arrêter la mesure des données de vitesse et de relativité.</p>
+        
+        <div class="controls">
+            <button id="start-btn">▶️ Démarrer GPS</button>
+            <button id="stop-btn" disabled>⏹️ Arrêter / Réinitialiser</button>
+        </div>
         
         <div id="error-message" class="error" style="display: none;"></div>
         
         <div class="data-section">
             <h2>🌍 Position & Vitesse 3D (GPS)</h2>
-            <div class="data-item"><span class="label">Statut GPS :</span><span id="gps-status" class="value">En attente...</span></div>
+            <div class="data-item"><span class="label">Statut GPS :</span><span id="gps-status" class="value">Inactif</span></div>
             <hr>
             <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
             <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
@@ -122,4 +161,4 @@
     <script src="script.js"></script>
 
 </body>
-                </html>
+            </html>
