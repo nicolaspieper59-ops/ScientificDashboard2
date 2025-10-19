@@ -8,6 +8,14 @@ const C_SOUND_SEA_LEVEL = 343;      // Vitesse du son dans l'air sec à 20°C (m
 const EARTH_RADIUS = 6371000;       // Rayon de la Terre (m)
 const KMH_PER_MS = 3.6;             // Conversion m/s -> km/h
 const M_TO_AL = 1 / 9.461e15;       // Conversion mètres -> années-lumière
+const SECONDS_PER_HOUR = 3600;      // Secondes dans une heure
+const DEG_TO_RAD = Math.PI / 180;
+const RAD_TO_DEG = 180 / Math.PI;
+
+// --- CONSTANTES ASTRO (Simplifiées) ---
+const OBLIQUITY = 23.44 * DEG_TO_RAD; // Obliquité de l'écliptique (en radians)
+const ECCENTRICITY = 0.0167;        // Excentricité de l'orbite terrestre
+const LONGITUDE_PERIHELION = 282.9 * DEG_TO_RAD; // Longitude du périhélie (en radians)
 
 // --- ÉTAT DE L'APPLICATION ---
 const WATCH_OPTIONS = {
@@ -51,7 +59,9 @@ function resetDisplay() {
         'latitude', 'longitude', 'altitude', 'gps-accuracy', 'light-sim', 'underground',
         'solar-true', 'sun-culmination', 'lunar-phase-perc', 'lunar-magnitude', 'moon-rise', 'moon-set', 'moon-culmination',
         'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'uv-index', 'boiling-point', 'air-quality',
-        'heading', 'bubble-level', 'light-level', 'cap-dest', 'target-lat', 'target-lon'
+        'heading', 'bubble-level', 'light-level', 'cap-dest', 'target-lat', 'target-lon',
+        // Nouveaux champs pour l'équation du temps
+        'solar-mean', 'eot', 'eot-eccentricity', 'eot-obliquity', 'solar-longitude-val', 'solar-day-duration' 
     ];
 
     ids.forEach(id => {
@@ -102,7 +112,6 @@ function startGPS() {
     resetDisplay(); 
     startTime = Date.now();
     
-    // Si la première tentative échoue, l'erreur est gérée par handleGeolocationError
     watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
 
     initOrientationSensors(); 
@@ -140,10 +149,10 @@ function resetMaxSpeed() {
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = EARTH_RADIUS;
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    lat1 *= (Math.PI / 180);
-    lat2 *= (Math.PI / 180);
+    const dLat = (lat2 - lat1) * DEG_TO_RAD;
+    const dLon = (lon2 - lon1) * DEG_TO_RAD;
+    lat1 *= DEG_TO_RAD;
+    lat2 *= DEG_TO_RAD;
 
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
               Math.cos(lat1) * Math.cos(lat2) *
@@ -153,22 +162,82 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 function calculateBearing(lat1, lon1, lat2, lon2) {
-    const R = Math.PI / 180;
+    const R = DEG_TO_RAD;
     lat1 *= R; lon1 *= R; lat2 *= R; lon2 *= R;
 
     const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
     const x = Math.cos(lat1) * Math.sin(lat2) -
               Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
     
-    let bearing = Math.atan2(y, x) / R;
+    let bearing = Math.atan2(y, x) * RAD_TO_DEG;
     return (bearing + 360) % 360; 
 }
 
 
+// ===========================================
+// 4. CALCULS ASTRO DÉTAILLÉS (Equation du Temps, etc.)
+// ===========================================
+
+/**
+ * Calcule l'Équation du Temps et les composantes solaires.
+ * @returns {object} Les valeurs solaires calculées.
+ */
+function calculateSolarDetails() {
+    const now = new Date();
+    const J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
+    // Nombre de jours depuis J2000.0
+    const D = (now.getTime() - J2000.getTime()) / (1000 * 60 * 60 * 24);
+
+    // Anomalie moyenne du Soleil (M)
+    const M = (357.529 + 0.98560028 * D) * DEG_TO_RAD;
+    // Longitude solaire moyenne (L)
+    const L = (280.466 + 0.98564736 * D) * DEG_TO_RAD;
+    
+    // Composante de l'excentricité (C_e)
+    // Différence entre l'anomalie vraie (v) et l'anomalie moyenne (M)
+    const C_e = 2 * ECCENTRICITY * Math.sin(M) + 1.25 * ECCENTRICITY * ECCENTRICITY * Math.sin(2 * M);
+
+    // Vraie longitude solaire (λ)
+    const lambda = L + C_e;
+
+    // Composante d'obliquité (C_o)
+    // Conversion de la longitude solaire en ascension droite (α)
+    const alpha = Math.atan2(Math.cos(OBLIQUITY) * Math.sin(lambda), Math.cos(lambda));
+    
+    // L'équation du temps (EoT) en RADIANS
+    const EoT_rad = L - alpha;
+    
+    // Composante d'obliquité (en minutes)
+    // Simplification : le terme d'obliquité est souvent donné par (L-alpha) qui est l'EoT entière.
+    // On décompose ici de manière approximative pour les besoins d'affichage.
+    const Co_minutes = (alpha - L) * RAD_TO_DEG * 4; 
+    
+    // Composante d'excentricité (en minutes)
+    const Ce_minutes = C_e * RAD_TO_DEG * 4; 
+
+    // Équation du Temps (EoT) finale en MINUTES (radians vers minutes : * 4 minutes par degré)
+    const EoT_minutes = (EoT_rad * RAD_TO_DEG) * 4;
+    
+    // Durée du jour solaire (Approximation simple du jour solaire moyen)
+    const solarDayDuration = 86400; // Secondes (24 heures)
+
+    return {
+        eot: EoT_minutes,
+        eccentricityComponent: Ce_minutes,
+        obliquityComponent: Co_minutes,
+        solarLongitude: (lambda * RAD_TO_DEG) % 360,
+        solarDayDuration: solarDayDuration
+    };
+}
+
+
+/**
+ * Calcul de la phase lunaire (simple) et du temps Minecraft.
+ */
 function calculateAstroData(latitude, longitude) {
     const now = new Date();
     
-    // TEMPS MINECRAFT (Simplifié)
+    // --- TEMPS MINECRAFT ---
     const mcTicksPerDay = 24000;
     const msSinceMidnight = now.getTime() % 86400000;
     const mcTicks = (msSinceMidnight * mcTicksPerDay) / 86400000;
@@ -179,12 +248,42 @@ function calculateAstroData(latitude, longitude) {
 
     document.getElementById('mc-time').textContent = `${String(mcHour).padStart(2, '0')}:${String(mcMinute).padStart(2, '0')}:${String(mcSecond).padStart(2, '0')}`;
 
-    // TEMPS SOLAIRE (Simplifié)
-    const solarHour = (now.getUTCHours() + longitude / 15) % 24;
-    document.getElementById('solar-true').textContent = `${Math.floor(solarHour).toString().padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} (HSM)`;
-    document.getElementById('sun-culmination').textContent = '12:00:00 (HSM)';
+    // --- TEMPS SOLAIRE MOYEN (HSM) ---
+    // Heure Solaire Moyenne (HSM) basée sur l'heure UTC et la longitude.
+    const totalMinutesUT = now.getUTCHours() * 60 + now.getUTCMinutes() + now.getUTCSeconds() / 60;
+    const totalMinutesLSM = (totalMinutesUT + (longitude * 4) + 720) % 1440; // +4 minutes par degré
+    
+    const hsmHour = Math.floor(totalMinutesLSM / 60);
+    const hsmMinute = Math.floor(totalMinutesLSM % 60);
+    
+    const hsmDisplay = `${String(hsmHour).padStart(2, '0')}:${String(hsmMinute).padStart(2, '0')} (LSM)`;
+    document.getElementById('solar-mean').textContent = hsmDisplay;
+    document.getElementById('sun-culmination').textContent = '12:00:00 (LSM)';
 
-    // LUNE (Simplifié)
+    // --- CALCULS ÉQUATION DU TEMPS ---
+    const solarDetails = calculateSolarDetails();
+    
+    // Heure Solaire Vraie (HSV) = HSM + EoT
+    // Convertir l'EoT (en minutes) en millisecondes pour l'ajouter facilement.
+    const EoT_ms = solarDetails.eot * 60 * 1000; 
+    const nowLSM = new Date(now.getTime() + totalMinutesLSM * 60 * 1000 - totalMinutesUT * 60 * 1000); // Heure à LSM
+    const nowLSV = new Date(nowLSM.getTime() + EoT_ms);
+
+    const lsvHour = nowLSV.getHours(); // Local Time of the day
+    const lsvMinute = nowLSV.getMinutes();
+    const lsvSecond = nowLSV.getSeconds();
+    
+    const lsvDisplay = `${String(lsvHour).padStart(2, '0')}:${String(lsvMinute).padStart(2, '0')}:${String(lsvSecond).padStart(2, '0')} (LSV)`;
+    document.getElementById('solar-true').textContent = lsvDisplay;
+    
+    document.getElementById('eot').textContent = `${solarDetails.eot.toFixed(2)} min`;
+    document.getElementById('eot-eccentricity').textContent = `${solarDetails.eccentricityComponent.toFixed(2)} min`;
+    document.getElementById('eot-obliquity').textContent = `${solarDetails.obliquityComponent.toFixed(2)} min`;
+    document.getElementById('solar-longitude-val').textContent = `${solarDetails.solarLongitude.toFixed(2)} °`;
+    document.getElementById('solar-day-duration').textContent = `${solarDetails.solarDayDuration.toFixed(0)} s`;
+
+
+    // --- PHASE LUNAIRE (Approximation) ---
     const newMoonDate = new Date('2000-01-06T18:14:00Z').getTime();
     const diffDays = (now.getTime() - newMoonDate) / (1000 * 60 * 60 * 24);
     const lunarCycleDays = 29.530588853;
@@ -192,10 +291,16 @@ function calculateAstroData(latitude, longitude) {
     const phasePerc = (phaseDay / lunarCycleDays) * 100;
     
     document.getElementById('lunar-phase-perc').textContent = `${phasePerc.toFixed(1)}%`;
+    // Les autres champs astro nécessitent des bibliothèques dédiées
+    document.getElementById('lunar-magnitude').textContent = '--';
+    document.getElementById('moon-rise').textContent = '--';
+    document.getElementById('moon-set').textContent = '--';
+    document.getElementById('moon-culmination').textContent = '--';
 }
 
+
 // ===========================================
-// 4. GESTION DES CAPTEURS SPÉCIFIQUES ANDROID (Inchangée)
+// 5. GESTION DES CAPTEURS SPÉCIFIQUES ANDROID (Inchangée)
 // ===========================================
 
 function handleDeviceOrientation(event) {
@@ -217,14 +322,13 @@ function stopOrientationSensors() {
 
 
 // ===========================================
-// 5. FONCTION PRINCIPALE D'AFFICHAGE (updateDisplay)
+// 6. FONCTION PRINCIPALE D'AFFICHAGE (updateDisplay)
 // ===========================================
 
 /** Met à jour tous les affichages à partir des données GPS. */
 function updateDisplay(position) {
     const { latitude, longitude, accuracy, timestamp } = position.coords;
     
-    // Utiliser la vitesse fournie par le GPS (null si non fournie)
     const speed = position.coords.speed;
     const altitude = position.coords.altitude; 
     const heading = position.coords.heading || null;
@@ -232,12 +336,8 @@ function updateDisplay(position) {
     const currentTime = timestamp;
     const elapsedTimeS = (currentTime - startTime) / 1000;
 
-    // --- CALCULS DE VITESSE ET DISTANCE (LOGIQUE RESTAURÉE) ---
-    
-    // Vitesse horizontale instantanée (en m/s)
-    let speedMS_Horiz = speed !== null ? speed : 0; // Prioriser la vitesse GPS, sinon 0.
-    
-    // Vitesse verticale instantanée (en m/s)
+    // --- CALCULS DE VITESSE ET DISTANCE (Logique de la première version restaurée) ---
+    let speedMS_Horiz = speed !== null ? speed : 0; 
     let speedMS_Vert = 0;
     
     if (lastPosition && lastPosition.coords.latitude !== undefined) { 
@@ -250,28 +350,21 @@ function updateDisplay(position) {
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
             totalDistanceM += distHorizM;
 
-            // 2. CALCULER LA VITESSE HORIZONTALE à partir de la distance si la vitesse GPS était manquante (speed === null).
             if (speed === null) {
                  speedMS_Horiz = distHorizM / dt;
             }
 
-            // 3. CALCULER LA VITESSE VERTICALE uniquement si les deux altitudes sont valides
             if (altitude !== null && dAlt !== null) { 
                 speedMS_Vert = (altitude - dAlt) / dt;
             }
         }
     }
     
-    // 4. VITESSE 3D (Vitesse Horizontale² + Vitesse Verticale²)
     const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
-    
-    // Vitesse moyenne totale (basée sur la distance horizontale cumulée)
     const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0;
-    
-    // Mise à jour de la vitesse max
     if (speedMS_3D > maxSpeedMS) { maxSpeedMS = speedMS_3D; }
 
-    // --- CALCULS RELATIVISTES ET COSMOS (Basé sur speedMS_3D) ---
+    // --- CALCULS RELATIVISTES ET COSMOS ---
     const percLight = (speedMS_3D / C_LIGHT) * 100;
     const percSound = (speedMS_3D / C_SOUND_SEA_LEVEL) * 100;
     const distCosmicSL = totalDistanceM / C_LIGHT; 
@@ -279,9 +372,9 @@ function updateDisplay(position) {
     
     // --- AFFICHAGE TEMPS/VITESSE ---
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(1)} s`;
-    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(4)} km/h`;
-    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(4)} km/h`;
-    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(4)} km/h`;
+    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(1)} km/h`;
+    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(1)} km/h`; 
+    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(1)} km/h`;
     document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(2)} m/s`;
     document.getElementById('speed-mms').textContent = `${(speedMS_3D * 1000).toFixed(0)} mm/s`;
 
@@ -297,7 +390,6 @@ function updateDisplay(position) {
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
     
-    // Affichage Altitude/Précision : affiche '--' si les données sont null
     document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(0)} m` : '--';
     document.getElementById('gps-accuracy').textContent = accuracy !== null ? `${accuracy.toFixed(0)} m` : '--';
     document.getElementById('underground').textContent = altitude !== null ? (altitude < 0 ? 'Oui' : 'Non') : '--';
@@ -325,7 +417,7 @@ function updateDisplay(position) {
 }
 
 // ===========================================
-// 6. INITIALISATION (Inchangée)
+// 7. INITIALISATION (Inchangée)
 // ===========================================
 
 function setTargetDestination() {
