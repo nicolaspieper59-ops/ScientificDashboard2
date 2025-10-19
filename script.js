@@ -3,6 +3,7 @@
 // ===================================================================
 
 const C_LIGHT = 299792458;      // Vitesse de la lumière en m/s
+const LIGHT_YEAR_IN_M = 9.461e15; // Année lumière en mètres
 const AIR_SPEED_OF_SOUND = 343; // Vitesse du son dans l'air standard (m/s)
 const MS_TO_KMH = 3.6;
 const FT_PER_METER = 3.28084;
@@ -61,16 +62,13 @@ function getCurrentMass() {
     return isNaN(mass) || mass <= 0 ? 70 : mass;
 }
 
-/** Obtient l'heure actuelle corrigée (UTC Atomique Estimée). */
 function getAtomicTime() {
-    // Si la synchro a échoué (offset = 0), retourne simplement l'heure du système
     const currentTimeMs = Date.now() + utcOffsetMs;
     return new Date(currentTimeMs);
 }
 
 /** Calcule la distance euclidienne (3D) entre deux objets Position GPS. */
 function calculateDistance3D(pos1, pos2) {
-    // Utiliser 0 si l'altitude n'est pas fiable ou non présente
     const alt1 = (pos1.coords.altitude !== null && pos1.coords.altitudeAccuracy < ACCURACY_THRESHOLD) ? pos1.coords.altitude : 0;
     const alt2 = (pos2.coords.altitude !== null && pos2.coords.altitudeAccuracy < ACCURACY_THRESHOLD) ? pos2.coords.altitude : 0;
     
@@ -86,7 +84,6 @@ function calculateDistance3D(pos1, pos2) {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance2D = R * c; 
 
-    // Calcul de la variation d'altitude (seulement si les deux sont fiables)
     const dAlt = (alt1 !== 0 && alt2 !== 0) ? (alt2 - alt1) : 0;
     
     return Math.sqrt(distance2D * distance2D + dAlt * dAlt);
@@ -108,10 +105,7 @@ function formatTime(totalSeconds) {
 // --- 3. GESTION DU TEMPS ET SYNCHRONISATION UTC ATOMIQUE ---
 // ===================================================================
 
-/** Tente de se synchroniser avec une source de temps UTC externe. */
 async function syncWithAtomicTime() {
-    console.log("Tentative de synchronisation de l'heure atomique via API...");
-    
     try {
         const localBeforeFetch = Date.now();
         const response = await fetch(TIME_API_URL);
@@ -135,12 +129,11 @@ async function syncWithAtomicTime() {
         
     } catch (error) {
         console.error("Échec de la synchronisation de l'heure atomique. Utilisation de l'heure du système.");
-        utcOffsetMs = 0; // Utilisation de l'heure système non corrigée
+        utcOffsetMs = 0; 
         return false;
     }
 }
 
-/** Met à jour le chronomètre et retourne le temps total en secondes. */
 function updateTime() {
     let totalTimeMS = totalElapsedTime;
     if (sessionStartTime > 0) {
@@ -178,16 +171,14 @@ setInterval(updateMinecraftTime, 1000);
 // --- 4. CALCULS SECONDAIRES (Astro, Cosmique, Météo Réelle) ---
 // ===================================================================
 
-/** Récupère les données météo réelles via une API externe. */
 async function fetchRealMeteoData(lat, lon) {
     if (OPENWEATHER_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
-        console.warn("Clé API OpenWeatherMap manquante. La section Météo/Science réelle ne fonctionnera pas.");
+        console.warn("Clé API OpenWeatherMap manquante.");
         return;
     }
 
-    // Limiter les appels API à un toutes les 10 minutes
     if (lastWeatherData && (Date.now() - lastWeatherData.timestamp) < 600000) { 
-        return; // Utilise les données en cache
+        return; 
     }
 
     try {
@@ -206,17 +197,26 @@ async function fetchRealMeteoData(lat, lon) {
         };
         
     } catch (error) {
-        console.error("Échec de la récupération des données météo. Utilisation des valeurs de fallback.");
+        console.error("Échec de la récupération des données météo.");
         lastWeatherData = null;
     }
 }
 
-function calculateCosmicData(speedMS) {
-    const mach = speedMS / AIR_SPEED_OF_SOUND;
-    document.getElementById('mach').textContent = mach.toFixed(3);
+/** Mise à jour pour les pourcentages de vitesse et les distances cosmiques. */
+function calculateCosmicData(speedMS, totalDistanceM) {
+    // Vitesse
+    const machPerc = (speedMS / AIR_SPEED_OF_SOUND) * 100;
+    const lightPerc = (speedMS / C_LIGHT) * 100;
 
-    const lightPercent = (speedMS / C_LIGHT) * 100;
-    document.getElementById('light-perc').textContent = `${lightPercent.toExponential(8)}%`;
+    document.getElementById('mach-perc').textContent = `${machPerc.toFixed(2)}%`;
+    document.getElementById('light-perc').textContent = `${lightPerc.toExponential(8)}%`;
+
+    // Distance
+    const distanceSL = totalDistanceM / C_LIGHT;
+    const distanceAL = totalDistanceM / LIGHT_YEAR_IN_M;
+
+    document.getElementById('distance-sl').textContent = `${distanceSL.toFixed(3)} s lumière`;
+    document.getElementById('distance-al').textContent = `${distanceAL.toExponential(2)} al`;
 }
 
 function updateAstro(lat, lon) {
@@ -246,12 +246,10 @@ function updateAstro(lat, lon) {
     document.getElementById('lune-phase').textContent = (moon.fraction * 100).toFixed(1) + '%';
 }
 
-/** Met à jour les grandeurs de Physique, Chimie et SVT en utilisant les données météo réelles. */
 function updateRealScience(lat, speedMS_3D, altitudeM) {
     
     const isMeteoAvailable = !!lastWeatherData;
     
-    // Valeurs de base (priorité à la météo réelle)
     const alt = altitudeM !== null ? altitudeM : 0; 
     const pressureHpa = isMeteoAvailable ? lastWeatherData.main.pressure : SEA_LEVEL_PRESSURE;
     const tempKelvin = isMeteoAvailable ? lastWeatherData.tempKelvin : (15 + KELVIN_OFFSET);
@@ -259,12 +257,9 @@ function updateRealScience(lat, speedMS_3D, altitudeM) {
     const latRad = lat * (Math.PI / 180);
 
     // --- 1. PHYSIQUE & MÉCANIQUE DES FLUIDES ---
-    
     const pressurePa = pressureHpa * 100;
     const densityKgM3 = pressurePa / (R_SPECIFIC_AIR * tempKelvin); 
-
     const porteeHorizonKm = Math.sqrt(2 * EARTH_RADIUS_AVG_KM * (alt / 1000));
-    
     const currentMass = getCurrentMass();
     const coriolisForceNewton = 2 * currentMass * OMEGA_EARTH * speedMS_3D * Math.sin(latRad);
 
@@ -339,7 +334,6 @@ function updateDisplay(position) {
             }
         }
     } else {
-        // Initialisation ou premier point - assurez-vous que les variables sont à zéro
         lastSpeedMS = 0; 
         acceleration = 0;
     }
@@ -348,7 +342,6 @@ function updateDisplay(position) {
     const speedMS_Horiz_Calc = Math.sqrt(
         Math.max(0, speedMS_Reconstituée_3D * speedMS_Reconstituée_3D - verticalSpeed * verticalSpeed)
     );
-    const speedKmh_3D_Reconstituée = msToKmh(speedMS_Reconstituée_3D);
     const speedKmh_Horiz_Calc = msToKmh(speedMS_Horiz_Calc);
 
     // 3. CALCULS PHYSIQUES (FORCE, ENERGIE, G)
@@ -377,19 +370,30 @@ function updateDisplay(position) {
     document.getElementById('acceleration-ms2').textContent = `${Math.abs(acceleration).toFixed(2)} m/s²`;
 
 
-    // 5. MISE À JOUR DE L'AFFICHAGE (POSITION, VITESSE, DISTANCE)
+    // 5. MISE À JOUR DE L'AFFICHAGE (Vitesse, Distance, Précision)
     const totalTimeSec = updateTime(); 
     const avgSpeedMS = totalTimeSec > 5 ? totalDistance / totalTimeSec : 0; 
+    const avgSpeedKmh = msToKmh(avgSpeedMS);
+
     if (speedKmh_Horiz_Calc > maxSpeed) { maxSpeed = speedKmh_Horiz_Calc; }
 
-    document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(2)} m/s`;
-    document.getElementById('speed-horiz').textContent = `${speedKmh_Horiz_Calc.toFixed(2)} km/h`;
-    document.getElementById('speed-3d').textContent = `${speedKmh_3D_Reconstituée.toFixed(2)} km/h`;
-    
+    // Vitesse (Nouveau Format)
+    document.getElementById('speed-inst-kmh').textContent = `${speedKmh_Horiz_Calc.toFixed(2)} km/h`;
+    document.getElementById('speed-ms').textContent = `${speedMS_Horiz_Calc.toFixed(2)} m/s`;
+    document.getElementById('speed-mms').textContent = `${(speedMS_Horiz_Calc * 1000).toFixed(0)} mm/s`;
+    document.getElementById('speed-avg').textContent = `${avgSpeedKmh.toFixed(2)} km/h`;
     document.getElementById('speed-max').textContent = `${maxSpeed.toFixed(2)} km/h`;
+    document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(2)} m/s`;
 
-    document.getElementById('distance-totale-km').textContent = `${(totalDistance / 1000).toFixed(3)} km`;
+
+    // Distance (Nouveau Format)
+    const totalDistanceM = totalDistance;
+    document.getElementById('distance-totale-km').textContent = `${(totalDistanceM / 1000).toFixed(3)} km`;
+    document.getElementById('distance-m').textContent = `${totalDistanceM.toFixed(0)} m`;
+    document.getElementById('distance-mm').textContent = `${(totalDistanceM * 1000).toFixed(0)} mm`;
     
+
+    // Position & Précision
     const altitudeM = coords.altitude !== null && coords.altitudeAccuracy <= ACCURACY_THRESHOLD ? coords.altitude : null;
     document.getElementById('latitude').textContent = coords.latitude !== null ? coords.latitude.toFixed(6) : '--';
     document.getElementById('longitude').textContent = coords.longitude !== null ? coords.longitude.toFixed(6) : '--';
@@ -402,10 +406,16 @@ function updateDisplay(position) {
         document.getElementById('altitude-ft').textContent = '-- ft (non fiable)';
     }
 
-    document.getElementById('accuracy-horiz').textContent = `${coords.accuracy.toFixed(2)} m`;
+    // Précision (Nouveau Format)
+    const accuracy = coords.accuracy;
+    document.getElementById('accuracy-horiz').textContent = `${accuracy.toFixed(2)} m`;
+    // Calcul de la précision en pourcentage (Arbitraire: basé sur une précision max théorique de 1000m)
+    const accuracyPerc = Math.min(100, (1 - Math.min(1, accuracy / 1000)) * 100);
+    document.getElementById('accuracy-perc').textContent = `${accuracyPerc.toFixed(1)} %`;
 
-    // 6. CALCULS AVANCÉS (MÉTROLOGIE NON SIMULÉE)
-    calculateCosmicData(speedMS_Reconstituée_3D);
+
+    // 6. CALCULS AVANCÉS
+    calculateCosmicData(speedMS_Horiz_Calc, totalDistanceM); // Utilise Vitesse Horizontale et Distance Totale
     updateAstro(coords.latitude, coords.longitude);
     
     // Appel API Météo (asynchrone, ne bloque pas)
@@ -435,21 +445,19 @@ function errorCallback(error) {
     document.getElementById('gps-status-text').textContent = message;
     document.getElementById('gps-status-text').style.color = 'red';
     
-    stopGPS(false); // Arrête le chronomètre mais pas le watchID pour retenter un fix
+    stopGPS(false); 
 }
 
 function startGPS() {
     if (watchId) return;
 
     if ('geolocation' in navigator) {
-        // Synchroniser l'heure si la dernière synchro est trop ancienne
         if (Date.now() - lastUtcSyncTime > SYNC_INTERVAL_MS || lastUtcSyncTime === 0) {
-            syncWithAtomicTime(); // Lance la synchro en arrière-plan (non bloquant)
+            syncWithAtomicTime(); 
         }
 
         const options = { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }; 
         
-        // C'est l'appel qui doit fonctionner en priorité
         watchId = navigator.geolocation.watchPosition(updateDisplay, errorCallback, options);
 
         document.getElementById('btn-start').disabled = true;
@@ -465,5 +473,4 @@ function startGPS() {
 }
 
 function stopGPS(clearGPSWatch = true) {
-    if (sessionStartTime > 0) {
-        totalElapsedTime += (Date.now() - sessionStartTime);
+    if (sessionSta
