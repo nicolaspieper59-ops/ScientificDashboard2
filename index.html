@@ -3,210 +3,189 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Console 3D & Astro Mobile</title>
-    <style>
-        /* =========================================== */
-        /* BASE & TYPOGRAPHIE */
-        /* =========================================== */
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
-            margin: 0;
-            padding: 10px; /* Moins de padding pour gagner de la place */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        h1 {
-            color: #4CAF50;
-            margin: 10px 0 20px 0;
-            font-size: 1.5em; /* Taille réduite */
-            text-align: center;
-        }
-        /* Style général des boutons */
-        .controls button {
-            padding: 8px 15px;
-            border: none;
-            border-radius: 5px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            margin-bottom: 5px; /* Espace vertical entre les boutons */
-        }
-        /* Affichage d'erreur */
-        #error-message {
-            color: #ff5722;
-            background-color: #3e2723;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            display: none;
-            width: 90%;
-            text-align: center;
-        }
-
-        /* =========================================== */
-        /* AFFICHAGE HAUT DROIT (HSV) */
-        /* =========================================== */
-        #header-display {
-            position: fixed; 
-            top: 0px;
-            right: 0px;
-            background-color: #212121;
-            color: #FFEB3B;
-            padding: 5px 10px; 
-            font-size: 1.1em; /* Réduction de taille */
-            font-weight: bold;
-            border-bottom-left-radius: 5px;
-            z-index: 1000; 
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
-        }
-
-        /* =========================================== */
-        /* CARTE PRINCIPALE (VITESSE ET DISTANCE) */
-        /* =========================================== */
-        .main-card {
-            background-color: #1e1e1e;
-            width: 95%; /* Prend presque toute la largeur */
-            padding: 15px;
-            margin-bottom: 15px;
-            border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-            text-align: center;
-        }
-        .main-value {
-            font-size: 2.5em; /* TRÈS GRANDE POLICE pour la vitesse */
-            font-weight: bold;
-            color: #4CAF50; /* Vert pour la vitesse */
-            margin: 5px 0;
-            display: block;
-        }
-        .main-label {
-            font-size: 0.9em;
-            color: #a0a0a0;
-            margin-bottom: 5px;
-        }
-
-        /* =========================================== */
-        /* GRILLE POUR PETIT ÉCRAN (Liste Verticale) */
-        /* =========================================== */
-        .dashboard-grid {
-            /* Sur petit écran, on force une colonne unique */
-            display: grid;
-            grid-template-columns: 1fr; 
-            gap: 15px;
-            width: 95%;
-        }
-        .data-section {
-            background-color: #1e1e1e;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-        }
-        .data-section h2 {
-            color: #7b7b7b;
-            border-bottom: 1px solid #333;
-            padding-bottom: 8px;
-            margin-bottom: 10px;
-            font-size: 1.1em;
-        }
-        .data-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            font-size: 0.9em; /* Légèrement réduit pour l'espace */
-            border-bottom: 1px dotted #333;
-        }
-        .value {
-            font-weight: bold;
-            color: #ffffff;
-            font-family: 'Consolas', monospace;
-        }
-
-        /* MEDIA QUERY POUR LES GRANDS ÉCRANS (Tablette/Desktop) */
-        @media (min-width: 768px) {
-            .dashboard-grid {
-                /* Retour à la grille 2x2 */
-                grid-template-columns: repeat(2, 1fr);
-                max-width: 1200px;
-            }
-            .main-card {
-                width: 100%;
-                /* Sur grand écran, la taille peut être un peu plus grande */
-                font-size: 1.8em; 
-            }
-        }
-    </style>
+    <title>Géo-Astro-Vitesse 3D</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <div id="header-display">
-        ☀️ <span id="solar-true-header">--:--:--</span> HSV
-    </div>
-
-    <h1>🚀 Console 3D & Astro-Réaliste</h1>
-    <div id="error-message"></div>
-
-    <div class="main-card">
-        <span class="main-label">Vitesse 3D Instantanée</span>
-        <span id="speed-3d-inst" class="main-value">-- km/h</span>
-        <div style="height: 10px;"></div>
-        <span class="main-label">Distance Totale Parcourue</span>
-        <span id="distance-km-m" class="main-value" style="font-size: 1.8em; color: #FFC107;">-- km | -- m</span>
-    </div>
-    
-    <div class="controls">
-        <button id="start-btn">▶ Démarrer GPS/Capteurs</button>
-        <button id="stop-btn" disabled>■ Arrêter</button>
-        <button id="reset-max-btn" disabled>↺ Réinitialiser Max</button>
-        <button id="set-target-btn">📍 Aller</button>
-    </div>
-    
-    <div class="dashboard-grid">
-
-        <div class="data-section">
-            <h2>⏱️ Vitesse & Temps (Détails)</h2>
-            <div class="data-item"><span class="label">Temps Écoulé :</span><span id="elapsed-time" class="value">0.00 s</span></div>
-            <div class="data-item"><span class="label">Vitesse Moyenne Totale :</span><span id="speed-avg" class="value">-- km/h</span></div>
-            <div class="data-item"><span class="label">Vitesse Maximale (3D) :</span><span id="speed-max" class="value">-- km/h</span></div>
-            <div class="data-item"><span class="label">Vitesse en m/s :</span><span id="speed-ms" class="value">-- m/s</span></div>
-            <div class="data-item"><span class="label">Rapport Vitesse Lumière :</span><span id="perc-light" class="value">--%</span></div>
-            <div class="data-item"><span class="label">Rapport Vitesse Son :</span><span id="perc-sound" class="value">--%</span></div>
+    <header>
+        <h1>Analyse Géospatiale 3D</h1>
+        <div class="header-time-sync">
+            <span class="label">HSV (Temps Solaire Vrai):</span>
+            <span id="solar-true-header">--:--:--</span>
         </div>
+        <div id="error-message" class="error-message" style="display: none;"></div>
+    </header>
 
-        <div class="data-section">
-            <h2>🌍 Position & Précision</h2>
-            <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
-            <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
-            <div class="data-item"><span class="label">Altitude :</span><span id="altitude" class="value">-- m</span></div>
-            <div class="data-item"><span class="label">Précision GPS (Horiz) :</span><span id="gps-accuracy" class="value">-- m</span></div>
-            <div class="data-item"><span class="label">Cap / Cap Destination :</span><span id="heading" class="value">--°</span><span id="cap-dest" class="value">--°</span></div>
-            <div class="data-item"><span class="label">Sous-Sol (Altitude < 0) :</span><span id="underground" class="value">--</span></div>
-        </div>
+    <main>
         
-        <div class="data-section">
-            <h2>☀️🌙 Astro & Temps Détaillé</h2>
-            <div class="data-item"><span class="label">Heure Solaire Vraie (HSV) :</span><span id="solar-true" class="value">--</span></div>
-            <div class="data-item"><span class="label">Heure Solaire Moyenne (HSM) :</span><span id="solar-mean" class="value">--</span></div>
-            <div class="data-item"><span class="label">Équation du Temps (EoT) :</span><span id="eot" class="value">-- min</span></div>
-            <div class="data-item"><span class="label">Longitude Solaire Vraie :</span><span id="solar-longitude-val" class="value">-- °</span></div>
-            <div class="data-item"><span class="label">Lune Phase (Illumination) :</span><span id="lunar-phase-perc" class="value">--%</span></div>
-            <div class="data-item"><span class="label">⏰ Horloge Minecraft :</span><span id="mc-time" class="value">00:00:00</span></div>
-        </div>
+        <section class="controls">
+            <button id="start-btn">▶️ Démarrer GPS/Capteurs</button>
+            <button id="stop-btn" disabled>⏹️ Arrêter</button>
+            <button id="reset-max-btn" disabled>🔄 Réinitialiser Max</button>
+            <button id="set-target-btn">📍 Aller</button>
+        </section>
 
-        <div class="data-section">
-            <h2>☁️ Météo & Capteurs (Local/API)</h2>
-            <div class="data-item"><span class="label">Température Air (API) :</span><span id="air-temp" class="value">-- °C</span></div>
-            <div class="data-item"><span class="label">Pression Atmosphérique :</span><span id="pressure" class="value">-- hPa</span></div>
-            <div class="data-item"><span class="label">Vitesse du Vent (API) :</span><span id="wind-speed" class="value">-- km/h</span></div>
-            <div class="data-item"><span class="label">Humidité (API) :</span><span id="humidity" class="value">--%</span></div>
-            <div class="data-item"><span class="label">Niveau à Bulle (Pitch/Roll) :</span><span id="bubble-level" class="value">--°</span></div> 
-            <div class="data-item"><span class="label">Point d'Ébullition (Calc) :</span><span id="boiling-point" class="value">-- °C</span></div>
-        </div>
+        <section class="card large-card performance-section">
+            <h2>Vitesse et Performance 🚀</h2>
+            <div class="main-display">
+                <span id="speed-3d-inst" class="main-value">0.00 km/h</span>
+                <span class="main-unit">VITESSE ACTUELLE (3D)</span>
+            </div>
+            
+            <div class="data-grid two-cols">
+                <div>
+                    <span class="label">Vitesse Max :</span>
+                    <span id="speed-max">0.00 km/h</span>
+                </div>
+                <div>
+                    <span class="label">Vitesse Moyenne :</span>
+                    <span id="speed-avg">-- km/h</span>
+                </div>
+            </div>
+            
+            <div class="data-grid two-cols">
+                <div>
+                    <span class="label">Distance Totale :</span>
+                    <span id="distance-km-m">-- km | -- m</span>
+                </div>
+                <div>
+                    <span class="label">Temps Écoulé :</span>
+                    <span id="elapsed-time">0.00 s</span>
+                </div>
+            </div>
+
+            <div class="data-grid two-cols detail-grid">
+                <div>
+                    <span class="label">Vitesse (m/s) :</span>
+                    <span id="speed-ms">0.00 m/s</span>
+                </div>
+                <div>
+                    <span class="label">% Vitesse du Son :</span>
+                    <span id="perc-sound">--%</span>
+                </div>
+                <div>
+                    <span class="label">% Vitesse Lumière :</span>
+                    <span id="perc-light">--%</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="card geo-section">
+            <h2>Géolocalisation 🛰️</h2>
+            <div class="data-grid three-cols">
+                <div>
+                    <span class="label">Latitude :</span>
+                    <span id="latitude">--</span>
+                </div>
+                <div>
+                    <span class="label">Longitude :</span>
+                    <span id="longitude">--</span>
+                </div>
+                <div>
+                    <span class="label">Altitude :</span>
+                    <span id="altitude">-- m</span>
+                </div>
+            </div>
+
+            <div class="data-grid three-cols">
+                <div>
+                    <span class="label">Précision GPS :</span>
+                    <span id="gps-accuracy">-- m</span>
+                </div>
+                <div>
+                    <span class="label">Cap (Heading) :</span>
+                    <span id="heading">N/A</span>
+                </div>
+                <div>
+                    <span class="label">Cap vers cible :</span>
+                    <span id="cap-dest">N/A</span>
+                </div>
+            </div>
+
+            <div class="data-grid one-col">
+                <span class="label">Sous-sol / Négatif :</span>
+                <span id="underground">N/A</span>
+            </div>
+        </section>
         
-    </div>
-    
+        <section class="card astro-section">
+            <h2>Synchronisation et Astro ⏳</h2>
+            
+            <div class="data-grid two-cols">
+                <div>
+                    <span class="label">Temps Solaire Vrai (HSV) :</span>
+                    <span id="solar-true">--:--:-- (HSV)</span>
+                </div>
+                <div>
+                    <span class="label">Temps Solaire Moyen (HSM) :</span>
+                    <span id="solar-mean">--:--</span>
+                </div>
+            </div>
+
+            <div class="data-grid two-cols detail-grid">
+                <div>
+                    <span class="label">Équation du Temps (EoT) :</span>
+                    <span id="eot">-- min</span>
+                </div>
+                <div>
+                    <span class="label">Longitude Solaire :</span>
+                    <span id="solar-longitude-val">-- °</span>
+                </div>
+            </div>
+
+            <div class="data-grid two-cols">
+                <div>
+                    <span class="label">Phase Lunaire (Illumination) :</span>
+                    <span id="lunar-phase-perc">--%</span>
+                </div>
+                <div>
+                    <span class="label">Temps Minecraft :</span>
+                    <span id="mc-time">00:00:00</span>
+                </div>
+            </div>
+        </section>
+        
+        <section class="card sensor-weather-section">
+            <h2>Capteurs & Météo 🌡️</h2>
+            
+            <div class="data-grid two-cols">
+                <div>
+                    <span class="label">Niveau à Bulle (P/R) :</span>
+                    <span id="bubble-level">N/A</span>
+                </div>
+                <div>
+                    <span class="label">Température Air :</span>
+                    <span id="air-temp">N/A</span>
+                </div>
+            </div>
+            
+            <div class="data-grid three-cols detail-grid">
+                <div>
+                    <span class="label">Pression (hPa) :</span>
+                    <span id="pressure">N/A</span>
+                </div>
+                <div>
+                    <span class="label">Humidité :</span>
+                    <span id="humidity">N/A</span>
+                </div>
+                <div>
+                    <span class="label">Vent :</span>
+                    <span id="wind-speed">N/A</span>
+                </div>
+                <div>
+                    <span class="label">Point Ébullition (Altitude) :</span>
+                    <span id="boiling-point">N/A</span>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Projet Géo-Astro | Synchronisation temps via NTP Web (WorldTimeAPI)</p>
+    </footer>
+
     <script src="script.js"></script>
 </body>
-            </html>
+                </html>
