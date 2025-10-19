@@ -19,7 +19,7 @@ const ECCENTRICITY = 0.0167;        // Excentricité de l'orbite terrestre
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
     maximumAge: 500,
-    timeout: 10000 
+    timeout: 15000 // Augmentation du timeout à 15s pour les zones difficiles
 };
 let watchID = null;         
 let lastPosition = null;
@@ -58,8 +58,7 @@ const errorDisplay = document.getElementById('error-message');
  */
 async function synchronizeTime() {
     try {
-        // NOTE: Utiliser un service fiable ou une API de temps pour la production
-        const response = await fetch('https://time.is/json');
+        const response = await fetch('https://time.is/json'); // Utilisation d'un service public de temps
         const data = await response.json();
         
         const serverTimeUTC = data.utc_datetime; 
@@ -67,8 +66,6 @@ async function synchronizeTime() {
         const localTimeMS = Date.now();
         
         timeOffsetMS = serverTimeMS - localTimeMS;
-        console.log(`[TIME SYNC] Décalage calculé: ${timeOffsetMS.toFixed(0)} ms`);
-
     } catch (e) {
         console.warn("Erreur de synchronisation NTP simulée. Utilisation de l'horloge locale.");
         timeOffsetMS = 0; 
@@ -91,27 +88,25 @@ function resetDisplay() {
     targetLon = null;
     
     // Réinitialisation des éléments DOM
-    const ids = ['elapsed-time', 'speed-3d-inst', 'speed-avg', 'speed-max', 'speed-ms', 'speed-mms',
-        'perc-light', 'perc-sound', 'distance-km-m', 'distance-mm', 'distance-cosmic-s', 'distance-cosmic-al',
+    const ids = ['elapsed-time', 'speed-3d-inst', 'speed-avg', 'speed-max', 'speed-ms', 
+        'perc-light', 'perc-sound', 'distance-km-m',
         'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground',
-        'solar-true', 'solar-mean', 'eot', 'eot-eccentricity', 'eot-obliquity', 'solar-longitude-val', 'solar-day-duration',
-        'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'uv-index', 'boiling-point', 
-        'heading', 'bubble-level', 'light-level', 'cap-dest', 'solar-true-header'
+        'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 
+        'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 
+        'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header'
     ];
 
     ids.forEach(id => {
         const element = document.getElementById(id);
         if (element) {
-            // Logique de réinitialisation avec les bonnes unités...
             if (['altitude', 'gps-accuracy'].includes(id)) element.textContent = '-- m';
-            else if (['eot', 'eot-eccentricity', 'eot-obliquity'].includes(id)) element.textContent = '-- min';
+            else if (['eot'].includes(id)) element.textContent = '-- min';
             else if (['solar-longitude-val'].includes(id)) element.textContent = '-- °';
             else if (['heading', 'cap-dest', 'bubble-level'].includes(id)) element.textContent = '--°';
             else if (['lunar-phase-perc', 'humidity', 'perc-light', 'perc-sound'].includes(id)) element.textContent = '--%';
             else if (id === 'air-temp' || id === 'boiling-point') element.textContent = '-- °C';
             else if (id === 'pressure') element.textContent = '-- hPa';
             else if (id === 'wind-speed') element.textContent = '-- km/h';
-            else if (id === 'solar-day-duration') element.textContent = '-- s';
             else element.textContent = '--';
         }
     });
@@ -128,21 +123,21 @@ function resetDisplay() {
 }
 
 function handleGeolocationError(error) {
-    stopGPS(false);
+    // Ne pas arrêter le GPS immédiatement, mais afficher un avertissement si le timeout arrive.
     errorDisplay.style.display = 'block';
 
     switch (error.code) {
         case error.PERMISSION_DENIED:
-            errorDisplay.textContent = "❌ L'accès à la localisation a été refusé.";
+            errorDisplay.textContent = "❌ L'accès à la localisation a été refusé. Veuillez l'autoriser dans les paramètres du téléphone/navigateur.";
             break;
         case error.POSITION_UNAVAILABLE:
-            errorDisplay.textContent = "⚠️ Position non disponible. (Assurez-vous d'être en extérieur).";
+            errorDisplay.textContent = "⚠️ Position non disponible. (Assurez-vous d'être en extérieur ou avec vue dégagée).";
             break;
         case error.TIMEOUT:
-            errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé.";
+            errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé (15s). Le signal est faible ou perdu.";
             break;
         default:
-            errorDisplay.textContent = "❓ Erreur inconnue du GPS.";
+            errorDisplay.textContent = "❓ Erreur GPS inconnue. Code: " + error.code;
             break;
     }
 }
@@ -157,6 +152,7 @@ function startGPS() {
     resetDisplay(); 
     startTime = Date.now();
     
+    // Ajout d'une gestion de l'erreur initiale
     watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
 
     initSensorListeners(); 
@@ -234,17 +230,9 @@ function calculateSolarDetails() {
     const EoT_rad = L - alpha;
     const EoT_minutes = (EoT_rad * RAD_TO_DEG) * 4;
     
-    const Ce_minutes = C_e * RAD_TO_DEG * 4; 
-    const Co_minutes = EoT_minutes - Ce_minutes; 
-
-    const solarDayDuration = 86400; 
-
     return {
         eot: EoT_minutes,
-        eccentricityComponent: Ce_minutes,
-        obliquityComponent: Co_minutes,
         solarLongitude: (lambda * RAD_TO_DEG) % 360,
-        solarDayDuration: solarDayDuration
     };
 }
 
@@ -265,17 +253,15 @@ function updateAstroDisplay(latitude, longitude) {
 
     // --- TEMPS SOLAIRE MOYEN (HSM) & HSV ---
     const totalMinutesUT = now.getUTCHours() * 60 + now.getUTCMinutes() + now.getUTCSeconds() / 60;
-    // La longitude*4 (en minutes) donne la différence par rapport à Greenwich
     const totalMinutesLSM = (totalMinutesUT + (longitude * 4) + 1440) % 1440; 
     
     const hsmHour = Math.floor(totalMinutesLSM / 60);
     const hsmMinute = Math.floor(totalMinutesLSM % 60);
-    document.getElementById('solar-mean').textContent = `${String(hsmHour).padStart(2, '0')}:${String(hsmMinute).padStart(2, '0')} (HSM)`;
+    document.getElementById('solar-mean').textContent = `${String(hsmHour).padStart(2, '0')}:${String(hsmMinute).padStart(2, '0')}`;
     
     const solarDetails = calculateSolarDetails();
     const EoT_ms = solarDetails.eot * 60 * 1000; 
     
-    // Calcul de l'Heure Solaire Vraie (HSV) = HSM + EoT
     const nowHSM = new Date(now.getTime() - (now.getTime() % 86400000) + totalMinutesLSM * 60 * 1000);
     const nowHSV = new Date(nowHSM.getTime() + EoT_ms);
 
@@ -285,42 +271,33 @@ function updateAstroDisplay(latitude, longitude) {
     
     const hsvTimeStr = `${String(lsvHour).padStart(2, '0')}:${String(lsvMinute).padStart(2, '0')}:${String(lsvSecond).padStart(2, '0')}`;
 
-    // Affichage principal de la HSV
     document.getElementById('solar-true').textContent = `${hsvTimeStr} (HSV)`;
-    
-    // Affichage flottant de la HSV en haut à droite
     const headerElement = document.getElementById('solar-true-header');
     if (headerElement) {
         headerElement.textContent = hsvTimeStr;
     }
 
-    // Affichage des composants de l'EoT
     document.getElementById('eot').textContent = `${solarDetails.eot.toFixed(2)} min`;
-    document.getElementById('eot-eccentricity').textContent = `${solarDetails.eccentricityComponent.toFixed(2)} min`;
-    document.getElementById('eot-obliquity').textContent = `${solarDetails.obliquityComponent.toFixed(2)} min`;
     document.getElementById('solar-longitude-val').textContent = `${solarDetails.solarLongitude.toFixed(2)} °`;
-    document.getElementById('solar-day-duration').textContent = `${solarDetails.solarDayDuration.toFixed(0)} s`;
 
 
-    // --- PHASE LUNAIRE (Illumination Réaliste) ---
+    // --- PHASE LUNAIRE (Illumination) ---
     const JD = now.getTime() / 86400000 + 2440587.5; 
     const N = (JD - 2451549.5) / 365.25; 
     const D_moon = (297.85 + 445267.111 * N) % 360 * DEG_TO_RAD; 
     
     const illumination = 0.5 * (1 - Math.cos(D_moon)); 
-    
     document.getElementById('lunar-phase-perc').textContent = `${(illumination * 100).toFixed(1)}%`;
 }
 
 
 async function fetchWeatherData(latitude, longitude) {
     if (OPENWEATHER_API_KEY === 'YOUR_API_KEY') {
-        // Affichage factice si la clé n'est pas configurée
-        document.getElementById('air-temp').textContent = `20.5 °C (Factice)`;
-        document.getElementById('humidity').textContent = `65 % (Factice)`;
-        document.getElementById('wind-speed').textContent = `15.0 km/h (Factice)`;
-        document.getElementById('pressure').textContent = `1013 hPa`;
-        document.getElementById('boiling-point').textContent = `100.0 °C`;
+        document.getElementById('air-temp').textContent = `N/A °C`;
+        document.getElementById('humidity').textContent = `N/A %`;
+        document.getElementById('wind-speed').textContent = `N/A km/h`;
+        document.getElementById('pressure').textContent = `N/A hPa`;
+        document.getElementById('boiling-point').textContent = `N/A °C`;
         return;
     }
 
@@ -346,6 +323,7 @@ async function fetchWeatherData(latitude, longitude) {
             document.getElementById('wind-speed').textContent = `${windKmH.toFixed(1)} km/h`;
             document.getElementById('pressure').textContent = `${pressure.toFixed(0)} hPa`; 
             
+            // Point d'ébullition ajusté à la pression
             const boilingPoint = 100 - (1013.25 - pressure) * 0.033;
             document.getElementById('boiling-point').textContent = `${boilingPoint.toFixed(1)} °C`;
         }
@@ -362,16 +340,15 @@ async function fetchWeatherData(latitude, longitude) {
 function handleDeviceMotion(event) {
     const acc = event.accelerationIncludingGravity;
     
-    if (!acc.x || !acc.y || !acc.z) {
-        document.getElementById('bubble-level').textContent = 'Accéléro. Non Dispo';
+    if (!acc || acc.x === null || acc.y === null || acc.z === null) {
+        document.getElementById('bubble-level').textContent = 'N/A';
         return;
     }
 
-    // Calcul du Pitch (Inclinaison Y) et du Roll (Inclinaison X) par rapport à la gravité Z
+    // Calcul du Pitch et du Roll (angles d'inclinaison)
     const pitch = Math.atan2(acc.z, acc.y) * RAD_TO_DEG; 
     const roll = Math.atan2(acc.z, acc.x) * RAD_TO_DEG; 
     
-    // Mesure de la déviation : 0° est parfaitement plat (pitch=90, roll=90)
     const pitchDeviation = Math.abs(pitch - 90);
     const rollDeviation = Math.abs(roll - 90);
 
@@ -380,20 +357,21 @@ function handleDeviceMotion(event) {
 }
 
 function initSensorListeners() {
+    // Vérification des permissions pour iOS/Android
     if (window.DeviceMotionEvent && typeof window.DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
             .then(response => {
                 if (response === 'granted') {
                     window.addEventListener('devicemotion', handleDeviceMotion);
                 } else {
-                    document.getElementById('bubble-level').textContent = 'Permission Refusée';
+                    document.getElementById('bubble-level').textContent = 'Perm. Refusée';
                 }
             })
-            .catch(console.error);
+            .catch(e => console.error("Erreur de permission devicemotion:", e));
     } else if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', handleDeviceMotion);
     } else {
-        document.getElementById('bubble-level').textContent = 'Capteurs Non Supportés';
+        document.getElementById('bubble-level').textContent = 'N/A';
     }
 }
 
@@ -407,7 +385,14 @@ function stopSensorListeners() {
 // ===========================================
 
 function updateDisplay(position) {
-    const { latitude, longitude, altitude, accuracy, timestamp } = position.coords;
+    // Utilisation des valeurs de position, avec des fallbacks pour null
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+    const altitude = position.coords.altitude; // Peut être null
+    const accuracy = position.coords.accuracy;
+    const heading = position.coords.heading;   // Peut être null
+    const speed = position.coords.speed;       // Peut être null
+    const currentTime = position.timestamp;
     
     // --- CONTRÔLE DE LA PRÉCISION (Filtrage anti-bruit) ---
     if (accuracy > MAX_ACCURACY_M) {
@@ -418,11 +403,10 @@ function updateDisplay(position) {
         return; 
     }
 
-    const currentTime = timestamp;
     const elapsedTimeS = (currentTime - startTime) / 1000;
 
     // --- CALCULS VITESSE/DISTANCE ---
-    let speedMS_Horiz = position.coords.speed !== null ? position.coords.speed : 0; 
+    let speedMS_Horiz = speed !== null ? speed : 0; 
     let speedMS_Vert = 0;
     
     if (lastPosition && lastPosition.coords.latitude !== undefined) { 
@@ -431,22 +415,22 @@ function updateDisplay(position) {
         const dAlt = lastPosition.coords.altitude; 
         const dt = (currentTime - lastPosition.timestamp) / 1000; 
 
-        // FIX STABILITÉ: Vérification du temps minimum pour la stabilité
         if (dt > MIN_TIME_INTERVAL_S) { 
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
             
-            // Calcul de la distance verticale
             let distVertM = 0;
             if (altitude !== null && dAlt !== null) {
                 distVertM = altitude - dAlt;
+            } else if (altitude !== null && dAlt === null) {
+                 // Gestion de la première altitude reçue
+                 dAlt = altitude; 
             }
 
-            // Calcul de la distance réelle 3D (Hypothénuse)
             const dist3D = Math.sqrt(distHorizM * distHorizM + distVertM * distVertM);
             totalDistanceM += dist3D; 
 
-            // Fallback pour la vitesse horizontale
-            if (position.coords.speed === null) {
+            // Fallback: Si speed est null, on utilise la vitesse calculée
+            if (speed === null) {
                  speedMS_Horiz = distHorizM / dt;
             }
 
@@ -463,34 +447,65 @@ function updateDisplay(position) {
     // Vitesse 3D (Horizontale + Verticale)
     const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
     
-    // Vitesse moyenne = Distance totale (3D) / Temps total
     const speedAvgMS = elapsedTimeS > MIN_TIME_INTERVAL_S ? totalDistanceM / elapsedTimeS : 0; 
     if (speedMS_3D > maxSpeedMS) { maxSpeedMS = speedMS_3D; }
 
     // --- MISE À JOUR AFFICHAGE ---
+    const totalDistKm = totalDistanceM / 1000;
+    const totalDistMeters = totalDistanceM % 1000;
+
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(1)} s`;
     document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(1)} km/h`;
     document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(1)} km/h`; 
     document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(1)} km/h`;
     
-    document.getElementById('distance-km-m').textContent = `${(totalDistanceM / 1000).toFixed(2)} km | ${(totalDistanceM % 1000).toFixed(1)} m`;
+    // Affichage compact pour la carte principale
+    document.getElementById('distance-km-m').textContent = `${totalDistKm.toFixed(2)} km | ${totalDistMeters.toFixed(1)} m`;
     
     document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(2)} m/s`;
-    document.getElementById('speed-mms').textContent = `${(speedMS_3D * 1000).toFixed(0)} mm/s`;
 
     const percLight = (speedMS_3D / C_LIGHT) * 100;
     const percSound = (speedMS_3D / C_SOUND_SEA_LEVEL) * 100;
-    const distCosmicSL = totalDistanceM / C_LIGHT; 
-    const distCosmicAL = totalDistanceM * M_TO_AL; 
 
     document.getElementById('perc-light').textContent = `${percLight.toExponential(2)}%`;
     document.getElementById('perc-sound').textContent = `${percSound.toFixed(1)}%`;
-    document.getElementById('distance-mm').textContent = `${(totalDistanceM * 1000).toFixed(0)} mm`;
-    document.getElementById('distance-cosmic-s').textContent = `${distCosmicSL.toExponential(2)} s lumière`;
-    document.getElementById('distance-cosmic-al').textContent = `${distCosmicAL.toExponential(2)} al`;
 
     // --- MISE À JOUR POSITION/CAPTEURS ---
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
-    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(0)} m` : '-- m';
-    document.g
+    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(0)} m` : 'N/A';
+    document.getElementById('gps-accuracy').textContent = `${accuracy.toFixed(0)} m`;
+    document.getElementById('underground').textContent = altitude !== null ? (altitude < 0 ? 'Oui' : 'Non') : 'N/A';
+    
+    // Gérer l'affichage du Cap (heading)
+    document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
+
+    if (targetLat !== null && targetLon !== null) {
+        const bearing = calculateBearing(latitude, longitude, targetLat, targetLon);
+        document.getElementById('cap-dest').textContent = `${bearing.toFixed(0)}°`;
+    } else {
+        document.getElementById('cap-dest').textContent = 'N/A';
+    }
+
+    // --- ASTRO DÉTAILLÉ et MÉTÉO ---
+    updateAstroDisplay(latitude, longitude);
+    fetchWeatherData(latitude, longitude);
+    
+    lastPosition = position; 
+}
+
+
+// ===========================================
+// 6. INITIALISATION
+// ===========================================
+
+function setTargetDestination() {
+    if (!lastPosition) {
+        alert("Veuillez démarrer le GPS et attendre une position avant de définir une cible.");
+        return;
+    }
+
+    const currentLat = lastPosition.coords.latitude.toFixed(6);
+    const currentLon = lastPosition.coords.longitude.toFixed(6);
+    
+    const inputLat 
