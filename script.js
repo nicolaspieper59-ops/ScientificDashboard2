@@ -18,7 +18,7 @@ const ECCENTRICITY = 0.0167;        // Excentricité de l'orbite terrestre
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
     maximumAge: 500,
-    timeout: 15000 // Augmentation du timeout à 15s pour les zones difficiles
+    timeout: 15000 
 };
 let watchID = null;         
 let lastPosition = null;
@@ -29,16 +29,16 @@ let targetLat = null;
 let targetLon = null;
 
 // --- API MÉTÉO ---
-const OPENWEATHER_API_KEY = 'YOUR_API_KEY'; 
+const OPENWEATHER_API_KEY = 'YOUR_API_KEY'; // REMPLACER CECI
 let lastWeatherFetchTime = 0;
-const WEATHER_FETCH_INTERVAL_MS = 60000; // 60 secondes
+const WEATHER_FETCH_INTERVAL_MS = 60000; 
 
-// --- FILTRAGE GPS (pour la stabilité de la Vitesse 3D) ---
-const MIN_TIME_INTERVAL_S = 1; // Intervalle minimum pour le calcul de vitesse (1s)
-const MAX_ACCURACY_M = 50;     // Précision maximale acceptable (ignorons les relevés > 50m d'erreur)
+// --- FILTRAGE GPS ---
+const MIN_TIME_INTERVAL_S = 1; 
+const MAX_ACCURACY_M = 50;     
 
 // --- SYNCHRONISATION TEMPORELLE (NTP Web) ---
-let timeOffsetMS = 0; // Décalage de l'horloge locale par rapport au temps UTC réel
+let timeOffsetMS = 0; 
 
 // --- REFERENCES DOM ---
 const startBtn = document.getElementById('start-btn');
@@ -46,45 +46,30 @@ const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
 const setTargetBtn = document.getElementById('set-target-btn');
 const errorDisplay = document.getElementById('error-message');
+// NOUVELLES RÉFÉRENCES
+const modeIndicator = document.getElementById('mode-indicator');
 
 
 // ===========================================
 // 2. SYNCHRONISATION DU TEMPS (NTP Web Précis)
 // ===========================================
 
-/**
- * Synchronise l'horloge locale avec un serveur de temps via HTTP pour
- * calculer un décalage ultra-précis, en se basant sur l'heure de fin de requête (T4).
- * Ceci rend l'application INDÉPENDANTE de l'heure système manipulée par l'utilisateur.
- */
 async function synchronizeTime() {
     const timeServerUrl = 'https://worldtimeapi.org/api/ip'; 
-    
     try {
         const response = await fetch(timeServerUrl);
-        
-        // 1. Enregistre l'heure locale EXACTE après la réception de la réponse (T4)
         const T4 = Date.now(); 
-        
         const data = await response.json();
-        
         const serverTimeUTC = data.utc_datetime;
         const serverTimeMS = new Date(serverTimeUTC).getTime();
-        
-        // 2. Le décalage (offset) est calculé : (Temps du Serveur) - (Temps Local de Réception)
         timeOffsetMS = serverTimeMS - T4;
-
-        console.log(`Synchronisation NTP web à T4 : Décalage: ${timeOffsetMS.toFixed(2)} ms.`);
-
+        console.log(`Synchronisation NTP web : Décalage: ${timeOffsetMS.toFixed(2)} ms.`);
     } catch (e) {
         console.warn("Erreur de synchronisation NTP web. timeOffsetMS réinitialisé à 0.", e);
         timeOffsetMS = 0; 
     }
 }
 
-/**
- * Retourne l'heure actuelle corrigée par l'offset NTP. C'EST LA SOURCE DE TEMPS DE L'APP.
- */
 function getCorrectedDate() {
     return new Date(Date.now() + timeOffsetMS);
 }
@@ -95,6 +80,7 @@ function getCorrectedDate() {
 // ===========================================
 
 function resetDisplay() {
+    // ... (Logique de reset existante)
     lastPosition = null;
     totalDistanceM = 0; 
     startTime = null;
@@ -102,59 +88,46 @@ function resetDisplay() {
     targetLat = null; 
     targetLon = null;
     
+    // Simplification du reset d'affichage
+    const defaultText = '--';
     const ids = ['elapsed-time', 'speed-3d-inst', 'speed-avg', 'speed-max', 'speed-ms', 
-        'perc-light', 'perc-sound', 'distance-km-m',
+        'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time',
         'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground',
         'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 
         'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 
-        'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header'
+        'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator'
     ];
 
     ids.forEach(id => {
         const element = document.getElementById(id);
         if (element) {
-            // Utilisation de N/A pour les valeurs potentiellement non disponibles
-            if (['altitude', 'gps-accuracy'].includes(id)) element.textContent = '-- m';
-            else if (['eot'].includes(id)) element.textContent = '-- min';
-            else if (['solar-longitude-val'].includes(id)) element.textContent = '-- °';
-            else if (['heading', 'cap-dest', 'bubble-level'].includes(id)) element.textContent = 'N/A'; 
+            if (id === 'altitude' || id === 'gps-accuracy') element.textContent = '-- m';
+            else if (id === 'eot') element.textContent = '-- min';
+            else if (id === 'solar-longitude-val') element.textContent = '-- °';
             else if (['lunar-phase-perc', 'humidity', 'perc-light', 'perc-sound'].includes(id)) element.textContent = '--%';
-            else if (id === 'air-temp' || id === 'boiling-point') element.textContent = 'N/A';
-            else if (id === 'pressure') element.textContent = 'N/A';
-            else if (id === 'wind-speed') element.textContent = 'N/A';
-            else if (id === 'underground') element.textContent = 'N/A';
-            else element.textContent = '--';
+            else if (id === 'distance-km-m') element.textContent = '-- km | -- m';
+            else if (id === 'mc-time' || id === 'lunar-time') element.textContent = '00:00:00';
+            else if (id === 'mode-indicator') element.textContent = 'Mode: Jour ☀️';
+            else element.textContent = defaultText;
         }
     });
 
-    document.getElementById('elapsed-time').textContent = '0.00 s';
-    document.getElementById('mc-time').textContent = '00:00:00';
-    document.getElementById('solar-true-header').textContent = '--:--:--';
-    document.getElementById('distance-km-m').textContent = '-- km | -- m';
-    
     startBtn.disabled = false;
     stopBtn.disabled = true;
     resetMaxBtn.disabled = true;
     setTargetBtn.textContent = '📍 Aller';
     errorDisplay.style.display = 'none';
+    document.body.classList.remove('night-mode');
 }
 
 function handleGeolocationError(error) {
+    // ... (Logique d'erreur existante)
     errorDisplay.style.display = 'block';
-
     switch (error.code) {
-        case error.PERMISSION_DENIED:
-            errorDisplay.textContent = "❌ L'accès à la localisation a été refusé. Veuillez l'autoriser.";
-            break;
-        case error.POSITION_UNAVAILABLE:
-            errorDisplay.textContent = "⚠️ Position non disponible. Signal GPS faible.";
-            break;
-        case error.TIMEOUT:
-            errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé (15s). Le signal est faible ou perdu.";
-            break;
-        default:
-            errorDisplay.textContent = "❓ Erreur GPS inconnue. Code: " + error.code;
-            break;
+        case error.PERMISSION_DENIED: errorDisplay.textContent = "❌ L'accès à la localisation a été refusé. Veuillez l'autoriser."; break;
+        case error.POSITION_UNAVAILABLE: errorDisplay.textContent = "⚠️ Position non disponible. Signal GPS faible."; break;
+        case error.TIMEOUT: errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé (15s). Le signal est faible ou perdu."; break;
+        default: errorDisplay.textContent = "❓ Erreur GPS inconnue. Code: " + error.code; break;
     }
 }
 
@@ -166,7 +139,7 @@ function startGPS() {
     }
 
     resetDisplay(); 
-    startTime = Date.now(); // Note : On utilise Date.now() pour le temps écoulé local
+    startTime = Date.now(); 
     
     watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
 
@@ -177,7 +150,6 @@ function startGPS() {
     resetMaxBtn.disabled = false;
     errorDisplay.style.display = 'none';
     
-    // Assurer que la synchronisation est lancée au démarrage
     synchronizeTime(); 
 }
 
@@ -203,10 +175,11 @@ function resetMaxSpeed() {
 
 
 // ===========================================
-// 4. FONCTIONS DE CALCUL (Distance, Astro)
+// 4. FONCTIONS DE CALCULS (Distance, Astro, Temps Lunaire)
 // ===========================================
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
+    // ... (Logique de distance existante)
     const R = EARTH_RADIUS;
     const dLat = (lat2 - lat1) * DEG_TO_RAD;
     const dLon = (lon2 - lon1) * DEG_TO_RAD;
@@ -221,6 +194,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 function calculateBearing(lat1, lon1, lat2, lon2) {
+    // ... (Logique de cap existante)
     const R = DEG_TO_RAD;
     lat1 *= R; lon1 *= R; lat2 *= R; lon2 *= R;
 
@@ -233,6 +207,7 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
 }
 
 function calculateSolarDetails() {
+    // ... (Logique de temps solaire existante)
     const now = getCorrectedDate();
     const J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
     const D = (now.getTime() - J2000.getTime()) / (1000 * 60 * 60 * 24);
@@ -254,6 +229,40 @@ function calculateSolarDetails() {
     };
 }
 
+/**
+ * Calcule et affiche l'heure locale lunaire (Lunar Mean Time - LMT).
+ */
+function calculateLunarTime(longitude) {
+    const now = getCorrectedDate();
+    const JD = now.getTime() / 86400000 + 2440587.5; // Jour Julien
+
+    // Calcul de l'angle horaire sidéral de Greenwich (GST)
+    const T = (JD - 2451545.0) / 36525.0; 
+    let GST = 280.4606 + 360.9856473 * (JD - 2451545.0) + 0.000388 * T * T;
+    GST = GST % 360;
+    if (GST < 0) GST += 360;
+
+    // Calcul de la longitude lunaire moyenne (simplifiée)
+    let L_moon = 218.316 + 488204.661 * T; 
+    L_moon = L_moon % 360;
+    if (L_moon < 0) L_moon += 360;
+    
+    // Angle horaire de la Lune
+    let HA_moon = GST + longitude - L_moon;
+    HA_moon = HA_moon % 360;
+    if (HA_moon < 0) HA_moon += 360;
+
+    // Conversion en temps (360 degrés = 24 heures)
+    const LMT_hours = HA_moon / 15.0; 
+    
+    const LMT_total_seconds = LMT_hours * 3600;
+    const lmtHour = Math.floor(LMT_total_seconds / 3600);
+    const lmtMinute = Math.floor((LMT_total_seconds % 3600) / 60);
+    const lmtSecond = Math.floor(LMT_total_seconds % 60);
+    
+    document.getElementById('lunar-time').textContent = 
+        `${String(lmtHour).padStart(2, '0')}:${String(lmtMinute).padStart(2, '0')}:${String(lmtSecond).padStart(2, '0')}`;
+}
 
 function updateAstroDisplay(latitude, longitude) {
     const now = getCorrectedDate();
@@ -280,7 +289,6 @@ function updateAstroDisplay(latitude, longitude) {
     const solarDetails = calculateSolarDetails();
     const EoT_ms = solarDetails.eot * 60 * 1000; 
     
-    // Recalcul de l'heure locale corrigée pour l'HSM (Heure Solaire Moyenne)
     const nowHSM = new Date(now.getTime() - (now.getTime() % 86400000) + totalMinutesLSM * 60 * 1000);
     const nowHSV = new Date(nowHSM.getTime() + EoT_ms);
 
@@ -307,55 +315,50 @@ function updateAstroDisplay(latitude, longitude) {
     
     const illumination = 0.5 * (1 - Math.cos(D_moon)); 
     document.getElementById('lunar-phase-perc').textContent = `${(illumination * 100).toFixed(1)}%`;
+
+    // --- TEMPS LUNAIRE ---
+    calculateLunarTime(longitude); 
 }
 
+// ===========================================
+// 5. MODE NUIT
+// ===========================================
 
-async function fetchWeatherData(latitude, longitude) {
-    if (OPENWEATHER_API_KEY === 'YOUR_API_KEY') {
-        document.getElementById('air-temp').textContent = `N/A`;
-        document.getElementById('humidity').textContent = `N/A`;
-        document.getElementById('wind-speed').textContent = `N/A`;
-        document.getElementById('pressure').textContent = `N/A`;
-        document.getElementById('boiling-point').textContent = `N/A`;
-        return;
-    }
+/**
+ * Calcule une heure approximative de lever/coucher du soleil pour activer
+ * le mode nuit, basée sur l'heure solaire locale.
+ */
+function updateDarkMode(latitude, longitude) {
+    const now = getCorrectedDate();
+    
+    // Obtient l'heure locale corrigée par la longitude pour une approximation
+    // 15 degrés de longitude = 1 heure de décalage temporel
+    const localHourApprox = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600 + longitude / 15;
+    const hours = localHourApprox % 24;
+    
+    // Heures du lever (6h) et coucher (18h) sont des approximations saisonnières.
+    // L'heure solaire est déjà intégrée via la correction de longitude.
+    const SUNRISE_H = 6;
+    const SUNSET_H = 18;
 
-    const now = Date.now();
-    if (now - lastWeatherFetchTime < WEATHER_FETCH_INTERVAL_MS) {
-        return;
-    }
-    lastWeatherFetchTime = now;
+    const isNight = (hours < SUNRISE_H || hours >= SUNSET_H);
 
-    try {
-        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=fr`;
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (data && data.main && data.wind) {
-            const tempC = data.main.temp;
-            const windKmH = data.wind.speed * KMH_PER_MS;
-            const humidity = data.main.humidity;
-            const pressure = data.main.pressure;
-            
-            document.getElementById('air-temp').textContent = `${tempC.toFixed(1)} °C`;
-            document.getElementById('humidity').textContent = `${humidity.toFixed(0)}%`;
-            document.getElementById('wind-speed').textContent = `${windKmH.toFixed(1)} km/h`;
-            document.getElementById('pressure').textContent = `${pressure.toFixed(0)} hPa`; 
-            
-            const boilingPoint = 100 - (1013.25 - pressure) * 0.033;
-            document.getElementById('boiling-point').textContent = `${boilingPoint.toFixed(1)} °C`;
-        }
-    } catch (e) {
-        console.error("Erreur API météo:", e);
+    if (isNight) {
+        document.body.classList.add('night-mode');
+        modeIndicator.textContent = 'Mode: Nuit 🌑';
+    } else {
+        document.body.classList.remove('night-mode');
+        modeIndicator.textContent = 'Mode: Jour ☀️';
     }
 }
 
 
 // ===========================================
-// 5. GESTION DES CAPTEURS 3D (Niveau à Bulle)
+// 6. GESTION DES CAPTEURS 3D
 // ===========================================
 
 function handleDeviceMotion(event) {
+    // ... (Logique de niveau à bulle existante)
     const acc = event.accelerationIncludingGravity;
     
     if (!acc || acc.x === null || acc.y === null || acc.z === null) {
@@ -374,8 +377,8 @@ function handleDeviceMotion(event) {
 }
 
 function initSensorListeners() {
+    // ... (Logique d'initialisation des capteurs existante)
     if (window.DeviceMotionEvent && typeof window.DeviceMotionEvent.requestPermission === 'function') {
-        // Demande de permission pour iOS 13+
         DeviceMotionEvent.requestPermission()
             .then(response => {
                 if (response === 'granted') {
@@ -384,12 +387,8 @@ function initSensorListeners() {
                     document.getElementById('bubble-level').textContent = 'Perm. Refusée';
                 }
             })
-            .catch(e => {
-                console.error("Erreur de permission devicemotion:", e);
-                document.getElementById('bubble-level').textContent = 'Erreur';
-            });
+            .catch(() => document.getElementById('bubble-level').textContent = 'Erreur');
     } else if (window.DeviceMotionEvent) {
-        // Anciens navigateurs ou Android
         window.addEventListener('devicemotion', handleDeviceMotion);
     } else {
         document.getElementById('bubble-level').textContent = 'N/A';
@@ -402,7 +401,7 @@ function stopSensorListeners() {
 
 
 // ===========================================
-// 6. FONCTION PRINCIPALE D'AFFICHAGE (Filtrage 3D)
+// 7. FONCTION PRINCIPALE D'AFFICHAGE
 // ===========================================
 
 function updateDisplay(position) {
@@ -419,13 +418,13 @@ function updateDisplay(position) {
         document.getElementById('gps-accuracy').textContent = `🚨 ${accuracy.toFixed(0)} m (Trop Imprécis)`;
         if (lastPosition === null) { lastPosition = position; }
         updateAstroDisplay(latitude, longitude);
+        updateDarkMode(latitude, longitude); // Mise à jour du mode Nuit même sans vitesse
         fetchWeatherData(latitude, longitude);
         return; 
     }
 
-    const elapsedTimeS = (currentTime - startTime) / 1000;
-
-    // --- CALCULS VITESSE/DISTANCE ---
+    // --- CALCULS VITESSE/DISTANCE et MISE À JOUR AFFICHAGE ---
+    // ... (Logique de calcul de distance/vitesse 3D existante)
     let speedMS_Horiz = speed !== null ? speed : 0; 
     let speedMS_Vert = 0;
     
@@ -437,61 +436,42 @@ function updateDisplay(position) {
 
         if (dt > MIN_TIME_INTERVAL_S) { 
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
-            
-            let distVertM = 0;
-            if (altitude !== null && dAlt !== null) {
-                distVertM = altitude - dAlt;
-            }
+            let distVertM = (altitude !== null && dAlt !== null) ? altitude - dAlt : 0;
 
             const dist3D = Math.sqrt(distHorizM * distHorizM + distVertM * distVertM);
             totalDistanceM += dist3D; 
 
-            if (speed === null) {
-                 speedMS_Horiz = distHorizM / dt;
-            }
-
-            if (altitude !== null && dAlt !== null) { 
-                speedMS_Vert = distVertM / dt;
-            }
+            if (speed === null) { speedMS_Horiz = distHorizM / dt; }
+            if (altitude !== null && dAlt !== null) { speedMS_Vert = distVertM / dt; }
         } else {
-             speedMS_Horiz = 0;
-             speedMS_Vert = 0;
+             speedMS_Horiz = 0; speedMS_Vert = 0;
         }
     }
     
+    const elapsedTimeS = (currentTime - startTime) / 1000;
     const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
-    
     const speedAvgMS = elapsedTimeS > MIN_TIME_INTERVAL_S ? totalDistanceM / elapsedTimeS : 0; 
     if (speedMS_3D > maxSpeedMS) { maxSpeedMS = speedMS_3D; }
 
-    // --- MISE À JOUR AFFICHAGE ---
     const totalDistKm = totalDistanceM / 1000;
     const totalDistMeters = totalDistanceM % 1000;
 
+    // MISE À JOUR DES VALEURS
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(1)} s`;
-    
-    // Carte principale
     document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(1)} km/h`;
     document.getElementById('distance-km-m').textContent = `${totalDistKm.toFixed(2)} km | ${totalDistMeters.toFixed(1)} m`;
-    
     document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(1)} km/h`; 
     document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(1)} km/h`;
-    
     document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(2)} m/s`;
+    
+    document.getElementById('perc-light').textContent = `${((speedMS_3D / C_LIGHT) * 100).toExponential(2)}%`;
+    document.getElementById('perc-sound').textContent = `${((speedMS_3D / C_SOUND_SEA_LEVEL) * 100).toFixed(1)}%`;
 
-    const percLight = (speedMS_3D / C_LIGHT) * 100;
-    const percSound = (speedMS_3D / C_SOUND_SEA_LEVEL) * 100;
-
-    document.getElementById('perc-light').textContent = `${percLight.toExponential(2)}%`;
-    document.getElementById('perc-sound').textContent = `${percSound.toFixed(1)}%`;
-
-    // --- MISE À JOUR POSITION/CAPTEURS ---
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
     document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(0)} m` : 'N/A';
     document.getElementById('gps-accuracy').textContent = `${accuracy.toFixed(0)} m`;
     document.getElementById('underground').textContent = altitude !== null ? (altitude < 0 ? 'Oui' : 'Non') : 'N/A';
-    
     document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
 
     if (targetLat !== null && targetLon !== null) {
@@ -501,8 +481,9 @@ function updateDisplay(position) {
         document.getElementById('cap-dest').textContent = 'N/A';
     }
 
-    // --- ASTRO DÉTAILLÉ et MÉTÉO ---
+    // --- ASTRO, MODE NUIT et MÉTÉO ---
     updateAstroDisplay(latitude, longitude);
+    updateDarkMode(latitude, longitude); 
     fetchWeatherData(latitude, longitude);
     
     lastPosition = position; 
@@ -510,7 +491,21 @@ function updateDisplay(position) {
 
 
 // ===========================================
-// 7. INITIALISATION ET CIBLE
+// 8. MÉTÉO ET CIBLE
 // ===========================================
 
-function se
+async function fetchWeatherData(latitude, longitude) {
+    if (OPENWEATHER_API_KEY === 'YOUR_API_KEY' || Date.now() - lastWeatherFetchTime < WEATHER_FETCH_INTERVAL_MS) {
+        return;
+    }
+    lastWeatherFetchTime = Date.now();
+
+    try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=fr`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data && data.main && data.wind) {
+            const tempC = data.main.temp;
+            const windKmH = data.wind.speed * KMH_PER_MS;
+            const humidity = data
