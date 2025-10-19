@@ -6,100 +6,24 @@
     <title>Tableau de Bord Relativiste Extrême</title>
     <style>
         /* Styles de Base */
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #0d1117;
-            color: #c9d1d9;
-            margin: 20px;
-            line-height: 1.6;
-        }
-        .dashboard {
-            max-width: 1000px;
-            margin: auto;
-            background-color: #161b22;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-        }
-        h1 {
-            color: #58a6ff;
-            border-bottom: 3px solid #58a6ff;
-            padding-bottom: 10px;
-            margin-top: 0;
-            font-size: 1.8em;
-        }
-        h2 {
-            color: #79c0ff;
-            margin-top: 25px;
-            font-size: 1.4em;
-        }
-        .data-section {
-            border: 1px solid #30363d;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            background-color: #0d1117;
-        }
-        .data-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 0;
-            border-bottom: 1px dotted #30363d;
-        }
-        .data-item:last-child {
-            border-bottom: none;
-        }
-        .label {
-            font-weight: 600;
-            color: #8b949e;
-        }
-        .value {
-            font-family: 'Consolas', monospace;
-            color: #ffffff;
-            font-size: 1.0em;
-        }
-        .error {
-            color: #f85149;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        hr {
-            border-color: #30363d;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0d1117; color: #c9d1d9; margin: 20px; line-height: 1.6; }
+        .dashboard { max-width: 1000px; margin: auto; background-color: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6); }
+        h1 { color: #58a6ff; border-bottom: 3px solid #58a6ff; padding-bottom: 10px; margin-top: 0; font-size: 1.8em; }
+        h2 { color: #79c0ff; margin-top: 25px; font-size: 1.4em; }
+        .data-section { border: 1px solid #30363d; padding: 15px; border-radius: 8px; margin-bottom: 20px; background-color: #0d1117; }
+        .data-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #30363d; }
+        .data-item:last-child { border-bottom: none; }
+        .label { font-weight: 600; color: #8b949e; }
+        .value { font-family: 'Consolas', monospace; color: #ffffff; font-size: 1.0em; }
+        .error { color: #f85149; font-weight: bold; margin-top: 10px; }
+        hr { border-color: #30363d; }
         /* Styles des Boutons */
-        .controls {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .controls button {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 1em;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-        #start-btn {
-            background-color: #3fb950;
-            color: white;
-            flex-grow: 1;
-        }
-        #stop-btn {
-            background-color: #f85149;
-            color: white;
-            flex-grow: 1;
-        }
-        #reset-max-btn {
-            background-color: #79c0ff;
-            color: white;
-        }
-        button:disabled {
-            background-color: #30363d;
-            cursor: not-allowed;
-            color: #8b949e;
-        }
+        .controls { display: flex; gap: 15px; margin-bottom: 20px; }
+        .controls button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; font-weight: bold; transition: background-color 0.3s; }
+        #start-btn { background-color: #3fb950; color: white; flex-grow: 1; }
+        #stop-btn { background-color: #f85149; color: white; flex-grow: 1; }
+        #reset-max-btn { background-color: #79c0ff; color: white; }
+        button:disabled { background-color: #30363d; cursor: not-allowed; color: #8b949e; }
     </style>
 </head>
 <body>
@@ -190,4 +114,4 @@
     <script src="script.js"></script>
 
 </body>
-                </html>
+    </html>
