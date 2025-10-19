@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Géo-Astro-Vitesse 3D</title>
+    <title>Géo-Astro-Vitesse 3D (Corrigé)</title>
     <link rel="stylesheet" href="style.css"> 
 </head>
 <body>
@@ -24,6 +24,10 @@
             <button id="stop-btn" disabled>⏹️ Arrêter</button>
             <button id="reset-max-btn" disabled>🔄 Réinitialiser Max</button>
             <button id="set-target-btn">📍 Aller</button>
+        </section>
+
+        <section class="mode-status">
+            <span id="mode-indicator">Mode: Jour ☀️</span>
         </section>
 
         <section class="card large-card performance-section">
@@ -134,10 +138,14 @@
                 </div>
             </div>
 
-            <div class="data-grid two-cols">
+            <div class="data-grid three-cols">
                 <div>
                     <span class="label">Phase Lunaire (Illumination) :</span>
                     <span id="lunar-phase-perc">--%</span>
+                </div>
+                <div>
+                    <span class="label">Temps Lunaire (LMT) :</span>
+                    <span id="lunar-time">00:00:00</span>
                 </div>
                 <div>
                     <span class="label">Temps Minecraft :</span>
@@ -188,4 +196,4 @@
 
     <script src="script.js"></script>
 </body>
-</html>
+    </html>
