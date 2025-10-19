@@ -279,9 +279,9 @@ function updateDisplay(position) {
     
     // --- AFFICHAGE TEMPS/VITESSE ---
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(1)} s`;
-    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(1)} km/h`;
-    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(1)} km/h`;
-    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(1)} km/h`;
+    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(4)} km/h`;
+    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(4)} km/h`;
+    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(4)} km/h`;
     document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(2)} m/s`;
     document.getElementById('speed-mms').textContent = `${(speedMS_3D * 1000).toFixed(0)} mm/s`;
 
