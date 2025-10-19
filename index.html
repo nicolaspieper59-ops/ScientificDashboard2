@@ -104,14 +104,29 @@
     <div id="gps-status"><span id="gps-status-text">Prêt.</span></div>
 
     <div class="data-section">
-        <h2>⏱️ Temps & Vitesse (Synthèse)</h2>
+        <h2>🚀 Vitesse & Cinématique</h2>
         <div class="data-item"><span class="label">Temps Écoulé Total :</span><span id="elapsed-time" class="value">00:00:00.00</span></div>
-        <div class="data-item"><span class="label">Vitesse Horizontale Calculée :</span><span id="speed-horiz" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse 3D Reconstituée :</span><span id="speed-3d" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse Maximale (Horizontale) :</span><span id="speed-max" class="value red">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Distance Totale (3D) :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
+        <hr style="margin: 10px 0;">
+        
+        <div class="data-item"><span class="label">Vitesse Instantanée (Horizontale) :</span><span id="speed-inst-kmh" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse Instantanée (Scientifique) :</span><span class="value"><span id="speed-ms">0.00 m/s</span> | <span id="speed-mms">0 mm/s</span></span></div>
+        <div class="data-item"><span class="label">Vitesse Moyenne Totale :</span><span id="speed-avg" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse Maximale :</span><span id="speed-max" class="value red">0.00 km/h</span></div>
+        <hr style="margin: 10px 0;">
+        <div class="data-item"><span class="label">Vitesse en % Lumière :</span><span id="light-perc" class="value">0.00e-00%</span></div>
+        <div class="data-item"><span class="label">Vitesse en % Son (Mach) :</span><span id="mach-perc" class="value">0.00%</span></div>
     </div>
     
+    <div class="data-section">
+        <h2>📏 Distance & Précision</h2>
+        <div class="data-item"><span class="label">Distance Totale (Routière) :</span><span class="value"><span id="distance-totale-km">0.000 km</span> | <span id="distance-m">0 m</span></span></div>
+        <div class="data-item"><span class="label">Distance Totale (mm) :</span><span id="distance-mm" class="value">0 mm</span></div>
+        <hr style="margin: 10px 0;">
+        <div class="data-item"><span class="label">Distance Cosmique (Lumière) :</span><span class="value"><span id="distance-sl">0.000 s lumière</span> | <span id="distance-al">0.00e-00 al</span></span></div>
+        <hr style="margin: 10px 0;">
+        <div class="data-item"><span class="label">Précision Horizontale GPS :</span><span id="accuracy-perc" class="value">-- %</span></div>
+    </div>
+
     <div class="data-section">
         <h2>📍 Précision 3D & Position</h2>
         <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
@@ -162,9 +177,6 @@
         <div class="data-item"><span class="label">Équation du Temps :</span><span id="eq-temps" class="value">-- min</span></div>
         <div class="data-item"><span class="label">Lever/Coucher Soleil :</span><span class="value"><span id="lever-soleil">--</span> / <span id="coucher-soleil">--</span></span></div>
         <div class="data-item"><span class="label">Phase de Lune :</span><span id="lune-phase" class="value">--%</span></div>
-        <hr style="margin: 10px 0;">
-        <div class="data-item"><span class="label">Vitesse en Mach :</span><span id="mach" class="value">0.000</span></div>
-        <div class="data-item"><span class="label">% Vitesse Lumière :</span><span id="light-perc" class="value">0.00e-00%</span></div>
     </div>
     
     <div class="data-section">
@@ -177,4 +189,4 @@
 <script src="script.js"></script>
 
 </body>
-                                                                                       </html>
+                                                                                </html>
