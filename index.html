@@ -32,6 +32,11 @@
 
         <section class="card large-card performance-section">
             <h2>Vitesse et Performance 🚀</h2>
+            
+            <div class="speed-source-status">
+                <span id="speed-source-indicator">Source: N/A</span>
+            </div>
+
             <div class="main-display">
                 <span id="speed-3d-inst" class="main-value">0.00 km/h</span>
                 <span class="main-unit">VITESSE ACTUELLE (3D)</span>
@@ -155,35 +160,35 @@
         </section>
         
         <section class="card sensor-weather-section">
-            <h2>Capteurs & Météo 🌡️</h2>
+            <h2>Données Auxiliaires ⚙️</h2>
             
             <div class="data-grid two-cols">
                 <div>
-                    <span class="label">Niveau à Bulle (P/R) :</span>
-                    <span id="bubble-level">N/A</span>
+                    <span class="label">Niveau (Bulles - Capteurs 3D) :</span>
+                    <span id="bubble-level">N/A (API désactivée)</span>
                 </div>
                 <div>
                     <span class="label">Température Air :</span>
-                    <span id="air-temp">N/A</span>
+                    <span id="air-temp">N/A (API désactivée)</span>
                 </div>
             </div>
             
             <div class="data-grid three-cols detail-grid">
                 <div>
                     <span class="label">Pression (hPa) :</span>
-                    <span id="pressure">N/A</span>
+                    <span id="pressure">N/A (API désactivée)</span>
                 </div>
                 <div>
                     <span class="label">Humidité :</span>
-                    <span id="humidity">N/A</span>
+                    <span id="humidity">N/A (API désactivée)</span>
                 </div>
                 <div>
                     <span class="label">Vent :</span>
-                    <span id="wind-speed">N/A</span>
+                    <span id="wind-speed">N/A (API désactivée)</span>
                 </div>
                 <div>
                     <span class="label">Point Ébullition (Altitude) :</span>
-                    <span id="boiling-point">N/A</span>
+                    <span id="boiling-point">N/A (API désactivée)</span>
                 </div>
             </div>
         </section>
@@ -191,9 +196,9 @@
     </main>
 
     <footer>
-        <p>Projet Géo-Astro | Synchronisation temps via NTP Web | Météo désactivée sans clé API</p>
+        <p>Projet Géo-Astro | Source de vitesse indique si la puce GPS fournit la donnée brute (Doppler) ou si elle est calculée par l'application.</p>
     </footer>
 
     <script src="script.js"></script>
 </body>
-    </html>
+                        </html>
