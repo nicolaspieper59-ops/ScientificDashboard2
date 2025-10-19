@@ -12,7 +12,7 @@ const M_TO_AL = 1 / 9.461e15;       // Conversion mètres -> années-lumière
 // --- ÉTAT DE L'APPLICATION ---
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
-    maximumAge: 500, // Accepte des données légèrement plus anciennes (0.5s)
+    maximumAge: 500,
     timeout: 10000 
 };
 let watchID = null;         
@@ -25,7 +25,7 @@ let maxSpeedMS = 0;
 let targetLat = null;
 let targetLon = null;
 
-// --- REFERENCES DOM ---
+// --- REFERENCES DOM (Inchangées) ---
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
@@ -34,7 +34,7 @@ const errorDisplay = document.getElementById('error-message');
 
 
 // ===========================================
-// 2. LOGIQUE DE CONTRÔLE ET D'ÉTAT
+// 2. LOGIQUE DE CONTRÔLE ET D'ÉTAT (Inchangée)
 // ===========================================
 
 function resetDisplay() {
@@ -45,6 +45,7 @@ function resetDisplay() {
     targetLat = null; 
     targetLon = null;
     
+    // Réinitialisation de tous les champs
     const ids = ['elapsed-time', 'speed-3d-inst', 'speed-avg', 'speed-max', 'speed-ms', 'speed-mms',
         'perc-light', 'perc-sound', 'distance-km-m', 'distance-mm', 'distance-cosmic-s', 'distance-cosmic-al',
         'latitude', 'longitude', 'altitude', 'gps-accuracy', 'light-sim', 'underground',
@@ -80,7 +81,7 @@ function handleGeolocationError(error) {
             errorDisplay.textContent = "❌ L'accès à la localisation a été refusé. Veuillez l'activer.";
             break;
         case error.POSITION_UNAVAILABLE:
-            errorDisplay.textContent = "⚠️ Position non disponible. Assurez-vous d'être en extérieur ou d'avoir le signal.";
+            errorDisplay.textContent = "⚠️ Position non disponible. Assurez-vous d'être en extérieur.";
             break;
         case error.TIMEOUT:
             errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé.";
@@ -101,9 +102,9 @@ function startGPS() {
     resetDisplay(); 
     startTime = Date.now();
     
+    // Si la première tentative échoue, l'erreur est gérée par handleGeolocationError
     watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
 
-    // Initialisation des capteurs spécifiques Android (si supportés)
     initOrientationSensors(); 
 
     startBtn.disabled = true;
@@ -134,7 +135,7 @@ function resetMaxSpeed() {
 
 
 // ===========================================
-// 3. FONCTIONS DE CALCUL
+// 3. FONCTIONS DE CALCUL (Inchangées)
 // ===========================================
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -167,7 +168,7 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
 function calculateAstroData(latitude, longitude) {
     const now = new Date();
     
-    // TEMPS MINECRAFT
+    // TEMPS MINECRAFT (Simplifié)
     const mcTicksPerDay = 24000;
     const msSinceMidnight = now.getTime() % 86400000;
     const mcTicks = (msSinceMidnight * mcTicksPerDay) / 86400000;
@@ -178,12 +179,12 @@ function calculateAstroData(latitude, longitude) {
 
     document.getElementById('mc-time').textContent = `${String(mcHour).padStart(2, '0')}:${String(mcMinute).padStart(2, '0')}:${String(mcSecond).padStart(2, '0')}`;
 
-    // TEMPS SOLAIRE
+    // TEMPS SOLAIRE (Simplifié)
     const solarHour = (now.getUTCHours() + longitude / 15) % 24;
     document.getElementById('solar-true').textContent = `${Math.floor(solarHour).toString().padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} (HSM)`;
     document.getElementById('sun-culmination').textContent = '12:00:00 (HSM)';
 
-    // LUNE
+    // LUNE (Simplifié)
     const newMoonDate = new Date('2000-01-06T18:14:00Z').getTime();
     const diffDays = (now.getTime() - newMoonDate) / (1000 * 60 * 60 * 24);
     const lunarCycleDays = 29.530588853;
@@ -194,7 +195,7 @@ function calculateAstroData(latitude, longitude) {
 }
 
 // ===========================================
-// 4. GESTION DES CAPTEURS SPÉCIFIQUES ANDROID
+// 4. GESTION DES CAPTEURS SPÉCIFIQUES ANDROID (Inchangée)
 // ===========================================
 
 function handleDeviceOrientation(event) {
@@ -221,42 +222,56 @@ function stopOrientationSensors() {
 
 /** Met à jour tous les affichages à partir des données GPS. */
 function updateDisplay(position) {
-    // UTILISATION DE '|| 0' POUR GARANTIR QUE LES VALEURS MANQUANTES SONT TRAITÉES COMME ZÉRO
     const { latitude, longitude, accuracy, timestamp } = position.coords;
-    const speed = position.coords.speed || 0;
-    const altitude = position.coords.altitude || 0; 
+    
+    // Utiliser la vitesse fournie par le GPS (null si non fournie)
+    const speed = position.coords.speed;
+    const altitude = position.coords.altitude; 
     const heading = position.coords.heading || null;
 
     const currentTime = timestamp;
     const elapsedTimeS = (currentTime - startTime) / 1000;
 
-    // --- CALCULS DE VITESSE ET DISTANCE ---
-    let speedMS_Horiz_GPS = speed; 
-    let speedMS_Vert_Calc = 0;           
-    let speedMS_Horiz_Calc = speedMS_Horiz_GPS;
-
+    // --- CALCULS DE VITESSE ET DISTANCE (LOGIQUE RESTAURÉE) ---
+    
+    // Vitesse horizontale instantanée (en m/s)
+    let speedMS_Horiz = speed !== null ? speed : 0; // Prioriser la vitesse GPS, sinon 0.
+    
+    // Vitesse verticale instantanée (en m/s)
+    let speedMS_Vert = 0;
+    
     if (lastPosition && lastPosition.coords.latitude !== undefined) { 
         const dLat = lastPosition.coords.latitude;
         const dLon = lastPosition.coords.longitude;
-        const dAlt = lastPosition.coords.altitude || 0; 
+        const dAlt = lastPosition.coords.altitude; 
         const dt = (currentTime - lastPosition.timestamp) / 1000; 
 
         if (dt > 0) {
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
             totalDistanceM += distHorizM;
 
-            if (speed === 0) {
-                 speedMS_Horiz_Calc = distHorizM / dt;
+            // 2. CALCULER LA VITESSE HORIZONTALE à partir de la distance si la vitesse GPS était manquante (speed === null).
+            if (speed === null) {
+                 speedMS_Horiz = distHorizM / dt;
             }
 
-            speedMS_Vert_Calc = (altitude - dAlt) / dt;
+            // 3. CALCULER LA VITESSE VERTICALE uniquement si les deux altitudes sont valides
+            if (altitude !== null && dAlt !== null) { 
+                speedMS_Vert = (altitude - dAlt) / dt;
+            }
         }
     }
     
-    const speedMS_3D = Math.sqrt(speedMS_Horiz_Calc * speedMS_Horiz_Calc + speedMS_Vert_Calc * speedMS_Vert_Calc);
+    // 4. VITESSE 3D (Vitesse Horizontale² + Vitesse Verticale²)
+    const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
+    
+    // Vitesse moyenne totale (basée sur la distance horizontale cumulée)
     const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0;
+    
+    // Mise à jour de la vitesse max
     if (speedMS_3D > maxSpeedMS) { maxSpeedMS = speedMS_3D; }
 
+    // --- CALCULS RELATIVISTES ET COSMOS (Basé sur speedMS_3D) ---
     const percLight = (speedMS_3D / C_LIGHT) * 100;
     const percSound = (speedMS_3D / C_SOUND_SEA_LEVEL) * 100;
     const distCosmicSL = totalDistanceM / C_LIGHT; 
@@ -282,11 +297,10 @@ function updateDisplay(position) {
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
     
-    // Affichage Altitude/Précision : on utilise position.coords.altitude pour l'affichage,
-    // car on veut afficher '--' si l'API GPS ne fournit pas l'altitude.
-    document.getElementById('altitude').textContent = position.coords.altitude !== null ? `${position.coords.altitude.toFixed(0)} m` : '--';
+    // Affichage Altitude/Précision : affiche '--' si les données sont null
+    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(0)} m` : '--';
     document.getElementById('gps-accuracy').textContent = accuracy !== null ? `${accuracy.toFixed(0)} m` : '--';
-    document.getElementById('underground').textContent = position.coords.altitude !== null ? (position.coords.altitude < 0 ? 'Oui' : 'Non') : '--';
+    document.getElementById('underground').textContent = altitude !== null ? (altitude < 0 ? 'Oui' : 'Non') : '--';
     
     const hour = new Date().getHours();
     const isDaylight = hour > 6 && hour < 20;
@@ -311,7 +325,7 @@ function updateDisplay(position) {
 }
 
 // ===========================================
-// 6. INITIALISATION
+// 6. INITIALISATION (Inchangée)
 // ===========================================
 
 function setTargetDestination() {
