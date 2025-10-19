@@ -3,190 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS - Métrologie Scientifique Avancée</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
-    
+    <title>Tableau de Bord Relativiste</title>
     <style>
+        /* Styles de base pour un affichage "tableau de bord" simple et lisible */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0d1117; /* Fond sombre */
+            color: #c9d1d9; /* Texte clair */
             margin: 20px;
-            background-color: #f4f7f6;
-            color: #333;
+            line-height: 1.6;
         }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background-color: #fff;
+        .dashboard {
+            max-width: 900px;
+            margin: auto;
+            background-color: #161b22;
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         }
-        h1, h2 {
-            color: #1e88e5;
-            border-bottom: 2px solid #e0e0e0;
-            padding-bottom: 5px;
+        h1 {
+            color: #58a6ff;
+            border-bottom: 2px solid #58a6ff;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        h2 {
+            color: #79c0ff;
             margin-top: 20px;
         }
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .controls button {
-            padding: 10px 15px;
-            font-size: 16px;
-            cursor: pointer;
-            border: none;
-            border-radius: 5px;
-            transition: background-color 0.3s;
-        }
-        #btn-start { background-color: #4CAF50; color: white; }
-        #btn-start:hover { background-color: #45a049; }
-        #btn-stop { background-color: #f44336; color: white; }
-        #btn-stop:hover { background-color: #da190b; }
-        #btn-reset { background-color: #ff9800; color: white; }
-        #btn-reset:hover { background-color: #fb8c00; }
-
-        #gps-status {
-            padding: 10px;
-            margin-top: 10px;
-            border-radius: 5px;
-            background-color: #eee;
-            text-align: center;
-        }
-        #gps-status-text {
-            font-weight: bold;
-        }
         .data-section {
-            border: 1px solid #ddd;
+            border: 1px solid #30363d;
             padding: 15px;
-            margin-bottom: 15px;
             border-radius: 8px;
+            margin-bottom: 20px;
+            background-color: #0d1117;
         }
         .data-item {
             display: flex;
             justify-content: space-between;
             padding: 5px 0;
-            border-bottom: 1px dashed #f0f0f0;
+            border-bottom: 1px dotted #30363d;
         }
         .data-item:last-child {
             border-bottom: none;
         }
         .label {
-            font-weight: 500;
-            color: #555;
+            font-weight: 600;
+            color: #8b949e;
         }
         .value {
-            font-weight: bold;
-            color: #1e88e5;
+            font-family: 'Consolas', monospace;
+            color: #ffffff;
+            font-size: 1.1em;
         }
-        .value.red { color: #f44336; }
-        .value.green { color: #4CAF50; }
-        input[type="number"] {
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 5px;
+        .error {
+            color: #f85149;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        hr {
+            border-color: #30363d;
         }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>GPS - Métrologie Avancée</h1>
-
-    <div class="controls">
-        <button id="btn-start">Démarrer (Marche)</button>
-        <button id="btn-stop" disabled>Arrêter (Pause)</button>
-        <button id="btn-reset" disabled>Réinitialiser Max/Total</button>
-    </div>
-
-    <div id="gps-status"><span id="gps-status-text">Prêt.</span></div>
-
-    <div class="data-section">
-        <h2>🚀 Vitesse & Cinématique</h2>
-        <div class="data-item"><span class="label">Temps Écoulé Total :</span><span id="elapsed-time" class="value">00:00:00.00</span></div>
-        <hr style="margin: 10px 0;">
+    <div class="dashboard">
+        <h1>🛰️ Tableau de Bord Espace-Temps</h1>
+        <p>Affiche les données de votre mouvement par rapport à l'espace-temps, selon la Relativité d'Einstein.</p>
         
-        <div class="data-item"><span class="label">Vitesse Instantanée (Horizontale) :</span><span id="speed-inst-kmh" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse Instantanée (Scientifique) :</span><span class="value"><span id="speed-ms">0.00 m/s</span> | <span id="speed-mms">0 mm/s</span></span></div>
-        <div class="data-item"><span class="label">Vitesse Moyenne Totale :</span><span id="speed-avg" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse Maximale :</span><span id="speed-max" class="value red">0.00 km/h</span></div>
-        <hr style="margin: 10px 0;">
-        <div class="data-item"><span class="label">Vitesse en % Lumière :</span><span id="light-perc" class="value">0.00e-00%</span></div>
-        <div class="data-item"><span class="label">Vitesse en % Son (Mach) :</span><span id="mach-perc" class="value">0.00%</span></div>
-    </div>
-    
-    <div class="data-section">
-        <h2>📏 Distance & Précision</h2>
-        <div class="data-item"><span class="label">Distance Totale (Routière) :</span><span class="value"><span id="distance-totale-km">0.000 km</span> | <span id="distance-m">0 m</span></span></div>
-        <div class="data-item"><span class="label">Distance Totale (mm) :</span><span id="distance-mm" class="value">0 mm</span></div>
-        <hr style="margin: 10px 0;">
-        <div class="data-item"><span class="label">Distance Cosmique (Lumière) :</span><span class="value"><span id="distance-sl">0.000 s lumière</span> | <span id="distance-al">0.00e-00 al</span></span></div>
-        <hr style="margin: 10px 0;">
-        <div class="data-item"><span class="label">Précision Horizontale GPS :</span><span id="accuracy-perc" class="value">-- %</span></div>
-    </div>
-
-    <div class="data-section">
-        <h2>📍 Précision 3D & Position</h2>
-        <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
-        <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
-        <div class="data-item"><span class="label">Altitude :</span><span id="altitude-m" class="value">-- m</span></div>
-        <div class="data-item"><span class="label">Altitude :</span><span id="altitude-ft" class="value">-- ft</span></div>
-        <div class="data-item"><span class="label">Précision Horizontale (H-DOP) :</span><span id="accuracy-horiz" class="value">-- m</span></div>
-        <hr style="margin: 10px 0;">
-        <div class="data-item"><span class="label">Vitesse Verticale Lissée :</span><span id="speed-vert" class="value">0.00 m/s</span></div>
-    </div>
-
-    <div class="data-section">
-        <h2>⚛️ Physique / Énergie / Cinématique</h2>
+        <div id="error-message" class="error" style="display: none;"></div>
         
-        <div class="data-item">
-            <span class="label">Masse de l'objet (kg) :</span>
-            <input type="number" id="mass-input" value="70" min="1" step="0.1" style="width: 80px; padding: 5px;">
+        <div class="data-section">
+            <h2>🌍 Position & Vitesse 3D (GPS)</h2>
+            <div class="data-item"><span class="label">Statut GPS :</span><span id="gps-status" class="value">En attente...</span></div>
+            <hr>
+            <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
+            <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
+            <div class="data-item"><span class="label">Altitude :</span><span id="altitude" class="value">--</span></div>
+            <hr>
+            <div class="data-item"><span class="label">Vitesse Horizontale :</span><span id="speed-horiz" class="value">-- km/h</span></div>
+            <div class="data-item"><span class="label">Vitesse Reconstituée (3D) :</span><span id="speed-3d" class="value">-- km/h</span></div>
+            <div class="data-item"><span class="label">Distance Totale Parcourue :</span><span id="distance-total" class="value">-- km</span></div>
         </div>
-        <hr style="margin: 10px 0;">
         
-        <div class="data-item"><span class="label">Accélération instantanée :</span><span id="acceleration-ms2" class="value">0.00 m/s²</span></div>
-        <div class="data-item"><span class="label">Accélération (Sensation en g) :</span><span id="g-sensation" class="value">0.000 G</span></div>
-        <div class="data-item"><span class="label">Force instantanée (Inertie) :</span><span id="force-newton" class="value">0.00 N</span></div>
-        <div class="data-item"><span class="label">Puissance instantanée (Watt) :</span><span id="power-watt" class="value">0.00 W</span></div>
-        <div class="data-item"><span class="label">Énergie totale accumulée :</span><span id="energy-joule" class="value">0.00 J</span></div>
-        <div class="data-item"><span class="label">Force centrifuge (Rotation terrestre) :</span><span id="centrifugal-force" class="value">0.00e+00 N</span></div>
-    </div>
+        <div class="data-section">
+            <h2>⚛️ Relativité & Vitesse 4D (Espace-Temps)</h2>
+            <div class="data-item"><span class="label">Facteur de Lorentz (Gamma) :</span><span id="lorentz-factor" class="value">1.0000000000</span></div>
+            <div class="data-item"><span class="label">Vitesse en % de la Lumière :</span><span id="light-perc" class="value">0.00e-00%</span></div>
+            <hr>
+            <div class="data-item"><span class="label">Accumulation de Temps (Vitesse) :</span><span id="time-accel-v" class="value">0 ns/s</span></div>
+            <div class="data-item"><span class="label">Accumulation de Temps (Altitude) :</span><span id="time-accel-h" class="value">0 ns/s</span></div>
+            <div class="data-item"><span class="label">Accumulation de Temps (Net) :</span><span id="time-accel-net" class="value">0 ns/s</span></div>
+        </div>
 
-    <div class="data-section">
-        <h2>🧪 Science Réelle & Environnement</h2>
-        
-        <div class="data-item"><span class="label">Température de l'air (Météo Réelle) :</span><span id="temp-sol" class="value">-- °C</span></div>
-        <div class="data-item"><span class="label">Pression Atmosphérique (Météo Réelle) :</span><span id="pression-atm" class="value">-- hPa</span></div>
-        <hr style="margin: 10px 0;">
+        <div class="data-section">
+            <h2>🌌 Astro & Cosmique</h2>
+            <div class="data-item"><span class="label">Heure Atomique Estimée (UTC) :</span><span id="hsm" class="value">--:--:--</span></div>
+            <hr>
+            <div class="data-item"><span class="label">Distance Terre-Soleil :</span><span id="dist-soleil" class="value">-- UA</span></div>
+            <div class="data-item"><span class="label">Distance Terre-Lune :</span><span id="dist-lune" class="value">-- km</span></div>
+            <hr>
+            <div class="data-item"><span class="label">Lever du Soleil :</span><span id="lever-soleil" class="value">--:--</span></div>
+            <div class="data-item"><span class="label">Coucher du Soleil :</span><span id="coucher-soleil" class="value">--:--</span></div>
+            <div class="data-item"><span class="label">Phase Lunaire :</span><span id="lunar-phase" class="value">--</span></div>
+        </div>
 
-        <div class="data-item"><span class="label">Masse volumique de l'air (Calculé) :</span><span id="masse-volumique-air" class="value">-- kg/m³</span></div>
-        <div class="data-item"><span class="label">Taux d'oxygène (Pression Partielle Calculée) :</span><span id="taux-oxygene" class="value">-- % (pp)</span></div>
-        
-        <div class="data-item"><span class="label">Portée de l'Horizon (Géométrique) :</span><span id="portee-horizon" class="value">-- km</span></div>
-        <div class="data-item"><span class="label">Force de Coriolis (Max) :</span><span id="coriolis-force" class="value">-- N</span></div>
-        <div class="data-item"><span class="label">Durée de vie théorique (Session) :</span><span id="duree-vie-theorique" class="value">-- min</span></div>
-    </div>
+        <div class="data-section">
+            <h2>☁️ Météo Locale</h2>
+            <p>Données non disponibles (clé API désactivée).</p>
+            <div class="data-item"><span class="label">Température de l'Air :</span><span id="air-temp" class="value">-- °C</span></div>
+            <div class="data-item"><span class="label">Vitesse du Vent :</span><span id="wind-speed" class="value">-- km/h</span></div>
+            <div class="data-item"><span class="label">Direction du Vent :</span><span id="wind-dir" class="value">--</span></div>
+        </div>
 
-    <div class="data-section">
-        <h2>🌌 Astro & Cosmique</h2>
-        <div class="data-item"><span class="label">Heure Atomique Estimée (UTC) :</span><span id="hsm" class="value">--:--:--</span></div>
-        <div class="data-item"><span class="label">Heure Solaire Vraie (HSV) :</span><span id="hsv" class="value">--:--:--</span></div>
-        <div class="data-item"><span class="label">Équation du Temps :</span><span id="eq-temps" class="value">-- min</span></div>
-        <div class="data-item"><span class="label">Lever/Coucher Soleil :</span><span class="value"><span id="lever-soleil">--</span> / <span id="coucher-soleil">--</span></span></div>
-        <div class="data-item"><span class="label">Phase de Lune :</span><span id="lune-phase" class="value">--%</span></div>
     </div>
     
-    <div class="data-section">
-        <h2>🕹️ Temps Minecraft</h2>
-        <div class="data-item"><span class="label">Heure Minecraft :</span><span id="minecraft-time" class="value green">--:--:--</span></div>
-    </div>
-
-</div>
-
-<script src="script.js"></script>
+    <script src="script.js"></script>
 
 </body>
-    </html>
+                </html>
