@@ -7,22 +7,22 @@ const AIR_SPEED_OF_SOUND = 343; // Vitesse du son dans l'air standard (m/s)
 const MS_TO_KMH = 3.6;
 const FT_PER_METER = 3.28084;
 const MINECRAFT_DAY_LENGTH_MS = 1200000;
-const ACCURACY_THRESHOLD = 30; // Seuil de précision GPS (en mètres) pour considérer les données fiables
-const G_ACCELERATION = 9.80665; // Accélération standard de la gravité (m/s²)
+const ACCURACY_THRESHOLD = 30; // Seuil de précision GPS (en mètres)
+const G_ACCELERATION = 9.80665; // Accélération de la gravité (m/s²)
 
 // Constantes Terre et Météo
-const EARTH_RADIUS = 6371000; // Rayon de la Terre pour la force centrifuge (m)
-const EARTH_RADIUS_AVG_KM = 6371; // Rayon moyen de la Terre (km)
-const OMEGA_EARTH = 7.292115e-5; // Vitesse angulaire de rotation de la Terre (rad/s)
-const SEA_LEVEL_PRESSURE = 1013.25; // Pression au niveau de la mer (hPa)
+const EARTH_RADIUS = 6371000; 
+const EARTH_RADIUS_AVG_KM = 6371;
+const OMEGA_EARTH = 7.292115e-5; 
+const SEA_LEVEL_PRESSURE = 1013.25; // hPa
 const KELVIN_OFFSET = 273.15;   // 0°C en Kelvin
-const OXYGEN_PERCENT = 0.2095;  // Pourcentage d'oxygène dans l'air sec
-const R_SPECIFIC_AIR = 287.058; // R spécifique de l'air sec J/(kg·K)
+const OXYGEN_PERCENT = 0.2095;  
+const R_SPECIFIC_AIR = 287.058; // J/(kg·K)
 
 // --- CONSTANTES API METEO (OpenWeatherMap) ---
 const OPENWEATHER_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // 🚨 REMPLACEZ ICI VOTRE CLÉ API 🚨
 const OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather";
-let lastWeatherData = null; // Stocke les dernières données météo (cache)
+let lastWeatherData = null; 
 
 // --- VARIABLES DE SUIVI ET FILTRAGE ---
 let watchId = null;
@@ -41,9 +41,9 @@ let lastCalcTimestamp = 0;
 let totalEnergyJoules = 0;
 
 // --- VARIABLES DE TEMPS UTC ATOMIQUE (SYNCHRONISATION) ---
-let utcOffsetMs = 0;           // Décalage entre l'heure locale et l'heure UTC atomique (API)
-let lastUtcSyncTime = 0;       // Timestamp local du moment de la dernière synchronisation
-const SYNC_INTERVAL_MS = 3600000; // Resynchroniser toutes les heures (1h)
+let utcOffsetMs = 0;           
+let lastUtcSyncTime = 0;       
+const SYNC_INTERVAL_MS = 3600000; 
 const TIME_API_URL = "https://worldtimeapi.org/api/timezone/Etc/UTC";
 
 
@@ -55,7 +55,6 @@ function msToKmh(ms) {
     return ms * MS_TO_KMH;
 }
 
-/** Récupère la masse saisie par l'utilisateur. */
 function getCurrentMass() {
     const massInput = document.getElementById('mass-input');
     const mass = parseFloat(massInput?.value);
@@ -64,13 +63,14 @@ function getCurrentMass() {
 
 /** Obtient l'heure actuelle corrigée (UTC Atomique Estimée). */
 function getAtomicTime() {
-    // Heure locale actuelle (NTP) + Décalage corrigé
+    // Si la synchro a échoué (offset = 0), retourne simplement l'heure du système
     const currentTimeMs = Date.now() + utcOffsetMs;
     return new Date(currentTimeMs);
 }
 
 /** Calcule la distance euclidienne (3D) entre deux objets Position GPS. */
 function calculateDistance3D(pos1, pos2) {
+    // Utiliser 0 si l'altitude n'est pas fiable ou non présente
     const alt1 = (pos1.coords.altitude !== null && pos1.coords.altitudeAccuracy < ACCURACY_THRESHOLD) ? pos1.coords.altitude : 0;
     const alt2 = (pos2.coords.altitude !== null && pos2.coords.altitudeAccuracy < ACCURACY_THRESHOLD) ? pos2.coords.altitude : 0;
     
@@ -86,6 +86,7 @@ function calculateDistance3D(pos1, pos2) {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance2D = R * c; 
 
+    // Calcul de la variation d'altitude (seulement si les deux sont fiables)
     const dAlt = (alt1 !== 0 && alt2 !== 0) ? (alt2 - alt1) : 0;
     
     return Math.sqrt(distance2D * distance2D + dAlt * dAlt);
@@ -133,8 +134,8 @@ async function syncWithAtomicTime() {
         return true;
         
     } catch (error) {
-        console.error("Échec de la synchronisation de l'heure atomique. Utilisation de l'heure du système.", error);
-        utcOffsetMs = 0;
+        console.error("Échec de la synchronisation de l'heure atomique. Utilisation de l'heure du système.");
+        utcOffsetMs = 0; // Utilisation de l'heure système non corrigée
         return false;
     }
 }
@@ -180,15 +181,13 @@ setInterval(updateMinecraftTime, 1000);
 /** Récupère les données météo réelles via une API externe. */
 async function fetchRealMeteoData(lat, lon) {
     if (OPENWEATHER_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
-        console.error("Veuillez fournir une clé API OpenWeatherMap valide pour la météo réelle.");
-        lastWeatherData = null;
+        console.warn("Clé API OpenWeatherMap manquante. La section Météo/Science réelle ne fonctionnera pas.");
         return;
     }
 
     // Limiter les appels API à un toutes les 10 minutes
     if (lastWeatherData && (Date.now() - lastWeatherData.timestamp) < 600000) { 
-        console.log("Utilisation des données météo en cache (moins de 10 min).");
-        return;
+        return; // Utilise les données en cache
     }
 
     try {
@@ -199,18 +198,15 @@ async function fetchRealMeteoData(lat, lon) {
         
         const data = await response.json();
         
-        // Stockage des données nécessaires
         lastWeatherData = {
             main: data.main,
             timestamp: Date.now(),
-            // Ajout de la conversion pour les calculs:
             pressurePa: data.main.pressure * 100,
             tempKelvin: data.main.temp + KELVIN_OFFSET
         };
-        console.log("Données météo réelles récupérées.");
         
     } catch (error) {
-        console.error("Échec de la récupération des données météo. Les affichages seront vides.", error);
+        console.error("Échec de la récupération des données météo. Utilisation des valeurs de fallback.");
         lastWeatherData = null;
     }
 }
@@ -255,38 +251,28 @@ function updateRealScience(lat, speedMS_3D, altitudeM) {
     
     const isMeteoAvailable = !!lastWeatherData;
     
-    // Fallback à des valeurs standard pour les calculs si l'API est indisponible
+    // Valeurs de base (priorité à la météo réelle)
     const alt = altitudeM !== null ? altitudeM : 0; 
     const pressureHpa = isMeteoAvailable ? lastWeatherData.main.pressure : SEA_LEVEL_PRESSURE;
     const tempKelvin = isMeteoAvailable ? lastWeatherData.tempKelvin : (15 + KELVIN_OFFSET);
     const tempCelsius = tempKelvin - KELVIN_OFFSET;
-    
     const latRad = lat * (Math.PI / 180);
 
     // --- 1. PHYSIQUE & MÉCANIQUE DES FLUIDES ---
     
-    // Masse Volumique de l'air (Calculé à partir de P/T réel)
     const pressurePa = pressureHpa * 100;
     const densityKgM3 = pressurePa / (R_SPECIFIC_AIR * tempKelvin); 
 
-    // Portée de l'Horizon (Géométrique)
     const porteeHorizonKm = Math.sqrt(2 * EARTH_RADIUS_AVG_KM * (alt / 1000));
     
-    // Force de Coriolis
     const currentMass = getCurrentMass();
     const coriolisForceNewton = 2 * currentMass * OMEGA_EARTH * speedMS_3D * Math.sin(latRad);
 
 
     // --- 2. CHIMIE & SVT ---
-
-    // Taux d'oxygène (Pression Partielle relative au niveau de la mer)
     const partialPressureOxy = pressureHpa * OXYGEN_PERCENT; 
     const tauxOxygene = (partialPressureOxy / SEA_LEVEL_PRESSURE) * 100;
-    
-    // Température au sol (Affichage direct de la température réelle de l'air)
     const tempSolSVT = tempCelsius;
-    
-    // Durée de vie théorique (Session)
     const lifeTimeSimulated = updateTime() / 60;
 
 
@@ -298,7 +284,6 @@ function updateRealScience(lat, speedMS_3D, altitudeM) {
     document.getElementById('temp-sol').textContent = displayValueTemp(tempSolSVT, '°C');
     document.getElementById('taux-oxygene').textContent = displayValueTemp(tauxOxygene, '% (pp)');
     
-    // Ces valeurs sont toujours calculées
     document.getElementById('masse-volumique-air').textContent = `${densityKgM3.toFixed(4)} kg/m³`;
     document.getElementById('portee-horizon').textContent = `${porteeHorizonKm.toFixed(2)} km`;
     document.getElementById('coriolis-force').textContent = `${Math.abs(coriolisForceNewton).toExponential(2)} N`;
@@ -353,6 +338,10 @@ function updateDisplay(position) {
                  verticalSpeedSmoothed = verticalSpeedSmoothed * (1 - SMOOTHING_FACTOR) + verticalSpeedRaw * SMOOTHING_FACTOR;
             }
         }
+    } else {
+        // Initialisation ou premier point - assurez-vous que les variables sont à zéro
+        lastSpeedMS = 0; 
+        acceleration = 0;
     }
     
     const verticalSpeed = verticalSpeedSmoothed;
@@ -396,13 +385,10 @@ function updateDisplay(position) {
     document.getElementById('speed-vert').textContent = `${verticalSpeed.toFixed(2)} m/s`;
     document.getElementById('speed-horiz').textContent = `${speedKmh_Horiz_Calc.toFixed(2)} km/h`;
     document.getElementById('speed-3d').textContent = `${speedKmh_3D_Reconstituée.toFixed(2)} km/h`;
-    document.getElementById('speed-ms').textContent = `${speedMS_Reconstituée_3D.toFixed(2)} m/s`;
     
     document.getElementById('speed-max').textContent = `${maxSpeed.toFixed(2)} km/h`;
-    document.getElementById('speed-avg').textContent = `${msToKmh(avgSpeedMS).toFixed(2)} km/h`;
 
     document.getElementById('distance-totale-km').textContent = `${(totalDistance / 1000).toFixed(3)} km`;
-    document.getElementById('distance-m').textContent = `${totalDistance.toFixed(2)} m`;
     
     const altitudeM = coords.altitude !== null && coords.altitudeAccuracy <= ACCURACY_THRESHOLD ? coords.altitude : null;
     document.getElementById('latitude').textContent = coords.latitude !== null ? coords.latitude.toFixed(6) : '--';
@@ -422,10 +408,10 @@ function updateDisplay(position) {
     calculateCosmicData(speedMS_Reconstituée_3D);
     updateAstro(coords.latitude, coords.longitude);
     
-    // NOUVEAU: Appel API Météo (asynchrone, ne bloque pas)
+    // Appel API Météo (asynchrone, ne bloque pas)
     fetchRealMeteoData(coords.latitude, coords.longitude);
     
-    // NOUVEAU: Calculs scientifiques basés sur les données réelles (si disponibles)
+    // Calculs scientifiques basés sur les données réelles (si disponibles)
     updateRealScience(coords.latitude, speedMS_Reconstituée_3D, altitudeM);
     
     // 7. SAUVEGARDE POUR LE PROCHAIN CALCUL
@@ -443,20 +429,41 @@ function errorCallback(error) {
     if (error.code === error.PERMISSION_DENIED) {
         message += "Accès refusé. Veuillez autoriser la géolocalisation.";
     } else {
-        message += "Signal perdu ou localisation indisponible. Suivi en pause.";
+        message += `Erreur de localisation (${error.code}). Signal perdu.`;
     }
     
     document.getElementById('gps-status-text').textContent = message;
     document.getElementById('gps-status-text').style.color = 'red';
     
-    if (error.code !== error.PERMISSION_DENIED) {
-        stopGPS(false); 
-    }
+    stopGPS(false); // Arrête le chronomètre mais pas le watchID pour retenter un fix
 }
 
 function startGPS() {
     if (watchId) return;
 
     if ('geolocation' in navigator) {
-        // Synchroniser l'heure au démarrage
-        if (Date.now() - lastUtcSyncTime > SYNC_INTERVAL_M
+        // Synchroniser l'heure si la dernière synchro est trop ancienne
+        if (Date.now() - lastUtcSyncTime > SYNC_INTERVAL_MS || lastUtcSyncTime === 0) {
+            syncWithAtomicTime(); // Lance la synchro en arrière-plan (non bloquant)
+        }
+
+        const options = { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }; 
+        
+        // C'est l'appel qui doit fonctionner en priorité
+        watchId = navigator.geolocation.watchPosition(updateDisplay, errorCallback, options);
+
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-stop').disabled = false;
+        document.getElementById('btn-reset').disabled = false;
+        document.getElementById('gps-status-text').textContent = 'Démarrage... En attente de fix GPS.';
+        document.getElementById('gps-status-text').style.color = 'orange';
+
+    } else {
+        document.getElementById('gps-status-text').textContent = "La géolocalisation n'est pas supportée.";
+        document.getElementById('gps-status-text').style.color = 'red';
+    }
+}
+
+function stopGPS(clearGPSWatch = true) {
+    if (sessionStartTime > 0) {
+        totalElapsedTime += (Date.now() - sessionStartTime);
