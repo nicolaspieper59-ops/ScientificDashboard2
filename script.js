@@ -4,7 +4,7 @@
 
 // --- PHYSIQUE / VITESSES ---
 const C_LIGHT = 299792458;          // Vitesse de la lumière (m/s)
-const C_SOUND_SEA_LEVEL = 343;      // Vitesse du son dans l'air sec à 20°C (m/s)
+const C_SOUND_SEA_LEVEL = 343;      // Vitesse du son (m/s)
 const EARTH_RADIUS = 6371000;       // Rayon de la Terre (m)
 const KMH_PER_MS = 3.6;             // Conversion m/s -> km/h
 const M_TO_AL = 1 / 9.461e15;       // Conversion mètres -> années-lumière
@@ -24,15 +24,24 @@ const WATCH_OPTIONS = {
 let watchID = null;         
 let lastPosition = null;
 let startTime = null;
-let totalDistanceM = 0; // CORRIGÉ: Distance totale en mètres
+let totalDistanceM = 0; 
 let maxSpeedMS = 0;
+let targetLat = null;
+let targetLon = null;
 
 // --- API MÉTÉO ---
 const OPENWEATHER_API_KEY = 'YOUR_API_KEY'; 
 let lastWeatherFetchTime = 0;
-const WEATHER_FETCH_INTERVAL_MS = 60000; // 60 secondes entre les appels API
+const WEATHER_FETCH_INTERVAL_MS = 60000; // 60 secondes
 
-// --- REFERENCES DOM (inchangées) ---
+// --- FILTRAGE GPS (pour la stabilité de la Vitesse 3D) ---
+const MIN_TIME_INTERVAL_S = 1; // Intervalle minimum pour le calcul de vitesse (1s)
+const MAX_ACCURACY_M = 50;     // Précision maximale acceptable (ignorons les relevés > 50m d'erreur)
+
+// --- SYNCHRONISATION TEMPORELLE (NTP Simulé) ---
+let timeOffsetMS = 0; 
+
+// --- REFERENCES DOM ---
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
@@ -41,12 +50,41 @@ const errorDisplay = document.getElementById('error-message');
 
 
 // ===========================================
-// 2. LOGIQUE DE CONTRÔLE ET D'ÉTAT
+// 2. SYNCHRONISATION ET CONTRÔLE
 // ===========================================
+
+/**
+ * Simule la synchronisation avec un serveur de temps (NTP) pour obtenir l'offset.
+ */
+async function synchronizeTime() {
+    try {
+        // NOTE: Utiliser un service fiable ou une API de temps pour la production
+        const response = await fetch('https://time.is/json');
+        const data = await response.json();
+        
+        const serverTimeUTC = data.utc_datetime; 
+        const serverTimeMS = new Date(serverTimeUTC).getTime();
+        const localTimeMS = Date.now();
+        
+        timeOffsetMS = serverTimeMS - localTimeMS;
+        console.log(`[TIME SYNC] Décalage calculé: ${timeOffsetMS.toFixed(0)} ms`);
+
+    } catch (e) {
+        console.warn("Erreur de synchronisation NTP simulée. Utilisation de l'horloge locale.");
+        timeOffsetMS = 0; 
+    }
+}
+
+/**
+ * Retourne l'heure actuelle corrigée par l'offset NTP.
+ */
+function getCorrectedDate() {
+    return new Date(Date.now() + timeOffsetMS);
+}
 
 function resetDisplay() {
     lastPosition = null;
-    totalDistanceM = 0; // Assuré que la distance est à zéro
+    totalDistanceM = 0; 
     startTime = null;
     maxSpeedMS = 0;
     targetLat = null; 
@@ -58,7 +96,7 @@ function resetDisplay() {
         'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground',
         'solar-true', 'solar-mean', 'eot', 'eot-eccentricity', 'eot-obliquity', 'solar-longitude-val', 'solar-day-duration',
         'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'uv-index', 'boiling-point', 
-        'heading', 'bubble-level', 'light-level', 'cap-dest'
+        'heading', 'bubble-level', 'light-level', 'cap-dest', 'solar-true-header'
     ];
 
     ids.forEach(id => {
@@ -80,6 +118,7 @@ function resetDisplay() {
 
     document.getElementById('elapsed-time').textContent = '0.00 s';
     document.getElementById('mc-time').textContent = '00:00:00';
+    document.getElementById('solar-true-header').textContent = '--:--:--';
     
     startBtn.disabled = false;
     stopBtn.disabled = true;
@@ -87,8 +126,6 @@ function resetDisplay() {
     setTargetBtn.textContent = '📍 Aller';
     errorDisplay.style.display = 'none';
 }
-
-// ... (handleGeolocationError, startGPS, stopGPS, resetMaxSpeed sont inchangées) ...
 
 function handleGeolocationError(error) {
     stopGPS(false);
@@ -182,7 +219,7 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
 }
 
 function calculateSolarDetails() {
-    const now = new Date();
+    const now = getCorrectedDate();
     const J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
     const D = (now.getTime() - J2000.getTime()) / (1000 * 60 * 60 * 24);
 
@@ -213,7 +250,7 @@ function calculateSolarDetails() {
 
 
 function updateAstroDisplay(latitude, longitude) {
-    const now = new Date();
+    const now = getCorrectedDate();
     
     // --- TEMPS MINECRAFT ---
     const mcTicksPerDay = 24000;
@@ -228,6 +265,7 @@ function updateAstroDisplay(latitude, longitude) {
 
     // --- TEMPS SOLAIRE MOYEN (HSM) & HSV ---
     const totalMinutesUT = now.getUTCHours() * 60 + now.getUTCMinutes() + now.getUTCSeconds() / 60;
+    // La longitude*4 (en minutes) donne la différence par rapport à Greenwich
     const totalMinutesLSM = (totalMinutesUT + (longitude * 4) + 1440) % 1440; 
     
     const hsmHour = Math.floor(totalMinutesLSM / 60);
@@ -237,7 +275,7 @@ function updateAstroDisplay(latitude, longitude) {
     const solarDetails = calculateSolarDetails();
     const EoT_ms = solarDetails.eot * 60 * 1000; 
     
-    // Calcul de l'Heure Solaire Vraie (HSV)
+    // Calcul de l'Heure Solaire Vraie (HSV) = HSM + EoT
     const nowHSM = new Date(now.getTime() - (now.getTime() % 86400000) + totalMinutesLSM * 60 * 1000);
     const nowHSV = new Date(nowHSM.getTime() + EoT_ms);
 
@@ -245,8 +283,18 @@ function updateAstroDisplay(latitude, longitude) {
     const lsvMinute = nowHSV.getUTCMinutes();
     const lsvSecond = Math.floor(nowHSV.getUTCSeconds());
     
-    document.getElementById('solar-true').textContent = `${String(lsvHour).padStart(2, '0')}:${String(lsvMinute).padStart(2, '0')}:${String(lsvSecond).padStart(2, '0')} (HSV)`;
+    const hsvTimeStr = `${String(lsvHour).padStart(2, '0')}:${String(lsvMinute).padStart(2, '0')}:${String(lsvSecond).padStart(2, '0')}`;
+
+    // Affichage principal de la HSV
+    document.getElementById('solar-true').textContent = `${hsvTimeStr} (HSV)`;
     
+    // Affichage flottant de la HSV en haut à droite
+    const headerElement = document.getElementById('solar-true-header');
+    if (headerElement) {
+        headerElement.textContent = hsvTimeStr;
+    }
+
+    // Affichage des composants de l'EoT
     document.getElementById('eot').textContent = `${solarDetails.eot.toFixed(2)} min`;
     document.getElementById('eot-eccentricity').textContent = `${solarDetails.eccentricityComponent.toFixed(2)} min`;
     document.getElementById('eot-obliquity').textContent = `${solarDetails.obliquityComponent.toFixed(2)} min`;
@@ -257,7 +305,7 @@ function updateAstroDisplay(latitude, longitude) {
     // --- PHASE LUNAIRE (Illumination Réaliste) ---
     const JD = now.getTime() / 86400000 + 2440587.5; 
     const N = (JD - 2451549.5) / 365.25; 
-    const D_moon = (297.85 + 445267.111 * N) % 360 * DEG_TO_RAD; // Élongation moyenne
+    const D_moon = (297.85 + 445267.111 * N) % 360 * DEG_TO_RAD; 
     
     const illumination = 0.5 * (1 - Math.cos(D_moon)); 
     
@@ -332,7 +380,6 @@ function handleDeviceMotion(event) {
 }
 
 function initSensorListeners() {
-    // Tente d'obtenir la permission pour les capteurs de mouvement (requis sur iOS 13+)
     if (window.DeviceMotionEvent && typeof window.DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
             .then(response => {
@@ -344,7 +391,6 @@ function initSensorListeners() {
             })
             .catch(console.error);
     } else if (window.DeviceMotionEvent) {
-        // Android / Anciens navigateurs
         window.addEventListener('devicemotion', handleDeviceMotion);
     } else {
         document.getElementById('bubble-level').textContent = 'Capteurs Non Supportés';
@@ -357,21 +403,26 @@ function stopSensorListeners() {
 
 
 // ===========================================
-// 5. FONCTION PRINCIPALE D'AFFICHAGE (Correction Distance/Vitesse)
+// 5. FONCTION PRINCIPALE D'AFFICHAGE (Filtrage 3D)
 // ===========================================
 
 function updateDisplay(position) {
-    const { latitude, longitude, accuracy, timestamp } = position.coords;
+    const { latitude, longitude, altitude, accuracy, timestamp } = position.coords;
     
-    const speed = position.coords.speed;
-    const altitude = position.coords.altitude; 
-    const heading = position.coords.heading || null;
+    // --- CONTRÔLE DE LA PRÉCISION (Filtrage anti-bruit) ---
+    if (accuracy > MAX_ACCURACY_M) {
+        document.getElementById('gps-accuracy').textContent = `🚨 ${accuracy.toFixed(0)} m (Trop Imprécis)`;
+        if (lastPosition === null) { lastPosition = position; }
+        updateAstroDisplay(latitude, longitude);
+        fetchWeatherData(latitude, longitude);
+        return; 
+    }
 
     const currentTime = timestamp;
     const elapsedTimeS = (currentTime - startTime) / 1000;
 
     // --- CALCULS VITESSE/DISTANCE ---
-    let speedMS_Horiz = speed !== null ? speed : 0; 
+    let speedMS_Horiz = position.coords.speed !== null ? position.coords.speed : 0; 
     let speedMS_Vert = 0;
     
     if (lastPosition && lastPosition.coords.latitude !== undefined) { 
@@ -380,31 +431,40 @@ function updateDisplay(position) {
         const dAlt = lastPosition.coords.altitude; 
         const dt = (currentTime - lastPosition.timestamp) / 1000; 
 
-        // FIX STABILITÉ: Ne calcule la distance/vitesse que si un temps significatif s'est écoulé (anti-bruit)
-        if (dt > 0.1) { 
+        // FIX STABILITÉ: Vérification du temps minimum pour la stabilité
+        if (dt > MIN_TIME_INTERVAL_S) { 
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
             
-            // Mise à jour de la distance totale (distance parcourue)
-            totalDistanceM += distHorizM;
+            // Calcul de la distance verticale
+            let distVertM = 0;
+            if (altitude !== null && dAlt !== null) {
+                distVertM = altitude - dAlt;
+            }
 
-            // Fallback: Si le GPS ne donne pas de vitesse (souvent le cas), on la calcule.
+            // Calcul de la distance réelle 3D (Hypothénuse)
+            const dist3D = Math.sqrt(distHorizM * distHorizM + distVertM * distVertM);
+            totalDistanceM += dist3D; 
+
+            // Fallback pour la vitesse horizontale
             if (position.coords.speed === null) {
                  speedMS_Horiz = distHorizM / dt;
             }
 
-            // Calcul de la vitesse verticale (composante 3D)
+            // Vitesse verticale
             if (altitude !== null && dAlt !== null) { 
-                speedMS_Vert = (altitude - dAlt) / dt;
+                speedMS_Vert = distVertM / dt;
             }
+        } else {
+             speedMS_Horiz = 0;
+             speedMS_Vert = 0;
         }
     }
     
-    // Vitesse 3D = sqrt(Horizontale² + Verticale²)
+    // Vitesse 3D (Horizontale + Verticale)
     const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
     
-    // Vitesse moyenne = Distance totale / Temps total
-    // FIX STABILITÉ: Ne calcule la moyenne que si l'elapsedTime est > 1s pour éviter les divisions par des valeurs très petites au début.
-    const speedAvgMS = elapsedTimeS > 1 ? totalDistanceM / elapsedTimeS : 0; 
+    // Vitesse moyenne = Distance totale (3D) / Temps total
+    const speedAvgMS = elapsedTimeS > MIN_TIME_INTERVAL_S ? totalDistanceM / elapsedTimeS : 0; 
     if (speedMS_3D > maxSpeedMS) { maxSpeedMS = speedMS_3D; }
 
     // --- MISE À JOUR AFFICHAGE ---
@@ -414,7 +474,7 @@ function updateDisplay(position) {
     document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(1)} km/h`;
     
     document.getElementById('distance-km-m').textContent = `${(totalDistanceM / 1000).toFixed(2)} km | ${(totalDistanceM % 1000).toFixed(1)} m`;
-    // ... (Le reste de l'affichage de la vitesse et de la distance est inchangé) ...
+    
     document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(2)} m/s`;
     document.getElementById('speed-mms').textContent = `${(speedMS_3D * 1000).toFixed(0)} mm/s`;
 
@@ -433,44 +493,4 @@ function updateDisplay(position) {
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
     document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(0)} m` : '-- m';
-    document.getElementById('gps-accuracy').textContent = accuracy !== null ? `${accuracy.toFixed(0)} m` : '-- m';
-    document.getElementById('underground').textContent = altitude !== null ? (altitude < 0 ? 'Oui' : 'Non') : '--';
-    document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : '--°';
-    const hour = new Date().getHours();
-    document.getElementById('light-level').textContent = (hour > 6 && hour < 20) ? 'Jour (Élevé)' : 'Nuit (Faible)';
-
-    if (targetLat !== null && targetLon !== null) {
-        const bearing = calculateBearing(latitude, longitude, targetLat, targetLon);
-        document.getElementById('cap-dest').textContent = `${bearing.toFixed(0)}°`;
-    }
-
-    // --- ASTRO DÉTAILLÉ et MÉTÉO ---
-    updateAstroDisplay(latitude, longitude);
-    fetchWeatherData(latitude, longitude);
-    
-    lastPosition = position; // Sauvegarde de la position pour le prochain calcul
-}
-
-// ... (Les fonctions setTargetDestination et initApp sont inchangées) ...
-
-function setTargetDestination() {
-    if (!lastPosition) {
-        alert("Veuillez démarrer le GPS et attendre une position avant de définir une cible.");
-        return;
-    }
-
-    const currentLat = lastPosition.coords.latitude.toFixed(6);
-    const currentLon = lastPosition.coords.longitude.toFixed(6);
-    
-    const inputLat = prompt(`Entrez la Latitude de destination (actuel: ${currentLat}°) :`, currentLat);
-    const inputLon = prompt(`Entrez la Longitude de destination (actuel: ${currentLon}°) :`, currentLon);
-
-    const lat = parseFloat(inputLat);
-    const lon = parseFloat(inputLon);
-
-    if (!isNaN(lat) && !isNaN(lon)) {
-        targetLat = lat;
-        targetLon = lon;
-        setTargetBtn.textContent = '✅ Destination définie';
-    } else {
-        
+    document.g
