@@ -1,212 +1,139 @@
-/* ===========================================
-   CSS GÉO-ASTRO SCIENTIFIQUE
-   =========================================== */
-
-/* --- 1. RESET ET TYPOGRAPHIE GLOBALE --- */
-:root {
-    --color-primary: #007bff; /* Bleu pour les accents */
-    --color-secondary: #6c757d; /* Gris pour les labels */
-    --color-background: #f8f9fa; /* Fond clair */
-    --color-card-background: #ffffff; /* Fond de carte blanc */
-    --color-text: #212529; /* Texte principal foncé */
-    --color-error: #dc3545; /* Rouge pour les erreurs */
-    --font-monospace: 'Consolas', 'Courier New', monospace; /* Police scientifique pour les données */
-    --font-sans: 'Helvetica Neue', Arial, sans-serif;
-}
-
 body {
-    font-family: var(--font-sans);
-    background-color: var(--color-background);
-    color: var(--color-text);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
-    line-height: 1.6;
+    color: #333;
+    background-color: #f4f4f4;
+    transition: background-color 0.5s, color 0.5s;
 }
 
-main {
-    padding: 20px;
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-/* --- 2. HEADER ET CONTRÔLES --- */
 header {
-    background-color: var(--color-text);
-    color: var(--color-background);
+    background-color: #007bff;
+    color: white;
     padding: 15px 20px;
     text-align: center;
-    border-bottom: 4px solid var(--color-primary);
+    position: relative;
 }
 
 header h1 {
-    font-size: 1.8em;
-    margin-bottom: 5px;
+    margin: 0;
+    font-size: 2.5em;
 }
 
-.header-time-sync {
-    font-size: 1.1em;
-    margin-top: 10px;
+#mode-indicator {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 0.9em;
+    padding: 5px 10px;
+    border-radius: 5px;
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
-#solar-true-header {
-    font-family: var(--font-monospace);
-    color: #28a745; /* Vert pour le temps précis */
-    font-size: 1.2em;
-    font-weight: bold;
-}
-
-.error-message {
-    background-color: var(--color-error);
-    color: white;
-    padding: 10px;
-    margin-top: 10px;
-    border-radius: 4px;
-    font-weight: bold;
-    text-align: left;
+main {
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 0 20px;
 }
 
 .controls {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
-    flex-wrap: wrap; /* Gérer le responsive sur les boutons */
 }
 
 .controls button {
-    flex-grow: 1;
-    padding: 10px;
+    padding: 10px 15px;
     border: none;
     border-radius: 5px;
     cursor: pointer;
     font-weight: bold;
-    transition: background-color 0.2s;
-    background-color: var(--color-primary);
-    color: white;
+    flex-grow: 1;
+    transition: background-color 0.3s;
 }
 
-.controls button:disabled {
-    background-color: var(--color-secondary);
-    cursor: not-allowed;
-}
+#start-btn { background-color: #28a745; color: white; }
+#stop-btn { background-color: #dc3545; color: white; }
+#reset-max-btn { background-color: #ffc107; color: #333; }
+#set-target-btn { background-color: #17a2b8; color: white; }
 
-.controls button:hover:not(:disabled) {
-    background-color: #0056b3; /* Bleu plus foncé au survol */
-}
+#start-btn:hover { background-color: #218838; }
+#stop-btn:hover { background-color: #c82333; }
+#reset-max-btn:hover { background-color: #e0a800; }
+#set-target-btn:hover { background-color: #138496; }
 
-/* --- 3. STRUCTURE DES CARTES (SECTIONS) --- */
-.card {
-    background-color: var(--color-card-background);
-    padding: 20px;
+section {
+    background-color: white;
+    padding: 15px;
     margin-bottom: 20px;
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-    border-left: 5px solid var(--color-primary);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.card h2 {
-    font-size: 1.4em;
-    color: var(--color-primary);
-    border-bottom: 1px solid #dee2e6;
-    padding-bottom: 10px;
+section h2 {
+    border-bottom: 2px solid #eee;
+    padding-bottom: 5px;
     margin-top: 0;
-    margin-bottom: 15px;
+    color: #007bff;
 }
 
-/* --- 4. AFFICHAGE DES DONNÉES (GRILLES) --- */
-.data-grid {
-    display: grid;
-    gap: 15px 20px;
-    margin-bottom: 15px;
+table {
+    width: 100%;
+    border-collapse: collapse;
 }
 
-/* Grilles pour les sections avec 2 ou 3 colonnes par défaut */
-.two-cols {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+table th, table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
 }
 
-.three-cols {
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+table th {
+    font-weight: normal;
+    color: #666;
+    width: 50%;
 }
 
-.data-grid > div {
-    display: flex;
-    flex-direction: column;
+table td {
+    font-weight: bold;
+    text-align: right;
+    font-family: monospace;
 }
 
-.label {
-    font-size: 0.85em;
-    color: var(--color-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 3px;
-}
-
-/* Style Monospace pour les valeurs numériques */
-.data-grid span:not(.label) {
-    font-family: var(--font-monospace);
-    font-size: 1.1em;
-    font-weight: 500;
-    color: var(--color-text);
-}
-
-/* --- 5. CARTE DE PERFORMANCE PRINCIPALE --- */
-.performance-section .main-display {
-    text-align: center;
-    padding: 15px 0 25px;
-    border-bottom: 2px dashed #e9ecef;
+.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 10px;
     margin-bottom: 20px;
-}
-
-.performance-section .main-value {
-    font-size: 3.5em; /* Grande taille pour la vitesse actuelle */
+    border: 1px solid #f5c6cb;
+    border-radius: 5px;
     font-weight: bold;
-    color: var(--color-error); /* Rouge pour attirer l'attention sur l'instantané */
 }
 
-.performance-section .main-unit {
-    display: block;
-    font-size: 1.1em;
-    color: var(--color-secondary);
-    margin-top: -10px;
+/* --- Mode Nuit (Dark Mode) --- */
+body.night-mode {
+    background-color: #121212;
+    color: #e0e0e0;
 }
 
-/* Mise en évidence de certains calculs spéciaux (pourcentage de la lumière) */
-.detail-grid #perc-light, .detail-grid #perc-sound {
-    font-weight: bold;
-    color: #495057; 
+body.night-mode header {
+    background-color: #333;
 }
 
-/* --- 6. FOOTER --- */
-footer {
-    text-align: center;
-    padding: 15px;
-    font-size: 0.8em;
-    color: var(--color-secondary);
-    margin-top: 20px;
+body.night-mode section {
+    background-color: #1e1e1e;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
 }
 
-/* --- 7. MEDIA QUERIES (RESPONSIVE DESIGN) --- */
+body.night-mode section h2 {
+    color: #17a2b8;
+    border-bottom-color: #333;
+}
 
-/* Ajustements pour les petits écrans (téléphones) */
-@media (max-width: 600px) {
-    main {
-        padding: 10px;
-    }
-
-    header h1 {
-        font-size: 1.5em;
-    }
-    
-    .controls {
-        flex-direction: column;
-    }
-
-    .performance-section .main-value {
-        font-size: 2.8em;
-    }
-    
-    /* Réduction du nombre de colonnes sur les petits écrans */
-    .two-cols, .three-cols {
-        grid-template-columns: 1fr;
-    }
- }
+body.night-mode table th {
+    color: #aaa;
+}
+body.night-mode table td {
+    color: #fff;
+    border-bottom-color: #333;
+}
