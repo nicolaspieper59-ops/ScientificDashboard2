@@ -429,19 +429,19 @@ function updateDisplay(position) {
 
     // MISE À JOUR DES VALEURS
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(1)} s`;
-    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(1)} km/h`;
-    document.getElementById('distance-km-m').textContent = `${totalDistKm.toFixed(2)} km | ${totalDistMeters.toFixed(1)} m`;
-    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(1)} km/h`; 
-    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(1)} km/h`;
-    document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(2)} m/s`;
+    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(3)} km/h`;
+    document.getElementById('distance-km-m').textContent = `${totalDistKm.toFixed(2)} km | ${totalDistMeters.toFixed(3)} m`;
+    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(3)} km/h`; 
+    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(3)} km/h`;
+    document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(4)} m/s`;
     
     document.getElementById('perc-light').textContent = `${((speedMS_3D / C_LIGHT) * 100).toExponential(2)}%`;
     document.getElementById('perc-sound').textContent = `${((speedMS_3D / C_SOUND_SEA_LEVEL) * 100).toFixed(1)}%`;
 
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
-    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(0)} m` : 'N/A';
-    document.getElementById('gps-accuracy').textContent = `${accuracy.toFixed(0)} m`;
+    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(2)} m` : 'N/A';
+    document.getElementById('gps-accuracy').textContent = `${accuracy.toFixed(2)} m`;
     document.getElementById('underground').textContent = altitude !== null ? (altitude < 0 ? 'Oui' : 'Non') : 'N/A';
     document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
     
