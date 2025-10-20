@@ -18,8 +18,8 @@ const JD_2000_REF = 2451545.0; // Jour Julien J2000.0 (au 1er janvier 2000, 12h)
 // --- ÉTAT DE L'APPLICATION ---
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
-    maximumAge: 500, // Accepte une position de 0.5s max
-    timeout: 15000 // Attend 15s max pour la position
+    maximumAge: 500, 
+    timeout: 15000 
 };
 let watchID = null;         
 let lastPosition = null;
@@ -51,7 +51,7 @@ const setTargetBtn = document.getElementById('set-target-btn');
 const errorDisplay = document.getElementById('error-message');
 const modeIndicator = document.getElementById('mode-indicator');
 const speedSourceIndicator = document.getElementById('speed-source-indicator'); 
-
+// NOTE: L'élément 'speed-stable' est référencé par getElementById uniquement dans resetDisplay/updateDisplay
 
 // ===========================================
 // 2. SYNCHRONISATION DU TEMPS
@@ -67,7 +67,6 @@ async function synchronizeTime() {
         const serverTimeMS = new Date(serverTimeUTC).getTime();
         timeOffsetMS = serverTimeMS - T4;
     } catch (e) {
-        // En cas d'échec, on assume l'horloge locale est correcte.
         timeOffsetMS = 0; 
     }
 }
@@ -95,12 +94,13 @@ function resetDisplay() {
 
     // Réinitialisation simplifiée de l'affichage
     const defaultText = '--';
-    const ids = ['elapsed-time', 'speed-3d-inst', 'speed-raw-ms', 'speed-avg', 'speed-max', 'speed-ms', 
+    const ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-avg', 'speed-max', 'speed-ms', 
         'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time',
         'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground',
         'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 
         'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 
-        'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator'
+        'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 
+        'mode-indicator', 'speed-source-indicator'
     ];
 
     ids.forEach(id => {
@@ -147,6 +147,7 @@ function startGPS() {
     resetDisplay(); 
     startTime = Date.now(); 
     
+    // Ajout de l'événement de position à l'écoute
     watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
     
     startBtn.disabled = true;
@@ -259,18 +260,14 @@ function calculateLunarTime(longitude) {
 
 function calculateLunarPhaseAngle() {
     const now = getCorrectedDate();
-    const JD = now.getTime() / 86400000 + 2440587.5; // JD actuel
-    const d = JD - JD_2000_REF; // Jours écoulés depuis J2000.0
+    const JD = now.getTime() / 86400000 + 2440587.5; 
+    const d = JD - JD_2000_REF; 
     
-    // D = Longitude Moyenne de la Lune - Longitude Moyenne du Soleil
-    // Constantes de vitesse par jour (basées sur Meeus)
     let D = 297.8501921 + 445.2671115 * d;
 
-    // Ramener D dans l'intervalle [0, 360] degrés
     D = D % 360; 
     if (D < 0) { D += 360; }
     
-    // Conversion en radians
     return D * DEG_TO_RAD;
 }
 
@@ -300,12 +297,11 @@ function updateAstroDisplay(latitude, longitude) {
     const solarDetails = calculateSolarDetails();
     const EoT_ms = solarDetails.eot * 60 * 1000; 
     
-    // Le temps solaire vrai (HSV) est le temps solaire moyen local + l'équation du temps
     const nowHSM = new Date(now.getTime() - (now.getTime() % 86400000) + totalMinutesLSM * 60 * 1000);
     const nowHSV = new Date(nowHSM.getTime() + EoT_ms);
 
     const lsvHour = nowHSV.getUTCHours(); 
-    const lsvMinute = nowHSV.getUTCMinutes();
+    const lsvMinute = nowHSV.getUTCMminutes();
     const lsvSecond = Math.floor(nowHSV.getUTCSeconds());
     
     const hsvTimeStr = `${String(lsvHour).padStart(2, '0')}:${String(lsvMinute).padStart(2, '0')}:${String(lsvSecond).padStart(2, '0')}`;
@@ -319,7 +315,6 @@ function updateAstroDisplay(latitude, longitude) {
 
     // --- PHASE LUNAIRE (Illumination) ---
     const D_rad = calculateLunarPhaseAngle();
-    // Formule d'illumination : I = 0.5 * (1 - cos(D))
     const illumination = 0.5 * (1 - Math.cos(D_rad)); 
     document.getElementById('lunar-phase-perc').textContent = `${(illumination * 100).toFixed(1)}%`;
 
@@ -332,9 +327,8 @@ function updateAstroDisplay(latitude, longitude) {
 // ===========================================
 
 function simpleKalmanFilter(newSpeedMS, dt) {
-    if (dt === 0 || dt > 5) { return kalmanSpeed; } // Ignore les intervalles non significatifs
+    if (dt === 0 || dt > 5) { return kalmanSpeed; } 
     
-    // Le bruit de processus Q est ajusté par le temps (plus l'intervalle est long, plus le bruit est important)
     const Q = PROCESS_NOISE_Q * dt; 
     
     // 1. Prediction (L'état est supposé constant)
@@ -342,13 +336,12 @@ function simpleKalmanFilter(newSpeedMS, dt) {
     let predictedUncertainty = kalmanUncertainty + Q; 
 
     // 2. Update (Correction)
-    // Gain de Kalman : plus proche de 1 si la mesure est fiable (R est petit)
     let K = predictedUncertainty / (predictedUncertainty + MEASUREMENT_NOISE_R);
 
-    // Mise à jour de la vitesse estimée (pondération entre prédiction et mesure)
+    // Mise à jour de la vitesse estimée
     kalmanSpeed = predictedSpeed + K * (newSpeedMS - predictedSpeed);
     
-    // Mise à jour de l'incertitude (elle diminue)
+    // Mise à jour de l'incertitude
     kalmanUncertainty = (1 - K) * predictedUncertainty;
 
     return kalmanSpeed;
@@ -361,11 +354,9 @@ function simpleKalmanFilter(newSpeedMS, dt) {
 
 function updateDarkMode(latitude, longitude) {
     const now = getCorrectedDate();
-    // Approximation de l'heure locale pour le mode jour/nuit simple
     const localHourApprox = now.getUTCHours() + now.getUTCMinutes() / 60 + longitude / 15;
     const hours = localHourApprox % 24;
     
-    // Règle arbitraire simple : nuit entre 18h et 6h
     const SUNRISE_H = 6;
     const SUNSET_H = 18;
 
@@ -432,7 +423,7 @@ function updateDisplay(position) {
     }
 
     // --- LOGIQUE DE VITESSE BRUTE ET SOURCE ---
-    let speedMS_Horiz = speed !== null && speed !== undefined ? speed : 0; // Vitesse Doppler si disponible
+    let speedMS_Horiz = speed !== null && speed !== undefined ? speed : 0; 
     let speedSource = speed !== null && speed !== undefined ? 'Puce GPS (Brute/Doppler)' : 'Calculée (Dérivée)';
     let speedMS_Vert = 0;
     
@@ -443,10 +434,9 @@ function updateDisplay(position) {
         const dLon = lastPosition.coords.longitude;
         const dAlt = lastPosition.coords.altitude; 
 
-        if (dt > 0.1) { // Ne pas calculer la distance sur des intervalles trop courts (trop de bruit)
+        if (dt > 0.1) { 
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
             
-            // Si le GPS ne fournit PAS la vitesse (speed === null), nous la calculons ici par dérivation
             if (speed === null || speed === undefined) { 
                 speedMS_Horiz = distHorizM / dt; 
             }
@@ -457,7 +447,7 @@ function updateDisplay(position) {
         } 
     }
     
-    // Calcul de la Vitesse 3D Brute (le chaos du mm/s)
+    // Vitesse 3D Brute (le "Chaos" non filtré)
     const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
 
     // --- FILTRAGE DE VITESSE ---
@@ -465,11 +455,12 @@ function updateDisplay(position) {
     
     const elapsedTimeS = (currentTime - startTime) / 1000;
     
-    // Mise à jour de la distance basée sur la vitesse BRUTE * dt
+    // La distance utilise la vitesse BRUTE * dt (pour une mesure fidèle)
     totalDistanceM += speedMS_3D * dt; 
     
     const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0; 
     
+    // Le max speed est basé sur la vitesse filtrée (plus stable)
     if (filteredSpeedMS > maxSpeedMS) { maxSpeedMS = filteredSpeedMS; } 
 
     const totalDistKm = totalDistanceM / 1000;
@@ -478,16 +469,19 @@ function updateDisplay(position) {
     // MISE À JOUR DES VALEURS
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(2)} s`;
     
-    // AFFICHAGE FILTRÉ (Stable pour l'utilisateur, basé sur le filtre de Kalman)
-    document.getElementById('speed-3d-inst').textContent = `${(filteredSpeedMS * KMH_PER_MS).toFixed(5)} km/h`; 
+    // AFFICHAGE BRUT : Vitesse 3D Instantanée
+    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(5)} km/h`; 
     
-    // AFFICHAGE BRUT (Vitesse du chaos mm/s)
-    document.getElementById('speed-raw-ms').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(5)} km/h`; 
-    document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(5)} m/s`; // Vitesse brute en m/s
+    // AFFICHAGE FILTRÉ (Stable) : Vitesse par le filtre de Kalman
+    document.getElementById('speed-stable').textContent = `${(filteredSpeedMS * KMH_PER_MS).toFixed(5)} km/h`; 
+    
+    // Vitesse brute en m/s
+    document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(5)} m/s`; 
 
     document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(5)} km/h`; 
     document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(5)} km/h`;
     
+    // Les pourcentages utilisent la vitesse filtrée
     document.getElementById('perc-light').textContent = `${((filteredSpeedMS / C_LIGHT) * 100).toExponential(2)}%`;
     document.getElementById('perc-sound').textContent = `${((filteredSpeedMS / C_SOUND_SEA_LEVEL) * 100).toFixed(1)}%`;
 
@@ -500,7 +494,6 @@ function updateDisplay(position) {
     
     document.getElementById('distance-km-m').textContent = `${totalDistKm.toFixed(5)} km | ${totalDistMeters.toFixed(5)} m`;
 
-    // NOUVEL AFFICHAGE DE LA SOURCE DE VITESSE
     speedSourceIndicator.textContent = `Source: ${speedSource}`;
 
     if (targetLat !== null && targetLon !== null) {
@@ -518,4 +511,24 @@ function updateDisplay(position) {
 }
 
 
-// =======
+// ===========================================
+// 7. INITIALISATION
+// ===========================================
+
+function initApp() {
+    
+    // LIAISON DES ÉVÉNEMENTS
+    if (startBtn) startBtn.addEventListener('click', startGPS);
+    if (stopBtn) stopBtn.addEventListener('click', () => stopGPS(true)); 
+    if (resetMaxBtn) resetMaxBtn.addEventListener('click', resetMaxSpeed);
+    if (setTargetBtn) setTargetBtn.addEventListener('click', setTargetDestination);
+
+    synchronizeTime(); 
+    setInterval(synchronizeTime, 300000); 
+    
+    resetDisplay();
+    updateDarkMode(0, 0); 
+}
+
+// Assure que l'initialisation se fait après le chargement de TOUS les éléments HTML
+document.addEventListener('DOMContentLoaded', initApp);
