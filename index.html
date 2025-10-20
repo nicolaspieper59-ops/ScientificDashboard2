@@ -3,76 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracker GPS et Vitesse Accumulée</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
-        h1 { color: #2c3e50; }
-        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #333; }
-        .data-section { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .data-item { margin-bottom: 5px; }
-        .label { font-weight: bold; color: #555; display: inline-block; width: 250px; }
-        .value { color: #007bff; }
-        #gps-status-text { font-weight: bold; color: gray; }
-        .controls button {
-            padding: 10px 20px;
-            font-size: 16px;
-            margin-right: 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        #btn-start { background-color: #4CAF50; color: white; }
-        #btn-start:hover { background-color: #45a049; }
-        #btn-stop { background-color: #f44336; color: white; }
-        #btn-stop:hover { background-color: #d32f2f; }
-        #btn-reset { background-color: #ff9800; color: white; }
-        #btn-reset:hover { background-color: #e68a00; }
-    </style>
+    <title>Navigation Atomique et Astro</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <h1>Mon Tracker de Vitesse et GPS</h1>
+    <header>
+        <h1 id="solar-true-header">--:--:--</h1>
+        <div id="mode-indicator">Mode: Jour ☀️</div>
+    </header>
+
+    <main>
+        <div class="controls">
+            <button id="start-btn">▶️ Démarrer GPS</button>
+            <button id="stop-btn" disabled>🛑 Arrêter GPS</button>
+            <button id="reset-max-btn" disabled>🔄 Réinitialiser Max</button>
+            <button id="set-target-btn">📍 Aller</button>
+        </div>
+        <div id="error-message" class="error" style="display:none;"></div>
+        
+        <section id="speed-metrics">
+            <h2>Vitesse et Performance</h2>
+            <table>
+                <tr><th>Temps Écoulé</th><td id="elapsed-time">-- s</td></tr>
+                <tr><th>Source Vitesse</th><td id="speed-source-indicator">Source: N/A</td></tr>
+                
+                <tr><th>Vitesse FILTRÉE (Stable)</th><td id="speed-3d-inst">-- km/h</td></tr>
+                <tr><th>Vitesse BRUTE (Chaos mm/s)</th><td id="speed-raw-ms">-- km/h</td></tr>
+                
+                <tr><th>Vitesse Brute (m/s)</th><td id="speed-ms">-- m/s</td></tr>
+                <tr><th>Vitesse Moyenne</th><td id="speed-avg">-- km/h</td></tr>
+                <tr><th>Vitesse Maximale</th><td id="speed-max">-- km/h</td></tr>
+                
+                <tr><th>% Vitesse Lumière</th><td id="perc-light">--%</td></tr>
+                <tr><th>% Vitesse Son</th><td id="perc-sound">--%</td></tr>
+            </table>
+        </section>
+
+        <section id="position-metrics">
+            <h2>Position et Précision</h2>
+            <table>
+                <tr><th>Latitude</th><td id="latitude">--</td></tr>
+                <tr><th>Longitude</th><td id="longitude">--</td></tr>
+                <tr><th>Altitude</th><td id="altitude">-- m</td></tr>
+                <tr><th>Précision GPS</th><td id="gps-accuracy">-- m</td></tr>
+                <tr><th>Sous Terre ?</th><td id="underground">--</td></tr>
+                <tr><th>Distance Totale</th><td id="distance-km-m">-- km | -- m</td></tr>
+                <tr><th>Cap Actuel</th><td id="heading">--</td></tr>
+                <tr><th>Cap Destination</th><td id="cap-dest">N/A</td></tr>
+            </table>
+        </section>
+
+        <section id="astro-metrics">
+            <h2>Chronologie et Astronomie</h2>
+            <table>
+                <tr><th>Temps Solaire Vrai (HSV)</th><td id="solar-true">-- (HSV)</td></tr>
+                <tr><th>Équation du Temps (EOT)</th><td id="eot">-- min</td></tr>
+                <tr><th>Longitude Solaire</th><td id="solar-longitude-val">-- °</td></tr>
+                <tr><th>Temps Solaire Moyen</th><td id="solar-mean">--</td></tr>
+                <tr><th>Phase Lunaire</th><td id="lunar-phase-perc">--%</td></tr>
+                <tr><th>Temps Lunaire Local</th><td id="lunar-time">--</td></tr>
+                <tr><th>Temps Minecraft</th><td id="mc-time">--</td></tr>
+            </table>
+        </section>
+        
+        <section id="external-metrics">
+            <h2>Données Externes (Simulées)</h2>
+            <table>
+                <tr><th>Température Air</th><td id="air-temp">N/A (API désactivée)</td></tr>
+                <tr><th>Pression Atm.</th><td id="pressure">N/A (API désactivée)</td></tr>
+                <tr><th>Humidité</th><td id="humidity">N/A (API désactivée)</td></tr>
+                <tr><th>Vitesse Vent</th><td id="wind-speed">N/A (API désactivée)</td></tr>
+                <tr><th>Point Ébullition</th><td id="boiling-point">N/A (API désactivée)</td></tr>
+                <tr><th>Niveau à Bulle</th><td id="bubble-level">N/A (API désactivée)</td></tr>
+            </table>
+        </section>
+
+    </main>
     
-    <div class="controls">
-        <button id="btn-start" onclick="startGPS()">Démarrer (Marche)</button>
-        <button id="btn-stop" onclick="stopGPS()" disabled>Arrêter (Arrêt)</button>
-        <button id="btn-reset" onclick="resetMax()" disabled>Réinitialiser Max/Moyenne</button>
-    </div>
-
-    <p style="margin-top: 15px;"><span class="label">Statut GPS :</span><span id="gps-status-text" class="value">Initialisation...</span></p>
-
-    <input type="hidden" id="watch-id" value="">
-
-    <div class="data-section">
-        <h2>Temps & Vitesse (Ground Speed)</h2>
-        <div class="data-item"><span class="label">Temps total écoulé :</span><span id="elapsed-time" class="value">0 s</span></div>
-        <div class="data-item"><span class="label">Vitesse instantanée (Horiz) :</span><span id="speed-horiz" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse verticale :</span><span id="speed-vert" class="value">0.00 m/s</span></div>
-        <div class="data-item"><span class="label">Vitesse 3D (Totale) :</span><span id="speed-3d" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse moyenne :</span><span id="speed-avg" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse max :</span><span id="speed-max" class="value">0.00 km/h</span></div>
-        <div class="data-item"><span class="label">Vitesse (m/s) :</span><span id="speed-ms" class="value">0.00 m/s</span></div>
-        <div class="data-item"><span class="label">Vitesse (mm/s) :</span><span id="speed-mms" class="value">0 mm/s</span></div>
-    </div>
-
-    <div class="data-section">
-        <h2>🔭 Cosmique / Secondaire</h2>
-        <div class="data-item"><span class="label">Nombre de Mach (M) :</span><span id="mach" class="value">0.000</span></div>
-        <div class="data-item"><span class="label">% Lumière :</span><span id="light-perc" class="value">0.00000000%</span></div>
-        <div class="data-item"><span class="label">Distance totale (km) :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
-        <div class="data-item"><span class="label">Distance (m) :</span><span id="distance-m" class="value">0.00 m</span></div>
-    </div>
-
-    <div class="data-section">
-        <h2>📊 Vue brute GPS (Aviation)</h2>
-        <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
-        <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
-        <div class="data-item"><span class="label">Altitude (m) :</span><span id="altitude-m" class="value">-- m</span></div>
-        <div class="data-item"><span class="label">Altitude (ft) :</span><span id="altitude-ft" class="value">-- ft</span></div>
-        <div class="data-item"><span class="label">Précision (Horiz) :</span><span id="accuracy-horiz" class="value">-- m</span></div>
-    </div>
-    
-    <script src="script.js"></script>
+    <script src="app.js"></script>
 </body>
-            </html>
+                                                               </html>
