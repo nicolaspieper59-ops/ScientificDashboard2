@@ -3,202 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Géo-Astro-Vitesse 3D (Corrigé)</title>
-    <link rel="stylesheet" href="style.css"> 
+    <title>Tracker GPS et Vitesse Accumulée</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        h1 { color: #2c3e50; }
+        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #333; }
+        .data-section { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .data-item { margin-bottom: 5px; }
+        .label { font-weight: bold; color: #555; display: inline-block; width: 250px; }
+        .value { color: #007bff; }
+        #gps-status-text { font-weight: bold; color: gray; }
+        .controls button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #btn-start { background-color: #4CAF50; color: white; }
+        #btn-start:hover { background-color: #45a049; }
+        #btn-stop { background-color: #f44336; color: white; }
+        #btn-stop:hover { background-color: #d32f2f; }
+        #btn-reset { background-color: #ff9800; color: white; }
+        #btn-reset:hover { background-color: #e68a00; }
+    </style>
 </head>
 <body>
 
-    <header>
-        <h1>Analyse Géospatiale 3D</h1>
-        <div class="header-time-sync">
-            <span class="label">HSV (Temps Solaire Vrai):</span>
-            <span id="solar-true-header">--:--:--</span>
-        </div>
-        <div id="error-message" class="error-message" style="display: none;"></div>
-    </header>
+    <h1>Mon Tracker de Vitesse et GPS</h1>
+    
+    <div class="controls">
+        <button id="btn-start" onclick="startGPS()">Démarrer (Marche)</button>
+        <button id="btn-stop" onclick="stopGPS()" disabled>Arrêter (Arrêt)</button>
+        <button id="btn-reset" onclick="resetMax()" disabled>Réinitialiser Max/Moyenne</button>
+    </div>
 
-    <main>
-        
-        <section class="controls">
-            <button id="start-btn">▶️ Démarrer GPS/Capteurs</button>
-            <button id="stop-btn" disabled>⏹️ Arrêter</button>
-            <button id="reset-max-btn" disabled>🔄 Réinitialiser Max</button>
-            <button id="set-target-btn">📍 Aller</button>
-        </section>
+    <p style="margin-top: 15px;"><span class="label">Statut GPS :</span><span id="gps-status-text" class="value">Initialisation...</span></p>
 
-        <section class="mode-status">
-            <span id="mode-indicator">Mode: Jour ☀️</span>
-        </section>
+    <input type="hidden" id="watch-id" value="">
 
-        <section class="card large-card performance-section">
-            <h2>Vitesse et Performance 🚀</h2>
-            
-            <div class="speed-source-status">
-                <span id="speed-source-indicator">Source: N/A</span>
-            </div>
+    <div class="data-section">
+        <h2>Temps & Vitesse (Ground Speed)</h2>
+        <div class="data-item"><span class="label">Temps total écoulé :</span><span id="elapsed-time" class="value">0 s</span></div>
+        <div class="data-item"><span class="label">Vitesse instantanée (Horiz) :</span><span id="speed-horiz" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse verticale :</span><span id="speed-vert" class="value">0.00 m/s</span></div>
+        <div class="data-item"><span class="label">Vitesse 3D (Totale) :</span><span id="speed-3d" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse moyenne :</span><span id="speed-avg" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse max :</span><span id="speed-max" class="value">0.00 km/h</span></div>
+        <div class="data-item"><span class="label">Vitesse (m/s) :</span><span id="speed-ms" class="value">0.00 m/s</span></div>
+        <div class="data-item"><span class="label">Vitesse (mm/s) :</span><span id="speed-mms" class="value">0 mm/s</span></div>
+    </div>
 
-            <div class="main-display">
-                <span id="speed-3d-inst" class="main-value">0.00 km/h</span>
-                <span class="main-unit">VITESSE ACTUELLE (3D)</span>
-            </div>
-            
-            <div class="data-grid two-cols">
-                <div>
-                    <span class="label">Vitesse Max :</span>
-                    <span id="speed-max">0.00 km/h</span>
-                </div>
-                <div>
-                    <span class="label">Vitesse Moyenne :</span>
-                    <span id="speed-avg">-- km/h</span>
-                </div>
-            </div>
-            
-            <div class="data-grid two-cols">
-                <div>
-                    <span class="label">Distance Totale :</span>
-                    <span id="distance-km-m">-- km | -- m</span>
-                </div>
-                <div>
-                    <span class="label">Temps Écoulé :</span>
-                    <span id="elapsed-time">0.00 s</span>
-                </div>
-            </div>
+    <div class="data-section">
+        <h2>🔭 Cosmique / Secondaire</h2>
+        <div class="data-item"><span class="label">Nombre de Mach (M) :</span><span id="mach" class="value">0.000</span></div>
+        <div class="data-item"><span class="label">% Lumière :</span><span id="light-perc" class="value">0.00000000%</span></div>
+        <div class="data-item"><span class="label">Distance totale (km) :</span><span id="distance-totale-km" class="value">0.000 km</span></div>
+        <div class="data-item"><span class="label">Distance (m) :</span><span id="distance-m" class="value">0.00 m</span></div>
+    </div>
 
-            <div class="data-grid two-cols detail-grid">
-                <div>
-                    <span class="label">Vitesse (m/s) :</span>
-                    <span id="speed-ms">0.00 m/s</span>
-                </div>
-                <div>
-                    <span class="label">% Vitesse du Son :</span>
-                    <span id="perc-sound">--%</span>
-                </div>
-                <div>
-                    <span class="label">% Vitesse Lumière :</span>
-                    <span id="perc-light">--%</span>
-                </div>
-            </div>
-        </section>
-
-        <section class="card geo-section">
-            <h2>Géolocalisation 🛰️</h2>
-            <div class="data-grid three-cols">
-                <div>
-                    <span class="label">Latitude :</span>
-                    <span id="latitude">--</span>
-                </div>
-                <div>
-                    <span class="label">Longitude :</span>
-                    <span id="longitude">--</span>
-                </div>
-                <div>
-                    <span class="label">Altitude :</span>
-                    <span id="altitude">-- m</span>
-                </div>
-            </div>
-
-            <div class="data-grid three-cols">
-                <div>
-                    <span class="label">Précision GPS :</span>
-                    <span id="gps-accuracy">-- m</span>
-                </div>
-                <div>
-                    <span class="label">Cap (Heading) :</span>
-                    <span id="heading">N/A</span>
-                </div>
-                <div>
-                    <span class="label">Cap vers cible :</span>
-                    <span id="cap-dest">N/A</span>
-                </div>
-            </div>
-
-            <div class="data-grid one-col">
-                <span class="label">Sous-sol / Négatif :</span>
-                <span id="underground">N/A</span>
-            </div>
-        </section>
-        
-        <section class="card astro-section">
-            <h2>Synchronisation et Astro ⏳</h2>
-            
-            <div class="data-grid two-cols">
-                <div>
-                    <span class="label">Temps Solaire Vrai (HSV) :</span>
-                    <span id="solar-true">--:--:-- (HSV)</span>
-                </div>
-                <div>
-                    <span class="label">Temps Solaire Moyen (HSM) :</span>
-                    <span id="solar-mean">--:--</span>
-                </div>
-            </div>
-
-            <div class="data-grid two-cols detail-grid">
-                <div>
-                    <span class="label">Équation du Temps (EoT) :</span>
-                    <span id="eot">-- min</span>
-                </div>
-                <div>
-                    <span class="label">Longitude Solaire :</span>
-                    <span id="solar-longitude-val">-- °</span>
-                </div>
-            </div>
-
-            <div class="data-grid three-cols">
-                <div>
-                    <span class="label">Phase Lunaire (Illumination) :</span>
-                    <span id="lunar-phase-perc">--%</span>
-                </div>
-                <div>
-                    <span class="label">Temps Lunaire (LMT) :</span>
-                    <span id="lunar-time">00:00:00</span>
-                </div>
-                <div>
-                    <span class="label">Temps Minecraft :</span>
-                    <span id="mc-time">00:00:00</span>
-                </div>
-            </div>
-        </section>
-        
-        <section class="card sensor-weather-section">
-            <h2>Données Auxiliaires ⚙️</h2>
-            
-            <div class="data-grid two-cols">
-                <div>
-                    <span class="label">Niveau (Bulles - Capteurs 3D) :</span>
-                    <span id="bubble-level">N/A (API désactivée)</span>
-                </div>
-                <div>
-                    <span class="label">Température Air :</span>
-                    <span id="air-temp">N/A (API désactivée)</span>
-                </div>
-            </div>
-            
-            <div class="data-grid three-cols detail-grid">
-                <div>
-                    <span class="label">Pression (hPa) :</span>
-                    <span id="pressure">N/A (API désactivée)</span>
-                </div>
-                <div>
-                    <span class="label">Humidité :</span>
-                    <span id="humidity">N/A (API désactivée)</span>
-                </div>
-                <div>
-                    <span class="label">Vent :</span>
-                    <span id="wind-speed">N/A (API désactivée)</span>
-                </div>
-                <div>
-                    <span class="label">Point Ébullition (Altitude) :</span>
-                    <span id="boiling-point">N/A (API désactivée)</span>
-                </div>
-            </div>
-        </section>
-
-    </main>
-
-    <footer>
-        <p>Projet Géo-Astro | Source de vitesse indique si la puce GPS fournit la donnée brute (Doppler) ou si elle est calculée par l'application.</p>
-    </footer>
-
+    <div class="data-section">
+        <h2>📊 Vue brute GPS (Aviation)</h2>
+        <div class="data-item"><span class="label">Latitude :</span><span id="latitude" class="value">--</span></div>
+        <div class="data-item"><span class="label">Longitude :</span><span id="longitude" class="value">--</span></div>
+        <div class="data-item"><span class="label">Altitude (m) :</span><span id="altitude-m" class="value">-- m</span></div>
+        <div class="data-item"><span class="label">Altitude (ft) :</span><span id="altitude-ft" class="value">-- ft</span></div>
+        <div class="data-item"><span class="label">Précision (Horiz) :</span><span id="accuracy-horiz" class="value">-- m</span></div>
+    </div>
+    
     <script src="script.js"></script>
 </body>
-                        </html>
+            </html>
