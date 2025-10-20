@@ -100,6 +100,23 @@ table td {
     font-family: monospace;
 }
 
+/* --- MISE EN ÉVIDENCE DES VITESSES CLÉS --- */
+
+/* Vitesse 3D BRUTE (Le chaos, la réalité non filtrée) */
+#speed-3d-inst {
+    color: #dc3545; /* Rouge vif pour le chaos / haute précision */
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+/* Vitesse FILTRÉE (Le stable, le Kalman) */
+#speed-stable {
+    color: #28a745; /* Vert pour la stabilité / fiabilité */
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+
 .error {
     background-color: #f8d7da;
     color: #721c24;
@@ -136,4 +153,11 @@ body.night-mode table th {
 body.night-mode table td {
     color: #fff;
     border-bottom-color: #333;
+}
+/* Mode Nuit : Inversion des couleurs pour les données clés */
+body.night-mode #speed-3d-inst {
+    color: #ff6b6b; 
+}
+body.night-mode #speed-stable {
+    color: #2ecc71; 
 }
