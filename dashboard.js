@@ -1,27 +1,27 @@
-// ===========================================
-// Fichier Unique: dashboard.js (Partie 1 + Partie 2 Fusionnées)
-// Vitesse Brute au Premier Plan
-// ===========================================
+// =================================================================
+// FICHIER COMPLET : dashboard.js (Fusion Vitesse & Astro)
+// =================================================================
 
-// ===========================================
-// 1. CONSTANTES ET VARIABLES GLOBALES
-// ===========================================
+// --- CONSTANTES DE CONVERSION ---
+const DEG_TO_RAD = Math.PI / 180;
+const RAD_TO_DEG = 180 / Math.PI;
 
 // --- PHYSIQUE / VITESSES ---
 const C_LIGHT = 299792458;          
 const C_SOUND_SEA_LEVEL = 343;      
 const EARTH_RADIUS = 6371000;       
 const KMH_PER_MS = 3.6;             
-const DEG_TO_RAD = Math.PI / 180;
-const RAD_TO_DEG = 180 / Math.PI;
 
 // --- CONSTANTES ASTRO ---
 const OBLIQUITY = 23.44 * DEG_TO_RAD; 
 const ECCENTRICITY = 0.0167;        
 const JD_2000_REF = 2451545.0; 
-let timeOffsetMS = 0; 
 
-// --- ÉTAT DE L'APPLICATION ---
+// --- COORDONNÉES PAR DÉFAUT (Fallback) ---
+const DEFAULT_LAT = 48.8566;
+const DEFAULT_LON = 2.3522; 
+
+// --- ÉTAT ET OPTIONS ---
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
     maximumAge: 0,
@@ -31,12 +31,19 @@ const DOM_UPDATE_INTERVAL_MS = 17;
 let watchID = null;         
 let domIntervalID = null;
 let lastPosition = null;
+let latitude = null;
+let longitude = null;
 let startTime = null;
 let totalDistanceM = 0; 
 let maxSpeedMS = 0;
 let targetLat = null;
 let targetLon = null;
 let lastDOMTime = null;
+
+// --- SYNCHRONISATION UTC EN CACHE ---
+let timeOffsetMS = 0; 
+let lastServerTimeMS = null; 
+let lastLocalTimeMS = null;  
 
 // --- FILTRAGE GPS & SENSITIVITÉ ---
 const MIN_TIME_INTERVAL_S = 1; 
@@ -53,7 +60,7 @@ const KALMAN_R_MAX = 5.0;
 const LOW_PRECISION_THRESHOLD_M = 60;   
 
 
-// --- REFERENCES DOM (Définies ici pour être globales) ---
+// --- REFERENCES DOM ---
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
@@ -64,30 +71,7 @@ const modeIndicator = document.getElementById('mode-indicator');
 
 
 // ===========================================
-// 2. SYNCHRONISATION DU TEMPS
-// ===========================================
-
-async function synchronizeTime() {
-    const timeServerUrl = 'https://worldtimeapi.org/api/ip'; 
-    try {
-        const response = await fetch(timeServerUrl);
-        const T4 = Date.now(); 
-        const data = await response.json();
-        const serverTimeUTC = data.utc_datetime;
-        const serverTimeMS = new Date(serverTimeUTC).getTime();
-        timeOffsetMS = serverTimeMS - T4;
-    } catch (e) {
-        timeOffsetMS = 0; 
-    }
-}
-
-function getCorrectedDate() {
-    return new Date(Date.now() + timeOffsetMS);
-}
-
-
-// ===========================================
-// 3. FONCTIONS DE CALCULS GÉO ET ASTRO
+// FONCTIONS UTILITAIRES DE BASE ET GÉO
 // ===========================================
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -116,10 +100,74 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
     return (bearing + 360) % 360; 
 }
 
+
+// ===========================================
+// TEMPS ET KALMAN
+// ===========================================
+
+async function synchronizeTime() {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const url = `https://worldtimeapi.org/api/timezone/${timeZone}`;
+
+    try {
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        lastServerTimeMS = data.unixtime * 1000; 
+        lastLocalTimeMS = Date.now(); 
+        timeOffsetMS = lastServerTimeMS - lastLocalTimeMS;
+        
+    } catch (error) {
+        if (lastServerTimeMS === null) {
+             lastLocalTimeMS = Date.now();
+             timeOffsetMS = 0;
+        }
+    }
+}
+
+
+function getCorrectedDate() {
+    if (lastServerTimeMS !== null) {
+        const timeElapsed = Date.now() - lastLocalTimeMS;
+        const estimatedServerTimeMS = lastServerTimeMS + timeElapsed;
+        
+        return new Date(estimatedServerTimeMS);
+    } 
+    
+    return new Date(); 
+}
+
+function simpleKalmanFilter(newSpeedMS, dt, R_dynamic) {
+    if (dt === 0 || dt > 5) { return kalmanSpeed; } 
+    
+    const R = R_dynamic !== undefined ? R_dynamic : KALMAN_R_MAX; 
+    const Q = PROCESS_NOISE_Q * dt; 
+    
+    let predictedSpeed = kalmanSpeed;
+    let predictedUncertainty = kalmanUncertainty + Q; 
+
+    let K = predictedUncertainty / (predictedUncertainty + R); 
+
+    kalmanSpeed = predictedSpeed + K * (newSpeedMS - predictedSpeed);
+    kalmanUncertainty = (1 - K) * predictedUncertainty;
+
+    return kalmanSpeed;
+}
+
+// ===========================================
+// CALCULS ASTRONOMIQUES
+// ===========================================
+
 function calculateSolarDetails() {
     const now = getCorrectedDate();
-    const J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
-    const D = (now.getTime() - J2000.getTime()) / (1000 * 60 * 60 * 24);
+
+    const J2000_MS = 946728000000;
+    const D = (now.getTime() - J2000_MS) / (1000 * 60 * 60 * 24);
 
     const M = (357.529 + 0.98560028 * D) * DEG_TO_RAD;
     const L = (280.466 + 0.98564736 * D) * DEG_TO_RAD;
@@ -130,11 +178,17 @@ function calculateSolarDetails() {
     const alpha = Math.atan2(Math.cos(OBLIQUITY) * Math.sin(lambda), Math.cos(lambda));
     
     const EoT_rad = L - alpha;
-    const EoT_minutes = (EoT_rad * RAD_TO_DEG) * 4;
+    let EoT_minutes = (EoT_rad * RAD_TO_DEG) * 4;
     
+    if (EoT_minutes > 30) EoT_minutes -= 360 * 4;
+    if (EoT_minutes < -30) EoT_minutes += 360 * 4;
+    
+    let solarLongitude = (lambda * RAD_TO_DEG) % 360;
+    if (solarLongitude < 0) solarLongitude += 360;
+
     return {
         eot: EoT_minutes,
-        solarLongitude: (lambda * RAD_TO_DEG) % 360,
+        solarLongitude: solarLongitude,
     };
 }
 
@@ -180,29 +234,7 @@ function calculateLunarTime(longitude) {
 }
 
 // ===========================================
-// 4. FILTRAGE DE KALMAN ADAPTATIF
-// ===========================================
-
-function simpleKalmanFilter(newSpeedMS, dt, R_dynamic) {
-    if (dt === 0 || dt > 5) { return kalmanSpeed; } 
-    
-    const R = R_dynamic !== undefined ? R_dynamic : KALMAN_R_MAX; 
-    const Q = PROCESS_NOISE_Q * dt; 
-    
-    let predictedSpeed = kalmanSpeed;
-    let predictedUncertainty = kalmanUncertainty + Q; 
-
-    let K = predictedUncertainty / (predictedUncertainty + R); 
-
-    kalmanSpeed = predictedSpeed + K * (newSpeedMS - predictedSpeed);
-    kalmanUncertainty = (1 - K) * predictedUncertainty;
-
-    return kalmanSpeed;
-}
-
-
-// ===========================================
-// 5. GESTION DU MODE JOUR/NUIT & ASTRO DISPLAY
+// LOGIQUE D'AFFICHAGE ET D'ÉTAT
 // ===========================================
 
 function updateDarkMode(latitude, longitude) {
@@ -217,7 +249,7 @@ function updateDarkMode(latitude, longitude) {
 
     if (isNight) {
         document.body.classList.add('night-mode');
-        modeIndicator.textContent = 'Mode: Nuit 🌑';
+        modeIndicator.textContent = 'Mode: Nuit 🌙';
     } else {
         document.body.classList.remove('night-mode');
         modeIndicator.textContent = 'Mode: Jour ☀️';
@@ -242,17 +274,20 @@ function setTargetDestination() {
     if (!isNaN(lat) && !isNaN(lon)) {
         targetLat = lat;
         targetLon = lon;
-        setTargetBtn.textContent = '✅ Cible définie';
+        setTargetBtn.textContent = '✔️ Cible définie';
     } else {
         alert("Coordonnées invalides. Réinitialisation.");
         targetLat = null;
         targetLon = null;
         document.getElementById('cap-dest').textContent = 'N/A';
-        setTargetBtn.textContent = '📍 Aller';
+        setTargetBtn.textContent = '🗺️ Aller';
     }
 }
 
 function updateAstroDisplay(latitude, longitude) {
+    const currentLat = latitude !== null ? latitude : DEFAULT_LAT; 
+    const currentLon = longitude !== null ? longitude : DEFAULT_LON;
+    
     const now = getCorrectedDate();
     
     // --- TEMPS MINECRAFT ---
@@ -268,7 +303,7 @@ function updateAstroDisplay(latitude, longitude) {
 
     // --- TEMPS SOLAIRE MOYEN (HSM) & HSV ---
     const totalSecondsUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-    const totalSecondsLSM = (totalSecondsUT + (longitude * 4 * 60) + 86400) % 86400;
+    const totalSecondsLSM = (totalSecondsUT + (currentLon * 4 * 60) + 86400) % 86400;
     
     const hsmHour = Math.floor(totalSecondsLSM / 3600);
     const hsmMinute = Math.floor((totalSecondsLSM % 3600) / 60);
@@ -296,23 +331,22 @@ function updateAstroDisplay(latitude, longitude) {
     document.getElementById('solar-longitude-val').textContent = `${solarDetails.solarLongitude.toFixed(2)} °`;
 
 
-    // --- PHASE LUNAIRE (Illumination) ---
+    // --- PHASE LUNAIRE ---
     const D_rad = calculateLunarPhaseAngle();
     const illumination = 0.5 * (1 - Math.cos(D_rad)); 
     document.getElementById('lunar-phase-perc').textContent = `${(illumination * 100).toFixed(1)}%`;
 
-    // --- TEMPS LUNAIRE ---
-    calculateLunarTime(longitude); 
+    calculateLunarTime(currentLon); 
 }
 
 // ===========================================
-// 6. GESTION DE L'AFFICHAGE ET DES ERREURS
+// GESTION DU DOM ET DU GPS
 // ===========================================
 
 function resetDisplay() {
-    // RÉINITIALISE TOUTES LES VALEURS ET L'AFFICHAGE
-    // Réinitialisation des variables globales
     lastPosition = null;
+    latitude = null; 
+    longitude = null;
     totalDistanceM = 0; 
     startTime = null;
     maxSpeedMS = 0;
@@ -351,21 +385,10 @@ function resetDisplay() {
     startBtn.disabled = false;
     stopBtn.disabled = true;
     resetMaxBtn.disabled = true;
-    setTargetBtn.textContent = '📍 Aller';
+    setTargetBtn.textContent = '🗺️ Aller';
     errorDisplay.style.display = 'none';
     document.body.classList.remove('night-mode');
     document.getElementById('gps-accuracy').classList.remove('max-precision');
-}
-
-function handleGeolocationError(error) {
-    errorDisplay.style.display = 'block';
-    switch (error.code) {
-        case error.PERMISSION_DENIED: errorDisplay.textContent = "❌ L'accès à la localisation a été refusé."; break;
-        case error.POSITION_UNAVAILABLE: errorDisplay.textContent = "⚠️ Position non disponible. Signal GPS faible."; break;
-        case error.TIMEOUT: errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé. Signal faible."; break;
-        default: errorDisplay.textContent = "❓ Erreur GPS inconnue."; break;
-    }
-    stopGPS(false); 
 }
 
 function resetMaxSpeed() {
@@ -373,41 +396,29 @@ function resetMaxSpeed() {
     document.getElementById('speed-max').textContent = '0.00000 km/h';
 }
 
-
-// ===========================================
-// 7. FONCTION DE MISE À JOUR DOM RAPIDE (60 Hz)
-// ===========================================
-
 function fastDOMUpdate() {
+    const latForAstro = latitude !== null ? latitude : DEFAULT_LAT;
+    const lonForAstro = longitude !== null ? longitude : DEFAULT_LON;
     
-    const latitude = lastPosition ? lastPosition.coords.latitude : 0;
-    const longitude = lastPosition ? lastPosition.coords.longitude : 0;
-    
-    // Mettre à jour les temps astronomiques et mode jour/nuit à chaque tick
-    updateAstroDisplay(latitude, longitude); 
-    updateDarkMode(latitude, longitude);
+    updateAstroDisplay(latForAstro, lonForAstro); 
+    updateDarkMode(latForAstro, lonForAstro);
     
     if (!lastPosition || startTime === null) return;
     
-    // Vitesse Brute (Instantanée 3D)
     const currentSpeedMS_3D = lastPosition.speedMS_3D || 0;
     const currentSpeedKMH_3D = currentSpeedMS_3D * KMH_PER_MS;
 
-    // Vitesse Filtrée (Kalman)
     const stableSpeed = kalmanSpeed < MIN_SPEED_THRESHOLD_MS ? 0 : kalmanSpeed;
     const stableSpeedKMH = stableSpeed * KMH_PER_MS;
 
-    // Affichage PRINCIPAL (Vitesse Brute)
     document.getElementById('speed-3d-inst').textContent = `${currentSpeedKMH_3D.toFixed(5)} km/h`; 
     document.getElementById('speed-ms').textContent = `${currentSpeedMS_3D.toFixed(5)} m/s`; 
     document.getElementById('perc-light').textContent = `${(currentSpeedMS_3D / C_LIGHT * 100).toPrecision(5)}%`;
     document.getElementById('perc-sound').textContent = `${(currentSpeedMS_3D / C_SOUND_SEA_LEVEL * 100).toPrecision(5)}%`;
 
-    // Affichage SECONDAIRE (Vitesse Kalman)
     document.getElementById('speed-stable').textContent = `${stableSpeedKMH.toFixed(5)} km/h`; 
     document.getElementById('speed-stable-mm').textContent = `${(stableSpeed * 1000).toFixed(2)} mm/s`;
 
-    // Mise à jour de la fréquence de rafraîchissement DOM
     const now = performance.now();
     if (lastDOMTime) {
         const freq = 1000 / (now - lastDOMTime);
@@ -416,28 +427,23 @@ function fastDOMUpdate() {
     lastDOMTime = now;
 }
 
-
-// ===========================================
-// 8. FONCTION PRINCIPALE D'AFFICHAGE GPS (LENTE)
-// ===========================================
-
 function updateDisplay(position) {
-    const latitude = position.coords.latitude;
-    const longitude = position.coords.longitude;
+    latitude = position.coords.latitude; 
+    longitude = position.coords.longitude;
     const altitude = position.coords.altitude; 
     const accuracy = position.coords.accuracy;
     const heading = position.coords.heading;   
     const speed = position.coords.speed;       
     const currentTime = position.timestamp;
     
-    // 1. Vérification de la Précision
+    if (startTime === null) { startTime = currentTime; }
+
     if (accuracy > MAX_ACCURACY_M) {
-        document.getElementById('gps-accuracy').textContent = `🚨 ${accuracy.toFixed(0)} m (Trop Imprécis)`;
+        document.getElementById('gps-accuracy').textContent = `❌ ${accuracy.toFixed(0)} m (Trop Imprécis)`;
         if (lastPosition === null) { lastPosition = position; }
         return; 
     }
-
-    // 2. Calcul de la Vitesse Brute
+    
     let speedMS_Horiz = speed !== null && speed !== undefined ? speed : 0; 
     let speedSource = speed !== null && speed !== undefined ? 'Puce GPS (Doppler)' : 'Calculée (Dérivée)';
     let speedMS_Vert = 0;
@@ -463,8 +469,9 @@ function updateDisplay(position) {
     }
     
     const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
+    lastPosition = position;
+    lastPosition.speedMS_3D = speedMS_3D;
 
-    // 3. Logique Adaptative Kalman (R)
     let kalmanR; 
     let precisionIndicatorText = `${accuracy.toFixed(2)} m`;
     const gpsAccuracyElement = document.getElementById('gps-accuracy');
@@ -488,124 +495,38 @@ function updateDisplay(position) {
     
     kalmanR = Math.max(KALMAN_R_MIN, Math.min(KALMAN_R_MAX, kalmanR));
 
-    // 4. Filtrage de Vitesse (Met à jour la variable globale `kalmanSpeed`)
     const filteredSpeedMS = simpleKalmanFilter(speedMS_3D, dt, kalmanR);
     const stableSpeedForError = filteredSpeedMS < MIN_SPEED_THRESHOLD_MS ? 0 : filteredSpeedMS;
     
-    // 5. Mise à Jour des Statistiques (Distance et Vitesse Max/Moyenne)
     const elapsedTimeS = (currentTime - startTime) / 1000;
     
-    // La distance utilise la VITESSE FILTRÉE
     totalDistanceM += stableSpeedForError * dt; 
     
     const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0; 
     
     if (stableSpeedForError > maxSpeedMS) { maxSpeedMS = stableSpeedForError; } 
 
-    // Calcul de l'écart en pourcentage (Erreur Relative)
     let speedErrorPerc = 0;
     if (stableSpeedForError > MIN_SPEED_THRESHOLD_MS) {
         speedErrorPerc = (Math.abs(speedMS_3D - stableSpeedForError) / stableSpeedForError) * 100;
     }
 
-    // 6. MISE À JOUR DU DOM (Lente) - Informations GPS/Statistiques
-    
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(2)} s`;
     document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(5)} km/h`; 
     document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(5)} km/h`;
     
     document.getElementById('speed-error-perc').textContent = `${speedErrorPerc.toFixed(2)}%`; 
     
-    // --- INFO GPS/POSITION ---
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
-    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(3)} m` : 'N/A';
-    gpsAccuracyElement.textContent = precisionIndicatorText; 
+    document.getElementById('altitude').textContent = `${altitude !== null ? altitude.toFixed(2) : '--'} m`;
+    document.getElementById('gps-accuracy').textContent = precisionIndicatorText;
+    document.getElementById('underground').textContent = altitude !== null && altitude < UNDERGROUND_ALT_THRESHOLD_M ? 'Oui' : 'Non';
+    document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(1)} °` : '--';
     
-    let undergroundStatus = 'Non';
-    if (altitude !== null && altitude < UNDERGROUND_ALT_THRESHOLD_M) {
-        undergroundStatus = 'Oui (Très bas)';
-    }
-    if (accuracy > 100 && watchID !== null) { 
-        undergroundStatus = 'Possible (Signal Dégradé)';
-    } else if (altitude === null && watchID !== null) {
-        undergroundStatus = 'N/A (Signal Perdu)';
-    }
-    document.getElementById('underground').textContent = undergroundStatus;
+    document.getElementById('distance-km-m').textContent = 
+        `${(totalDistanceM / 1000).toFixed(3)} km | ${totalDistanceM.toFixed(2)} m`;
+
+    document.getElementById('speed-source-indicator').textContent = `Source: ${speedSource}`;
+
     
-    document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
-    document.getElementById('distance-km-m').textContent = `${(totalDistanceM / 1000).toFixed(5)} km | ${totalDistanceM.toFixed(5)} m`;
-
-    speedSourceIndicator.textContent = `Source: ${speedSource}`;
-
-    // 7. Calcul et Affichage du Relèvement
-    if (targetLat !== null && targetLon !== null) {
-        const bearing = calculateBearing(latitude, longitude, targetLat, targetLon);
-        document.getElementById('cap-dest').textContent = `${bearing.toFixed(0)}°`;
-    } else { 
-        document.getElementById('cap-dest').textContent = 'N/A';
-    }
-    
-    // --- Mise à jour des données persistantes (inclut speedMS_3D pour fastDOMUpdate) ---
-    const newPosition = { ...position, speedMS_3D: speedMS_3D }; 
-    lastPosition = newPosition; 
-} 
-
-
-// ===========================================
-// 9. GESTION DU DÉMARRAGE ET ARRÊT DU GPS
-// ===========================================
-
-function startGPS() {
-    if (!navigator.geolocation) {
-        errorDisplay.style.display = 'block';
-        errorDisplay.textContent = "❌ Votre navigateur ne supporte pas la géolocalisation.";
-        return;
-    }
-
-    resetDisplay(); 
-    startTime = Date.now(); 
-    
-    // Démarre la lecture GPS (lente)
-    watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
-    
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    resetMaxBtn.disabled = false;
-    errorDisplay.style.display = 'none';
-    
-    synchronizeTime(); 
-}
-
-function stopGPS(shouldReset = true) {
-    if (watchID !== null) {
-        navigator.geolocation.clearWatch(watchID);
-        watchID = null;
-    }
-    
-    if (shouldReset) {
-        resetDisplay();
-    } else {
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-    }
-}
-
-
-// ===========================================
-// 10. ÉCOUTEURS D'ÉVÉNEMENTS (INITIALISATION)
-// ===========================================
-
-// Écouteurs pour les boutons
-startBtn.addEventListener('click', startGPS);
-stopBtn.addEventListener('click', () => stopGPS(true));
-resetMaxBtn.addEventListener('click', resetMaxSpeed);
-setTargetBtn.addEventListener('click', setTargetDestination);
-
-// Initialisation au chargement de la page
-document.addEventListener('DOMContentLoaded', () => {
-    resetDisplay();
-    synchronizeTime(); 
-    // Démarrer la mise à jour fluide du DOM (pour les temps qui courent)
-    domIntervalID = setInterval(fastDOMUpdate, DOM_UPDATE_INTERVAL_MS);
-});
