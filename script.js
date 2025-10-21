@@ -19,11 +19,9 @@ let timeOffsetMS = 0;
 // --- ÉTAT DE L'APPLICATION ---
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
-    // Haute Fréquence de lecture GPS (le navigateur fera de son mieux, souvent 1 Hz)
     maximumAge: 100, // 100 ms
     timeout: 5000 
 };
-// Fréquence du rafraîchissement visuel (60 Hz = 1000/60 ~ 17 ms)
 const DOM_UPDATE_INTERVAL_MS = 17; 
 let watchID = null;         
 let lastPosition = null;
@@ -32,18 +30,16 @@ let totalDistanceM = 0;
 let maxSpeedMS = 0;
 let targetLat = null;
 let targetLon = null;
-let lastDOMTime = null; // Pour calculer la fréquence réelle d'affichage
+let lastDOMTime = null; 
 
 // --- FILTRAGE GPS & SENSITIVITÉ ---
 const MIN_TIME_INTERVAL_S = 1; 
 const MAX_ACCURACY_M = 50;     
-
-// Seuil de Vitesse (1 mm/s) : Force la vitesse à zéro sous ce seuil
 const MIN_SPEED_THRESHOLD_MS = 0.001; 
 const UNDERGROUND_ALT_THRESHOLD_M = -50; 
 
 // --- FILTRAGE DE KALMAN ADAPTATIF ---
-let kalmanSpeed = 0; // Vitesse filtrée globale (mise à jour par updateDisplay, lue par updateDOMHighFrequency)
+let kalmanSpeed = 0; 
 let kalmanUncertainty = 1000; 
 const PROCESS_NOISE_Q = 0.005; 
 const KALMAN_R_MIN = 0.005;     
@@ -88,7 +84,7 @@ function getCorrectedDate() {
 // ===========================================
 
 function resetDisplay() {
-    // ... (Réinitialisation des variables)
+    // RÉINITIALISE TOUTES LES VALEURS ET L'AFFICHAGE
     lastPosition = null;
     totalDistanceM = 0; 
     startTime = null;
@@ -172,11 +168,13 @@ function stopGPS(shouldReset = true) {
         watchID = null;
     }
     
+    // Si shouldReset est à false, l'affichage est conservé.
     if (shouldReset) {
         resetDisplay();
     } else {
         startBtn.disabled = false;
         stopBtn.disabled = true;
+        // On conserve les mesures !
     }
 }
 
@@ -215,7 +213,7 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
     let bearing = Math.atan2(y, x) * RAD_TO_DEG;
     return (bearing + 360) % 360; 
 }
-// ... (Les autres fonctions calculateSolarDetails, calculateLunarPhaseAngle, etc. ne sont pas modifiées)
+
 function calculateSolarDetails() {
     const now = getCorrectedDate();
     const J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
@@ -522,4 +520,11 @@ function updateDisplay(position) {
     document.getElementById('underground').textContent = undergroundStatus;
     
     document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
-    document.getElementById('distance-km-m').textContent = `${(totalDistan
+    document.getElementById('distance-km-m').textContent = `${(totalDistanceM / 1000).toFixed(5)} km | ${totalDistanceM.toFixed(5)} m`;
+
+    speedSourceIndicator.textContent = `Source: ${speedSource}`;
+
+    if (targetLat !== null && targetLon !== null) {
+        const bearing = calculateBearing(latitude, longitude, targetLat, targetLon);
+        document.getElementById('cap-dest').textContent = `${bearing.toFixed(0)}°`;
+    } e
