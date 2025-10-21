@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER COMPLET CONDENSÉ : dashboard.js
-// (Moins de 533 lignes - Priorité Temps GPS + Kalman + Astro)
+// (Moins de 533 lignes - Priorité Temps Internet/Hors Ligne Robuste)
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -15,7 +15,8 @@ const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0, L_PREC_TH = 60;
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
 let distM = 0, maxSpd = 0, tLat = null, tLon = null, lDomT = null;
 let kSpd = 0, kUncert = 1000;
-let offH = 0, lServH = null, lLocH = null, lGPST = null;
+// Variables pour la synchro HTTP (Temps Absolu/UTC)
+let lServH = null, lLocH = null;
 
 // --- REFERENCES DOM ---
 const $ = id => document.getElementById(id);
@@ -46,28 +47,31 @@ const bearing = (lat1, lon1, lat2, lon2) => {
 // TEMPS & KALMAN
 // ===========================================
 
+// Synchro HTTP (Internet) pour obtenir l'heure UTC de référence la plus fiable
 async function syncH() {
-    if (lGPST !== null) return;
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     try {
-        const res = await fetch(`https://worldtimeapi.org/api/timezone/${tz}`);
+        const res = await fetch(`https://worldtimeapi.org/api/timezone/${tz}`, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error(res.status);
         const data = await res.json();
         lServH = data.unixtime * 1000; 
         lLocH = Date.now(); 
-        offH = lServH - lLocH;
     } catch (e) {
-        if (lServH === null) { lLocH = Date.now(); offH = 0; }
+        // En cas d'échec (hors ligne, timeout, erreur), lServH reste null ou conserve sa dernière valeur
+        if (lServH === null) lLocH = Date.now();
     }
 }
 
+// Retourne la date la plus précise disponible (Internet > Fallback Local)
 function getCDate() {
     let estT = Date.now();
-    if (lGPST !== null && lPos) {
-        estT = lGPST + (Date.now() - lPos.timestamp);
-    } else if (lServH !== null) {
+    
+    if (lServH !== null) {
+        // Utilise l'heure HTTP corrigée + temps écoulé depuis la synchro (Fallback Hors Ligne)
         estT = lServH + (Date.now() - lLocH);
-    }
+    } 
+    // Si lServH est null, estT reste Date.now() (Fallback local pur)
+    
     return new Date(estT);
 }
 
@@ -192,7 +196,9 @@ function updateAstro(lat, lon) {
 function resetDisp() {
     lPos = null; lat = null; lon = null; distM = 0; sTime = null; maxSpd = 0; tLat = null; tLon = null;
     kSpd = 0; kUncert = 1000; lDomT = null;
-    lGPST = null; lServH = null; lLocH = null; offH = 0;
+    
+    // Réinitialisation des références temporelles HTTP
+    lServH = null; lLocH = null;
 
     const defT = '--', ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time', 'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground', 'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency'];
 
@@ -232,23 +238,36 @@ function fastDOM() {
     $('speed-stable').textContent = `${sSpdKMH.toFixed(5)} km/h`; 
     $('speed-stable-mm').textContent = `${(sSpd * 1000).toFixed(2)} mm/s`;
 
-    const now = performance.now();
-    if (lDomT) $('update-frequency').textContent = `${(1000 / (now - lDomT)).toFixed(1)} Hz (DOM)`;
-    lDomT = now;
+    const now = getCDate().getTime(); 
+    
+    // Chrono 
+    const elapS = (now - sTime) / 1000;
+    $('elapsed-time').textContent = `${elapS.toFixed(2)} s`;
+    
+    // Fréquence d'affichage DOM
+    const pNow = performance.now();
+    if (lDomT) $('update-frequency').textContent = `${(1000 / (pNow - lDomT)).toFixed(1)} Hz (DOM)`;
+    lDomT = pNow;
 }
 
 function updateDisp(pos) {
     lat = pos.coords.latitude; lon = pos.coords.longitude;
     const alt = pos.coords.altitude, acc = pos.coords.accuracy, hdg = pos.coords.heading;   
-    const spd = pos.coords.speed, cTime = pos.timestamp;
+    const spd = pos.coords.speed, cTime = pos.timestamp; 
     
-    lGPST = cTime; 
-    if (sTime === null) sTime = cTime;
+    // Synchronisation d'heure via HTTP si possible, sinon on continue avec la dernière synchro/heure locale.
+    // Cette fonction est ASYNCHRONE et NE BLOQUE PAS l'UI.
+    syncH(); 
+
+    // Initialisation du temps de départ
+    if (sTime === null) sTime = getCDate().getTime();
 
     if (acc > MAX_ACC) { $('gps-accuracy').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; if (lPos === null) lPos = pos; return; }
     
     let spdH = spd ?? 0, spdSrc = spd !== null && spd !== undefined ? 'Puce GPS (Doppler)' : 'Calculée (Dérivée)';
     let spdV = 0;
+    
+    // Utilise le timestamp GPS pour le delta temps (dt) précis
     const dt = lPos ? (cTime - lPos.timestamp) / 1000 : MIN_DT;
 
     if (lPos && dt > 0.1) { 
@@ -258,7 +277,7 @@ function updateDisp(pos) {
     }
     
     const spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
-    lPos = pos; lPos.speedMS_3D = spd3D;
+    lPos = pos; lPos.speedMS_3D = spd3D; lPos.timestamp = cTime; // Mise à jour du timestamp GPS dans lPos
 
     let kR, pText = `${acc.toFixed(2)} m`, accEl = $('gps-accuracy');
 
@@ -274,13 +293,15 @@ function updateDisp(pos) {
     kR = Math.max(R_MIN, Math.min(R_MAX, kR));
 
     const fSpd = kFilter(spd3D, dt, kR), sSpdFE = fSpd < MIN_SPD ? 0 : fSpd;
-    const elapS = (cTime - sTime) / 1000;
+    
     distM += sSpdFE * dt; 
+    
+    const elapS = (getCDate().getTime() - sTime) / 1000;
     const spdAvg = elapS > 0 ? distM / elapS : 0; 
+    
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     let spdErr = sSpdFE > MIN_SPD ? (Math.abs(spd3D - sSpdFE) / sSpdFE) * 100 : 0;
 
-    $('elapsed-time').textContent = `${elapS.toFixed(2)} s`;
     $('speed-avg').textContent = `${(spdAvg * KMH_MS).toFixed(5)} km/h`; 
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
     $('speed-error-perc').textContent = `${spdErr.toFixed(2)}%`; 
@@ -298,20 +319,20 @@ function updateDisp(pos) {
 }
 
 function handleErr(err) {
-    if (lGPST === null) syncH();
+    syncH(); // Tentative de synchro HTTP en cas d'échec GPS
     errorDisplay.style.display = 'block';
-    let msg = "❌ Erreur GPS inconnue. Utilisation du Fallback.";
-    if (err.code === err.PERMISSION_DENIED) msg = "❌ L'accès à la localisation a été refusé. Utilisation du Fallback.";
-    else if (err.code === err.POSITION_UNAVAILABLE) msg = "🛰️ Position non disponible. Signal GPS faible. Utilisation du Fallback.";
-    else if (err.code === err.TIMEOUT) msg = "⏱️ Délai de recherche du GPS dépassé. Signal faible. Utilisation du Fallback.";
+    let msg = "❌ Erreur GPS inconnue. Utilisation du temps Internet/Local.";
+    if (err.code === err.PERMISSION_DENIED) msg = "❌ L'accès à la localisation a été refusé. Utilisation du temps Internet/Local.";
+    else if (err.code === err.POSITION_UNAVAILABLE) msg = "🛰️ Position non disponible. Signal GPS faible. Utilisation du temps Internet/Local.";
+    else if (err.code === err.TIMEOUT) msg = "⏱️ Délai de recherche du GPS dépassé. Signal faible. Utilisation du temps Internet/Local.";
     errorDisplay.textContent = msg;
     stopGPS(false); 
 }
 
 function startGPS() {
     if (navigator.geolocation) {
-        syncH(); 
-        sTime = null; lGPST = null;
+        syncH(); // Lancement de la synchro Internet au démarrage
+        sTime = null; // Sera initialisé avec getCDate().getTime() à la 1ère position
         resetMax(); distM = 0;
         
         wID = navigator.geolocation.watchPosition(updateDisp, handleErr, W_OPTS);
@@ -332,7 +353,7 @@ function stopGPS(clearT = true) {
     
     startBtn.disabled = false; stopBtn.disabled = true; 
     errorDisplay.style.display = 'block';
-    errorDisplay.textContent = "PAUSE : Géolocalisation arrêtée. Heure UTC basée sur la dernière synchro/position connue.";
+    errorDisplay.textContent = "PAUSE : Géolocalisation arrêtée. Heure UTC basée sur la dernière synchro Internet/Locale.";
 }
 
 document.addEventListener('DOMContentLoaded', () => {
