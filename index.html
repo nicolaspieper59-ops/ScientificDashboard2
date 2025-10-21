@@ -3,164 +3,150 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS/Astro High Precision Dashboard</title>
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    
+    <title>Tableau de Bord GPS et Astro</title>
     <style>
-        /* Styles de base pour la lisibilité et le mode nuit */
-        body {
-            background-color: #f8f9fa;
-            color: #212529;
-            transition: background-color 0.5s, color 0.5s;
+        /* Styles CSS Minimes (Optimisés pour la lisibilité en Mode Nuit) */
+        body { 
+            font-family: 'Arial', sans-serif; 
+            background-color: #f4f4f4; 
+            color: #333; 
+            margin: 0; 
+            padding: 20px; 
+            transition: background-color 0.5s, color 0.5s; 
         }
-        .night-mode {
-            background-color: #0b0f1a;
-            color: #e9ecef;
+        /* Couleurs du Mode Nuit */
+        .night-mode { 
+            background-color: #121212; /* Fond très sombre */
+            color: #E0E0E0; /* Texte clair */
         }
-        .night-mode .card {
-            background-color: #1a2238;
-            border-color: #3f4a6b;
+        header { text-align: center; margin-bottom: 20px; }
+        
+        /* Contraste Mode Jour */
+        h1 { color: #007bff; }
+        .card h3 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 5px; color: #007bff; font-size: 1.1em; }
+        .value { font-size: 1.6em; font-weight: bold; color: #0056b3; }
+
+        /* Contraste Mode Nuit (Amélioré) */
+        .night-mode h1 { color: #BB86FC; } /* Violet clair pour le titre */
+        .night-mode .card h3 { 
+            border-bottom-color: #333333; 
+            color: #03DAC6; /* Cyan clair pour les sous-titres */
         }
-        .night-mode h1, .night-mode h2, .night-mode h3 {
-            color: #ffffff;
+        .night-mode .value { 
+            color: #FEEAE6; /* Blanc cassé très clair pour les valeurs importantes */
         }
-        .data-value {
-            font-size: 1.25rem;
-            font-weight: bold;
-            display: block;
+
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; }
+        .card { 
+            background-color: #fff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            transition: background-color 0.5s, box-shadow 0.5s; 
         }
-        .main-speed {
-            /* Vitesse Brute au premier plan */
-            font-size: 3rem;
-            color: #ffc107; /* Jaune/Orange pour Brute */
+        .night-mode .card { 
+            background-color: #1F1B24; /* Carte sombre */
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); 
         }
-        .night-mode .main-speed {
-            color: #ffeb3b;
-        }
-        .kalman-speed {
-            /* Vitesse Kalman en petit */
-            font-size: 1.5rem;
-            color: #17a2b8; /* Cyan pour Kalman */
-        }
-        .max-precision {
-            color: green;
-            font-weight: bold;
-        }
-        #error-message {
-            display: none;
-            color: red;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        .header-time {
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
+
+        .controls { text-align: center; margin-top: 20px; }
+        .controls button { padding: 10px 15px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #start-btn { background-color: #28a745; color: white; }
+        #stop-btn { background-color: #dc3545; color: white; }
+        #reset-max-btn { background-color: #ffc107; color: #333; }
+        #set-target-btn { background-color: #17a2b8; color: white; }
+        /* NOUVEAU: Styles pour les boutons de mode */
+        #toggle-mode-btn { background-color: #6c757d; color: white; }
+        #auto-mode-btn { background-color: #0056b3; color: white; display: none; }
+        
+        #error-message { color: #FFD700; background-color: #8b0000; padding: 10px; border-radius: 5px; margin-top: 10px; display: none; }
+        #gps-accuracy.max-precision { color: #03DAC6; font-weight: bold; } 
+        
+        .header-astro { font-size: 2em; margin-bottom: 10px; }
     </style>
-</head>
+    </head>
 <body>
 
-<div class="container my-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="text-primary">GPS/Astro Dashboard</h1>
-        <div class="text-end">
-            <span id="mode-indicator" class="badge bg-secondary">Mode: Jour ☀️</span>
-            <div id="solar-true-header" class="header-time text-success mt-1">--:--:--</div>
-        </div>
-    </div>
-    
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <button id="start-btn" class="btn btn-success me-2">▶️ Démarrer GPS</button>
-            <button id="stop-btn" class="btn btn-danger me-2" disabled>⏹️ Arrêter GPS</button>
-            <button id="reset-max-btn" class="btn btn-warning me-2" disabled>🔄 Réinitialiser Max</button>
-            <button id="set-target-btn" class="btn btn-info">📍 Aller</button>
-            <div id="error-message" class="alert alert-danger mt-2"></div>
-        </div>
+    <header>
+        <h1>Tableau de Bord de Navigation Avancée</h1>
+        <div class="header-astro">Heure Solaire Vraie (Locale) : <span id="solar-true-header">00:00:00</span></div>
+        <p id="mode-indicator">Mode: Jour ☀️</p>
+    </header>
+
+    <div class="controls">
+        <button id="start-btn">▶️ Démarrer GPS</button>
+        <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
+        <button id="reset-max-btn" disabled>🔄 Réinitialiser Max</button>
+        <button id="set-target-btn">🗺️ Aller</button>
+        
+        <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
+        <button id="auto-mode-btn" style="display: none;">🤖 Revenir à l'Auto</button>
+
+        <p id="error-message"></p>
     </div>
 
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card p-3 text-center">
-                <h3>Vitesse Instantanée 3D (Brute)</h3>
-                <div id="speed-3d-inst" class="main-speed">-- km/h</div> 
-                <small id="speed-ms" class="text-muted">-- m/s</small>
-                
-                <h4 class="mt-3 text-secondary">Vitesse Filtrée (Kalman)</h4>
-                <div id="speed-stable" class="kalman-speed">-- km/h</div> 
-                <small id="speed-stable-mm" class="text-muted">-- mm/s</small>
-            </div>
+    <div class="dashboard">
+
+        <div class="card speed-time">
+            <h3>Vitesse et Chrono</h3>
+            <p><span id="speed-source-indicator">Source: N/A</span></p>
+            <p>Vitesse Stable (Kalman): <span class="value" id="speed-stable">--</span></p>
+            <p>Vitesse Max: <span class="value" id="speed-max">--</span></p>
+            <p>Vitesse 3D Inst: <span id="speed-3d-inst">--</span> | <span id="speed-ms">--</span> m/s</p>
+            <p>Vitesse Moyenne: <span id="speed-avg">--</span></p>
+            <p>Temps Écoulé: <span id="elapsed-time">--</span></p>
+            <p>Distance Totale: <span id="distance-km-m">-- km | -- m</span></p>
         </div>
-        <div class="col-md-6">
-            <div class="card p-3">
-                <h4 class="mb-3">Statistiques de Trajet</h4>
-                <p><strong>Temps Écoulé:</strong> <span id="elapsed-time" class="data-value">-- s</span></p>
-                <p><strong>Distance Totale:</strong> <span id="distance-km-m" class="data-value">-- km | -- m</span></p>
-                <p><strong>Vitesse Moyenne:</strong> <span id="speed-avg" class="data-value">-- km/h</span></p>
-                <p><strong>Vitesse Maximale:</strong> <span id="speed-max" class="data-value">-- km/h</span></p>
-            </div>
+
+        <div class="card location">
+            <h3>Localisation & Précision</h3>
+            <p>Latitude: <span class="value" id="latitude">--</span></p>
+            <p>Longitude: <span class="value" id="longitude">--</span></p>
+            <p>Altitude: <span id="altitude">-- m</span></p>
+            <p>Précision GPS: <span id="gps-accuracy">-- m</span></p>
+            <p>Sous Terre: <span id="underground">--</span></p>
+            <p>Cap (Heading): <span id="heading">--</span></p>
+            <p>Cap Destination: <span id="cap-dest">N/A</span></p>
         </div>
+        
+        <div class="card relative-speed">
+            <h3>Vitesses Relatives</h3>
+            <p>Vitesse Stable: <span id="speed-stable-mm">--</span></p>
+            <p>% Vitesse Lumière: <span id="perc-light">--</span></p>
+            <p>% Vitesse Son: <span id="perc-sound">--</span></p>
+            <p>% Erreur Kalman: <span id="speed-error-perc">--</span></p>
+            <p>Fréquence d'Affichage: <span id="update-frequency">--</span></p>
+        </div>
+        
+        <div class="card astro-solar">
+            <h3>Temps Solaires</h3>
+            <p>Éclairement Lumineux: <span id="illuminance-lux">Initialisation...</span></p>
+            <p>Élévation Solaire: <span id="sun-elevation">-- °</span></p>
+            <p>Temps Solaire Vrai (HSV): <span class="value" id="solar-true">00:00:00 (HSV)</span></p>
+            <p>Temps Solaire Moyen (LSM): <span id="solar-mean">00:00:00</span></p>
+            <p>Heure Minecraft: <span id="mc-time">00:00:00</span></p>
+            <p>Équation du Temps (EoT): <span id="eot">--</span></p>
+            <p>Longitude Solaire: <span id="solar-longitude-val">--</span></p>
+        </div>
+
+        <div class="card astro-lunar">
+            <h3>Temps Lunaires</h3>
+            <p>Heure Lunaire: <span class="value" id="lunar-time">00:00:00</span></p>
+            <p>Phase d'Illumination: <span id="lunar-phase-perc">--</span></p>
+        </div>
+
+        <div class="card environment">
+            <h3>Environnement (Simulé/Placeholder)</h3>
+            <p>Température Air: <span id="air-temp">N/A (API désactivée)</span></p>
+            <p>Pression Atmosphérique: <span id="pressure">N/A (API désactivée)</span></p>
+            <p>Humidité: <span id="humidity">N/A (API désactivée)</span></p>
+            <p>Vitesse du Vent: <span id="wind-speed">N/A (API désactivée)</span></p>
+            <p>Point d'ébullition de l'eau: <span id="boiling-point">N/A (API désactivée)</span></p>
+            <p>Niveau à Bulle: <span id="bubble-level">N/A (API désactivée)</span></p>
+        </div>
+
     </div>
 
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card p-3">
-                <h4 class="mb-3">Position GPS</h4>
-                <p><strong>Latitude:</strong> <span id="latitude" class="data-value">--</span></p>
-                <p><strong>Longitude:</strong> <span id="longitude" class="data-value">--</span></p>
-                <p><strong>Altitude:</strong> <span id="altitude" class="data-value">-- m</span></p>
-                <p><strong>Précision (H):</strong> <span id="gps-accuracy" class="data-value">-- m</span></p>
-                <p><strong>Cap:</strong> <span id="heading" class="data-value">--</span></p>
-                <p><strong>Cible:</strong> <span id="cap-dest" class="data-value">N/A</span></p>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card p-3">
-                <h4 class="mb-3">Détails Système</h4>
-                <p><strong>Erreur Filtre:</strong> <span id="speed-error-perc" class="data-value">--%</span></p>
-                <p><strong>Source Vitesse:</strong> <span id="speed-source-indicator" class="data-value">--</span></p>
-                <p><strong>Fréq. Affichage:</strong> <span id="update-frequency" class="data-value">--</span></p>
-                <p><strong>Souterrain:</strong> <span id="underground" class="data-value">--</span></p>
-                <p><strong>% Vitesse Lumière:</strong> <span id="perc-light" class="data-value">--</span></p>
-                <p><strong>% Vitesse Son:</strong> <span id="perc-sound" class="data-value">--</span></p>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card p-3">
-                <h4 class="mb-3">Météo/Environnement (Inactif)</h4>
-                <p><strong>Temp. Air:</strong> <span id="air-temp" class="data-value">--</span></p>
-                <p><strong>Pression:</strong> <span id="pressure" class="data-value">--</span></p>
-                <p><strong>Humidité:</strong> <span id="humidity" class="data-value">--</span></p>
-                <p><strong>Vitesse Vent:</strong> <span id="wind-speed" class="data-value">--</span></p>
-                <p><strong>Pt. Ébullition:</strong> <span id="boiling-point" class="data-value">--</span></p>
-                <p><strong>Niveau à bulle:</strong> <span id="bubble-level" class="data-value">--</span></p>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card p-3">
-                <h4 class="mb-3">Temps Solaire</h4>
-                <p><strong>Temps Solaire Vrai (HSV):</strong> <span id="solar-true" class="data-value text-success">--:--:-- (HSV)</span></p>
-                <p><strong>Temps Solaire Moyen (HSM):</strong> <span id="solar-mean" class="data-value">--:--:--</span></p>
-                <p><strong>Équation du Temps (EoT):</strong> <span id="eot" class="data-value">-- min</span></p>
-                <p><strong>Longitude Solaire:</strong> <span id="solar-longitude-val" class="data-value">-- °</span></p>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card p-3">
-                <h4 class="mb-3">Temps Lunaire & Autres</h4>
-                <p><strong>Temps Lunaire:</strong> <span id="lunar-time" class="data-value text-info">--:--:--</span></p>
-                <p><strong>Phase Lunaire:</strong> <span id="lunar-phase-perc" class="data-value">--%</span></p>
-                <p><strong>Temps Minecraft (MC):</strong> <span id="mc-time" class="data-value text-muted">--:--:--</span></p>
-            </div>
-        </div>
-    </div>
-</div>
-<script src="dashboard.js"></script>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="dashboard.js"></script>
 </body>
-</html>
+    </html>
