@@ -529,4 +529,90 @@ function updateDisplay(position) {
 
     document.getElementById('speed-source-indicator').textContent = `Source: ${speedSource}`;
 
+    if (targetLat !== null && targetLon !== null) {
+        const bearingToTarget = calculateBearing(latitude, longitude, targetLat, targetLon);
+        document.getElementById('cap-dest').textContent = `${bearingToTarget.toFixed(1)} °`;
+       }
+    // =================================================================
+// BLOC 6/X : DÉMARRAGE, ARRÊT ET ÉCOUTEURS (Lignes BBB-FIN)
+// =================================================================
+
+function handleGeolocationError(error) {
+    errorDisplay.style.display = 'block';
+    switch (error.code) {
+        case error.PERMISSION_DENIED: errorDisplay.textContent = "❌ L'accès à la localisation a été refusé."; break;
+        case error.POSITION_UNAVAILABLE: errorDisplay.textContent = "🛰️ Position non disponible. Signal GPS faible."; break;
+        case error.TIMEOUT: errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé. Signal faible."; break;
+        default: errorDisplay.textContent = "❌ Erreur GPS inconnue."; break;
+    }
+    stopGPS(false); 
+}
+
+function startGPS() {
+    if (navigator.geolocation) {
+        // Initialiser les états
+        startTime = Date.now();
+        resetMaxSpeed();
+        totalDistanceM = 0;
+        
+        // Tenter la synchronisation UTC avant de démarrer la surveillance GPS
+        synchronizeTime(); 
+
+        // Démarrer la surveillance GPS
+        watchID = navigator.geolocation.watchPosition(
+            updateDisplay, 
+            handleGeolocationError, 
+            WATCH_OPTIONS
+        );
+        
+        // Démarrer la mise à jour fluide du DOM (si pas déjà fait)
+        if (domIntervalID === null) {
+            domIntervalID = setInterval(fastDOMUpdate, DOM_UPDATE_INTERVAL_MS);
+        }
+
+        // Mettre à jour les boutons d'état
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        resetMaxBtn.disabled = false;
+        document.getElementById('gps-accuracy').classList.remove('max-precision');
+    } else {
+        errorDisplay.textContent = "❌ Géolocalisation non supportée par votre navigateur.";
+        errorDisplay.style.display = 'block';
+    }
+}
+
+function stopGPS(clearTime = true) {
+    if (watchID !== null) {
+        navigator.geolocation.clearWatch(watchID);
+        watchID = null;
+    }
+    if (clearTime) {
+        startTime = null;
+    }
     
+    // Arrêter la mise à jour fluide du DOM (optionnel, peut continuer pour l'astro)
+    // if (domIntervalID !== null) {
+    //     clearInterval(domIntervalID);
+    //     domIntervalID = null;
+    // }
+    
+    // Mettre à jour les boutons d'état
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    errorDisplay.style.display = 'block';
+    errorDisplay.textContent = "PAUSE : Géolocalisation arrêtée.";
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    resetDisplay();
+    // Démarrer la mise à jour fluide du DOM pour que l'heure astro/MC/lunaire s'affiche
+    // même sans GPS actif.
+    domIntervalID = setInterval(fastDOMUpdate, DOM_UPDATE_INTERVAL_MS); 
+    
+    // Écouteurs pour les boutons de contrôle
+    startBtn.addEventListener('click', startGPS);
+    stopBtn.addEventListener('click', stopGPS);
+    resetMaxBtn.addEventListener('click', resetMaxSpeed);
+    setTargetBtn.addEventListener('click', setTargetDestination);
+});
