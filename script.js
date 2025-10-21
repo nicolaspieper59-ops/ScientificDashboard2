@@ -297,9 +297,9 @@ function updateAstroDisplay(latitude, longitude) {
 
     // --- TEMPS LUNAIRE ---
     calculateLunarTime(longitude); 
-                                        }
+}
 // ===========================================
-// Fichier JavaScript Complet - PARTIE 2/2
+// Fichier JavaScript Complet - PARTIE 2/2 (Mis à Jour)
 // ===========================================
 
 // --- REFERENCES DOM (Complètes pour cette partie) ---
@@ -308,7 +308,8 @@ const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
 const errorDisplay = document.getElementById('error-message');
 const speedSourceIndicator = document.getElementById('speed-source-indicator'); 
-const setTargetBtn = document.getElementById('set-target-btn'); // Déjà défini en Partie 1
+const setTargetBtn = document.getElementById('set-target-btn');
+
 
 // ===========================================
 // 6. GESTION DE L'AFFICHAGE ET DES ERREURS
@@ -347,7 +348,6 @@ function resetDisplay() {
             else if (id === 'distance-km-m') element.textContent = '-- km | -- m';
             else if (id === 'mode-indicator') element.textContent = 'Mode: Jour ☀️';
             else if (id === 'speed-error-perc' || id === 'update-frequency') element.textContent = '--';
-            // Réinitialisation des temps Astro avec secondes
             else if (['mc-time', 'lunar-time', 'solar-mean', 'solar-true', 'solar-true-header'].includes(id)) element.textContent = '00:00:00';
             else element.textContent = defaultText;
         }
@@ -394,11 +394,23 @@ function fastDOMUpdate() {
     
     if (!lastPosition || startTime === null) return;
     
-    // Utiliser kalmanSpeed pour un affichage stable et fluide
+    // ==========================================================
+    // MISE À JOUR RAPIDE DES DEUX VITESSES EN UTILISANT LA DERNIÈRE VALEUR CALCULÉE
+    // ==========================================================
+
+    // Vitesse Brute (Instantanée 3D) - Voulue en premier plan
+    const currentSpeedMS_3D = lastPosition.speedMS_3D || 0;
+    const currentSpeedKMH_3D = currentSpeedMS_3D * KMH_PER_MS;
+
+    // Vitesse Filtrée (Kalman) - Pour la fluidité et la précision
     const stableSpeed = kalmanSpeed < MIN_SPEED_THRESHOLD_MS ? 0 : kalmanSpeed;
     const stableSpeedKMH = stableSpeed * KMH_PER_MS;
 
-    // Mise à jour de la vitesse stable dans le DOM à 60Hz
+    // Affichage PRINCIPAL (Vitesse Brute)
+    document.getElementById('speed-3d-inst').textContent = `${currentSpeedKMH_3D.toFixed(5)} km/h`; 
+    document.getElementById('speed-ms').textContent = `${currentSpeedMS_3D.toFixed(5)} m/s`; 
+
+    // Affichage SECONDAIRE (Vitesse Kalman)
     document.getElementById('speed-stable').textContent = `${stableSpeedKMH.toFixed(5)} km/h`; 
     document.getElementById('speed-stable-mm').textContent = `${(stableSpeed * 1000).toFixed(2)} mm/s`;
 
@@ -464,7 +476,6 @@ function updateDisplay(position) {
     let precisionIndicatorText = `${accuracy.toFixed(2)} m`;
     const gpsAccuracyElement = document.getElementById('gps-accuracy');
 
-    // Détermination dynamique du bruit R
     if (accuracy <= 1.0) {
         kalmanR = KALMAN_R_MIN; 
         precisionIndicatorText += ' (Optimal)';
@@ -491,7 +502,7 @@ function updateDisplay(position) {
     // 5. Mise à Jour des Statistiques (Distance et Vitesse Max/Moyenne)
     const elapsedTimeS = (currentTime - startTime) / 1000;
     
-    // UTILISATION DE LA VITESSE FILTRÉE POUR UN CUMUL DE DISTANCE COHÉRENT
+    // Le calcul de la distance continue d'utiliser la VITESSE FILTRÉE (stable)
     totalDistanceM += stableSpeedForError * dt; 
     
     const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0; 
@@ -507,8 +518,7 @@ function updateDisplay(position) {
     // 6. MISE À JOUR DU DOM (Lente) - Informations GPS/Statistiques
     
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(2)} s`;
-    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(5)} km/h`; 
-    document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(5)} m/s`; 
+    // Les champs de vitesse instantanée sont mis à jour par fastDOMUpdate pour la fluidité
     document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(5)} km/h`; 
     document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(5)} km/h`;
     
@@ -544,8 +554,10 @@ function updateDisplay(position) {
         document.getElementById('cap-dest').textContent = 'N/A';
     }
     
-    // --- Mise à jour des données persistantes ---
-    lastPosition = position; 
+    // --- Mise à jour des données persistantes (ajout de speedMS_3D pour fastDOMUpdate) ---
+    // Cloner la position pour y ajouter la vitesse brute qui n'est pas toujours disponible
+    const newPosition = { ...position, speedMS_3D: speedMS_3D }; 
+    lastPosition = newPosition; 
 } 
 
 
@@ -566,8 +578,6 @@ function startGPS() {
     // Démarre la lecture GPS (lente)
     watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
     
-    // Le DOM_UPDATE_INTERVAL_MS est démarré dans DOMContentLoaded pour gérer les temps
-    
     startBtn.disabled = true;
     stopBtn.disabled = false;
     resetMaxBtn.disabled = false;
@@ -582,10 +592,6 @@ function stopGPS(shouldReset = true) {
         watchID = null;
     }
     
-    // La boucle fastDOMUpdate n'est pas arrêtée ici car elle gère les temps Astro indépendamment du GPS
-    // (sauf si on désactive complètement le DOM_UPDATE_INTERVAL_MS). 
-    // Pour l'instant, on la laisse tourner.
-
     if (shouldReset) {
         resetDisplay();
     } else {
@@ -599,12 +605,9 @@ function stopGPS(shouldReset = true) {
 // 10. ÉCOUTEURS D'ÉVÉNEMENTS (INITIALISATION)
 // ===========================================
 
-// Écouteurs pour les boutons
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
-const errorDisplay = document.getElementById('error-message');
-const speedSourceIndicator = document.getElementById('speed-source-indicator'); 
 const setTargetBtn = document.getElementById('set-target-btn');
 
 
@@ -616,7 +619,6 @@ setTargetBtn.addEventListener('click', setTargetDestination);
 // Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', () => {
     resetDisplay();
-    // Synchroniser l'heure pour les calculs astronomiques
     synchronizeTime(); 
     // Démarrer la mise à jour fluide du DOM (pour les temps qui courent)
     domIntervalID = setInterval(fastDOMUpdate, DOM_UPDATE_INTERVAL_MS);
