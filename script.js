@@ -14,15 +14,17 @@ const RAD_TO_DEG = 180 / Math.PI;
 const OBLIQUITY = 23.44 * DEG_TO_RAD; 
 const ECCENTRICITY = 0.0167;        
 const JD_2000_REF = 2451545.0; 
-let timeOffsetMS = 0; // Décalage pour la synchronisation horaire
+let timeOffsetMS = 0; 
 
 // --- ÉTAT DE L'APPLICATION ---
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
-    // Fréquence Élevée : Demande une mise à jour max 10 fois par seconde (si l'appareil le supporte)
+    // Haute Fréquence de lecture GPS (le navigateur fera de son mieux, souvent 1 Hz)
     maximumAge: 100, // 100 ms
     timeout: 5000 
 };
+// Fréquence du rafraîchissement visuel (60 Hz = 1000/60 ~ 17 ms)
+const DOM_UPDATE_INTERVAL_MS = 17; 
 let watchID = null;         
 let lastPosition = null;
 let startTime = null;
@@ -30,30 +32,26 @@ let totalDistanceM = 0;
 let maxSpeedMS = 0;
 let targetLat = null;
 let targetLon = null;
+let lastDOMTime = null; // Pour calculer la fréquence réelle d'affichage
 
 // --- FILTRAGE GPS & SENSITIVITÉ ---
 const MIN_TIME_INTERVAL_S = 1; 
 const MAX_ACCURACY_M = 50;     
 
-// Seuil de Vitesse (1 mm/s) : Force la vitesse à zéro sous ce seuil pour ignorer le bruit à l'arrêt.
+// Seuil de Vitesse (1 mm/s) : Force la vitesse à zéro sous ce seuil
 const MIN_SPEED_THRESHOLD_MS = 0.001; 
-
-// Seuil d'Altitude pour "Sous Terre" (très négatif)
 const UNDERGROUND_ALT_THRESHOLD_M = -50; 
 
-// --- FILTRAGE DE KALMAN ADAPTATIF (Logique de Lissage Progressif) ---
-let kalmanSpeed = 0; 
+// --- FILTRAGE DE KALMAN ADAPTATIF ---
+let kalmanSpeed = 0; // Vitesse filtrée globale (mise à jour par updateDisplay, lue par updateDOMHighFrequency)
 let kalmanUncertainty = 1000; 
-// Q (Bruit de Processus) : Fixé pour une bonne réactivité.
 const PROCESS_NOISE_Q = 0.005; 
-// R_MIN/R_MAX définissent la plage de confiance :
-const KALMAN_R_MIN = 0.005;     // Confiance max (pour Précision <= 1m) -> Permet de voir les mm/s
-const KALMAN_R_MAX = 5.0;       // Confiance min (pour Précision >= 60m) -> Filtrage agressif
-const HIGH_PRECISION_THRESHOLD_M = 3;  // Zone de haute sensibilité
-const LOW_PRECISION_THRESHOLD_M = 60;   // Zone de faible confiance
+const KALMAN_R_MIN = 0.005;     
+const KALMAN_R_MAX = 5.0;       
+const LOW_PRECISION_THRESHOLD_M = 60;   
 
 
-// --- REFERENCES DOM (Récupération des éléments HTML) ---
+// --- REFERENCES DOM ---
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
@@ -67,7 +65,6 @@ const speedSourceIndicator = document.getElementById('speed-source-indicator');
 // ===========================================
 
 async function synchronizeTime() {
-    // NOTE: Ceci est une simple synchronisation pour les calculs astro. L'heure de la position reste la référence GPS.
     const timeServerUrl = 'https://worldtimeapi.org/api/ip'; 
     try {
         const response = await fetch(timeServerUrl);
@@ -91,16 +88,16 @@ function getCorrectedDate() {
 // ===========================================
 
 function resetDisplay() {
+    // ... (Réinitialisation des variables)
     lastPosition = null;
     totalDistanceM = 0; 
     startTime = null;
     maxSpeedMS = 0;
     targetLat = null; 
     targetLon = null;
-    
-    // Réinitialisation des variables du filtre de Kalman
     kalmanSpeed = 0;
     kalmanUncertainty = 1000;
+    lastDOMTime = null;
 
     const defaultText = '--';
     const ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 
@@ -109,7 +106,7 @@ function resetDisplay() {
         'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 
         'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 
         'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 
-        'mode-indicator', 'speed-source-indicator'
+        'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency'
     ];
 
     ids.forEach(id => {
@@ -123,6 +120,7 @@ function resetDisplay() {
             else if (id === 'altitude' || id === 'gps-accuracy') element.textContent = '-- m';
             else if (id === 'distance-km-m') element.textContent = '-- km | -- m';
             else if (id === 'mode-indicator') element.textContent = 'Mode: Jour ☀️';
+            else if (id === 'speed-error-perc' || id === 'update-frequency') element.textContent = '--';
             else element.textContent = defaultText;
         }
     });
@@ -157,7 +155,7 @@ function startGPS() {
     resetDisplay(); 
     startTime = Date.now(); 
     
-    // Utilise les WATCH_OPTIONS mises à jour pour la haute fréquence
+    // Démarre la lecture GPS (lente)
     watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
     
     startBtn.disabled = true;
@@ -217,7 +215,7 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
     let bearing = Math.atan2(y, x) * RAD_TO_DEG;
     return (bearing + 360) % 360; 
 }
-
+// ... (Les autres fonctions calculateSolarDetails, calculateLunarPhaseAngle, etc. ne sont pas modifiées)
 function calculateSolarDetails() {
     const now = getCorrectedDate();
     const J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
@@ -335,27 +333,18 @@ function updateAstroDisplay(latitude, longitude) {
 // 4b. FILTRAGE DE KALMAN ADAPTATIF
 // ===========================================
 
-// La fonction prend un R (Bruit de Mesure) dynamique, ajusté selon la précision.
 function simpleKalmanFilter(newSpeedMS, dt, R_dynamic) {
     if (dt === 0 || dt > 5) { return kalmanSpeed; } 
     
-    // Utilise le R dynamique ou un R par défaut élevé si non défini
     const R = R_dynamic !== undefined ? R_dynamic : KALMAN_R_MAX; 
-    
     const Q = PROCESS_NOISE_Q * dt; 
     
-    // 1. Prediction (L'état est supposé constant)
     let predictedSpeed = kalmanSpeed;
     let predictedUncertainty = kalmanUncertainty + Q; 
 
-    // 2. Update (Correction)
-    // Utilisation du R dynamique ici:
     let K = predictedUncertainty / (predictedUncertainty + R); 
 
-    // Mise à jour de la vitesse estimée
     kalmanSpeed = predictedSpeed + K * (newSpeedMS - predictedSpeed);
-    
-    // Mise à jour de l'incertitude
     kalmanUncertainty = (1 - K) * predictedUncertainty;
 
     return kalmanSpeed;
@@ -415,7 +404,7 @@ function setTargetDestination() {
 
 
 // ===========================================
-// 6. FONCTION PRINCIPALE D'AFFICHAGE
+// 6. FONCTION PRINCIPALE D'AFFICHAGE GPS (LENTE)
 // ===========================================
 
 function updateDisplay(position) {
@@ -427,7 +416,6 @@ function updateDisplay(position) {
     const speed = position.coords.speed;       
     const currentTime = position.timestamp;
     
-    // --- CONTRÔLE DE LA PRÉCISION ---
     if (accuracy > MAX_ACCURACY_M) {
         document.getElementById('gps-accuracy').textContent = `🚨 ${accuracy.toFixed(0)} m (Trop Imprécis)`;
         if (lastPosition === null) { lastPosition = position; }
@@ -436,12 +424,11 @@ function updateDisplay(position) {
         return; 
     }
 
-    // --- LOGIQUE DE VITESSE BRUTE ET SOURCE ---
+    // --- CALCUL DE LA VITESSE BRUTE ---
     let speedMS_Horiz = speed !== null && speed !== undefined ? speed : 0; 
     let speedSource = speed !== null && speed !== undefined ? 'Puce GPS (Doppler)' : 'Calculée (Dérivée)';
     let speedMS_Vert = 0;
     
-    // dt est le temps écoulé depuis la dernière mise à jour
     const dt = lastPosition ? (currentTime - lastPosition.timestamp) / 1000 : MIN_TIME_INTERVAL_S;
 
     if (lastPosition && lastPosition.coords.latitude !== undefined) { 
@@ -453,7 +440,7 @@ function updateDisplay(position) {
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
             
             if (speed === null || speed === undefined) { 
-                speedMS_Horiz = distHorizM / dt; // Vitesse calculée par dérivation
+                speedMS_Horiz = distHorizM / dt; 
             }
             if (altitude !== null && dAlt !== null) { 
                 const distVertM = altitude - dAlt;
@@ -462,71 +449,77 @@ function updateDisplay(position) {
         } 
     }
     
-    // Vitesse 3D brute (la base pour le filtre)
     const speedMS_3D = Math.sqrt(speedMS_Horiz * speedMS_Horiz + speedMS_Vert * speedMS_Vert);
 
-    // --- LOGIQUE ADAPTATIVE DU FILTRE DE KALMAN (R) : PROGRESSIVE ---
+    // --- LOGIQUE ADAPTATIVE KALMAN (R) ---
     let kalmanR; 
     let precisionIndicatorText = `${accuracy.toFixed(2)} m`;
     const gpsAccuracyElement = document.getElementById('gps-accuracy');
 
     if (accuracy <= 1.0) {
-        // CAS OPTIMAL : Précision <= 1m. Confiance maximale (R est MIN)
         kalmanR = KALMAN_R_MIN; 
         precisionIndicatorText += ' (Optimal)';
         gpsAccuracyElement.classList.add('max-precision');
         
     } else if (accuracy > LOW_PRECISION_THRESHOLD_M) {
-        // CAS PIRE : Précision > 60m. Confiance minimale (R est MAX)
         kalmanR = KALMAN_R_MAX; 
         precisionIndicatorText += ' (Très Faible)';
         gpsAccuracyElement.classList.remove('max-precision');
         
     } else {
-        // CAS GRADIENT (1m < accuracy <= 60m) : Variation progressive.
-        
-        // Normaliser l'accuracy entre 0 (pour 1m) et 1 (pour 60m)
         const normalizedAcc = (accuracy - 1.0) / (LOW_PRECISION_THRESHOLD_M - 1.0);
-        
-        // Interpolation exponentielle (ajustement lisse)
         kalmanR = KALMAN_R_MIN + (KALMAN_R_MAX - KALMAN_R_MIN) * Math.pow(normalizedAcc, 2);
-        
         precisionIndicatorText += ' (Progressif)';
         gpsAccuracyElement.classList.remove('max-precision');
     }
     
-    // S'assurer que R reste dans les limites définies
     kalmanR = Math.max(KALMAN_R_MIN, Math.min(KALMAN_R_MAX, kalmanR));
 
-    // --- FILTRAGE DE VITESSE (Utilise le R dynamique) ---
+    // --- FILTRAGE DE VITESSE (Met à jour la variable globale `kalmanSpeed`) ---
     const filteredSpeedMS = simpleKalmanFilter(speedMS_3D, dt, kalmanR);
     
-    // --- APPLICATION DU SEUIL DE VITESSE (1 mm/s) ---
-    let stableSpeedForDisplay = filteredSpeedMS;
-    if (stableSpeedForDisplay < MIN_SPEED_THRESHOLD_MS) {
-        stableSpeedForDisplay = 0; 
+    // --- APPLICATION DU SEUIL DE VITESSE (pour le calcul d'erreur et de max) ---
+    const stableSpeedForError = filteredSpeedMS < MIN_SPEED_THRESHOLD_MS ? 0 : filteredSpeedMS;
+
+    // --- CALCUL DE L'ÉCART EN POURCENTAGE (Erreur Relative) ---
+    let speedErrorPerc = 0;
+    if (stableSpeedForError > MIN_SPEED_THRESHOLD_MS) {
+        speedErrorPerc = (Math.abs(speedMS_3D - stableSpeedForError) / stableSpeedForError) * 100;
     }
 
     const elapsedTimeS = (currentTime - startTime) / 1000;
     totalDistanceM += speedMS_3D * dt; 
     const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0; 
     
-    if (stableSpeedForDisplay > maxSpeedMS) { maxSpeedMS = stableSpeedForDisplay; } 
+    if (stableSpeedForError > maxSpeedMS) { maxSpeedMS = stableSpeedForError; } 
 
-    const totalDistKm = totalDistanceM / 1000;
-    const totalDistMeters = totalDistanceM % 1000;
-
-    // MISE À JOUR DES VALEURS DANS LE DOM
+    // --- MISE À JOUR DES VALEURS LENTES (GPS, Astro, Max, Erreur) ---
+    
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(2)} s`;
-    
     document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(5)} km/h`; 
-    
-    document.getElementById('speed-stable').textContent = `${(stableSpeedForDisplay * KMH_PER_MS).toFixed(5)} km/h`; 
-    // Vitesse en mm/s
-    if (document.getElementById('speed-stable-mm')) {
-        document.getElementById('speed-stable-mm').textContent = `${(stableSpeedForDisplay * 1000).toFixed(3)} mm/s`;
-    }
-    
     document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(5)} m/s`; 
-
-    document.getElementById('speed-a
+    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(5)} km/h`; 
+    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(5)} km/h`;
+    
+    // Mise à jour de l'erreur
+    document.getElementById('speed-error-perc').textContent = `${speedErrorPerc.toFixed(2)}%`; 
+    
+    // --- INFO GPS/POSITION ---
+    document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
+    document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
+    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(3)} m` : 'N/A';
+    gpsAccuracyElement.textContent = precisionIndicatorText; 
+    
+    let undergroundStatus = 'Non';
+    if (altitude !== null && altitude < UNDERGROUND_ALT_THRESHOLD_M) {
+        undergroundStatus = 'Oui (Très bas)';
+    }
+    if (accuracy > 100 && watchID !== null) { 
+        undergroundStatus = 'Possible (Signal Dégradé)';
+    } else if (altitude === null && watchID !== null) {
+        undergroundStatus = 'N/A (Signal Perdu)';
+    }
+    document.getElementById('underground').textContent = undergroundStatus;
+    
+    document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
+    document.getElementById('distance-km-m').textContent = `${(totalDistan
