@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER COMPLET CONDENSÉ : dashboard.js
-// (Moins de 533 lignes - Priorité Temps Internet/Hors Ligne + Mode Nuit Manuel/Luminosité/Astro)
+// (Final avec Corrections du Redémarrage DOM)
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -19,10 +19,8 @@ let distM = 0, maxSpd = 0, tLat = null, tLon = null, lDomT = null;
 let kSpd = 0, kUncert = 1000;
 let lServH = null, lLocH = null;
 
-// Variables Mode d'affichage
 let als = null; 
 let lastLux = null; 
-// NOUVEAU : null = auto; true = Nuit Manuel; false = Jour Manuel
 let manualMode = null; 
 
 // --- REFERENCES DOM ---
@@ -30,7 +28,6 @@ const $ = id => document.getElementById(id);
 const startBtn = $('start-btn'), stopBtn = $('stop-btn'), resetMaxBtn = $('reset-max-btn');
 const errorDisplay = $('error-message'), speedSrc = $('speed-source-indicator'); 
 const setTargetBtn = $('set-target-btn'), modeInd = $('mode-indicator');
-// NOUVEAU : Boutons du mode
 const toggleModeBtn = $('toggle-mode-btn'), autoModeBtn = $('auto-mode-btn');
 
 // ===========================================
@@ -88,7 +85,7 @@ function kFilter(nSpd, dt, R_dyn) {
 }
 
 // ===========================================
-// CALCULS ASTRO (Inchangées)
+// CALCULS ASTRO (Corrigées, Inchangées depuis la dernière correction)
 // ===========================================
 
 function calcSolar() {
@@ -98,21 +95,30 @@ function calcSolar() {
     const L = (280.466 + 0.98564736 * D) * D2R;
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
     const lambda = L + Ce; 
+    
     const delta = Math.asin(Math.sin(OBLIQ) * Math.sin(lambda));
     const alpha = Math.atan2(Math.cos(OBLIQ) * Math.sin(lambda), Math.cos(lambda));
+    
     const JD = now.getTime() / 86400000 + 2440587.5;
     const T = (JD - JD_2K) / 36525.0; 
     let GST = 280.4606 + 360.9856473 * (JD - JD_2K) + 0.000388 * T ** 2;
     GST = (GST % 360 + 360) % 360; 
     const LST = GST + (lon ?? D_LON);
     const HA_rad = ((LST % 360) * D2R) - alpha;
+    
     const lat_rad = (lat ?? D_LAT) * D2R;
     const h = Math.asin(Math.sin(lat_rad) * Math.sin(delta) + Math.cos(lat_rad) * Math.cos(delta) * Math.cos(HA_rad));
-    let EoT_m = (L - alpha) * R2D * 4;
-    if (EoT_m > 30) EoT_m -= 360 * 4;
-    if (EoT_m < -30) EoT_m += 360 * 4;
+    
+    let EoT_deg = (L - alpha) * R2D;
+    
+    while (EoT_deg > 180) EoT_deg -= 360;
+    while (EoT_deg < -180) EoT_deg += 360;
+
+    const EoT_m = EoT_deg * 4;
+    
     let sLon = (lambda * R2D) % 360;
     if (sLon < 0) sLon += 360;
+    
     return { eot: EoT_m, solarLongitude: sLon, elevation: h * R2D };
 }
 
@@ -175,46 +181,37 @@ function initALS() {
 // LOGIQUE D'AFFICHAGE ET GESTION GPS
 // ===========================================
 
-// NOUVEAU : Fonction pour forcer le mode Jour/Nuit manuellement
 function toggleManualMode() {
     if (manualMode === null) {
-        // Passer en mode nuit manuel
         manualMode = true; 
         toggleModeBtn.textContent = '☀️ Passer en Jour';
         autoModeBtn.style.display = 'inline-block';
     } else if (manualMode === true) {
-        // Passer en mode jour manuel
         manualMode = false;
         toggleModeBtn.textContent = '🌙 Passer en Nuit';
     } else if (manualMode === false) {
-        // Passer en mode nuit manuel
         manualMode = true;
         toggleModeBtn.textContent = '☀️ Passer en Jour';
     }
 }
 
-// NOUVEAU : Fonction pour revenir au mode automatique
 function setAutoMode() {
     manualMode = null;
     toggleModeBtn.textContent = '🌗 Bascule Manuelle';
     autoModeBtn.style.display = 'none';
 }
 
-// MISE À JOUR : Mode Nuit basé sur la priorité Manuel > Luminosité > Astro
 function updateDM(lat, lon) {
     let isN = false;
     let modeSource = 'Initialisation...';
 
     if (manualMode !== null) {
-        // Priorité 1: Mode Manuel
         isN = manualMode;
         modeSource = `FORCÉ (${isN ? 'Nuit' : 'Jour'})`;
     } else if (lastLux !== null) {
-        // Priorité 2: Luminosité réelle
         isN = lastLux < LUX_NIGHT_TH;
         modeSource = `Luminosité (${lastLux.toFixed(0)} Lux)`;
     } else {
-        // Priorité 3: Calcul Astronomique
         const sD = calcSolar();
         const elev = sD.elevation;
         isN = elev < SUN_NIGHT_TH;
@@ -225,17 +222,30 @@ function updateDM(lat, lon) {
     document.body.classList.toggle('night-mode', isN);
     modeInd.textContent = `Mode: ${isN ? 'Nuit 🌙' : 'Jour ☀️'} (Source: ${modeSource})`;
 
-    // Mise à jour de l'affichage du bouton pour l'état initial
     if (manualMode === null) {
         toggleModeBtn.textContent = '🌗 Bascule Manuelle';
     }
 }
 
-// Fonctions updateAstro, resetDisp, resetMax, fastDOM, updateDisp, handleErr, startGPS, stopGPS (Mises à jour des IDs si besoin)
+function setTarget() {
+    if (!lPos) { alert("Attendre une position avant de définir une cible."); return; }
+    const cLat = lPos.coords.latitude.toFixed(6), cLon = lPos.coords.longitude.toFixed(6);
+    const iLat = prompt(`Lat (actuel: ${cLat}°):`, cLat), iLon = prompt(`Lon (actuel: ${cLon}°):`, cLon);
+    const la = parseFloat(iLat), lo = parseFloat(iLon);
+    if (!isNaN(la) && !isNaN(lo)) {
+        tLat = la; tLon = lo;
+        setTargetBtn.textContent = '✔️ Cible définie';
+    } else {
+        alert("Coordonnées invalides. Réinitialisation.");
+        tLat = null; tLon = null;
+        $('cap-dest').textContent = 'N/A';
+        setTargetBtn.textContent = '🗺️ Aller';
+    }
+}
 
 function updateAstro(lat, lon) {
     const cLat = lat ?? D_LAT, cLon = lon ?? D_LON, now = getCDate();
-    // ... (Logique MC/LSM/HSV/Lunar inchangée)
+    
     const mcTicksPD = 24000, msSinceM = now.getTime() % 86400000;
     const mcTicks = (msSinceM * mcTicksPD) / 86400000;
     const mcM = Math.floor(mcTicks / 20) % 1440; 
@@ -266,7 +276,7 @@ function updateAstro(lat, lon) {
 function resetDisp() {
     lPos = null; lat = null; lon = null; distM = 0; sTime = null; maxSpd = 0; tLat = null; tLon = null;
     kSpd = 0; kUncert = 1000; lDomT = null; lServH = null; lLocH = null; lastLux = null;
-    manualMode = null; // Réinitialisation du mode manuel
+    manualMode = null; 
     
     const defT = '--', ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time', 'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground', 'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency', 'sun-elevation', 'illuminance-lux'];
 
@@ -287,7 +297,6 @@ function resetDisp() {
     });
 
     startBtn.disabled = false; stopBtn.disabled = true; resetMaxBtn.disabled = true; setTargetBtn.textContent = '🗺️ Aller';
-    // NOUVEAU : Réinitialisation de l'affichage des boutons manuels
     toggleModeBtn.textContent = '🌗 Bascule Manuelle';
     autoModeBtn.style.display = 'none';
     
@@ -405,6 +414,7 @@ function startGPS() {
         
         wID = navigator.geolocation.watchPosition(updateDisp, handleErr, W_OPTS);
         
+        // CORRECTION: Relancer l'intervalle du DOM s'il a été stoppé
         if (domID === null) domID = setInterval(fastDOM, DOM_MS);
 
         startBtn.disabled = true; stopBtn.disabled = false; resetMaxBtn.disabled = false;
@@ -417,6 +427,13 @@ function startGPS() {
 
 function stopGPS(clearT = true) {
     if (wID !== null) { navigator.geolocation.clearWatch(wID); wID = null; }
+    
+    // CORRECTION: Arrêter et réinitialiser l'ID de l'intervalle DOM
+    if (domID !== null) { 
+        clearInterval(domID); 
+        domID = null; 
+    }
+
     if (clearT) sTime = null;
     
     startBtn.disabled = false; stopBtn.disabled = true; 
@@ -428,12 +445,14 @@ document.addEventListener('DOMContentLoaded', () => {
     resetDisp();
     syncH(); 
     initALS(); 
-    domID = setInterval(fastDOM, DOM_MS); 
+    
+    // Assurer que le rafraîchissement rapide du DOM est lancé au démarrage
+    if (domID === null) domID = setInterval(fastDOM, DOM_MS); 
+    
     startBtn.addEventListener('click', startGPS);
     stopBtn.addEventListener('click', stopGPS);
     resetMaxBtn.addEventListener('click', resetMax);
     setTargetBtn.addEventListener('click', setTarget);
-    // NOUVEAU : Événements pour le basculement manuel
     toggleModeBtn.addEventListener('click', toggleManualMode);
     autoModeBtn.addEventListener('click', setAutoMode);
 });
