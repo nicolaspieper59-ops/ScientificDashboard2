@@ -3,90 +3,162 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Navigation Atomique et Astro</title>
-    <link rel="stylesheet" href="styles.css"> 
+    <title>GPS/Astro High Precision Dashboard</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        /* Styles de base pour la lisibilité et le mode nuit */
+        body {
+            background-color: #f8f9fa;
+            color: #212529;
+            transition: background-color 0.5s, color 0.5s;
+        }
+        .night-mode {
+            background-color: #0b0f1a;
+            color: #e9ecef;
+        }
+        .night-mode .card {
+            background-color: #1a2238;
+            border-color: #3f4a6b;
+        }
+        .night-mode h1, .night-mode h2, .night-mode h3 {
+            color: #ffffff;
+        }
+        .data-value {
+            font-size: 1.25rem;
+            font-weight: bold;
+            display: block;
+        }
+        .main-speed {
+            font-size: 3rem;
+            color: #007bff;
+        }
+        .night-mode .main-speed {
+            color: #17a2b8;
+        }
+        .max-precision {
+            color: green;
+            font-weight: bold;
+        }
+        #error-message {
+            display: none;
+            color: red;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .header-time {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
 
-    <header>
-        <h1 id="solar-true-header">--:--:--</h1> 
-        <div id="mode-indicator">Mode: Jour ☀️</div>
-    </header>
-
-    <main>
-        <div class="controls">
-            <button id="start-btn">▶️ Démarrer GPS</button>
-            <button id="stop-btn" disabled>🛑 Arrêter GPS</button>
-            <button id="reset-max-btn" disabled>🔄 Réinitialiser Max</button>
-            <button id="set-target-btn">📍 Aller</button>
+<div class="container my-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-primary">GPS/Astro Dashboard</h1>
+        <div class="text-end">
+            <span id="mode-indicator" class="badge bg-secondary">Mode: Jour ☀️</span>
+            <div id="solar-true-header" class="header-time text-success mt-1">--:--:--</div>
         </div>
-        <div id="error-message" class="error" style="display:none;"></div>
-        
-        <section id="speed-metrics">
-            <h2>Vitesse et Performance</h2>
-            <table>
-                <tr><th>Temps Écoulé</th><td id="elapsed-time">-- s</td></tr>
-                <tr><th>Fréquence (Affichage)</th><td id="update-frequency">-- Hz</td></tr> <tr><th>Source Vitesse</th><td id="speed-source-indicator">Source: N/A</td></tr>
-                
-                <tr><th>Vitesse 3D BRUTE (Instantanée)</th><td id="speed-3d-inst">-- km/h</td></tr>
-                
-                <tr><th>Vitesse FILTRÉE (Stable)</th><td id="speed-stable">-- km/h</td></tr>
-                
-                <tr><th>Vitesse Filtrée (mm/s)</th><td id="speed-stable-mm">-- mm/s</td></tr> 
-
-                <tr><th>Vitesse Brute (m/s)</th><td id="speed-ms">-- m/s</td></tr>
-                
-                <tr><th>Écart Brute / Stable</th><td id="speed-error-perc">--%</td></tr> 
-                
-                <tr><th>Vitesse Moyenne</th><td id="speed-avg">-- km/h</td></tr>
-                <tr><th>Vitesse Maximale</th><td id="speed-max">-- km/h</td></tr>
-                
-                <tr><th>% Vitesse Lumière</th><td id="perc-light">--%</td></tr>
-                <tr><th>% Vitesse Son</th><td id="perc-sound">--%</td></tr>
-            </table>
-        </section>
-
-        <section id="position-metrics">
-            <h2>Position et Précision</h2>
-            <table>
-                <tr><th>Latitude</th><td id="latitude">--</td></tr>
-                <tr><th>Longitude</th><td id="longitude">--</td></tr>
-                <tr><th>Altitude</th><td id="altitude">-- m</td></tr>
-                <tr><th>Précision GPS</th><td id="gps-accuracy">-- m</td></tr> 
-                <tr><th>Sous Terre ?</th><td id="underground">--</td></tr>
-                <tr><th>Distance Totale</th><td id="distance-km-m">-- km | -- m</td></tr>
-                <tr><th>Cap Actuel</th><td id="heading">--</td></tr>
-                <tr><th>Cap Destination</th><td id="cap-dest">N/A</td></tr>
-            </table>
-        </section>
-
-        <section id="astro-metrics">
-            <h2>Chronologie et Astronomie</h2>
-            <table>
-                <tr><th>Temps Solaire Vrai (HSV)</th><td id="solar-true">-- (HSV)</td></tr>
-                <tr><th>Équation du Temps (EOT)</th><td id="eot">-- min</td></tr>
-                <tr><th>Longitude Solaire</th><td id="solar-longitude-val">-- °</td></tr>
-                <tr><th>Temps Solaire Moyen</th><td id="solar-mean">--</td></tr>
-                <tr><th>Phase Lunaire</th><td id="lunar-phase-perc">--%</td></tr>
-                <tr><th>Temps Lunaire Local</th><td id="lunar-time">--</td></tr>
-                <tr><th>Temps Minecraft</th><td id="mc-time">--</td></tr>
-            </table>
-        </section>
-        
-        <section id="external-metrics">
-            <h2>Données Externes (Simulées)</h2>
-            <table>
-                <tr><th>Température Air</th><td id="air-temp">N/A (API désactivée)</td></tr>
-                <tr><th>Pression Atm.</th><td id="pressure">N/A (API désactivée)</td></tr>
-                <tr><th>Humidité</th><td id="humidity">N/A (API désactivée)</td></tr>
-                <tr><th>Vitesse Vent</th><td id="wind-speed">N/A (API désactivée)</td></tr>
-                <tr><th>Point Ébullition</th><td id="boiling-point">N/A (API désactivée)</td></tr>
-                <tr><th>Niveau à Bulle</th><td id="bubble-level">N/A (API désactivée)</td></tr>
-            </table>
-        </section>
-
-    </main>
+    </div>
     
-    <script src="app.js"></script> 
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <button id="start-btn" class="btn btn-success me-2">▶️ Démarrer GPS</button>
+            <button id="stop-btn" class="btn btn-danger me-2" disabled>⏹️ Arrêter GPS</button>
+            <button id="reset-max-btn" class="btn btn-warning me-2" disabled>🔄 Réinitialiser Max</button>
+            <button id="set-target-btn" class="btn btn-info">📍 Aller</button>
+            <div id="error-message" class="alert alert-danger mt-2"></div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card p-3 text-center">
+                <h3>Vitesse Filtrée (Kalman)</h3>
+                <div id="speed-stable" class="main-speed">-- km/h</div>
+                <small id="speed-stable-mm" class="text-muted">-- mm/s</small>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card p-3">
+                <h4 class="mb-3">Statistiques de Trajet</h4>
+                <p><strong>Temps Écoulé:</strong> <span id="elapsed-time" class="data-value">-- s</span></p>
+                <p><strong>Distance Totale:</strong> <span id="distance-km-m" class="data-value">-- km | -- m</span></p>
+                <p><strong>Vitesse Moyenne:</strong> <span id="speed-avg" class="data-value">-- km/h</span></p>
+                <p><strong>Vitesse Maximale:</strong> <span id="speed-max" class="data-value">-- km/h</span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h4 class="mb-3">Position GPS</h4>
+                <p><strong>Latitude:</strong> <span id="latitude" class="data-value">--</span></p>
+                <p><strong>Longitude:</strong> <span id="longitude" class="data-value">--</span></p>
+                <p><strong>Altitude:</strong> <span id="altitude" class="data-value">-- m</span></p>
+                <p><strong>Précision (H):</strong> <span id="gps-accuracy" class="data-value">-- m</span></p>
+                <p><strong>Cap:</strong> <span id="heading" class="data-value">--</span></p>
+                <p><strong>Cible:</strong> <span id="cap-dest" class="data-value">N/A</span></p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h4 class="mb-3">Vitesse Brute & Erreur</h4>
+                <p><strong>Vitesse Instantanée 3D:</strong> <span id="speed-3d-inst" class="data-value">-- km/h</span></p>
+                <p><strong>Vitesse (m/s):</strong> <span id="speed-ms" class="data-value">-- m/s</span></p>
+                <p><strong>Erreur Filtre:</strong> <span id="speed-error-perc" class="data-value">--%</span></p>
+                <p><strong>Source Vitesse:</strong> <span id="speed-source-indicator" class="data-value">--</span></p>
+                <p><strong>Fréq. Affichage:</strong> <span id="update-frequency" class="data-value">--</span></p>
+                <p><strong>Souterrain:</strong> <span id="underground" class="data-value">--</span></p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h4 class="mb-3">Vitesse Limites</h4>
+                <p><strong>% Vitesse Lumière:</strong> <span id="perc-light" class="data-value">--</span></p>
+                <p><strong>% Vitesse Son:</strong> <span id="perc-sound" class="data-value">--</span></p>
+                <p><strong>Temp. Air:</strong> <span id="air-temp" class="data-value">--</span></p>
+                <p><strong>Pression:</strong> <span id="pressure" class="data-value">--</span></p>
+                <p><strong>Humidité:</strong> <span id="humidity" class="data-value">--</span></p>
+                <p><strong>Pt. Ébullition:</strong> <span id="boiling-point" class="data-value">--</span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h4 class="mb-3">Temps Solaire</h4>
+                <p><strong>Temps Solaire Vrai (HSV):</strong> <span id="solar-true" class="data-value text-success">--:--:-- (HSV)</span></p>
+                <p><strong>Temps Solaire Moyen (HSM):</strong> <span id="solar-mean" class="data-value">--:--:--</span></p>
+                <p><strong>Équation du Temps (EoT):</strong> <span id="eot" class="data-value">-- min</span></p>
+                <p><strong>Longitude Solaire:</strong> <span id="solar-longitude-val" class="data-value">-- °</span></p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h4 class="mb-3">Temps Lunaire & Autres</h4>
+                <p><strong>Temps Lunaire:</strong> <span id="lunar-time" class="data-value text-info">--:--:--</span></p>
+                <p><strong>Phase Lunaire:</strong> <span id="lunar-phase-perc" class="data-value">--%</span></p>
+                <p><strong>Temps Minecraft (MC):</strong> <span id="mc-time" class="data-value text-muted">--:--:--</span></p>
+                <p><strong>Vitesse Vent:</strong> <span id="wind-speed" class="data-value">--</span></p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h4 class="mb-3">Divers</h4>
+                <p><strong>Niveau à bulle:</strong> <span id="bubble-level" class="data-value">--</span></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="partie1.js"></script>
+<script src="partie2.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html>
+    </html>
