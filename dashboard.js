@@ -24,8 +24,8 @@ let timeOffsetMS = 0;
 // --- ÉTAT DE L'APPLICATION ---
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
-    maximumAge: 100,
-    timeout: 5000 
+    maximumAge: 0,
+    timeout: 20000 
 };
 const DOM_UPDATE_INTERVAL_MS = 17;
 let watchID = null;         
