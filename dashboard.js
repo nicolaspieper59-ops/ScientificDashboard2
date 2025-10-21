@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER COMPLET CONDENSÉ : dashboard.js
-// (Moins de 533 lignes - Priorité Temps Internet/Hors Ligne Robuste)
+// (Moins de 533 lignes - Priorité Temps Internet/Hors Ligne + Mode Nuit Manuel/Luminosité/Astro)
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -11,21 +11,30 @@ const D_LAT = 48.8566, D_LON = 2.3522;
 const W_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
 const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 50, MIN_SPD = 0.001, ALT_TH = -50;
 const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0, L_PREC_TH = 60;
+const SUN_NIGHT_TH = -12; 
+const LUX_NIGHT_TH = 50; 
 
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
 let distM = 0, maxSpd = 0, tLat = null, tLon = null, lDomT = null;
 let kSpd = 0, kUncert = 1000;
-// Variables pour la synchro HTTP (Temps Absolu/UTC)
 let lServH = null, lLocH = null;
+
+// Variables Mode d'affichage
+let als = null; 
+let lastLux = null; 
+// NOUVEAU : null = auto; true = Nuit Manuel; false = Jour Manuel
+let manualMode = null; 
 
 // --- REFERENCES DOM ---
 const $ = id => document.getElementById(id);
 const startBtn = $('start-btn'), stopBtn = $('stop-btn'), resetMaxBtn = $('reset-max-btn');
 const errorDisplay = $('error-message'), speedSrc = $('speed-source-indicator'); 
 const setTargetBtn = $('set-target-btn'), modeInd = $('mode-indicator');
+// NOUVEAU : Boutons du mode
+const toggleModeBtn = $('toggle-mode-btn'), autoModeBtn = $('auto-mode-btn');
 
 // ===========================================
-// FONCTIONS GÉO & UTILS
+// FONCTIONS GÉO & UTILS (Inchangées)
 // ===========================================
 
 const dist = (lat1, lon1, lat2, lon2) => {
@@ -44,10 +53,9 @@ const bearing = (lat1, lon1, lat2, lon2) => {
 };
 
 // ===========================================
-// TEMPS & KALMAN
+// TEMPS & KALMAN (Inchangées)
 // ===========================================
 
-// Synchro HTTP (Internet) pour obtenir l'heure UTC de référence la plus fiable
 async function syncH() {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     try {
@@ -57,21 +65,15 @@ async function syncH() {
         lServH = data.unixtime * 1000; 
         lLocH = Date.now(); 
     } catch (e) {
-        // En cas d'échec (hors ligne, timeout, erreur), lServH reste null ou conserve sa dernière valeur
         if (lServH === null) lLocH = Date.now();
     }
 }
 
-// Retourne la date la plus précise disponible (Internet > Fallback Local)
 function getCDate() {
     let estT = Date.now();
-    
     if (lServH !== null) {
-        // Utilise l'heure HTTP corrigée + temps écoulé depuis la synchro (Fallback Hors Ligne)
         estT = lServH + (Date.now() - lLocH);
     } 
-    // Si lServH est null, estT reste Date.now() (Fallback local pur)
-    
     return new Date(estT);
 }
 
@@ -86,7 +88,7 @@ function kFilter(nSpd, dt, R_dyn) {
 }
 
 // ===========================================
-// CALCULS ASTRO
+// CALCULS ASTRO (Inchangées)
 // ===========================================
 
 function calcSolar() {
@@ -96,13 +98,22 @@ function calcSolar() {
     const L = (280.466 + 0.98564736 * D) * D2R;
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
     const lambda = L + Ce; 
+    const delta = Math.asin(Math.sin(OBLIQ) * Math.sin(lambda));
     const alpha = Math.atan2(Math.cos(OBLIQ) * Math.sin(lambda), Math.cos(lambda));
+    const JD = now.getTime() / 86400000 + 2440587.5;
+    const T = (JD - JD_2K) / 36525.0; 
+    let GST = 280.4606 + 360.9856473 * (JD - JD_2K) + 0.000388 * T ** 2;
+    GST = (GST % 360 + 360) % 360; 
+    const LST = GST + (lon ?? D_LON);
+    const HA_rad = ((LST % 360) * D2R) - alpha;
+    const lat_rad = (lat ?? D_LAT) * D2R;
+    const h = Math.asin(Math.sin(lat_rad) * Math.sin(delta) + Math.cos(lat_rad) * Math.cos(delta) * Math.cos(HA_rad));
     let EoT_m = (L - alpha) * R2D * 4;
     if (EoT_m > 30) EoT_m -= 360 * 4;
     if (EoT_m < -30) EoT_m += 360 * 4;
     let sLon = (lambda * R2D) % 360;
     if (sLon < 0) sLon += 360;
-    return { eot: EoT_m, solarLongitude: sLon };
+    return { eot: EoT_m, solarLongitude: sLon, elevation: h * R2D };
 }
 
 function calcLunarPhase() {
@@ -133,44 +144,104 @@ function calcLunarTime(lon) {
 }
 
 // ===========================================
-// LOGIQUE D'AFFICHAGE ET GESTION GPS
+// GESTION CAPTEUR DE LUMINOSITÉ (Inchangée)
 // ===========================================
 
-function updateDM(lat, lon) {
-    const now = getCDate();
-    const hA = (now.getUTCHours() + now.getUTCMinutes() / 60 + lon / 15) % 24;
-    const isN = (hA < 6 || hA >= 18);
-    document.body.classList.toggle('night-mode', isN);
-    modeInd.textContent = `Mode: ${isN ? 'Nuit 🌙' : 'Jour ☀️'}`;
-}
-
-function setTarget() {
-    if (!lPos) { alert("Attendre une position avant de définir une cible."); return; }
-    const cLat = lPos.coords.latitude.toFixed(6), cLon = lPos.coords.longitude.toFixed(6);
-    const iLat = prompt(`Lat (actuel: ${cLat}°):`, cLat), iLon = prompt(`Lon (actuel: ${cLon}°):`, cLon);
-    const la = parseFloat(iLat), lo = parseFloat(iLon);
-    if (!isNaN(la) && !isNaN(lo)) {
-        tLat = la; tLon = lo;
-        setTargetBtn.textContent = '✔️ Cible définie';
+function initALS() {
+    if ('AmbientLightSensor' in window) {
+        try {
+            als = new AmbientLightSensor({ frequency: 5 }); 
+            als.onreading = () => {
+                lastLux = als.illuminance;
+                $('illuminance-lux').textContent = `${lastLux.toFixed(2)} Lux`;
+            };
+            als.onerror = (event) => {
+                lastLux = null;
+                $('illuminance-lux').textContent = 'Erreur/Non Autorisé';
+                if (als) als.stop();
+            };
+            als.start();
+        } catch (error) {
+            lastLux = null;
+            $('illuminance-lux').textContent = 'N/A (Navigateur)';
+        }
     } else {
-        alert("Coordonnées invalides. Réinitialisation.");
-        tLat = null; tLon = null;
-        $('cap-dest').textContent = 'N/A';
-        setTargetBtn.textContent = '🗺️ Aller';
+        lastLux = null;
+        $('illuminance-lux').textContent = 'N/A (API Manquante)';
     }
 }
 
+// ===========================================
+// LOGIQUE D'AFFICHAGE ET GESTION GPS
+// ===========================================
+
+// NOUVEAU : Fonction pour forcer le mode Jour/Nuit manuellement
+function toggleManualMode() {
+    if (manualMode === null) {
+        // Passer en mode nuit manuel
+        manualMode = true; 
+        toggleModeBtn.textContent = '☀️ Passer en Jour';
+        autoModeBtn.style.display = 'inline-block';
+    } else if (manualMode === true) {
+        // Passer en mode jour manuel
+        manualMode = false;
+        toggleModeBtn.textContent = '🌙 Passer en Nuit';
+    } else if (manualMode === false) {
+        // Passer en mode nuit manuel
+        manualMode = true;
+        toggleModeBtn.textContent = '☀️ Passer en Jour';
+    }
+}
+
+// NOUVEAU : Fonction pour revenir au mode automatique
+function setAutoMode() {
+    manualMode = null;
+    toggleModeBtn.textContent = '🌗 Bascule Manuelle';
+    autoModeBtn.style.display = 'none';
+}
+
+// MISE À JOUR : Mode Nuit basé sur la priorité Manuel > Luminosité > Astro
+function updateDM(lat, lon) {
+    let isN = false;
+    let modeSource = 'Initialisation...';
+
+    if (manualMode !== null) {
+        // Priorité 1: Mode Manuel
+        isN = manualMode;
+        modeSource = `FORCÉ (${isN ? 'Nuit' : 'Jour'})`;
+    } else if (lastLux !== null) {
+        // Priorité 2: Luminosité réelle
+        isN = lastLux < LUX_NIGHT_TH;
+        modeSource = `Luminosité (${lastLux.toFixed(0)} Lux)`;
+    } else {
+        // Priorité 3: Calcul Astronomique
+        const sD = calcSolar();
+        const elev = sD.elevation;
+        isN = elev < SUN_NIGHT_TH;
+        $('sun-elevation').textContent = `${elev.toFixed(2)} °`;
+        modeSource = 'Saisonnier (Astro)';
+    }
+
+    document.body.classList.toggle('night-mode', isN);
+    modeInd.textContent = `Mode: ${isN ? 'Nuit 🌙' : 'Jour ☀️'} (Source: ${modeSource})`;
+
+    // Mise à jour de l'affichage du bouton pour l'état initial
+    if (manualMode === null) {
+        toggleModeBtn.textContent = '🌗 Bascule Manuelle';
+    }
+}
+
+// Fonctions updateAstro, resetDisp, resetMax, fastDOM, updateDisp, handleErr, startGPS, stopGPS (Mises à jour des IDs si besoin)
+
 function updateAstro(lat, lon) {
     const cLat = lat ?? D_LAT, cLon = lon ?? D_LON, now = getCDate();
-    
-    // MC Time
+    // ... (Logique MC/LSM/HSV/Lunar inchangée)
     const mcTicksPD = 24000, msSinceM = now.getTime() % 86400000;
     const mcTicks = (msSinceM * mcTicksPD) / 86400000;
     const mcM = Math.floor(mcTicks / 20) % 1440; 
     const h = Math.floor(mcM / 60), m = mcM % 60, s = Math.floor((mcTicks % 20) / 20 * 60);
     $('mc-time').textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
-    // LSM & HSV
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
     const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
     const hsmH = Math.floor(sLSM / 3600), hsmM = Math.floor((sLSM % 3600) / 60), hsmS = Math.floor(sLSM % 60);
@@ -186,7 +257,6 @@ function updateAstro(lat, lon) {
     $('eot').textContent = `${sD.eot.toFixed(2)} min`;
     $('solar-longitude-val').textContent = `${sD.solarLongitude.toFixed(2)} °`;
 
-    // Lunar Phase
     const D_rad = calcLunarPhase();
     const ill = 0.5 * (1 - Math.cos(D_rad)); 
     $('lunar-phase-perc').textContent = `${(ill * 100).toFixed(1)}%`;
@@ -195,12 +265,10 @@ function updateAstro(lat, lon) {
 
 function resetDisp() {
     lPos = null; lat = null; lon = null; distM = 0; sTime = null; maxSpd = 0; tLat = null; tLon = null;
-    kSpd = 0; kUncert = 1000; lDomT = null;
+    kSpd = 0; kUncert = 1000; lDomT = null; lServH = null; lLocH = null; lastLux = null;
+    manualMode = null; // Réinitialisation du mode manuel
     
-    // Réinitialisation des références temporelles HTTP
-    lServH = null; lLocH = null;
-
-    const defT = '--', ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time', 'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground', 'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency'];
+    const defT = '--', ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time', 'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground', 'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency', 'sun-elevation', 'illuminance-lux'];
 
     ids.forEach(id => {
         const el = $(id);
@@ -211,12 +279,18 @@ function resetDisp() {
             else if (id === 'distance-km-m') el.textContent = '-- km | -- m';
             else if (id === 'mode-indicator') el.textContent = 'Mode: Jour ☀️';
             else if (id === 'speed-error-perc' || id === 'update-frequency') el.textContent = '--';
+            else if (id === 'sun-elevation') el.textContent = '-- °';
+            else if (id === 'illuminance-lux') el.textContent = 'Initialisation...';
             else if (['mc-time', 'lunar-time', 'solar-mean', 'solar-true', 'solar-true-header'].includes(id)) el.textContent = '00:00:00';
             else el.textContent = defT;
         }
     });
 
     startBtn.disabled = false; stopBtn.disabled = true; resetMaxBtn.disabled = true; setTargetBtn.textContent = '🗺️ Aller';
+    // NOUVEAU : Réinitialisation de l'affichage des boutons manuels
+    toggleModeBtn.textContent = '🌗 Bascule Manuelle';
+    autoModeBtn.style.display = 'none';
+    
     errorDisplay.style.display = 'none';
     document.body.classList.remove('night-mode'); $('gps-accuracy').classList.remove('max-precision');
 }
@@ -225,7 +299,7 @@ function resetMax() { maxSpd = 0; $('speed-max').textContent = '0.00000 km/h'; }
 
 function fastDOM() {
     const latA = lat ?? D_LAT, lonA = lon ?? D_LON;
-    updateAstro(latA, lonA); updateDM(latA, lonA);
+    updateAstro(latA, lonA); updateDM(latA, lonA); 
     if (!lPos || sTime === null) return;
     
     const spd3D = lPos.speedMS_3D || 0, spd3DKMH = spd3D * KMH_MS;
@@ -240,11 +314,9 @@ function fastDOM() {
 
     const now = getCDate().getTime(); 
     
-    // Chrono 
     const elapS = (now - sTime) / 1000;
     $('elapsed-time').textContent = `${elapS.toFixed(2)} s`;
     
-    // Fréquence d'affichage DOM
     const pNow = performance.now();
     if (lDomT) $('update-frequency').textContent = `${(1000 / (pNow - lDomT)).toFixed(1)} Hz (DOM)`;
     lDomT = pNow;
@@ -255,11 +327,8 @@ function updateDisp(pos) {
     const alt = pos.coords.altitude, acc = pos.coords.accuracy, hdg = pos.coords.heading;   
     const spd = pos.coords.speed, cTime = pos.timestamp; 
     
-    // Synchronisation d'heure via HTTP si possible, sinon on continue avec la dernière synchro/heure locale.
-    // Cette fonction est ASYNCHRONE et NE BLOQUE PAS l'UI.
     syncH(); 
 
-    // Initialisation du temps de départ
     if (sTime === null) sTime = getCDate().getTime();
 
     if (acc > MAX_ACC) { $('gps-accuracy').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; if (lPos === null) lPos = pos; return; }
@@ -267,7 +336,6 @@ function updateDisp(pos) {
     let spdH = spd ?? 0, spdSrc = spd !== null && spd !== undefined ? 'Puce GPS (Doppler)' : 'Calculée (Dérivée)';
     let spdV = 0;
     
-    // Utilise le timestamp GPS pour le delta temps (dt) précis
     const dt = lPos ? (cTime - lPos.timestamp) / 1000 : MIN_DT;
 
     if (lPos && dt > 0.1) { 
@@ -277,7 +345,7 @@ function updateDisp(pos) {
     }
     
     const spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
-    lPos = pos; lPos.speedMS_3D = spd3D; lPos.timestamp = cTime; // Mise à jour du timestamp GPS dans lPos
+    lPos = pos; lPos.speedMS_3D = spd3D; lPos.timestamp = cTime; 
 
     let kR, pText = `${acc.toFixed(2)} m`, accEl = $('gps-accuracy');
 
@@ -319,7 +387,7 @@ function updateDisp(pos) {
 }
 
 function handleErr(err) {
-    syncH(); // Tentative de synchro HTTP en cas d'échec GPS
+    syncH(); 
     errorDisplay.style.display = 'block';
     let msg = "❌ Erreur GPS inconnue. Utilisation du temps Internet/Local.";
     if (err.code === err.PERMISSION_DENIED) msg = "❌ L'accès à la localisation a été refusé. Utilisation du temps Internet/Local.";
@@ -331,8 +399,8 @@ function handleErr(err) {
 
 function startGPS() {
     if (navigator.geolocation) {
-        syncH(); // Lancement de la synchro Internet au démarrage
-        sTime = null; // Sera initialisé avec getCDate().getTime() à la 1ère position
+        syncH(); 
+        sTime = null; 
         resetMax(); distM = 0;
         
         wID = navigator.geolocation.watchPosition(updateDisp, handleErr, W_OPTS);
@@ -359,9 +427,13 @@ function stopGPS(clearT = true) {
 document.addEventListener('DOMContentLoaded', () => {
     resetDisp();
     syncH(); 
+    initALS(); 
     domID = setInterval(fastDOM, DOM_MS); 
     startBtn.addEventListener('click', startGPS);
     stopBtn.addEventListener('click', stopGPS);
     resetMaxBtn.addEventListener('click', resetMax);
     setTargetBtn.addEventListener('click', setTarget);
+    // NOUVEAU : Événements pour le basculement manuel
+    toggleModeBtn.addEventListener('click', toggleManualMode);
+    autoModeBtn.addEventListener('click', setAutoMode);
 });
