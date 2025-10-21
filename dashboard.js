@@ -532,7 +532,8 @@ function updateDisplay(position) {
     if (targetLat !== null && targetLon !== null) {
         const bearingToTarget = calculateBearing(latitude, longitude, targetLat, targetLon);
         document.getElementById('cap-dest').textContent = `${bearingToTarget.toFixed(1)} °`;
-       }
+    }
+}
     // =================================================================
 // BLOC 6/X : DÉMARRAGE, ARRÊT ET ÉCOUTEURS (Lignes BBB-FIN)
 // =================================================================
