@@ -519,4 +519,93 @@ function updateDisplay(position) {
     // --- INFO GPS/POSITION ---
     document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
-    doc
+    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(3)} m` : 'N/A';
+    gpsAccuracyElement.textContent = precisionIndicatorText; 
+    
+    let undergroundStatus = 'Non';
+    if (altitude !== null && altitude < UNDERGROUND_ALT_THRESHOLD_M) {
+        undergroundStatus = 'Oui (Très bas)';
+    }
+    if (accuracy > 100 && watchID !== null) { 
+        undergroundStatus = 'Possible (Signal Dégradé)';
+    } else if (altitude === null && watchID !== null) {
+        undergroundStatus = 'N/A (Signal Perdu)';
+    }
+    document.getElementById('underground').textContent = undergroundStatus;
+    
+    document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
+    document.getElementById('distance-km-m').textContent = `${(totalDistanceM / 1000).toFixed(5)} km | ${totalDistanceM.toFixed(5)} m`;
+
+    speedSourceIndicator.textContent = `Source: ${speedSource}`;
+
+    // 7. Calcul et Affichage du Relèvement
+    if (targetLat !== null && targetLon !== null) {
+        const bearing = calculateBearing(latitude, longitude, targetLat, targetLon);
+        document.getElementById('cap-dest').textContent = `${bearing.toFixed(0)}°`;
+    } else { 
+        document.getElementById('cap-dest').textContent = 'N/A';
+    }
+    
+    // --- Mise à jour des données persistantes (inclut speedMS_3D pour fastDOMUpdate) ---
+    const newPosition = { ...position, speedMS_3D: speedMS_3D }; 
+    lastPosition = newPosition; 
+} 
+
+
+// ===========================================
+// 9. GESTION DU DÉMARRAGE ET ARRÊT DU GPS
+// ===========================================
+
+function startGPS() {
+    if (!navigator.geolocation) {
+        errorDisplay.style.display = 'block';
+        errorDisplay.textContent = "❌ Votre navigateur ne supporte pas la géolocalisation.";
+        return;
+    }
+
+    resetDisplay(); 
+    startTime = Date.now(); 
+    
+    // Démarre la lecture GPS (lente)
+    watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
+    
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    resetMaxBtn.disabled = false;
+    errorDisplay.style.display = 'none';
+    
+    synchronizeTime(); 
+}
+
+function stopGPS(shouldReset = true) {
+    if (watchID !== null) {
+        navigator.geolocation.clearWatch(watchID);
+        watchID = null;
+    }
+    
+    if (shouldReset) {
+        resetDisplay();
+    } else {
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+}
+
+
+// ===========================================
+// 10. ÉCOUTEURS D'ÉVÉNEMENTS (INITIALISATION)
+// ===========================================
+
+// Écouteurs pour les boutons
+startBtn.addEventListener('click', startGPS);
+stopBtn.addEventListener('click', () => stopGPS(true));
+resetMaxBtn.addEventListener('click', resetMaxSpeed);
+setTargetBtn.addEventListener('click', setTargetDestination);
+
+// Initialisation au chargement de la page
+document.addEventListener('DOMContentLoaded', () => {
+    resetDisplay();
+    synchronizeTime(); 
+    // Démarrer la mise à jour fluide du DOM (pour les temps qui courent)
+    domIntervalID = setInterval(fastDOMUpdate, DOM_UPDATE_INTERVAL_MS);
+});
