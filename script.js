@@ -1,5 +1,5 @@
 // ===========================================
-// Fichier JavaScript Complet - AVEC SECONDES AJOUTÉES
+// Fichier JavaScript Complet - PARTIE 1/2
 // ===========================================
 
 // ===========================================
@@ -23,24 +23,24 @@ let timeOffsetMS = 0;
 // --- ÉTAT DE L'APPLICATION ---
 const WATCH_OPTIONS = {
     enableHighAccuracy: true,
-    maximumAge: 100, // Tente de ne pas utiliser de données vieilles de plus de 100 ms
+    maximumAge: 100,
     timeout: 5000 
 };
-const DOM_UPDATE_INTERVAL_MS = 17; // Environ 60 Hz pour une mise à jour fluide
+const DOM_UPDATE_INTERVAL_MS = 17;
 let watchID = null;         
-let domIntervalID = null;   // ID pour l'intervalle de rafraîchissement DOM
+let domIntervalID = null;
 let lastPosition = null;
 let startTime = null;
 let totalDistanceM = 0; 
 let maxSpeedMS = 0;
 let targetLat = null;
 let targetLon = null;
-let lastDOMTime = null; // Pour calculer la fréquence réelle du DOM
+let lastDOMTime = null;
 
 // --- FILTRAGE GPS & SENSITIVITÉ ---
 const MIN_TIME_INTERVAL_S = 1; 
 const MAX_ACCURACY_M = 50;     
-const MIN_SPEED_THRESHOLD_MS = 0.001; // Seuil pour considérer un mouvement réel
+const MIN_SPEED_THRESHOLD_MS = 0.001;
 const UNDERGROUND_ALT_THRESHOLD_M = -50; 
 
 // --- FILTRAGE DE KALMAN ADAPTATIF ---
@@ -52,14 +52,10 @@ const KALMAN_R_MAX = 5.0;
 const LOW_PRECISION_THRESHOLD_M = 60;   
 
 
-// --- REFERENCES DOM ---
-const startBtn = document.getElementById('start-btn');
-const stopBtn = document.getElementById('stop-btn');
-const resetMaxBtn = document.getElementById('reset-max-btn');
+// --- REFERENCES DOM (Réduites pour cette partie) ---
 const setTargetBtn = document.getElementById('set-target-btn');
-const errorDisplay = document.getElementById('error-message');
 const modeIndicator = document.getElementById('mode-indicator');
-const speedSourceIndicator = document.getElementById('speed-source-indicator'); 
+
 
 // ===========================================
 // 2. SYNCHRONISATION DU TEMPS
@@ -85,123 +81,7 @@ function getCorrectedDate() {
 
 
 // ===========================================
-// 3. GESTION DES BOUTONS ET DU DÉMARRAGE
-// ===========================================
-
-function resetDisplay() {
-    // RÉINITIALISE TOUTES LES VALEURS ET L'AFFICHAGE
-    lastPosition = null;
-    totalDistanceM = 0; 
-    startTime = null;
-    maxSpeedMS = 0;
-    targetLat = null; 
-    targetLon = null;
-    kalmanSpeed = 0;
-    kalmanUncertainty = 1000;
-    lastDOMTime = null;
-
-    const defaultText = '--';
-    const ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 
-        'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time',
-        'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground',
-        'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 
-        'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 
-        'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 
-        'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency'
-    ];
-
-    ids.forEach(id => {
-        const element = document.getElementById(id);
-        if (element) {
-            if (id === 'speed-source-indicator') element.textContent = 'Source: N/A';
-            else if (['air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'bubble-level'].includes(id)) {
-                element.textContent = 'N/A (API désactivée)'; 
-            }
-            // Changement ici: Ajout de secondes
-            else if (id === 'mc-time' || id === 'lunar-time') element.textContent = '00:00:00'; 
-            else if (id === 'solar-mean') element.textContent = '--:--:--';
-            else if (id === 'altitude' || id === 'gps-accuracy') element.textContent = '-- m';
-            else if (id === 'distance-km-m') element.textContent = '-- km | -- m';
-            else if (id === 'mode-indicator') element.textContent = 'Mode: Jour ☀️';
-            else if (id === 'speed-error-perc' || id === 'update-frequency') element.textContent = '--';
-            else element.textContent = defaultText;
-        }
-    });
-
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    resetMaxBtn.disabled = true;
-    setTargetBtn.textContent = '📍 Aller';
-    errorDisplay.style.display = 'none';
-    document.body.classList.remove('night-mode');
-    document.getElementById('gps-accuracy').classList.remove('max-precision');
-}
-
-function handleGeolocationError(error) {
-    errorDisplay.style.display = 'block';
-    switch (error.code) {
-        case error.PERMISSION_DENIED: errorDisplay.textContent = "❌ L'accès à la localisation a été refusé."; break;
-        case error.POSITION_UNAVAILABLE: errorDisplay.textContent = "⚠️ Position non disponible. Signal GPS faible."; break;
-        case error.TIMEOUT: errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé. Signal faible."; break;
-        default: errorDisplay.textContent = "❓ Erreur GPS inconnue."; break;
-    }
-    stopGPS(false); 
-}
-
-function startGPS() {
-    if (!navigator.geolocation) {
-        errorDisplay.style.display = 'block';
-        errorDisplay.textContent = "❌ Votre navigateur ne supporte pas la géolocalisation.";
-        return;
-    }
-
-    resetDisplay(); 
-    startTime = Date.now(); 
-    
-    // Démarre la lecture GPS (lente)
-    watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
-    
-    // DÉMARRE LA MISE À JOUR DOM RAPIDE (Pour la fluidité)
-    domIntervalID = setInterval(fastDOMUpdate, DOM_UPDATE_INTERVAL_MS);
-
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    resetMaxBtn.disabled = false;
-    errorDisplay.style.display = 'none';
-    
-    synchronizeTime(); 
-}
-
-function stopGPS(shouldReset = true) {
-    if (watchID !== null) {
-        navigator.geolocation.clearWatch(watchID);
-        watchID = null;
-    }
-    
-    // ARRÊTE LA MISE À JOUR DOM RAPIDE
-    if (domIntervalID !== null) {
-        clearInterval(domIntervalID);
-        domIntervalID = null;
-    }
-
-    // Si shouldReset est à false, l'affichage est conservé.
-    if (shouldReset) {
-        resetDisplay();
-    } else {
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        // On conserve les mesures !
-    }
-}
-
-function resetMaxSpeed() {
-    maxSpeedMS = 0;
-    document.getElementById('speed-max').textContent = '0.00000 km/h';
-}
-
-
-// ===========================================
-// 4. FONCTIONS DE CALCULS GÉO ET ASTRO
+// 3. FONCTIONS DE CALCULS GÉO ET ASTRO
 // ===========================================
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -287,68 +167,14 @@ function calculateLunarTime(longitude) {
     const LMT_total_seconds = LMT_hours * 3600;
     const lmtHour = Math.floor(LMT_total_seconds / 3600);
     const lmtMinute = Math.floor((LMT_total_seconds % 3600) / 60);
-    const lmtSecond = Math.floor(LMT_total_seconds % 60); // NOUVEAU: Ajout des secondes
+    const lmtSecond = Math.floor(LMT_total_seconds % 60);
     
     document.getElementById('lunar-time').textContent = 
         `${String(lmtHour).padStart(2, '0')}:${String(lmtMinute).padStart(2, '0')}:${String(lmtSecond).padStart(2, '0')}`;
 }
 
-function updateAstroDisplay(latitude, longitude) {
-    const now = getCorrectedDate();
-    
-    // --- TEMPS MINECRAFT ---
-    const mcTicksPerDay = 24000;
-    const msSinceMidnight = now.getTime() % 86400000;
-    const mcTicks = (msSinceMidnight * mcTicksPerDay) / 86400000;
-    const mcMinutes = Math.floor(mcTicks / 20) % 1440; 
-    const mcHour = Math.floor(mcMinutes / 60);
-    const mcMinute = mcMinutes % 60;
-    const mcSecond = Math.floor((mcTicks % 20) / 20 * 60);
-    document.getElementById('mc-time').textContent = `${String(mcHour).padStart(2, '0')}:${String(mcMinute).padStart(2, '0')}:${String(mcSecond).padStart(2, '0')}`;
-
-
-    // --- TEMPS SOLAIRE MOYEN (HSM) & HSV ---
-    const totalSecondsUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds(); // UTILISE SECONDES
-    const totalSecondsLSM = (totalSecondsUT + (longitude * 4 * 60) + 86400) % 86400; // 86400 = 24h en secondes
-    
-    const hsmHour = Math.floor(totalSecondsLSM / 3600);
-    const hsmMinute = Math.floor((totalSecondsLSM % 3600) / 60);
-    const hsmSecond = Math.floor(totalSecondsLSM % 60); // NOUVEAU: Ajout des secondes
-    
-    document.getElementById('solar-mean').textContent = 
-        `${String(hsmHour).padStart(2, '0')}:${String(hsmMinute).padStart(2, '0')}:${String(hsmSecond).padStart(2, '0')}`;
-    
-    const solarDetails = calculateSolarDetails();
-    const EoT_seconds = solarDetails.eot * 60; // Equation du temps en secondes
-    
-    // Le Temps Solaire Vrai (HSV) est HSM corrigé par l'Equation du Temps (EoT)
-    const totalSecondsLSM_Corrected = totalSecondsLSM + EoT_seconds; 
-    const totalSecondsHSV = (totalSecondsLSM_Corrected + 86400) % 86400;
-
-    const lsvHour = Math.floor(totalSecondsHSV / 3600); 
-    const lsvMinute = Math.floor((totalSecondsHSV % 3600) / 60);
-    const lsvSecond = Math.floor(totalSecondsHSV % 60); // NOUVEAU: Ajout des secondes
-    
-    const hsvTimeStr = `${String(lsvHour).padStart(2, '0')}:${String(lsvMinute).padStart(2, '0')}:${String(lsvSecond).padStart(2, '0')}`;
-
-    document.getElementById('solar-true').textContent = `${hsvTimeStr} (HSV)`;
-    document.getElementById('solar-true-header').textContent = hsvTimeStr;
-
-    document.getElementById('eot').textContent = `${solarDetails.eot.toFixed(2)} min`;
-    document.getElementById('solar-longitude-val').textContent = `${solarDetails.solarLongitude.toFixed(2)} °`;
-
-
-    // --- PHASE LUNAIRE (Illumination) ---
-    const D_rad = calculateLunarPhaseAngle();
-    const illumination = 0.5 * (1 - Math.cos(D_rad)); 
-    document.getElementById('lunar-phase-perc').textContent = `${(illumination * 100).toFixed(1)}%`;
-
-    // --- TEMPS LUNAIRE ---
-    calculateLunarTime(longitude); 
-}
-
 // ===========================================
-// 4b. FILTRAGE DE KALMAN ADAPTATIF
+// 4. FILTRAGE DE KALMAN ADAPTATIF
 // ===========================================
 
 function simpleKalmanFilter(newSpeedMS, dt, R_dynamic) {
@@ -370,7 +196,7 @@ function simpleKalmanFilter(newSpeedMS, dt, R_dynamic) {
 
 
 // ===========================================
-// 5. MODE JOUR/NUIT & CIBLE
+// 5. GESTION DU MODE JOUR/NUIT & CIBLE
 // ===========================================
 
 function updateDarkMode(latitude, longitude) {
@@ -420,19 +246,153 @@ function setTargetDestination() {
     }
 }
 
+function updateAstroDisplay(latitude, longitude) {
+    const now = getCorrectedDate();
+    
+    // --- TEMPS MINECRAFT ---
+    const mcTicksPerDay = 24000;
+    const msSinceMidnight = now.getTime() % 86400000;
+    const mcTicks = (msSinceMidnight * mcTicksPerDay) / 86400000;
+    const mcMinutes = Math.floor(mcTicks / 20) % 1440; 
+    const mcHour = Math.floor(mcMinutes / 60);
+    const mcMinute = mcMinutes % 60;
+    const mcSecond = Math.floor((mcTicks % 20) / 20 * 60);
+    document.getElementById('mc-time').textContent = `${String(mcHour).padStart(2, '0')}:${String(mcMinute).padStart(2, '0')}:${String(mcSecond).padStart(2, '0')}`;
+
+
+    // --- TEMPS SOLAIRE MOYEN (HSM) & HSV ---
+    const totalSecondsUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+    const totalSecondsLSM = (totalSecondsUT + (longitude * 4 * 60) + 86400) % 86400;
+    
+    const hsmHour = Math.floor(totalSecondsLSM / 3600);
+    const hsmMinute = Math.floor((totalSecondsLSM % 3600) / 60);
+    const hsmSecond = Math.floor(totalSecondsLSM % 60);
+    
+    document.getElementById('solar-mean').textContent = 
+        `${String(hsmHour).padStart(2, '0')}:${String(hsmMinute).padStart(2, '0')}:${String(hsmSecond).padStart(2, '0')}`;
+    
+    const solarDetails = calculateSolarDetails();
+    const EoT_seconds = solarDetails.eot * 60;
+    
+    const totalSecondsLSM_Corrected = totalSecondsLSM + EoT_seconds; 
+    const totalSecondsHSV = (totalSecondsLSM_Corrected + 86400) % 86400;
+
+    const lsvHour = Math.floor(totalSecondsHSV / 3600); 
+    const lsvMinute = Math.floor((totalSecondsHSV % 3600) / 60);
+    const lsvSecond = Math.floor(totalSecondsHSV % 60);
+    
+    const hsvTimeStr = `${String(lsvHour).padStart(2, '0')}:${String(lsvMinute).padStart(2, '0')}:${String(lsvSecond).padStart(2, '0')}`;
+
+    document.getElementById('solar-true').textContent = `${hsvTimeStr} (HSV)`;
+    document.getElementById('solar-true-header').textContent = hsvTimeStr;
+
+    document.getElementById('eot').textContent = `${solarDetails.eot.toFixed(2)} min`;
+    document.getElementById('solar-longitude-val').textContent = `${solarDetails.solarLongitude.toFixed(2)} °`;
+
+
+    // --- PHASE LUNAIRE (Illumination) ---
+    const D_rad = calculateLunarPhaseAngle();
+    const illumination = 0.5 * (1 - Math.cos(D_rad)); 
+    document.getElementById('lunar-phase-perc').textContent = `${(illumination * 100).toFixed(1)}%`;
+
+    // --- TEMPS LUNAIRE ---
+    calculateLunarTime(longitude); 
+                                        }
 // ===========================================
-// 6. FONCTION DE MISE À JOUR DOM RAPIDE (60 Hz)
+// Fichier JavaScript Complet - PARTIE 2/2
+// ===========================================
+
+// --- REFERENCES DOM (Complètes pour cette partie) ---
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const resetMaxBtn = document.getElementById('reset-max-btn');
+const errorDisplay = document.getElementById('error-message');
+const speedSourceIndicator = document.getElementById('speed-source-indicator'); 
+const setTargetBtn = document.getElementById('set-target-btn'); // Déjà défini en Partie 1
+
+// ===========================================
+// 6. GESTION DE L'AFFICHAGE ET DES ERREURS
+// ===========================================
+
+function resetDisplay() {
+    // RÉINITIALISE TOUTES LES VALEURS ET L'AFFICHAGE
+    lastPosition = null;
+    totalDistanceM = 0; 
+    startTime = null;
+    maxSpeedMS = 0;
+    targetLat = null; 
+    targetLon = null;
+    kalmanSpeed = 0;
+    kalmanUncertainty = 1000;
+    lastDOMTime = null;
+
+    const defaultText = '--';
+    const ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 
+        'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time',
+        'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground',
+        'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 
+        'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 
+        'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 
+        'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency'
+    ];
+
+    ids.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            if (id === 'speed-source-indicator') element.textContent = 'Source: N/A';
+            else if (['air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'bubble-level'].includes(id)) {
+                element.textContent = 'N/A (API désactivée)'; 
+            }
+            else if (id === 'altitude' || id === 'gps-accuracy') element.textContent = '-- m';
+            else if (id === 'distance-km-m') element.textContent = '-- km | -- m';
+            else if (id === 'mode-indicator') element.textContent = 'Mode: Jour ☀️';
+            else if (id === 'speed-error-perc' || id === 'update-frequency') element.textContent = '--';
+            // Réinitialisation des temps Astro avec secondes
+            else if (['mc-time', 'lunar-time', 'solar-mean', 'solar-true', 'solar-true-header'].includes(id)) element.textContent = '00:00:00';
+            else element.textContent = defaultText;
+        }
+    });
+
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    resetMaxBtn.disabled = true;
+    setTargetBtn.textContent = '📍 Aller';
+    errorDisplay.style.display = 'none';
+    document.body.classList.remove('night-mode');
+    document.getElementById('gps-accuracy').classList.remove('max-precision');
+}
+
+function handleGeolocationError(error) {
+    errorDisplay.style.display = 'block';
+    switch (error.code) {
+        case error.PERMISSION_DENIED: errorDisplay.textContent = "❌ L'accès à la localisation a été refusé."; break;
+        case error.POSITION_UNAVAILABLE: errorDisplay.textContent = "⚠️ Position non disponible. Signal GPS faible."; break;
+        case error.TIMEOUT: errorDisplay.textContent = "⏱️ Délai de recherche du GPS dépassé. Signal faible."; break;
+        default: errorDisplay.textContent = "❓ Erreur GPS inconnue."; break;
+    }
+    stopGPS(false); 
+}
+
+function resetMaxSpeed() {
+    maxSpeedMS = 0;
+    document.getElementById('speed-max').textContent = '0.00000 km/h';
+}
+
+
+// ===========================================
+// 7. FONCTION DE MISE À JOUR DOM RAPIDE (60 Hz)
 // ===========================================
 
 function fastDOMUpdate() {
-    if (!lastPosition || startTime === null) {
-        // Mettre à jour les temps astronomiques ici aussi pour qu'ils ne dépendent pas du GPS
-        const latitude = lastPosition ? lastPosition.coords.latitude : 0;
-        const longitude = lastPosition ? lastPosition.coords.longitude : 0;
-        updateAstroDisplay(latitude, longitude); 
-        updateDarkMode(latitude, longitude);
-        return;
-    }
+    
+    const latitude = lastPosition ? lastPosition.coords.latitude : 0;
+    const longitude = lastPosition ? lastPosition.coords.longitude : 0;
+    
+    // Mettre à jour les temps astronomiques et mode jour/nuit à chaque tick pour les secondes
+    updateAstroDisplay(latitude, longitude); 
+    updateDarkMode(latitude, longitude);
+    
+    if (!lastPosition || startTime === null) return;
     
     // Utiliser kalmanSpeed pour un affichage stable et fluide
     const stableSpeed = kalmanSpeed < MIN_SPEED_THRESHOLD_MS ? 0 : kalmanSpeed;
@@ -449,16 +409,11 @@ function fastDOMUpdate() {
         document.getElementById('update-frequency').textContent = `${freq.toFixed(1)} Hz (DOM)`;
     }
     lastDOMTime = now;
-    
-    // Les mises à jour du temps (Astro) doivent être faites à chaque tick pour les secondes
-    const latitude = lastPosition.coords.latitude;
-    const longitude = lastPosition.coords.longitude;
-    updateAstroDisplay(latitude, longitude); 
-    updateDarkMode(latitude, longitude);
 }
 
+
 // ===========================================
-// 7. FONCTION PRINCIPALE D'AFFICHAGE GPS (LENTE)
+// 8. FONCTION PRINCIPALE D'AFFICHAGE GPS (LENTE)
 // ===========================================
 
 function updateDisplay(position) {
@@ -474,7 +429,6 @@ function updateDisplay(position) {
     if (accuracy > MAX_ACCURACY_M) {
         document.getElementById('gps-accuracy').textContent = `🚨 ${accuracy.toFixed(0)} m (Trop Imprécis)`;
         if (lastPosition === null) { lastPosition = position; }
-        // Les mises à jour Astro sont déplacées dans fastDOMUpdate pour la fluidité des secondes
         return; 
     }
 
@@ -530,4 +484,140 @@ function updateDisplay(position) {
     
     kalmanR = Math.max(KALMAN_R_MIN, Math.min(KALMAN_R_MAX, kalmanR));
 
-    // 4. Filtrage
+    // 4. Filtrage de Vitesse (Met à jour la variable globale `kalmanSpeed`)
+    const filteredSpeedMS = simpleKalmanFilter(speedMS_3D, dt, kalmanR);
+    const stableSpeedForError = filteredSpeedMS < MIN_SPEED_THRESHOLD_MS ? 0 : filteredSpeedMS;
+    
+    // 5. Mise à Jour des Statistiques (Distance et Vitesse Max/Moyenne)
+    const elapsedTimeS = (currentTime - startTime) / 1000;
+    
+    // UTILISATION DE LA VITESSE FILTRÉE POUR UN CUMUL DE DISTANCE COHÉRENT
+    totalDistanceM += stableSpeedForError * dt; 
+    
+    const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0; 
+    
+    if (stableSpeedForError > maxSpeedMS) { maxSpeedMS = stableSpeedForError; } 
+
+    // Calcul de l'écart en pourcentage (Erreur Relative)
+    let speedErrorPerc = 0;
+    if (stableSpeedForError > MIN_SPEED_THRESHOLD_MS) {
+        speedErrorPerc = (Math.abs(speedMS_3D - stableSpeedForError) / stableSpeedForError) * 100;
+    }
+
+    // 6. MISE À JOUR DU DOM (Lente) - Informations GPS/Statistiques
+    
+    document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(2)} s`;
+    document.getElementById('speed-3d-inst').textContent = `${(speedMS_3D * KMH_PER_MS).toFixed(5)} km/h`; 
+    document.getElementById('speed-ms').textContent = `${speedMS_3D.toFixed(5)} m/s`; 
+    document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(5)} km/h`; 
+    document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(5)} km/h`;
+    
+    document.getElementById('speed-error-perc').textContent = `${speedErrorPerc.toFixed(2)}%`; 
+    
+    // --- INFO GPS/POSITION ---
+    document.getElementById('latitude').textContent = `${latitude.toFixed(6)}`;
+    document.getElementById('longitude').textContent = `${longitude.toFixed(6)}`;
+    document.getElementById('altitude').textContent = altitude !== null ? `${altitude.toFixed(3)} m` : 'N/A';
+    gpsAccuracyElement.textContent = precisionIndicatorText; 
+    
+    let undergroundStatus = 'Non';
+    if (altitude !== null && altitude < UNDERGROUND_ALT_THRESHOLD_M) {
+        undergroundStatus = 'Oui (Très bas)';
+    }
+    if (accuracy > 100 && watchID !== null) { 
+        undergroundStatus = 'Possible (Signal Dégradé)';
+    } else if (altitude === null && watchID !== null) {
+        undergroundStatus = 'N/A (Signal Perdu)';
+    }
+    document.getElementById('underground').textContent = undergroundStatus;
+    
+    document.getElementById('heading').textContent = heading !== null ? `${heading.toFixed(0)}°` : 'N/A';
+    document.getElementById('distance-km-m').textContent = `${(totalDistanceM / 1000).toFixed(5)} km | ${totalDistanceM.toFixed(5)} m`;
+
+    speedSourceIndicator.textContent = `Source: ${speedSource}`;
+
+    // 7. Calcul et Affichage du Relèvement
+    if (targetLat !== null && targetLon !== null) {
+        const bearing = calculateBearing(latitude, longitude, targetLat, targetLon);
+        document.getElementById('cap-dest').textContent = `${bearing.toFixed(0)}°`;
+    } else { 
+        document.getElementById('cap-dest').textContent = 'N/A';
+    }
+    
+    // --- Mise à jour des données persistantes ---
+    lastPosition = position; 
+} 
+
+
+// ===========================================
+// 9. GESTION DU DÉMARRAGE ET ARRÊT DU GPS
+// ===========================================
+
+function startGPS() {
+    if (!navigator.geolocation) {
+        errorDisplay.style.display = 'block';
+        errorDisplay.textContent = "❌ Votre navigateur ne supporte pas la géolocalisation.";
+        return;
+    }
+
+    resetDisplay(); 
+    startTime = Date.now(); 
+    
+    // Démarre la lecture GPS (lente)
+    watchID = navigator.geolocation.watchPosition(updateDisplay, handleGeolocationError, WATCH_OPTIONS);
+    
+    // Le DOM_UPDATE_INTERVAL_MS est démarré dans DOMContentLoaded pour gérer les temps
+    
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    resetMaxBtn.disabled = false;
+    errorDisplay.style.display = 'none';
+    
+    synchronizeTime(); 
+}
+
+function stopGPS(shouldReset = true) {
+    if (watchID !== null) {
+        navigator.geolocation.clearWatch(watchID);
+        watchID = null;
+    }
+    
+    // La boucle fastDOMUpdate n'est pas arrêtée ici car elle gère les temps Astro indépendamment du GPS
+    // (sauf si on désactive complètement le DOM_UPDATE_INTERVAL_MS). 
+    // Pour l'instant, on la laisse tourner.
+
+    if (shouldReset) {
+        resetDisplay();
+    } else {
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+}
+
+
+// ===========================================
+// 10. ÉCOUTEURS D'ÉVÉNEMENTS (INITIALISATION)
+// ===========================================
+
+// Écouteurs pour les boutons
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const resetMaxBtn = document.getElementById('reset-max-btn');
+const errorDisplay = document.getElementById('error-message');
+const speedSourceIndicator = document.getElementById('speed-source-indicator'); 
+const setTargetBtn = document.getElementById('set-target-btn');
+
+
+startBtn.addEventListener('click', startGPS);
+stopBtn.addEventListener('click', () => stopGPS(true));
+resetMaxBtn.addEventListener('click', resetMaxSpeed);
+setTargetBtn.addEventListener('click', setTargetDestination);
+
+// Initialisation au chargement de la page
+document.addEventListener('DOMContentLoaded', () => {
+    resetDisplay();
+    // Synchroniser l'heure pour les calculs astronomiques
+    synchronizeTime(); 
+    // Démarrer la mise à jour fluide du DOM (pour les temps qui courent)
+    domIntervalID = setInterval(fastDOMUpdate, DOM_UPDATE_INTERVAL_MS);
+});
