@@ -1,5 +1,6 @@
 // ===========================================
-// Fichier JavaScript Complet - PARTIE 1/2
+// Fichier JavaScript - partie1.js
+// Contient: Constantes, Variables Globales, Fonctions de Calcul (GNSS, Astro, Kalman), Fonctions utilitaires (Temps, Cible).
 // ===========================================
 
 // ===========================================
@@ -52,9 +53,9 @@ const KALMAN_R_MAX = 5.0;
 const LOW_PRECISION_THRESHOLD_M = 60;   
 
 
-// --- REFERENCES DOM (Réduites pour cette partie) ---
-const setTargetBtn = document.getElementById('set-target-btn');
+// --- REFERENCES DOM (Partielles - Références pleines dans la partie 2) ---
 const modeIndicator = document.getElementById('mode-indicator');
+const setTargetBtn = document.getElementById('set-target-btn');
 
 
 // ===========================================
@@ -241,8 +242,8 @@ function setTargetDestination() {
         alert("Coordonnées invalides. Réinitialisation.");
         targetLat = null;
         targetLon = null;
-        setTargetBtn.textContent = '📍 Aller';
         document.getElementById('cap-dest').textContent = 'N/A';
+        setTargetBtn.textContent = '📍 Aller';
     }
 }
 
@@ -261,7 +262,7 @@ function updateAstroDisplay(latitude, longitude) {
 
 
     // --- TEMPS SOLAIRE MOYEN (HSM) & HSV ---
-    const totalSecondsUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+    const totalSecondsUT = now.getUTCHours() * 3600 + now.getUTCMminutes() * 60 + now.getUTCSeconds();
     const totalSecondsLSM = (totalSecondsUT + (longitude * 4 * 60) + 86400) % 86400;
     
     const hsmHour = Math.floor(totalSecondsLSM / 3600);
@@ -298,11 +299,6 @@ function updateAstroDisplay(latitude, longitude) {
     // --- TEMPS LUNAIRE ---
     calculateLunarTime(longitude); 
 }
-// ===========================================
-// Fichier JavaScript Complet - PARTIE 2/2 (Mis à Jour)
-// ===========================================
-
-// --- REFERENCES DOM (Complètes pour cette partie) ---
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 const resetMaxBtn = document.getElementById('reset-max-btn');
@@ -317,6 +313,7 @@ const setTargetBtn = document.getElementById('set-target-btn');
 
 function resetDisplay() {
     // RÉINITIALISE TOUTES LES VALEURS ET L'AFFICHAGE
+    // Réinitialisation des variables globales (définies dans partie1.js)
     lastPosition = null;
     totalDistanceM = 0; 
     startTime = null;
@@ -388,27 +385,25 @@ function fastDOMUpdate() {
     const latitude = lastPosition ? lastPosition.coords.latitude : 0;
     const longitude = lastPosition ? lastPosition.coords.longitude : 0;
     
-    // Mettre à jour les temps astronomiques et mode jour/nuit à chaque tick pour les secondes
+    // updateAstroDisplay et updateDarkMode sont définies dans partie1.js
     updateAstroDisplay(latitude, longitude); 
     updateDarkMode(latitude, longitude);
     
     if (!lastPosition || startTime === null) return;
     
-    // ==========================================================
-    // MISE À JOUR RAPIDE DES DEUX VITESSES EN UTILISANT LA DERNIÈRE VALEUR CALCULÉE
-    // ==========================================================
-
-    // Vitesse Brute (Instantanée 3D) - Voulue en premier plan
+    // Vitesse Brute (Instantanée 3D)
     const currentSpeedMS_3D = lastPosition.speedMS_3D || 0;
     const currentSpeedKMH_3D = currentSpeedMS_3D * KMH_PER_MS;
 
-    // Vitesse Filtrée (Kalman) - Pour la fluidité et la précision
+    // Vitesse Filtrée (Kalman)
     const stableSpeed = kalmanSpeed < MIN_SPEED_THRESHOLD_MS ? 0 : kalmanSpeed;
     const stableSpeedKMH = stableSpeed * KMH_PER_MS;
 
     // Affichage PRINCIPAL (Vitesse Brute)
     document.getElementById('speed-3d-inst').textContent = `${currentSpeedKMH_3D.toFixed(5)} km/h`; 
     document.getElementById('speed-ms').textContent = `${currentSpeedMS_3D.toFixed(5)} m/s`; 
+    document.getElementById('perc-light').textContent = `${(currentSpeedMS_3D / C_LIGHT * 100).toPrecision(5)}%`;
+    document.getElementById('perc-sound').textContent = `${(currentSpeedMS_3D / C_SOUND_SEA_LEVEL * 100).toPrecision(5)}%`;
 
     // Affichage SECONDAIRE (Vitesse Kalman)
     document.getElementById('speed-stable').textContent = `${stableSpeedKMH.toFixed(5)} km/h`; 
@@ -457,6 +452,7 @@ function updateDisplay(position) {
         const dAlt = lastPosition.coords.altitude; 
 
         if (dt > 0.1) { 
+            // calculateDistance et calculateBearing sont définies dans partie1.js
             const distHorizM = calculateDistance(dLat, dLon, latitude, longitude);
             
             if (speed === null || speed === undefined) { 
@@ -495,14 +491,14 @@ function updateDisplay(position) {
     
     kalmanR = Math.max(KALMAN_R_MIN, Math.min(KALMAN_R_MAX, kalmanR));
 
-    // 4. Filtrage de Vitesse (Met à jour la variable globale `kalmanSpeed`)
+    // 4. Filtrage de Vitesse (Met à jour la variable globale `kalmanSpeed` - fonction dans partie1.js)
     const filteredSpeedMS = simpleKalmanFilter(speedMS_3D, dt, kalmanR);
     const stableSpeedForError = filteredSpeedMS < MIN_SPEED_THRESHOLD_MS ? 0 : filteredSpeedMS;
     
     // 5. Mise à Jour des Statistiques (Distance et Vitesse Max/Moyenne)
     const elapsedTimeS = (currentTime - startTime) / 1000;
     
-    // Le calcul de la distance continue d'utiliser la VITESSE FILTRÉE (stable)
+    // La distance utilise la VITESSE FILTRÉE
     totalDistanceM += stableSpeedForError * dt; 
     
     const speedAvgMS = elapsedTimeS > 0 ? totalDistanceM / elapsedTimeS : 0; 
@@ -518,7 +514,6 @@ function updateDisplay(position) {
     // 6. MISE À JOUR DU DOM (Lente) - Informations GPS/Statistiques
     
     document.getElementById('elapsed-time').textContent = `${elapsedTimeS.toFixed(2)} s`;
-    // Les champs de vitesse instantanée sont mis à jour par fastDOMUpdate pour la fluidité
     document.getElementById('speed-avg').textContent = `${(speedAvgMS * KMH_PER_MS).toFixed(5)} km/h`; 
     document.getElementById('speed-max').textContent = `${(maxSpeedMS * KMH_PER_MS).toFixed(5)} km/h`;
     
@@ -554,8 +549,7 @@ function updateDisplay(position) {
         document.getElementById('cap-dest').textContent = 'N/A';
     }
     
-    // --- Mise à jour des données persistantes (ajout de speedMS_3D pour fastDOMUpdate) ---
-    // Cloner la position pour y ajouter la vitesse brute qui n'est pas toujours disponible
+    // --- Mise à jour des données persistantes (inclut speedMS_3D pour fastDOMUpdate) ---
     const newPosition = { ...position, speedMS_3D: speedMS_3D }; 
     lastPosition = newPosition; 
 } 
@@ -583,6 +577,7 @@ function startGPS() {
     resetMaxBtn.disabled = false;
     errorDisplay.style.display = 'none';
     
+    // synchronizeTime est définie dans partie1.js
     synchronizeTime(); 
 }
 
@@ -604,12 +599,6 @@ function stopGPS(shouldReset = true) {
 // ===========================================
 // 10. ÉCOUTEURS D'ÉVÉNEMENTS (INITIALISATION)
 // ===========================================
-
-const startBtn = document.getElementById('start-btn');
-const stopBtn = document.getElementById('stop-btn');
-const resetMaxBtn = document.getElementById('reset-max-btn');
-const setTargetBtn = document.getElementById('set-target-btn');
-
 
 startBtn.addEventListener('click', startGPS);
 stopBtn.addEventListener('click', () => stopGPS(true));
