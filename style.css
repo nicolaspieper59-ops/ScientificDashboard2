@@ -102,21 +102,19 @@ table td {
 
 /* --- MISE EN ÉVIDENCE DES VITESSES CLÉS --- */
 
-/* Vitesse 3D BRUTE (Le chaos, la réalité non filtrée) */
 #speed-3d-inst {
     color: #dc3545; 
     font-size: 1.2em;
     font-weight: bold;
 }
 
-/* Vitesse FILTRÉE (Le stable, le Kalman) */
 #speed-stable {
     color: #28a745; 
     font-size: 1.2em;
     font-weight: bold;
 }
 
-/* NOUVEAU : Vitesse en mm/s (pour la micro-sensibilité) */
+/* Vitesse en mm/s (pour la micro-sensibilité) */
 #speed-stable-mm {
     color: #800080; /* Violet pour le très fin */
     font-size: 1em;
@@ -187,4 +185,4 @@ body.night-mode #gps-accuracy.max-precision {
     color: #66ff66;
     background-color: #003300;
     border-color: #66ff66;
-}
+    }
