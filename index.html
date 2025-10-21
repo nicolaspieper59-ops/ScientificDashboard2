@@ -31,11 +31,17 @@
             display: block;
         }
         .main-speed {
+            /* Vitesse Brute au premier plan */
             font-size: 3rem;
-            color: #007bff;
+            color: #ffc107; /* Jaune/Orange pour Brute */
         }
         .night-mode .main-speed {
-            color: #17a2b8;
+            color: #ffeb3b;
+        }
+        .kalman-speed {
+            /* Vitesse Kalman en petit */
+            font-size: 1.5rem;
+            color: #17a2b8; /* Cyan pour Kalman */
         }
         .max-precision {
             color: green;
@@ -77,8 +83,12 @@
     <div class="row mb-4">
         <div class="col-md-6">
             <div class="card p-3 text-center">
-                <h3>Vitesse Filtrée (Kalman)</h3>
-                <div id="speed-stable" class="main-speed">-- km/h</div>
+                <h3>Vitesse Instantanée 3D (Brute)</h3>
+                <div id="speed-3d-inst" class="main-speed">-- km/h</div> 
+                <small id="speed-ms" class="text-muted">-- m/s</small>
+                
+                <h4 class="mt-3 text-secondary">Vitesse Filtrée (Kalman)</h4>
+                <div id="speed-stable" class="kalman-speed">-- km/h</div> 
                 <small id="speed-stable-mm" class="text-muted">-- mm/s</small>
             </div>
         </div>
@@ -107,24 +117,24 @@
         </div>
         <div class="col-md-4">
             <div class="card p-3">
-                <h4 class="mb-3">Vitesse Brute & Erreur</h4>
-                <p><strong>Vitesse Instantanée 3D:</strong> <span id="speed-3d-inst" class="data-value">-- km/h</span></p>
-                <p><strong>Vitesse (m/s):</strong> <span id="speed-ms" class="data-value">-- m/s</span></p>
+                <h4 class="mb-3">Détails Système</h4>
                 <p><strong>Erreur Filtre:</strong> <span id="speed-error-perc" class="data-value">--%</span></p>
                 <p><strong>Source Vitesse:</strong> <span id="speed-source-indicator" class="data-value">--</span></p>
                 <p><strong>Fréq. Affichage:</strong> <span id="update-frequency" class="data-value">--</span></p>
                 <p><strong>Souterrain:</strong> <span id="underground" class="data-value">--</span></p>
+                <p><strong>% Vitesse Lumière:</strong> <span id="perc-light" class="data-value">--</span></p>
+                <p><strong>% Vitesse Son:</strong> <span id="perc-sound" class="data-value">--</span></p>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card p-3">
-                <h4 class="mb-3">Vitesse Limites</h4>
-                <p><strong>% Vitesse Lumière:</strong> <span id="perc-light" class="data-value">--</span></p>
-                <p><strong>% Vitesse Son:</strong> <span id="perc-sound" class="data-value">--</span></p>
+                <h4 class="mb-3">Météo/Environnement (Inactif)</h4>
                 <p><strong>Temp. Air:</strong> <span id="air-temp" class="data-value">--</span></p>
                 <p><strong>Pression:</strong> <span id="pressure" class="data-value">--</span></p>
                 <p><strong>Humidité:</strong> <span id="humidity" class="data-value">--</span></p>
+                <p><strong>Vitesse Vent:</strong> <span id="wind-speed" class="data-value">--</span></p>
                 <p><strong>Pt. Ébullition:</strong> <span id="boiling-point" class="data-value">--</span></p>
+                <p><strong>Niveau à bulle:</strong> <span id="bubble-level" class="data-value">--</span></p>
             </div>
         </div>
     </div>
@@ -145,13 +155,6 @@
                 <p><strong>Temps Lunaire:</strong> <span id="lunar-time" class="data-value text-info">--:--:--</span></p>
                 <p><strong>Phase Lunaire:</strong> <span id="lunar-phase-perc" class="data-value">--%</span></p>
                 <p><strong>Temps Minecraft (MC):</strong> <span id="mc-time" class="data-value text-muted">--:--:--</span></p>
-                <p><strong>Vitesse Vent:</strong> <span id="wind-speed" class="data-value">--</span></p>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card p-3">
-                <h4 class="mb-3">Divers</h4>
-                <p><strong>Niveau à bulle:</strong> <span id="bubble-level" class="data-value">--</span></p>
             </div>
         </div>
     </div>
