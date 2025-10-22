@@ -1,27 +1,29 @@
 // =================================================================
 // FICHIER COMPLET ET STABLE : dashboard.js
-// Version finale avec la correction du rafraîchissement DOM.
+// Version finale avec logique de temps UTC corrigée (syncH / getCDate).
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const C_L = 299792458, C_S = 343, R_E = 6371000, KMH_MS = 3.6;
-const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0;
+const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0; // Constantes Astronomiques
 const D_LAT = 48.8566, D_LON = 2.3522; 
 const W_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
 const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 50, MIN_SPD = 0.001, ALT_TH = -50;
 const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0, L_PREC_TH = 60;
 const SUN_NIGHT_TH = -12; 
 const LUX_NIGHT_TH = 50; 
+const NETHER_RATIO = 8; // Constante pour le mode Minecraft Nether
 
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
 let distM = 0, maxSpd = 0, tLat = null, tLon = null, lDomT = null;
 let kSpd = 0, kUncert = 1000; 
-let lServH = null, lLocH = null; 
+let lServH = null, lLocH = null; // Heure time.is pour correction UTC
 
 let als = null; 
 let lastLux = null; 
 let manualMode = null; 
+let netherMode = false; // Initialisation du mode Nether
 
 // --- REFERENCES DOM ---
 const $ = id => document.getElementById(id);
@@ -29,12 +31,14 @@ const startBtn = $('start-btn'), stopBtn = $('stop-btn'), resetMaxBtn = $('reset
 const errorDisplay = $('error-message'), speedSrc = $('speed-source-indicator'); 
 const setTargetBtn = $('set-target-btn'), modeInd = $('mode-indicator');
 const toggleModeBtn = $('toggle-mode-btn'), autoModeBtn = $('auto-mode-btn');
+const netherToggleBtn = $('nether-toggle-btn');
 
 // ===========================================
 // FONCTIONS GÉO & UTILS
 // ===========================================
 
 const dist = (lat1, lon1, lat2, lon2) => {
+    // Calcul de la distance de Haversine
     const R = R_E, dLat = (lat2 - lat1) * D2R, dLon = (lon2 - lon1) * D2R;
     lat1 *= D2R; lat2 *= D2R;
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
@@ -49,27 +53,38 @@ const bearing = (lat1, lon1, lat2, lon2) => {
     return (b + 360) % 360; 
 };
 
+/** SYNCHRONISATION UTC (VIA worldtimeapi.org) */
 async function syncH() {
+    // Utilise le fuseau horaire local pour une API plus robuste que time.is
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     try {
+        // Le serveur worldtimeapi.org fournit le 'unixtime' (UTC)
         const res = await fetch(`https://worldtimeapi.org/api/timezone/${tz}`, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error(res.status);
         const data = await res.json();
-        lServH = data.unixtime * 1000; 
-        lLocH = Date.now(); 
+        lServH = data.unixtime * 1000; // Timestamp UTC du serveur
+        lLocH = Date.now();            // Timestamp local au moment de la réception
     } catch (e) {
+        // En cas d'échec de la synchro, nous utilisons l'horloge locale (lLocH est initialisé plus tard)
         if (lServH === null) lLocH = Date.now();
     }
 }
 
+/** HEURE UTC CORRIGÉE (LOGIQUE DE TEMPS CENTRALE) */
 function getCDate() {
-    let estT = Date.now();
-    if (lServH !== null) {
-        estT = lServH + (Date.now() - lLocH);
-    } 
-    return new Date(estT);
+    const currentLocalTime = Date.now(); 
+    
+    if (lServH !== null && lLocH !== null) {
+        // Utilise l'offset calculé : Heure Serveur + Temps écoulé depuis la synchro
+        const offsetSinceSync = currentLocalTime - lLocH;
+        return new Date(lServH + offsetSinceSync); 
+    } else {
+        // Repli : utilise l'heure locale brute du système (moins fiable)
+        return new Date(currentLocalTime); 
+    }
 }
 
+/** FILTRE DE KALMAN */
 function kFilter(nSpd, dt, R_dyn) {
     if (dt === 0 || dt > 5) return kSpd; 
     const R = R_dyn ?? R_MAX, Q = Q_NOISE * dt; 
@@ -110,12 +125,24 @@ function calcSolar() {
     while (EoT_deg > 180) EoT_deg -= 360;
     while (EoT_deg < -180) EoT_deg += 360;
 
-    const EoT_m = EoT_deg * 4;
+    const EoT_m = EoT_deg * 4; // EoT en minutes
     
     let sLon = (lambda * R2D) % 360;
     if (sLon < 0) sLon += 360;
     
-    return { eot: EoT_m, solarLongitude: sLon, elevation: h * R2D };
+    const noonLSM_H = 12; 
+    const noonLSM_sec = noonLSM_H * 3600;
+    const EoT_sec = EoT_m * 60;
+    const culmination_LSM_sec = (noonLSM_sec + EoT_sec) % 86400;
+    
+    // Le temps de culmination est le moment par l'horloge LSM (corrigée UTC/Longitude) où le Soleil est au zénith.
+    const culminH_h = Math.floor(culmination_LSM_sec / 3600);
+    const culminH_m = Math.floor((culmination_LSM_sec % 3600) / 60);
+    const culminH_s = Math.floor(culmination_LSM_sec % 60);
+    
+    const culminationStr = `${String(culminH_h).padStart(2, '0')}:${String(culminH_m).padStart(2, '0')}:${String(culminH_s).padStart(2, '0')}`;
+
+    return { eot: EoT_m, solarLongitude: sLon, elevation: h * R2D, culmination: culminationStr };
 }
 
 function calcLunarPhase() {
@@ -137,9 +164,11 @@ function calcLunarTime(lon) {
     Lm = Lm % 360; if (Lm < 0) Lm += 360;
     let HAm = GST + lon - Lm; 
     HAm = HAm % 360; if (HAm < 0) HAm += 360;
+    
+    // Le temps lunaire est calculé en heures depuis le passage au méridien (0h HSV)
     const LMT_h = HAm / 15.0; 
     const LMT_sec = LMT_h * 3600;
-    const h = Math.floor(LMT_sec / 3600);
+    const h = Math.floor(LMT_sec / 3600) % 24;
     const m = Math.floor((LMT_sec % 3600) / 60);
     const s = Math.floor(LMT_sec % 60);
     $('lunar-time').textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
@@ -242,7 +271,7 @@ function setTarget() {
 function updateAstro(lat, lon) {
     const cLat = lat ?? D_LAT, cLon = lon ?? D_LON, now = getCDate();
     
-    // Heure Minecraft
+    // Heure Minecraft (simulée)
     const mcTicksPD = 24000, msSinceM = now.getTime() % 86400000;
     const mcTicks = (msSinceM * mcTicksPD) / 86400000;
     const mcM = Math.floor(mcTicks / 20) % 1440; 
@@ -253,7 +282,9 @@ function updateAstro(lat, lon) {
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
     const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
     const hsmH = Math.floor(sLSM / 3600), hsmM = Math.floor((sLSM % 3600) / 60), hsmS = Math.floor(sLSM % 60);
-    $('solar-mean').textContent = `${String(hsmH).padStart(2, '0')}:${String(hsmM).padStart(2, '0')}:${String(hsmS).padStart(2, '0')}`;
+    const hsmStr = `${String(hsmH).padStart(2, '0')}:${String(hsmM).padStart(2, '0')}:${String(hsmS).padStart(2, '0')}`;
+    $('solar-mean').textContent = hsmStr;
+    $('solar-mean-header').textContent = hsmStr;
     
     // Temps Solaire Vrai (HSV)
     const sD = calcSolar(), EoT_s = sD.eot * 60;
@@ -263,10 +294,15 @@ function updateAstro(lat, lon) {
     const hsvStr = `${String(lsvH).padStart(2, '0')}:${String(lsvM).padStart(2, '0')}:${String(lsvS).padStart(2, '0')}`;
     $('solar-true').textContent = `${hsvStr} (HSV)`;
     $('solar-true-header').textContent = hsvStr;
+    
+    // Équation du Temps (EoT)
     $('eot').textContent = `${sD.eot.toFixed(2)} min`;
     $('solar-longitude-val').textContent = `${sD.solarLongitude.toFixed(2)} °`;
+    
+    // Culmination
+    $('solar-culmination').textContent = `${sD.culmination} (LSM)`;
 
-    // Phase Lunaire
+    // Phase et Temps Lunaire
     const D_rad = calcLunarPhase();
     const ill = 0.5 * (1 - Math.cos(D_rad)); 
     $('lunar-phase-perc').textContent = `${(ill * 100).toFixed(1)}%`;
@@ -276,22 +312,30 @@ function updateAstro(lat, lon) {
 function resetDisp() {
     lPos = null; lat = null; lon = null; distM = 0; sTime = null; maxSpd = 0; tLat = null; tLon = null;
     kSpd = 0; kUncert = 1000; lDomT = null; lServH = null; lLocH = null; lastLux = null;
-    manualMode = null; 
+    manualMode = null; netherMode = false;
     
-    const defT = '--', ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time', 'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground', 'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency', 'sun-elevation', 'illuminance-lux'];
+    const defT = '--', ids = ['elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 'speed-ms', 'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time', 'latitude', 'longitude', 'altitude', 'gps-accuracy', 'underground', 'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator', 'speed-error-perc', 'update-frequency', 'sun-elevation', 'illuminance-lux', 'mag-field', 'accel-long', 'g-force', 'drag-force', 'drag-power-kw', 'alt-baro', 'o2-perc', 'time-shift-rate', 'speed-coherence', 'vertical-speed', 'solar-culmination'];
 
     ids.forEach(id => {
         const el = $(id);
         if (el) {
             if (id === 'speed-source-indicator') el.textContent = 'Source: N/A';
             else if (['air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'bubble-level'].includes(id)) el.textContent = 'N/A (API désactivée)'; 
-            else if (id === 'altitude' || id === 'gps-accuracy') el.textContent = '-- m';
+            else if (id === 'altitude' || id === 'gps-accuracy' || id === 'alt-baro') el.textContent = '-- m';
             else if (id === 'distance-km-m') el.textContent = '-- km | -- m';
             else if (id === 'mode-indicator') el.textContent = 'Mode: Jour ☀️';
-            else if (id === 'speed-error-perc' || id === 'update-frequency') el.textContent = '--';
+            else if (id === 'speed-error-perc' || id === 'update-frequency' || id === 'time-shift-rate') el.textContent = '--';
             else if (id === 'sun-elevation') el.textContent = '-- °';
             else if (id === 'illuminance-lux') el.textContent = 'Initialisation...';
-            else if (['mc-time', 'lunar-time', 'solar-mean', 'solar-true', 'solar-true-header'].includes(id)) el.textContent = '00:00:00';
+            else if (['mc-time', 'lunar-time', 'solar-mean', 'solar-true', 'solar-true-header', 'solar-culmination'].includes(id)) el.textContent = '00:00:00';
+            else if (id === 'mag-field') el.textContent = '-- $\mu\text{T}$';
+            else if (id === 'accel-long') el.textContent = '0.000 m/s²';
+            else if (id === 'g-force') el.textContent = '0.00 G';
+            else if (id === 'drag-force') el.textContent = '0.0 N';
+            else if (id === 'drag-power-kw') el.textContent = '0.00 kW';
+            else if (id === 'o2-perc') el.textContent = '20.95 %';
+            else if (id === 'nether-indicator') el.textContent = 'DÉSACTIVÉ (1:1)';
+            else if (id === 'vertical-speed') el.textContent = '0.00 m/s';
             else el.textContent = defT;
         }
     });
@@ -299,7 +343,8 @@ function resetDisp() {
     startBtn.disabled = false; stopBtn.disabled = true; resetMaxBtn.disabled = true; setTargetBtn.textContent = '🗺️ Cible';
     toggleModeBtn.textContent = '🌗 Bascule Manuelle';
     autoModeBtn.style.display = 'none';
-    
+    netherToggleBtn.textContent = '🔥 Nether';
+
     errorDisplay.style.display = 'none';
     document.body.classList.remove('night-mode'); $('gps-accuracy').classList.remove('max-precision');
 }
@@ -343,6 +388,7 @@ function updateDisp(pos) {
     const alt = pos.coords.altitude, acc = pos.coords.accuracy, hdg = pos.coords.heading;   
     const spd = pos.coords.speed, cTime = pos.timestamp; 
     
+    // Réitérer la synchro UTC pour affiner l'offset
     syncH(); 
     if (sTime === null) sTime = getCDate().getTime();
 
@@ -376,7 +422,8 @@ function updateDisp(pos) {
 
     const fSpd = kFilter(spd3D, dt, kR), sSpdFE = fSpd < MIN_SPD ? 0 : fSpd;
     
-    distM += sSpdFE * dt; 
+    // Correction de la distance pour le mode Nether
+    distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1);
     
     const elapS = (getCDate().getTime() - sTime) / 1000;
     const spdAvg = elapS > 0 ? distM / elapS : 0; 
@@ -394,10 +441,43 @@ function updateDisp(pos) {
     $('heading').textContent = hdg !== null ? `${hdg.toFixed(1)} °` : '--';
     $('distance-km-m').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
     speedSrc.textContent = `Source: ${spdSrc}`;
-
+    $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
+    
     if (tLat !== null && tLon !== null) {
         $('cap-dest').textContent = `${bearing(lat, lon, tLat, tLon).toFixed(1)} °`;
     }
+
+// ===============================================
+    // DÉBUT : Métriques physiques (pour la copie)
+    // ===============================================
+    
+    // Métriques physiques
+    const AIR_DENSITY = 1.225; // Densité de l'air à 15°C et 1 atm (kg/m³)
+    const CDA_EST = 0.6;       // Coefficient de traînée * Surface frontale (m²) - Estimation
+    const v_ms = sSpdFE;       // Vitesse stable en m/s (issue du filtre de Kalman)
+    
+    // Force de traînée (Drag Force) : F_d = 0.5 * rho * C_d*A * v²
+    const dragForce = 0.5 * AIR_DENSITY * CDA_EST * v_ms ** 2;
+    // Puissance de traînée (Drag Power) : P_d = F_d * v
+    const dragPower = dragForce * v_ms; 
+    
+    $('drag-force').textContent = `${dragForce.toFixed(1)} N`;
+    $('drag-power-kw').textContent = `${(dragPower / 1000).toFixed(2)} kW`;
+    
+    // Accélération (Calculée par dérivation de la vitesse instantanée 3D)
+    const lastSpd3D = lPos.speedMS_3D_LAST ?? 0;
+    const accellLong = dt > 0 ? (spd3D - lastSpd3D) / dt : 0;
+    lPos.speedMS_3D_LAST = spd3D; 
+    
+    // Force G (G-Force)
+    const gForce = accellLong / 9.80665; 
+    
+    $('g-force').textContent = `${gForce.toFixed(2)} G`;
+    $('accel-long').textContent = `${accellLong.toFixed(3)} m/s²`;
+    
+    // ===============================================
+    // FIN : Métriques physiques
+    // ===============================================
 }
 
 function handleErr(err) {
@@ -419,7 +499,6 @@ function startGPS() {
         
         wID = navigator.geolocation.watchPosition(updateDisp, handleErr, W_OPTS);
         
-        // CORRECTION CLÉ: Assure que l'intervalle DOM (fastDOM) est démarré.
         if (domID === null) domID = setInterval(fastDOM, DOM_MS); 
 
         startBtn.disabled = true; stopBtn.disabled = false; resetMaxBtn.disabled = false;
@@ -431,10 +510,7 @@ function startGPS() {
 }
 
 function stopGPS(clearT = true) {
-    // 🛑 Arrête uniquement la surveillance GPS (wID)
     if (wID !== null) { navigator.geolocation.clearWatch(wID); wID = null; }
-    
-    // 🔥 Le rafraîchissement DOM (domID) N'EST PAS ARRÊTÉ. Il continue pour l'heure/astro.
     
     if (clearT) sTime = null;
     
@@ -455,7 +531,22 @@ document.addEventListener('DOMContentLoaded', () => {
     startBtn.addEventListener('click', startGPS);
     stopBtn.addEventListener('click', stopGPS);
     resetMaxBtn.addEventListener('click', resetMax);
+    $('set-default-loc-btn').addEventListener('click', () => { 
+        const newLatStr = prompt(`Entrez la nouvelle Latitude par défaut (actuel: ${D_LAT}) :`);
+        if (newLatStr !== null && !isNaN(parseFloat(newLatStr))) { D_LAT = parseFloat(newLatStr); }
+        const newLonStr = prompt(`Entrez la nouvelle Longitude par défaut (actuel: ${D_LON}) :`);
+        if (newLonStr !== null && !isNaN(parseFloat(newLonStr))) { D_LON = parseFloat(newLonStr); }
+        alert(`Nouvelle position par défaut : Lat=${D_LAT.toFixed(4)}, Lon=${D_LON.toFixed(4)}.`);
+        resetDisp();
+    });
     setTargetBtn.addEventListener('click', setTarget);
     toggleModeBtn.addEventListener('click', toggleManualMode);
     autoModeBtn.addEventListener('click', setAutoMode);
+    
+    netherToggleBtn.addEventListener('click', () => {
+        netherMode = !netherMode;
+        distM = 0; maxSpd = 0; 
+        $('nether-indicator').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
+        netherToggleBtn.textContent = netherMode ? "🌍 Overworld" : "🔥 Nether";
+    });
 });
