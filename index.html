@@ -3,205 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tableau de Bord GPS & Astrologique V3</title>
+    <title>Tableau de Bord Scientifique Ultime (PWA)</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
     <style>
-        /* --- STYLES GÉNÉRAUX --- */
-        body {
-            font-family: 'Consolas', monospace;
-            background-color: #f4f4f4;
-            color: #333;
-            padding: 20px;
-            transition: background-color 0.5s, color 0.5s;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            border: 1px solid #ccc;
-            padding: 20px;
-            border-radius: 8px;
-            background-color: #fff;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.5s, border-color 0.5s;
-        }
-
-        /* --- TYPOGRAPHIE ET EN-TÊTE --- */
-        h1 {
-            text-align: center;
-            color: #007bff;
-            margin-bottom: 5px;
-        }
-
-        .header-info {
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            margin-bottom: 20px;
-            padding: 10px;
-            border-bottom: 2px solid #eee;
-        }
-
-        .data-header {
-            text-align: center;
-            border-left: 3px solid #ffc107;
-            padding-left: 10px;
-        }
-
-        .section-title {
-            font-size: 1.5em;
-            border-bottom: 1px solid #007bff;
-            padding-bottom: 5px;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            color: #007bff;
-        }
-
-        /* --- GRILLE D'AFFICHAGE --- */
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 15px 20px;
-        }
-
-        .data-item {
-            padding: 8px 0;
-            border-bottom: 1px dashed #ddd;
-        }
-        
-        .data-item:last-child {
-            border-bottom: none;
-        }
-
-        .label {
-            font-size: 0.8em;
-            color: #666;
-            text-transform: uppercase;
-            display: block;
-        }
-
-        .value {
-            font-size: 1.1em;
-            font-weight: bold;
-            word-wrap: break-word;
-            display: block;
-        }
-
-        /* --- CONTRÔLES --- */
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        button {
-            padding: 10px 15px;
-            border: 1px solid #007bff;
-            background-color: #007bff;
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s, opacity 0.3s;
-        }
-
-        button:hover:not(:disabled) {
-            background-color: #0056b3;
-        }
-        
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-            border-color: #999;
-            opacity: 0.7;
-        }
-        
-        #error-message {
-            margin-top: 15px;
-            padding: 10px;
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            border-radius: 4px;
-            display: none;
-        }
-
-        /* --- ACCENTUATION --- */
-        .max-precision {
-            color: #28a745 !important;
-            font-weight: bold;
-        }
-
-        /* --- MODE NUIT (DARK MODE) --- */
-        body.night-mode {
-            background-color: #121212;
-            color: #e0e0e0;
-        }
-
-        body.night-mode .container {
-            border-color: #333;
-            background-color: #1e1e1e;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-        }
-
-        body.night-mode h1 {
-            color: #90caf9;
-        }
-        
-        body.night-mode .section-title {
-            color: #90caf9;
-            border-bottom-color: #333;
-        }
-
-        body.night-mode .data-header {
-            border-left-color: #ffeb3b;
-        }
-
-        body.night-mode .data-item {
-            border-bottom-color: #333;
-        }
-
-        body.night-mode .label {
-            color: #b0b0b0;
-        }
-
-        body.night-mode button {
-            background-color: #66bb6a;
-            border-color: #4caf50;
-            color: #1e1e1e;
-        }
-
-        body.night-mode button:hover:not(:disabled) {
-            background-color: #4caf50;
-        }
-        
-        body.night-mode button:disabled {
-            background-color: #333;
-            color: #666;
-        }
-
-        body.night-mode #error-message {
-            background-color: #4e1d20;
-            color: #f8d7da;
-            border-color: #6b2e31;
-        }
+        /* --- STYLES GÉNÉRAUX (Ommis pour la concision) --- */
+        body { font-family: 'Consolas', monospace; background-color: #f4f4f4; color: #333; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; border: 1px solid #ccc; padding: 20px; border-radius: 8px; background-color: #fff; box-shadow: 0 0 15px rgba(0, 0, 0, 0.1); }
+        h1 { text-align: center; color: #007bff; margin-bottom: 5px; }
+        .header-info { display: flex; justify-content: space-around; align-items: center; margin-bottom: 20px; padding: 10px; border-bottom: 2px solid #eee; }
+        .data-header { text-align: center; border-left: 3px solid #ffc107; padding-left: 10px; }
+        .section-title { font-size: 1.5em; border-bottom: 1px solid #007bff; padding-bottom: 5px; margin-top: 30px; margin-bottom: 15px; color: #007bff; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px 20px; }
+        .data-item { padding: 8px 0; border-bottom: 1px dashed #ddd; }
+        .label { font-size: 0.8em; color: #666; text-transform: uppercase; display: block; }
+        .value { font-size: 1.1em; font-weight: bold; word-wrap: break-word; display: block; }
+        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        button { padding: 10px 15px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.7; }
+        #error-message { margin-top: 15px; padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; display: none; }
+        body.night-mode { background-color: #121212; color: #e0e0e0; }
+        body.night-mode .container { background-color: #1e1e1e; }
+        /* ... (Fin des styles) ... */
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header-info">
-            <h1>TABLEAU DE BORD GPS</h1>
-            
+            <h1>TABLEAU DE BORD SCIENTIFIQUE ULTIME</h1>
             <div class="data-header">
                 <div class="label">Heure Solaire Vraie (HSV)</div>
                 <div id="solar-true-header" class="value">00:00:00</div>
             </div>
-            
             <div class="data-header">
                 <div class="label">Heure Solaire Moyenne (LSM)</div>
                 <div id="solar-mean-header" class="value">00:00:00</div>
             </div>
-
-            </div>
+        </div>
 
         <div class="controls">
             <button id="start-btn">▶️ Démarrer GPS</button>
@@ -216,227 +54,94 @@
         
         <div id="error-message"></div>
 
-        <div class="section-title">🚀 Vitesse & Mouvement</div>
+        <div class="section-title">🚀 Vitesse & Mouvement (Physique)</div>
         <div class="grid">
-            <div class="data-item">
-                <div class="label">Vitesse Stable (Kalman)</div>
-                <div id="speed-stable" class="value">0.00000 km/h</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse Instantanée 3D</div>
-                <div id="speed-3d-inst" class="value">0.00000 km/h</div>
-            </div>
-             <div class="data-item">
-                <div class="label">Vitesse Maximale</div>
-                <div id="speed-max" class="value">0.00000 km/h</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse Moyenne</div>
-                <div id="speed-avg" class="value">0.00000 km/h</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Vitesse Stable (mm/s)</div>
-                <div id="speed-stable-mm" class="value">0.00 mm/s</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse Instantanée (m/s)</div>
-                <div id="speed-ms" class="value">0.00000 m/s</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Vitesse Verticale</div>
-                <div id="vertical-speed" class="value">0.00 m/s</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">% Vitesse Lumière ($c$)</div>
-                <div id="perc-light" class="value">0.00000%</div>
-            </div>
-            <div class="data-item">
-                <div class="label">% Vitesse Son (Mach)</div>
-                <div id="perc-sound" class="value">0.00000%</div>
-            </div>
+            <div class="data-item"><div class="label">Vitesse Stable (Kalman)</div><div id="speed-stable" class="value">0.00000 km/h</div></div>
+            <div class="data-item"><div class="label">Vitesse Instantanée 3D</div><div id="speed-3d-inst" class="value">0.00000 km/h</div></div>
+             <div class="data-item"><div class="label">Vitesse Maximale</div><div id="speed-max" class="value">0.00000 km/h</div></div>
+            <div class="data-item"><div class="label">Vitesse Stable (mm/s)</div><div id="speed-stable-mm" class="value">0.00 mm/s</div></div>
+            <div class="data-item"><div class="label">Vitesse Verticale</div><div id="vertical-speed" class="value">0.00 m/s</div></div>
+            <div class="data-item"><div class="label">% Vitesse Lumière ($c$)</div><div id="perc-light" class="value">0.00000%</div></div>
+            <div class="data-item"><div class="label">% Vitesse Son (Mach)</div><div id="perc-sound" class="value">0.00000%</div></div>
+            <div class="data-item"><div class="label">Intensité Champ Magnétique</div><div id="mag-field" class="value">-- $\mu\text{T}$</div></div>
+        </div>
+        
+        <div class="section-title">🏎️ Dynamique & Performance (Physique)</div>
+        <div class="grid">
+            <div class="data-item"><div class="label">ACCÉLÉRATION (G-force)</div><div id="g-force" class="value">0.00 G</div></div>
+            <div class="data-item"><div class="label">Accélération Longitudinale</div><div id="accel-long" class="value">0.000 m/s²</div></div>
+            <div class="data-item"><div class="label">FORCE DE TRAÎNÉE ($\text{Drag Force}$)</div><div id="drag-force" class="value">0.0 N</div></div>
+            <div class="data-item"><div class="label">PUISSANCE DE TRAÎNÉE ($\text{kW}$)</div><div id="drag-power-kw" class="value">0.00 kW</div></div>
+            <div class="data-item"><div class="label">Masse Estimée du Véhicule</div><div class="value">1500 kg</div></div>
+            <div class="data-item"><div class="label">Coefficient $\text{CdA}$ (Est.)</div><div class="value">0.6 $\text{m}^2$</div></div>
+        </div>
+        
+        <div class="section-title">🔬 Chimie & SVT (Environnement)</div>
+        <div class="grid">
+            <div class="data-item"><div class="label">Température de l'Air (Est.)</div><div id="air-temp" class="value">20.0 °C (Simulé)</div></div>
+            <div class="data-item"><div class="label">Pression Barométrique</div><div id="pressure-hpa" class="value">-- hPa</div></div>
+            <div class="data-item"><div class="label">Altitude Barométrique</div><div id="alt-baro" class="value">-- m</div></div>
+            <div class="data-item"><div class="label">Point d'Ébullition (Eau)</div><div id="boiling-point" class="value">100.00 °C</div></div>
+            <div class="data-item"><div class="label">Humidité Relative (Est.)</div><div id="humidity" class="value">55 % (Simulé)</div></div>
+            <div class="data-item"><div class="label">Taux O₂ dans l'Air (Est.)</div><div id="o2-perc" class="value">20.95 %</div></div>
+            <div class="data-item"><div class="label">Élévation Solaire</div><div id="sun-elevation" class="value">-- °</div></div>
+             <div class="data-item"><div class="label">Potentiel Souterrain</div><div id="underground" class="value">Non</div></div>
         </div>
 
         <div class="section-title">📍 Position & Navigation</div>
         <div class="grid">
-            <div class="data-item">
-                <div class="label">Latitude</div>
-                <div id="latitude" class="value">--</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Longitude</div>
-                <div id="longitude" class="value">--</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Altitude (WGS84)</div>
-                <div id="altitude" class="value">-- m</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Précision GPS (H)</div>
-                <div id="gps-accuracy" class="value">-- m</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Distance Totale</div>
-                <div id="distance-km-m" class="value">-- km | -- m</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Cap (Heading)</div>
-                <div id="heading" class="value">--</div>
-            </div>
-             <div class="data-item">
-                <div class="label">Cap vers Cible</div>
-                <div id="cap-dest" class="value">N/A</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Potentiel Souterrain</div>
-                <div id="underground" class="value">Non</div>
-            </div>
+            <div class="data-item"><div class="label">Latitude</div><div id="latitude" class="value">--</div></div>
+            <div class="data-item"><div class="label">Longitude</div><div id="longitude" class="value">--</div></div>
+            <div class="data-item"><div class="label">Altitude (WGS84)</div><div id="altitude" class="value">-- m</div></div>
+            <div class="data-item"><div class="label">Précision GPS (H)</div><div id="gps-accuracy" class="value">-- m</div></div>
+            <div class="data-item"><div class="label">Distance Totale</div><div id="distance-km-m" class="value">-- km | -- m</div></div>
+            <div class="data-item"><div class="label">Cap (Heading)</div><div id="heading" class="value">--</div></div>
+             <div class="data-item"><div class="label">Cap vers Cible</div><div id="cap-dest" class="value">N/A</div></div>
         </div>
         
         <div class="section-title">🌕 Horodatage & Astronomie</div>
         <div class="grid">
-            <div class="data-item">
-                <div class="label">INDICATEUR JOUR/NUIT</div>
-                <div id="mode-indicator" class="value">Mode: Jour ☀️</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Luminosité Ambiante (ALS)</div>
-                <div id="illuminance-lux" class="value">Initialisation...</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Heure Solaire Vraie (HSV)</div>
-                <div id="solar-true" class="value">00:00:00 (HSV)</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">CULMINATION SOLAIRE (MIDI VRAI)</div>
-                <div id="solar-culmination" class="value">00:00:00 (HSV)</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">LEVER DU SOLEIL (HSV)</div>
-                <div id="solar-rise-hsv" class="value">--</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">COUCHER DU SOLEIL (HSV)</div>
-                <div id="solar-set-hsv" class="value">--</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Heure Solaire Moyenne (LSM)</div>
-                <div id="solar-mean" class="value">00:00:00</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">CULMINATION LUNAIRE (TRANSIT HSV)</div>
-                <div id="lunar-culmination-hsv" class="value">00:00:00</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">LEVER DE LA LUNE (LSM)</div>
-                <div id="lunar-rise-lsm" class="value">--</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">COUCHER DE LA LUNE (LSM)</div>
-                <div id="lunar-set-lsm" class="value">--</div>
-            </div>
-
-            <div class="data-item">
-                <div class="label">Heure Lunaire</div>
-                <div id="lunar-time" class="value">00:00:00</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Heure Minecraft (Ticks)</div>
-                <div id="mc-time" class="value">00:00:00</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Élévation Solaire</div>
-                <div id="sun-elevation" class="value">-- °</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Phase Lunaire (Éclairage)</div>
-                <div id="lunar-phase-perc" class="value">--%</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Équation du Temps (EoT)</div>
-                <div id="eot" class="value">-- min</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Longitude Solaire</div>
-                <div id="solar-longitude-val" class="value">-- °</div>
-            </div>
+            <div class="data-item"><div class="label">INDICATEUR JOUR/NUIT</div><div id="mode-indicator" class="value">Mode: Jour ☀️</div></div>
+            <div class="data-item"><div class="label">Luminosité Ambiante (ALS)</div><div id="illuminance-lux" class="value">Initialisation...</div></div>
+            <div class="data-item"><div class="label">Heure Solaire Vraie (HSV)</div><div id="solar-true" class="value">00:00:00 (HSV)</div></div>
+            <div class="data-item"><div class="label">CULMINATION SOLAIRE (MIDI VRAI)</div><div id="solar-culmination" class="value">00:00:00 (HSV)</div></div>
+            <div class="data-item"><div class="label">LEVER DU SOLEIL (HSV)</div><div id="solar-rise-hsv" class="value">--</div></div>
+            <div class="data-item"><div class="label">COUCHER DU SOLEIL (HSV)</div><div id="solar-set-hsv" class="value">--</div></div>
+            <div class="data-item"><div class="label">Heure Solaire Moyenne (LSM)</div><div id="solar-mean" class="value">00:00:00</div></div>
+            <div class="data-item"><div class="label">CULMINATION LUNAIRE (TRANSIT HSV)</div><div id="lunar-culmination-hsv" class="value">00:00:00</div></div>
+            <div class="data-item"><div class="label">LEVER DE LA LUNE (LSM)</div><div id="lunar-rise-lsm" class="value">--</div></div>
+            <div class="data-item"><div class="label">COUCHER DE LA LUNE (LSM)</div><div id="lunar-set-lsm" class="value">--</div></div>
+            <div class="data-item"><div class="label">Heure Lunaire</div><div id="lunar-time" class="value">00:00:00</div></div>
+            <div class="data-item"><div class="label">Heure Minecraft (Ticks)</div><div id="mc-time" class="value">00:00:00</div></div>
+            <div class="data-item"><div class="label">Phase Lunaire (Éclairage)</div><div id="lunar-phase-perc" class="value">--%</div></div>
+            <div class="data-item"><div class="label">Équation du Temps (EoT)</div><div id="eot" class="value">-- min</div></div>
+            <div class="data-item"><div class="label">Longitude Solaire</div><div id="solar-longitude-val" class="value">-- °</div></div>
         </div>
 
-        <div class="section-title">🌡️ Capteurs Supplémentaires (Désactivés)</div>
-        <div class="grid">
-            <div class="data-item">
-                <div class="label">Température de l'Air</div>
-                <div id="air-temp" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Pression Barométrique</div>
-                <div id="pressure" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Humidité Relative</div>
-                <div id="humidity" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse du Vent</div>
-                <div id="wind-speed" class="value">N/A (API désactivée)</div>
-            </div>
-             <div class="data-item">
-                <div class="label">Point d'Ébullition Eau (Altitude)</div>
-                <div id="boiling-point" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Niveau à Bulle (Accéléromètre)</div>
-                <div id="bubble-level" class="value">N/A (API désactivée)</div>
-            </div>
-        </div>
-        
         <div class="section-title">📡 État & Statistiques Système</div>
         <div class="grid">
-            
-            <div class="data-item">
-                <div class="label">MODE MINECRAFT (RATIO)</div>
-                <div id="nether-indicator" class="value">DÉSACTIVÉ (1:1)</div> 
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Taux Décalage Horaire (Chgt Long.)</div>
-                <div id="time-shift-rate" class="value">-- sec/min</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Fréquence RAFRAÎCHISSEMENT DOM</div>
-                <div id="update-frequency" class="value">--</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Source Vitesse</div>
-                <div id="speed-source-indicator" class="value">Source: N/A</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Temps Écoulé (Depuis Départ)</div>
-                <div id="elapsed-time" class="value">-- s</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Erreur Vitesse (€ Kalman)</div>
-                <div id="speed-error-perc" class="value">--</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Cohérence Vitesse / Sec</div>
-                <div id="speed-coherence" class="value">--</div>
-            </div>
+            <div class="data-item"><div class="label">MODE MINECRAFT (RATIO)</div><div id="nether-indicator" class="value">DÉSACTIVÉ (1:1)</div> </div>
+            <div class="data-item"><div class="label">Taux Décalage Horaire (Chgt Long.)</div><div id="time-shift-rate" class="value">-- sec/min</div></div>
+            <div class="data-item"><div class="label">Fréquence RAFRAÎCHISSEMENT DOM</div><div id="update-frequency" class="value">--</div></div>
+            <div class="data-item"><div class="label">Source Vitesse</div><div id="speed-source-indicator" class="value">Source: N/A</div></div>
+            <div class="data-item"><div class="label">Temps Écoulé (Depuis Départ)</div><div id="elapsed-time" class="value">-- s</div></div>
+            <div class="data-item"><div class="label">Erreur Vitesse (€ Kalman)</div><div id="speed-error-perc" class="value">--</div></div>
+            <div class="data-item"><div class="label">Cohérence Vitesse / Sec</div><div id="speed-coherence" class="value">--</div></div>
         </div>
 
     </div>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('SW enregistré:', registration.scope);
+                }).catch(err => {
+                    console.error('Échec enregistrement SW:', err);
+                });
+            });
+        }
+    </script>
     <script src="dashboard.js"></script>
 </body>
-    </html>
+                </html>
