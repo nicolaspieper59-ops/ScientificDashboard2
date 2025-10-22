@@ -1,23 +1,24 @@
 // =================================================================
-// FICHIER COMPLET ET FINAL : dashboard.js (VERSION STABLE ET FIABLE)
-// Priorité à la stabilité, au filtre Kalman, et à la gestion GPS/Temps simple
+// FICHIER COMPLET ET FINAL : dashboard.js (VERSION RIGOUREUSEMENT UTC ET STABLE)
+// Priorité à la stabilité, au filtre Kalman, à la gestion GPS/Temps simple
+// Utilise getCDate() (UTC corrigé par time.is) pour TOUS les calculs temporels critiques.
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const C_L = 299792458, C_S = 343, R_E = 6371000, KMH_MS = 3.6;
-const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0;
+const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0; // Constantes Astronomiques
 const W_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
-const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 10, MIN_SPD = 0.001, ALT_TH = -50; 
-const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0; // Kalman
+const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 10; 
+const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0; // Paramètres Kalman
 const NETHER_RATIO = 8; 
 const AIR_DENSITY = 1.225; 
-const CDA_EST = 0.6;      
+const CDA_EST = 0.6;      // Coefficient CdA (Est.) - Constante Physique
 const PRESSURE_SEA = 1013.25; 
 const LAPSE_RATE = 0.0065;   
-const B_EARTH_AVG = 50.0; 
+const B_EARTH_AVG = 50.0; // Champ Magnétique Terre (Moyenne Est.)
 
-let defaultLat = 48.8566; 
+let defaultLat = 48.8566; // Paris par défaut
 let defaultLon = 2.3522;  
 
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
@@ -48,30 +49,31 @@ const dist = (lat1, lon1, lat2, lon2) => {
 };
 
 async function syncH() { 
-    // Synchronisation de l'heure UTC via time.is (inchangée)
+    // Synchronisation de l'heure UTC via time.is
     try {
         const res = await fetch(`https://time.is/UTC?json`, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error(`Erreur réseau: ${res.status}`);
         const data = await res.json();
-        lServH = data.unixtime * 1000; 
-        lLocH = Date.now(); 
+        lServH = data.unixtime * 1000; // Timestamp UTC du serveur
+        lLocH = Date.now();            // Timestamp local au moment de la réception
     } catch (e) {
-        console.warn(`Échec de la synchronisation de l'heure. Raison: ${e.message}`);
-        // Le système continuera d'utiliser l'horloge interne, ce qui est normal pour la dégradation.
+        console.warn(`Échec de la synchronisation de l'heure UTC. Raison: ${e.message}`);
     }
 }
 
-/** Obtient l'heure actuelle en tant qu'objet Date, corrigée par time.is si la synchro a réussi. */
+/** * Obtient l'heure actuelle en tant qu'objet Date, corrigée par l'écart 
+ * mesuré via time.is. Ceci est un timestamp UTC.
+ */
 function getCDate() { 
-    let estT = Date.now();
+    let estT = Date.now(); // Temps brut système (en UTC)
     if (lServH !== null) {
-        // Applique l'offset de synchro sur le temps local actuel (maintenant en millisecondes UTC)
-        estT = lServH + (Date.now() - lLocH);
+        // Applique l'offset de synchro pour obtenir le temps UTC corrigé
+        estT = lServH + (Date.now() - lLocH); 
     } 
-    return new Date(estT); // Retourne un objet Date basé sur l'UTC corrigé
+    return new Date(estT); // L'objet Date créé à partir d'un timestamp est bien un objet UTC.
 }
 
-/** FILTRE DE KALMAN (Gère le lissage et l'incertitude) */
+/** FILTRE DE KALMAN */
 function kFilter(nSpd, dt, R_dyn) { 
     if (dt === 0 || dt > 5) return kSpd; 
     const R = R_dyn ?? R_MAX; 
@@ -85,7 +87,6 @@ function kFilter(nSpd, dt, R_dyn) {
 }
 
 function setDefaultLocation() { 
-    // Gestion du lieu par défaut (inchangée)
     const newLatStr = prompt(`Entrez la nouvelle Latitude par défaut (actuel: ${defaultLat}) :`);
     if (newLatStr !== null && !isNaN(parseFloat(newLatStr))) { defaultLat = parseFloat(newLatStr); }
     const newLonStr = prompt(`Entrez la nouvelle Longitude par défaut (actuel: ${defaultLon}) :`);
@@ -98,9 +99,8 @@ function setDefaultLocation() {
 // ===========================================
 
 function calcSolar() { 
-    // Calculs de base pour l'Équation du Temps (EoT) et l'élévation (inchangés)
     const now = getCDate(), J2K_MS = 946728000000;
-    const D = (now.getTime() - J2K_MS) / 86400000; 
+    const D = (now.getTime() - J2K_MS) / 86400000; // Jours depuis J2000
     const M = (357.529 + 0.98560028 * D) * D2R; 
     const L = (280.466 + 0.98564736 * D) * D2R; 
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
@@ -132,7 +132,7 @@ function calcSolar() {
 function updateSolarTime(cLon) { 
     const now = getCDate();
     
-    // Temps Solaire Moyen (LSM) : Basé sur UTC
+    // Temps Solaire Moyen (LSM) : Basé sur UTC (getUTCHours garantit l'absence d'Offset local)
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
     const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
     const hsmH = Math.floor(sLSM / 3600), hsmM = Math.floor((sLSM % 3600) / 60), hsmS = Math.floor(sLSM % 60);
@@ -161,7 +161,7 @@ function updateSolarTime(cLon) {
 // ===========================================
 
 function initExtendedSensors() { 
-    // 1. Capteur de Magnétisme (dégradation gracieuse confirmée)
+    // 1. Capteur de Magnétisme
     if ('Magnetometer' in window) {
         try {
             const magSensor = new Magnetometer({ frequency: 10 });
@@ -183,7 +183,7 @@ function initExtendedSensors() {
 
     // 2. Luminosité (ALS)
     if ('AmbientLightSensor' in window) { 
-        $('illuminance-lux').textContent = "Capteur ALS non actif."; // Simplifié pour éviter le code lourd
+        $('illuminance-lux').textContent = "Capteur ALS non actif.";
     } else {
         $('illuminance-lux').textContent = "API ALS non supportée.";
     }
@@ -191,27 +191,24 @@ function initExtendedSensors() {
 
 /** Mise à jour de la Pression et de la Température (ICAO Standard) */
 function updateThermo(alt_m) { 
-    // Calcul de la Pression selon ICAO (inchangé)
     const P_curr = PRESSURE_SEA * Math.pow(1 - (LAPSE_RATE * alt_m) / 288.15, 5.255);
     $('pressure-hpa').textContent = `${P_curr.toFixed(2)} hPa`;
     
-    // Température simulée (inchangée)
     const ambientTemp = 20.0 - (LAPSE_RATE * alt_m); 
     $('air-temp').textContent = `${ambientTemp.toFixed(1)} \u00B0C (Simulé)`;
     
-    // Point d'ébullition (inchangé)
     const teb = 100.0 - (alt_m / 300);
     $('boiling-point').textContent = `${teb.toFixed(2)} \u00B0C`;
 }
 
 
 function fastDOM() { 
-    // Fonction de rafraîchissement rapide (inchangée)
+    // Taux de rafraîchissement rapide du DOM (17ms = ~60Hz)
     const latA = lat ?? defaultLat, lonA = lon ?? defaultLon;
     updateSolarTime(lonA); 
     
+    // Calcul de la Traînée et de la Puissance
     const v_ms = kSpd / KMH_MS; 
-    
     const dragForce = 0.5 * AIR_DENSITY * CDA_EST * v_ms ** 2;
     const dragPower = dragForce * v_ms; 
     
@@ -278,10 +275,10 @@ function updateDisp(pos) {
         distM += currentDist * (netherMode ? NETHER_RATIO : 1);
     }
     
-    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ (Retour à Date.now() pour la stabilité) ---
+    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ (UTILISATION STRICTE DE L'UTC CORRIGÉ) ---
     if (sTime) {
-        // Temps écoulé utilisant l'horloge interne (plus fiable pour cette seule mesure)
-        const elapsedSec = (Date.now() - sTime) / 1000; 
+        // Utilise l'heure UTC corrigée pour garantir que l'Offset local n'est pas utilisé.
+        const elapsedSec = (getCDate().getTime() - sTime) / 1000; 
         $('elapsed-time').textContent = `${elapsedSec.toFixed(1)} s`;
     }
 
@@ -310,8 +307,8 @@ function updateDisp(pos) {
 
 function startGPS() { 
     if (wID === null) {
-        // Initialiser sTime avec le simple Date.now() pour garantir l'horloge de départ
-        sTime = Date.now(); 
+        // Initialisation de sTime avec le timestamp UTC corrigé pour le départ
+        sTime = getCDate().getTime(); 
         resetDisp();
         lPos = null;
         wID = navigator.geolocation.watchPosition(updateDisp, (e) => {
