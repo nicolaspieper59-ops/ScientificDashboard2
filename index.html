@@ -15,7 +15,7 @@
         }
 
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
             border: 1px solid #ccc;
             padding: 20px;
@@ -34,7 +34,7 @@
 
         .header-info {
             display: flex;
-            justify-content: space-between;
+            justify-content: space-around;
             align-items: center;
             margin-bottom: 20px;
             padding: 10px;
@@ -42,7 +42,7 @@
         }
 
         .data-header {
-            text-align: right;
+            text-align: center;
             border-left: 3px solid #ffc107;
             padding-left: 10px;
         }
@@ -59,7 +59,7 @@
         /* --- GRILLE D'AFFICHAGE --- */
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 15px 20px;
         }
 
@@ -190,17 +190,25 @@
     <div class="container">
         <div class="header-info">
             <h1>TABLEAU DE BORD GPS</h1>
+            
             <div class="data-header">
                 <div class="label">Heure Solaire Vraie (HSV)</div>
                 <div id="solar-true-header" class="value">00:00:00</div>
             </div>
-        </div>
+            
+            <div class="data-header">
+                <div class="label">Heure Solaire Moyenne (LSM)</div>
+                <div id="solar-mean-header" class="value">00:00:00</div>
+            </div>
+
+            </div>
 
         <div class="controls">
             <button id="start-btn">▶️ Démarrer GPS</button>
             <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
             <button id="reset-max-btn" disabled>🔄 RàZ Max</button>
             <button id="set-target-btn">🗺️ Cible</button>
+            <button id="set-default-loc-btn">⚙️ Lieu Défaut</button>
             <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
             <button id="auto-mode-btn" style="display:none;">AUTO</button>
             <button id="nether-toggle-btn">🔥 Nether</button>
@@ -287,42 +295,6 @@
             </div>
         </div>
         
-        <div class="section-title">📡 État & Statistiques Système</div>
-        <div class="grid">
-            
-            <div class="data-item">
-                <div class="label">MODE MINECRAFT (RATIO)</div>
-                <div id="nether-indicator" class="value">DÉSACTIVÉ (1:1)</div> 
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Taux Décalage Horaire (Chgt Long.)</div>
-                <div id="time-shift-rate" class="value">-- sec/min</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Fréquence RAFRAÎCHISSEMENT DOM</div>
-                <div id="update-frequency" class="value">--</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Source Vitesse</div>
-                <div id="speed-source-indicator" class="value">Source: N/A</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Temps Écoulé (Depuis Départ)</div>
-                <div id="elapsed-time" class="value">-- s</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Erreur Vitesse (€ Kalman)</div>
-                <div id="speed-error-perc" class="value">--</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Cohérence Vitesse / Sec</div>
-                <div id="speed-coherence" class="value">--</div>
-            </div>
-        </div>
-
         <div class="section-title">🌕 Horodatage & Astronomie</div>
         <div class="grid">
             <div class="data-item">
@@ -344,13 +316,33 @@
             </div>
             
             <div class="data-item">
+                <div class="label">LEVER DU SOLEIL (HSV)</div>
+                <div id="solar-rise-hsv" class="value">--</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="label">COUCHER DU SOLEIL (HSV)</div>
+                <div id="solar-set-hsv" class="value">--</div>
+            </div>
+            
+            <div class="data-item">
                 <div class="label">Heure Solaire Moyenne (LSM)</div>
                 <div id="solar-mean" class="value">00:00:00</div>
             </div>
             
             <div class="data-item">
-                <div class="label">CULMINATION LUNAIRE (TRANSIT)</div>
-                <div id="lunar-culmination" class="value">00:00:00</div>
+                <div class="label">CULMINATION LUNAIRE (TRANSIT HSV)</div>
+                <div id="lunar-culmination-hsv" class="value">00:00:00</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="label">LEVER DE LA LUNE (LSM)</div>
+                <div id="lunar-rise-lsm" class="value">--</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="label">COUCHER DE LA LUNE (LSM)</div>
+                <div id="lunar-set-lsm" class="value">--</div>
             </div>
 
             <div class="data-item">
@@ -406,8 +398,45 @@
                 <div id="bubble-level" class="value">N/A (API désactivée)</div>
             </div>
         </div>
+        
+        <div class="section-title">📡 État & Statistiques Système</div>
+        <div class="grid">
+            
+            <div class="data-item">
+                <div class="label">MODE MINECRAFT (RATIO)</div>
+                <div id="nether-indicator" class="value">DÉSACTIVÉ (1:1)</div> 
+            </div>
+            
+            <div class="data-item">
+                <div class="label">Taux Décalage Horaire (Chgt Long.)</div>
+                <div id="time-shift-rate" class="value">-- sec/min</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="label">Fréquence RAFRAÎCHISSEMENT DOM</div>
+                <div id="update-frequency" class="value">--</div>
+            </div>
+            <div class="data-item">
+                <div class="label">Source Vitesse</div>
+                <div id="speed-source-indicator" class="value">Source: N/A</div>
+            </div>
+            <div class="data-item">
+                <div class="label">Temps Écoulé (Depuis Départ)</div>
+                <div id="elapsed-time" class="value">-- s</div>
+            </div>
+            <div class="data-item">
+                <div class="label">Erreur Vitesse (€ Kalman)</div>
+                <div id="speed-error-perc" class="value">--</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="label">Cohérence Vitesse / Sec</div>
+                <div id="speed-coherence" class="value">--</div>
+            </div>
+        </div>
+
     </div>
 
     <script src="dashboard.js"></script>
 </body>
-                </html>
+    </html>
