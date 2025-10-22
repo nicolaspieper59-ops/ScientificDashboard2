@@ -18,7 +18,7 @@ const AIR_DENSITY = 1.225;
 const CDA_EST = 0.6;      
 const PRESSURE_SEA = 1013.25; 
 const LAPSE_RATE = 0.0065;   
-const B_EARTH_AVG = 50.0; // Valeur moyenne du champ magnétique terrestre en µT
+const B_EARTH_AVG = 50.0; 
 
 // Variables pour le lieu par défaut (Modifiable)
 let defaultLat = 48.8566; 
@@ -27,7 +27,7 @@ let defaultLon = 2.3522;
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
 let distM = 0, maxSpd = 0, tLat = null, tLon = null, lDomT = null;
 let kSpd = 0, kUncert = 1000; 
-let lServH = null, lLocH = null; // lServH = UTC timestamp de time.is, lLocH = Date.now() au moment de la synchro
+let lServH = null, lLocH = null; 
 let als = null, lastLux = null, manualMode = null; 
 let netherMode = false; 
 let todayLC = 0; 
@@ -61,22 +61,21 @@ async function syncH() {
         const res = await fetch(`https://time.is/UTC?json`, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error(`Erreur réseau: ${res.status}`);
         const data = await res.json();
-        lServH = data.unixtime * 1000; // time.is retourne l'UTC en secondes
+        lServH = data.unixtime * 1000; 
         lLocH = Date.now(); 
     } catch (e) {
         console.warn(`Échec de la synchronisation de l'heure. Maintien de la dernière correction. Raison: ${e.message}`);
     }
 }
 
-/** * Obtient l'heure actuelle en tant qu'objet Date, basée sur le timestamp UTC corrigé.
- * CETTE FONCTION EST LA SEULE SOURCE DE TEMPS UTILISÉE.
- */
+/** Obtient l'heure actuelle en tant qu'objet Date, basée sur le timestamp UTC corrigé. */
 function getCDate() { 
     let estT = Date.now();
     if (lServH !== null) {
         // Applique l'offset de synchro sur le temps local actuel (maintenant en millisecondes UTC)
         estT = lServH + (Date.now() - lLocH);
     } 
+    // L'objet Date créé à partir d'un timestamp (estT) EST un objet UTC.
     return new Date(estT);
 }
 
@@ -187,17 +186,14 @@ function initExtendedSensors() {
             });
             magSensor.start();
         } catch(e) { 
-            // API présente mais erreur d'initialisation (e.g. permission refusée)
             $('mag-field').textContent = `${B_EARTH_AVG.toFixed(2)} \u00B5T (API Erreur)`; 
         }
     } else {
-        // API non supportée : Valeur par défaut
         $('mag-field').textContent = `${B_EARTH_AVG.toFixed(2)} \u00B5T (Estimé)`;
     }
 
     // 2. Luminosité (ALS) - Logique simplifiée
     if ('AmbientLightSensor' in window) { 
-        // L'implémentation ALS complète n'est pas incluse pour la concision et la compatibilité.
         $('illuminance-lux').textContent = "Capteur ALS non actif.";
     } else {
         $('illuminance-lux').textContent = "API ALS non supportée.";
@@ -206,20 +202,16 @@ function initExtendedSensors() {
 
 /** Mise à jour de la Pression et de la Température (ICAO Standard) */
 function updateThermo(alt_m) { 
-    // Calcul de la Pression selon ICAO (Standard Atmospheric Model)
     const P_curr = PRESSURE_SEA * Math.pow(1 - (LAPSE_RATE * alt_m) / 288.15, 5.255);
     ambientPressure = P_curr;
     $('pressure-hpa').textContent = `${P_curr.toFixed(2)} hPa`;
     
-    // Température simulée (Chute de température -6.5 °C/km)
     ambientTemp = 20.0 - (LAPSE_RATE * alt_m); 
     $('air-temp').textContent = `${ambientTemp.toFixed(1)} \u00B0C (Simulé)`;
     
-    // Altitude barométrique (inverse)
     const alt_baro = 44330.8 * (1 - Math.pow(P_curr / PRESSURE_SEA, 0.19029));
     $('alt-baro').textContent = `${alt_baro.toFixed(0)} m`;
     
-    // Point d'ébullition (diminue avec la pression)
     const teb = 100.0 - (alt_m / 300);
     $('boiling-point').textContent = `${teb.toFixed(2)} \u00B0C`;
 }
@@ -231,18 +223,15 @@ function fastDOM() {
     
     const v_ms = kSpd / KMH_MS; 
     
-    // Calcul Aérodynamique (Force de Traînée)
     const dragForce = 0.5 * AIR_DENSITY * CDA_EST * v_ms ** 2;
     const dragPower = dragForce * v_ms; 
     
     $('drag-force').textContent = `${dragForce.toFixed(1)} N`;
     $('drag-power-kw').textContent = `${(dragPower / 1000).toFixed(2)} kW`;
 
-    // Mise à jour SVT/Chimie (Pression/Thermo)
     const alt_m = parseFloat($('altitude').textContent) || 0;
     updateThermo(alt_m); 
     
-    // Taux de rafraîchissement DOM
     const now = performance.now();
     if (lDomT) {
         const freq = 1000 / (now - lDomT);
@@ -261,30 +250,28 @@ function updateDisp(pos) {
     
     const dt = (newTime - (lPos?.timestamp ?? newTime)) / 1000;
     
-    // Vitesse Verticale et 3D
     const vertSpd = dt > 0 ? (rawAlt - (lPos?.coords.altitude ?? rawAlt)) / dt : 0;
     const spd3D = Math.sqrt((pos.coords.speed ?? 0) ** 2 + vertSpd ** 2) || 0;
     
     const nSpdKMH = spd3D * KMH_MS; 
     let nSpdClampedKMH = nSpdKMH;
     
-    // --- 1. VÉRIFICATION DE FAISABILITÉ PHYSIQUE (Anti-sauts GPS) ---
+    // --- 1. VÉRIFICATION DE FAISABILITÉ PHYSIQUE ---
     if (dt > MIN_DT / 1000) { 
         const maxDeltaSpd = MAX_ACC * dt * KMH_MS; 
         const currentKSpdKMH = kSpd;
         
         if (Math.abs(nSpdKMH - currentKSpdKMH) > maxDeltaSpd) {
-            // Limiter la vitesse mesurée à la variation physique maximale possible
             nSpdClampedKMH = nSpdKMH > currentKSpdKMH ? currentKSpdKMH + maxDeltaSpd : currentKSpdKMH - maxDeltaSpd;
             console.warn(`Vitesse impossible corrigée : Mesure limitée de ${nSpdKMH.toFixed(2)} à ${nSpdClampedKMH.toFixed(2)} km/h.`);
         }
     }
 
-    // --- 2. DYNAMIQUE KALMAN (Régulation par Précision GPS) ---
+    // --- 2. DYNAMIQUE KALMAN ---
     let R_dyn = pos.coords.accuracy * 0.5; 
     R_dyn = Math.min(R_dyn, R_MAX); 
     R_dyn = Math.max(R_dyn, R_MIN); 
-    kSpd = kFilter(nSpdClampedKMH, dt, R_dyn); // Application du filtre
+    kSpd = kFilter(nSpdClampedKMH, dt, R_dyn); 
 
     lat = rawLat; lon = rawLon;
     
@@ -302,6 +289,13 @@ function updateDisp(pos) {
         distM += currentDist * (netherMode ? NETHER_RATIO : 1);
     }
     
+    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ ---
+    if (sTime) {
+        // Utilise getCDate().getTime() (qui est l'UTC corrigé) pour calculer le temps écoulé
+        const elapsedSec = (getCDate().getTime() - sTime) / 1000;
+        $('elapsed-time').textContent = `${elapsedSec.toFixed(1)} s`;
+    }
+
     // Affichage des données de position
     $('latitude').textContent = lat.toFixed(6) + " °";
     $('longitude').textContent = lon.toFixed(6) + " °";
@@ -327,7 +321,8 @@ function updateDisp(pos) {
 
 function startGPS() { 
     if (wID === null) {
-        sTime = Date.now();
+        // Définir sTime avec le timestamp UTC corrigé au moment du démarrage
+        sTime = getCDate().getTime(); 
         resetDisp();
         lPos = null;
         wID = navigator.geolocation.watchPosition(updateDisp, (e) => {
@@ -352,9 +347,11 @@ function stopGPS() {
 function resetDisp() { 
     distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; lPos = null;
     lat = defaultLat; lon = defaultLon;
+    sTime = null; // Réinitialiser le temps de départ
     $('latitude').textContent = defaultLat.toFixed(6) + " ° (Défaut)";
     $('longitude').textContent = defaultLon.toFixed(6) + " ° (Défaut)";
     $('distance-km-m').textContent = '0.000 km | 0 m';
+    $('elapsed-time').textContent = '-- s';
 }
 
 // --- DÉMARRAGE INITIAL ---
