@@ -1,7 +1,6 @@
 // =================================================================
-// FICHIER COMPLET ET FINAL : dashboard.js (VERSION UTC CORRIGÉE, KALMAN, ASTRO COMPLÈTE)
-// Utilise getCDate() (UTC corrigé via time.is) pour TOUS les calculs temporels critiques,
-// garantissant l'indépendance de l'heure locale de l'appareil.
+// FICHIER COMPLET ET FINAL : dashboard.js (VERSION UTC CORRIGÉE, KALMAN, ASTRO UNIFIÉE)
+// Logique getCDate() raffinée pour clarifier la dépendance à l'offset externe.
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -13,12 +12,12 @@ const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 10;
 const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0; // Paramètres Kalman
 const NETHER_RATIO = 8; 
 const AIR_DENSITY = 1.225; 
-const CDA_EST = 0.6;      // Coefficient CdA (Est.)
+const CDA_EST = 0.6;      
 const PRESSURE_SEA = 1013.25; 
 const LAPSE_RATE = 0.0065;   
-const B_EARTH_AVG = 50.0; // Champ Magnétique Terre (Moyenne Est.)
+const B_EARTH_AVG = 50.0; 
 
-let defaultLat = 48.8566; // Paris par défaut
+let defaultLat = 48.8566; 
 let defaultLon = 2.3522;  
 
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
@@ -56,22 +55,26 @@ async function syncH() {
         if (!res.ok) throw new Error(`Erreur réseau: ${res.status}`);
         const data = await res.json();
         lServH = data.unixtime * 1000; // Timestamp UTC du serveur
-        lLocH = Date.now();            // Timestamp local au moment de la réception (pour le calcul de l'offset)
+        lLocH = Date.now();            // Timestamp local au moment de la réception
     } catch (e) {
-        console.warn(`Échec de la synchronisation de l'heure UTC. Raison: ${e.message}`);
+        console.warn(`Échec de la synchronisation de l'heure UTC. Raison: ${e.message}. Utilisation de l'horloge locale.`);
     }
 }
 
 /** * Récupère le timestamp UTC actuel, corrigé si la synchronisation time.is a réussi.
- * Ceci garantit l'indépendance totale de l'horloge locale de l'appareil.
+ * C'est le point d'intégration de la correction de l'offset.
  */
 function getCDate() { 
-    let estT = Date.now(); 
-    if (lServH !== null) {
-        // Applique l'offset de synchro pour obtenir le temps UTC corrigé
-        estT = lServH + (Date.now() - lLocH); 
-    } 
-    return new Date(estT); 
+    const currentLocalTime = Date.now(); 
+    
+    if (lServH !== null && lLocH !== null) {
+        // Utilise l'offset calculé : Heure Serveur + Temps écoulé depuis la synchro
+        const offsetSinceSync = currentLocalTime - lLocH;
+        return new Date(lServH + offsetSinceSync); 
+    } else {
+        // Repli : utilise l'heure locale brute du système (moins fiable)
+        return new Date(currentLocalTime); 
+    }
 }
 
 /** FILTRE DE KALMAN (Lissage de la vitesse) */
@@ -96,16 +99,14 @@ function setDefaultLocation() {
 }
 
 // ===========================================
-// CALCULS ASTRO & TEMPS (TOUJOURS BASÉS SUR UTC)
+// CALCULS ASTRO & TEMPS 
 // ===========================================
 
 /** Calcule la position du Soleil (EoT, Élévation, Longueur Solaire) et la Culmination. */
 function calcSolar() { 
-    // UTILISE L'HEURE UTC CORRIGÉE
     const now = getCDate(), J2K_MS = 946728000000;
     const D = (now.getTime() - J2K_MS) / 86400000;
     
-    // Constantes et calculs intermédiaires
     const M = (357.529 + 0.98560028 * D) * D2R; 
     const L = (280.466 + 0.98564736 * D) * D2R; 
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
@@ -113,9 +114,8 @@ function calcSolar() {
 
     const delta = Math.asin(Math.sin(OBLIQ) * Math.sin(lambda)); 
     const alpha_rad = Math.atan2(Math.cos(OBLIQ) * Math.sin(lambda), Math.cos(lambda));
-    const alpha = alpha_rad * R2D; // Ascension Droite en degrés
+    const alpha = alpha_rad * R2D; 
 
-    // Temps Sidéral de Greenwich (GST) et Temps Sidéral Local (LST)
     const JD = now.getTime() / 86400000 + 2440587.5;
     const T = (JD - JD_2K) / 36525.0; 
     let GST = 280.4606 + 360.9856473 * (JD - JD_2K) + 0.000388 * T ** 2; 
@@ -123,25 +123,20 @@ function calcSolar() {
     const LST = GST + (lon ?? defaultLon); 
     const HA_rad = ((LST % 360) * D2R) - alpha_rad; 
 
-    // Élévation Solaire (h)
     const lat_rad = (lat ?? defaultLat) * D2R;
     const h = Math.asin(Math.sin(lat_rad) * Math.sin(delta) + Math.cos(lat_rad) * Math.cos(delta) * Math.cos(HA_rad));
     
-    // Équation du Temps (EoT)
     let EoT_deg = (L * R2D) - alpha; 
     while (EoT_deg > 180) EoT_deg -= 360;
     while (EoT_deg < -180) EoT_deg += 360;
-    const EoT_m = EoT_deg * 4; // EoT en minutes
+    const EoT_m = EoT_deg * 4; 
 
-    // Longueur Solaire (pour les saisons)
     let sLon = (lambda * R2D) % 360;
     if (sLon < 0) sLon += 360;
     
-    // Calcul de la Culmination (Heure Solaire Vraie de Midi)
     const noonLSM_H = 12; 
-    const noonHSV_H = noonLSM_H - (EoT_m / 60); // Heure de midi solaire Vrai (HSV)
+    const noonHSV_H = noonLSM_H - (EoT_m / 60); 
     
-    // Stocker la culmination solaire dans la variable globale
     todayLC = noonHSV_H; 
 
     return { eot: EoT_m, solarLongitude: sLon, elevation: h * R2D };
@@ -149,10 +144,9 @@ function calcSolar() {
 
 /** Calcule et affiche l'Heure Solaire Vraie (HSV) et le temps de Culmination (culmination) */
 function updateSolarTime(cLon) { 
-    // UTILISE L'HEURE UTC CORRIGÉE
     const now = getCDate();
     
-    // Temps Solaire Moyen (LSM) : Basé sur UTC (getUTC* garantit l'absence d'offset local)
+    // Temps Solaire Moyen (LSM)
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
     const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
     const hsmH = Math.floor(sLSM / 3600), hsmM = Math.floor((sLSM % 3600) / 60), hsmS = Math.floor(sLSM % 60);
@@ -171,22 +165,22 @@ function updateSolarTime(cLon) {
     solarTrueHeader.textContent = hsvStr; 
     solarMeanHeader.textContent = hsmStr; 
     
-    // Format EoT en secondes après la minute
+    // Format EoT
     const EoT_sec_total = sD.eot * 60;
     const EoT_min = Math.trunc(EoT_sec_total / 60);
     const EoT_sec_after_min = Math.abs(EoT_sec_total % 60);
     const EoT_sign = EoT_sec_total >= 0 ? '+' : '-';
     $('eot').textContent = `${EoT_sign} ${Math.abs(EoT_min)}m ${EoT_sec_after_min.toFixed(1)}s`;
-
+    
     $('solar-longitude-val').textContent = `${sD.solarLongitude.toFixed(2)} °`;
     $('sun-elevation').textContent = `${sD.elevation.toFixed(2)} °`;
     
-    // Stockage et formatage du temps de culmination (Midi Solaire Vrai)
+    // Stockage et formatage du temps de culmination
     const culminH_sec = todayLC * 3600;
     const culminH_h = Math.floor(culminH_sec / 3600);
     const culminH_m = Math.floor((culminH_sec % 3600) / 60);
     const culminH_s = Math.floor(culminH_sec % 60);
-    $('solar-culmination').textContent = `${String(culminH_h).padStart(2, '0')}:${String(culminH_m).padStart(2, '0')}:${String(culminH_s).padStart(2, '0')} (HSV)`;
+    $('solar-culmination').textContent = `${String(culminH_h).padStart(2, '0')}:${String(culminH_m).padStart(2, '0')}:${String(culminH_s).padStart(2, '0')} (LSM)`;
 
     return sD; 
 }
@@ -239,30 +233,24 @@ function updateThermo(alt_m) {
 
 /** Mise à jour de la Phase Lunaire (Simplifiée) et Culmination Lunaire (Simulée) */
 function updateLunarInfo() {
-    // Calcul de la Phase Lunaire (Simplifié)
     const now = getCDate();
-    const D = (now.getTime() / 86400000) - 10957.5; // Jours depuis 1er janv 2000 12:00:00 UT
-    const N = D / 29.530588853; // Cycles synodiques (approx)
+    const D = (now.getTime() / 86400000) - 10957.5; 
+    const N = D / 29.530588853; 
     const D_rad = (N - Math.floor(N)) * 2 * Math.PI;
     const ill = 0.5 * (1 - Math.cos(D_rad)); 
     $('lunar-phase-perc').textContent = `${(ill * 100).toFixed(1)}%`;
 
-    // Culmination Lunaire (Simulée)
-    // On utilise l'heure UTC pour la simulation pour rester cohérent
     const transitH = (now.getUTCHours() + 1) % 24; 
     $('lunar-culmination').textContent = `${String(transitH).padStart(2, '0')}:00:00 (Simulé UTC)`;
 }
 
 
 function fastDOM() { 
-    // Taux de rafraîchissement rapide du DOM (17ms = ~60Hz)
     const latA = lat ?? defaultLat, lonA = lon ?? defaultLon;
     
-    // Mise à jour ASTRO et SOLAIRE
     updateSolarTime(lonA); 
     updateLunarInfo();
 
-    // Calcul de la Traînée et de la Puissance
     const v_ms = kSpd / KMH_MS; 
     const dragForce = 0.5 * AIR_DENSITY * CDA_EST * v_ms ** 2;
     const dragPower = dragForce * v_ms; 
@@ -297,7 +285,6 @@ function updateDisp(pos) {
     const nSpdKMH = spd3D * KMH_MS; 
     let nSpdClampedKMH = nSpdKMH;
     
-    // --- 1. VÉRIFICATION DE FAISABILITÉ PHYSIQUE ---
     if (dt > MIN_DT / 1000) { 
         const maxDeltaSpd = MAX_ACC * dt * KMH_MS; 
         const currentKSpdKMH = kSpd;
@@ -307,7 +294,6 @@ function updateDisp(pos) {
         }
     }
 
-    // --- 2. DYNAMIQUE KALMAN ---
     let R_dyn = pos.coords.accuracy * 0.5; 
     R_dyn = Math.min(R_dyn, R_MAX); 
     R_dyn = Math.max(R_dyn, R_MIN); 
@@ -315,7 +301,6 @@ function updateDisp(pos) {
 
     lat = rawLat; lon = rawLon;
     
-    // Calcul de l'Accélération Longitudinale
     accellLong = dt > 0 ? (spd3D - lastSpd3D) / dt : 0;
     lastSpd3D = spd3D; 
     
@@ -323,20 +308,16 @@ function updateDisp(pos) {
     $('g-force').textContent = `${gForce.toFixed(2)} G`;
     $('accel-long').textContent = `${accellLong.toFixed(3)} m/s²`;
     
-    // Mise à jour de la distance
     if (lPos) {
         let currentDist = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon);
         distM += currentDist * (netherMode ? NETHER_RATIO : 1);
     }
     
-    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ (UTC STRICT) ---
     if (sTime) {
-        // Temps écoulé basé uniquement sur les timestamps UTC corrigés
         const elapsedSec = (getCDate().getTime() - sTime) / 1000; 
         $('elapsed-time').textContent = `${elapsedSec.toFixed(1)} s`;
     }
     
-    // Affichage des vitesses et distance
     $('speed-stable').textContent = kSpd.toFixed(5) + " km/h";
     $('speed-3d-inst').textContent = nSpdKMH.toFixed(5) + " km/h";
     $('speed-stable-mm').textContent = (kSpd / KMH_MS * 1000).toFixed(2) + " mm/s";
@@ -344,18 +325,15 @@ function updateDisp(pos) {
     $('speed-max').textContent = maxSpd.toFixed(5) + " km/h";
     $('distance-km-m').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(0)} m`;
     
-    // Affichage des données de position
     $('latitude').textContent = lat.toFixed(6) + " °";
     $('longitude').textContent = lon.toFixed(6) + " °";
     $('altitude').textContent = rawAlt.toFixed(1) + " m";
     $('gps-accuracy').textContent = pos.coords.accuracy.toFixed(1) + " m";
     $('vertical-speed').textContent = vertSpd.toFixed(2) + " m/s";
 
-    // Affichage des pourcentages de vitesse
     $('perc-light').textContent = `${(spd3D / C_L * 100).toExponential(3)} %`;
     $('perc-sound').textContent = `${(spd3D / C_S * 100).toFixed(2)} %`;
     
-    // Cohérence et Erreur
     const coherence = kSpd / Math.max(0.001, nSpdKMH) * 100;
     $('speed-coherence').textContent = `${coherence.toFixed(1)} %`;
     $('speed-error-perc').textContent = `${(kUncert * 100).toFixed(2)} %`;
@@ -365,7 +343,6 @@ function updateDisp(pos) {
 
 function startGPS() { 
     if (wID === null) {
-        // Initialisation de sTime avec le timestamp UTC corrigé pour le départ
         sTime = getCDate().getTime(); 
         resetDisp();
         lPos = null;
@@ -391,7 +368,7 @@ function stopGPS() {
 function resetDisp() { 
     distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; lPos = null;
     lat = defaultLat; lon = defaultLon;
-    sTime = null; // Réinitialiser le temps de départ
+    sTime = null; 
     $('latitude').textContent = defaultLat.toFixed(6) + " ° (Défaut)";
     $('longitude').textContent = defaultLon.toFixed(6) + " ° (Défaut)";
     $('distance-km-m').textContent = '0.000 km | 0 m';
@@ -403,8 +380,8 @@ function resetDisp() {
 // --- DÉMARRAGE INITIAL ---
 document.addEventListener('DOMContentLoaded', () => {
     resetDisp();
-    if (lLocH === null) lLocH = Date.now();
-    syncH(); // Tentative de synchronisation UTC en arrière-plan
+    // On lance la synchro immédiatement. Le DOM se rafraîchira avec l'heure corrigée dès qu'elle est disponible.
+    syncH(); 
     initExtendedSensors(); 
     
     if (domID === null) domID = setInterval(fastDOM, DOM_MS); 
