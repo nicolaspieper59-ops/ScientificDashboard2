@@ -1,7 +1,6 @@
 // =================================================================
 // FICHIER COMPLET ET FINAL : dashboard.js (VERSION RIGOUREUSEMENT UTC ET STABLE)
-// Priorité à la stabilité, au filtre Kalman, à la gestion GPS/Temps simple
-// Utilise getCDate() (UTC corrigé par time.is) pour TOUS les calculs temporels critiques.
+// Utilise getCDate() (UTC corrigé) pour TOUS les calculs temporels critiques.
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -13,7 +12,7 @@ const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 10;
 const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0; // Paramètres Kalman
 const NETHER_RATIO = 8; 
 const AIR_DENSITY = 1.225; 
-const CDA_EST = 0.6;      // Coefficient CdA (Est.) - Constante Physique
+const CDA_EST = 0.6;      // Coefficient CdA (Est.)
 const PRESSURE_SEA = 1013.25; 
 const LAPSE_RATE = 0.0065;   
 const B_EARTH_AVG = 50.0; // Champ Magnétique Terre (Moyenne Est.)
@@ -41,7 +40,6 @@ const solarMeanHeader = $('solar-mean-header');
 // ===========================================
 
 const dist = (lat1, lon1, lat2, lon2) => { 
-    // Calcul de la distance de Haversine (inchangé)
     const R = R_E, dLat = (lat2 - lat1) * D2R, dLon = (lon2 - lon1) * D2R;
     lat1 *= D2R; lat2 *= D2R;
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
@@ -49,7 +47,7 @@ const dist = (lat1, lon1, lat2, lon2) => {
 };
 
 async function syncH() { 
-    // Synchronisation de l'heure UTC via time.is
+    // Tente de synchroniser l'heure UTC via time.is
     try {
         const res = await fetch(`https://time.is/UTC?json`, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error(`Erreur réseau: ${res.status}`);
@@ -61,16 +59,17 @@ async function syncH() {
     }
 }
 
-/** * Obtient l'heure actuelle en tant qu'objet Date, corrigée par l'écart 
- * mesuré via time.is. Ceci est un timestamp UTC.
+/** * Récupère le timestamp UTC actuel, corrigé si la synchronisation time.is a réussi.
+ * C'est l'équivalent de l'heure GMT/UTC atomique.
  */
 function getCDate() { 
-    let estT = Date.now(); // Temps brut système (en UTC)
+    let estT = Date.now(); 
     if (lServH !== null) {
         // Applique l'offset de synchro pour obtenir le temps UTC corrigé
         estT = lServH + (Date.now() - lLocH); 
     } 
-    return new Date(estT); // L'objet Date créé à partir d'un timestamp est bien un objet UTC.
+    // L'objet Date créé à partir d'un timestamp est intrinsèquement UTC.
+    return new Date(estT); 
 }
 
 /** FILTRE DE KALMAN */
@@ -95,12 +94,12 @@ function setDefaultLocation() {
 }
 
 // ===========================================
-// CALCULS ASTRO & TEMPS
+// CALCULS ASTRO & TEMPS (TOUJOURS BASÉS SUR UTC)
 // ===========================================
 
 function calcSolar() { 
     const now = getCDate(), J2K_MS = 946728000000;
-    const D = (now.getTime() - J2K_MS) / 86400000; // Jours depuis J2000
+    const D = (now.getTime() - J2K_MS) / 86400000; 
     const M = (357.529 + 0.98560028 * D) * D2R; 
     const L = (280.466 + 0.98564736 * D) * D2R; 
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
@@ -161,7 +160,7 @@ function updateSolarTime(cLon) {
 // ===========================================
 
 function initExtendedSensors() { 
-    // 1. Capteur de Magnétisme
+    // Magnétomètre
     if ('Magnetometer' in window) {
         try {
             const magSensor = new Magnetometer({ frequency: 10 });
@@ -181,7 +180,7 @@ function initExtendedSensors() {
         $('mag-field').textContent = `${B_EARTH_AVG.toFixed(2)} \u00B5T (Estimé)`;
     }
 
-    // 2. Luminosité (ALS)
+    // Luminosité (ALS)
     if ('AmbientLightSensor' in window) { 
         $('illuminance-lux').textContent = "Capteur ALS non actif.";
     } else {
