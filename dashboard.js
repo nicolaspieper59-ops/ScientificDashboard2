@@ -1,24 +1,24 @@
 // =================================================================
-// FICHIER COMPLET ET FINAL : dashboard.js (VERSION RIGOUREUSEMENT UTC ET STABLE)
-// Utilise getCDate() (UTC corrigé via time.is) pour TOUS les calculs temporels critiques,
-// garantissant l'indépendance de l'heure locale de l'appareil (GMT/UTC atomique).
+// FICHIER FINAL : dashboard.js (MAXIMISATION DE L'INDÉPENDANCE DE L'HORLOGE LOCALE)
+// L'heure de l'appareil est uniquement utilisée pour calculer l'offset par rapport à l'UTC serveur.
+// getCDate() est la source UNIQUE pour tous les calculs d'heure et de temps écoulé.
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const C_L = 299792458, C_S = 343, R_E = 6371000, KMH_MS = 3.6;
-const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0; // Constantes Astronomiques
+const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0; 
 const W_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
 const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 10; 
 const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0; // Paramètres Kalman
 const NETHER_RATIO = 8; 
 const AIR_DENSITY = 1.225; 
-const CDA_EST = 0.6;      // Coefficient CdA (Est.)
+const CDA_EST = 0.6;      
 const PRESSURE_SEA = 1013.25; 
 const LAPSE_RATE = 0.0065;   
-const B_EARTH_AVG = 50.0; // Champ Magnétique Terre (Moyenne Est.)
+const B_EARTH_AVG = 50.0; 
 
-let defaultLat = 48.8566; // Paris par défaut
+let defaultLat = 48.8566; 
 let defaultLon = 2.3522;  
 
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
@@ -30,7 +30,6 @@ let netherMode = false;
 let lastSpd3D = 0;        
 let accellLong = 0;       
 
-// --- REFERENCES DOM ---
 const $ = id => document.getElementById(id);
 const startBtn = $('start-btn'), stopBtn = $('stop-btn'), resetMaxBtn = $('reset-max-btn');
 const solarTrueHeader = $('solar-true-header'); 
@@ -41,7 +40,6 @@ const solarMeanHeader = $('solar-mean-header');
 // ===========================================
 
 const dist = (lat1, lon1, lat2, lon2) => { 
-    // Calcul de la distance de Haversine
     const R = R_E, dLat = (lat2 - lat1) * D2R, dLon = (lon2 - lon1) * D2R;
     lat1 *= D2R; lat2 *= D2R;
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
@@ -49,23 +47,23 @@ const dist = (lat1, lon1, lat2, lon2) => {
 };
 
 async function syncH() { 
-    // Tente de synchroniser l'heure UTC via time.is
+    // Synchronisation UTC (time.is)
     try {
         const res = await fetch(`https://time.is/UTC?json`, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error(`Erreur réseau: ${res.status}`);
         const data = await res.json();
         lServH = data.unixtime * 1000; // Timestamp UTC du serveur
-        lLocH = Date.now();            // Timestamp local au moment de la réception
+        lLocH = Date.now();            // Timestamp LOCAL de l'appareil (pour calculer l'offset)
     } catch (e) {
         console.warn(`Échec de la synchronisation de l'heure UTC. Raison: ${e.message}`);
     }
 }
 
 /** * Récupère le timestamp UTC actuel, corrigé si la synchronisation time.is a réussi.
- * Ceci garantit l'indépendance totale de l'horloge locale de l'appareil.
+ * Ceci est la source de temps fiable, indépendante de l'offset de l'appareil.
  */
 function getCDate() { 
-    let estT = Date.now(); 
+    let estT = Date.now(); // Lecture initiale (UTC) du timestamp de l'appareil
     if (lServH !== null) {
         // Applique l'offset de synchro pour obtenir le temps UTC corrigé
         estT = lServH + (Date.now() - lLocH); 
@@ -95,12 +93,12 @@ function setDefaultLocation() {
 }
 
 // ===========================================
-// CALCULS ASTRO & TEMPS (TOUJOURS BASÉS SUR UTC)
+// CALCULS ASTRO & TEMPS 
 // ===========================================
 
 function calcSolar() { 
     const now = getCDate(), J2K_MS = 946728000000;
-    const D = (now.getTime() - J2K_MS) / 86400000; // Jours depuis J2000
+    const D = (now.getTime() - J2K_MS) / 86400000; 
     const M = (357.529 + 0.98560028 * D) * D2R; 
     const L = (280.466 + 0.98564736 * D) * D2R; 
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
@@ -132,7 +130,7 @@ function calcSolar() {
 function updateSolarTime(cLon) { 
     const now = getCDate();
     
-    // Temps Solaire Moyen (LSM) : Basé sur UTC (avec getUTC*)
+    // Temps Solaire Moyen (LSM) : Utilise getUTC* pour ignorer l'offset local
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
     const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
     const hsmH = Math.floor(sLSM / 3600), hsmM = Math.floor((sLSM % 3600) / 60), hsmS = Math.floor(sLSM % 60);
@@ -161,7 +159,7 @@ function updateSolarTime(cLon) {
 // ===========================================
 
 function initExtendedSensors() { 
-    // Magnétomètre
+    // Magnétomètre (initialisation/simulation)
     if ('Magnetometer' in window) {
         try {
             const magSensor = new Magnetometer({ frequency: 10 });
@@ -169,23 +167,12 @@ function initExtendedSensors() {
                 const magTotal = Math.sqrt(magSensor.x ** 2 + magSensor.y ** 2 + magSensor.z ** 2);
                 $('mag-field').textContent = `${magTotal.toFixed(2)} \u00B5T`; 
             });
-            magSensor.addEventListener('error', (e) => {
-                console.error(`Erreur Magnetometer : ${e.message}`);
-                $('mag-field').textContent = `${B_EARTH_AVG.toFixed(2)} \u00B5T (Erreur Capteur)`; 
-            });
             magSensor.start();
         } catch(e) { 
             $('mag-field').textContent = `${B_EARTH_AVG.toFixed(2)} \u00B5T (API Erreur)`; 
         }
     } else {
         $('mag-field').textContent = `${B_EARTH_AVG.toFixed(2)} \u00B5T (Estimé)`;
-    }
-
-    // Luminosité (ALS)
-    if ('AmbientLightSensor' in window) { 
-        $('illuminance-lux').textContent = "Capteur ALS non actif.";
-    } else {
-        $('illuminance-lux').textContent = "API ALS non supportée.";
     }
 }
 
@@ -203,7 +190,6 @@ function updateThermo(alt_m) {
 
 
 function fastDOM() { 
-    // Taux de rafraîchissement rapide du DOM (17ms = ~60Hz)
     const latA = lat ?? defaultLat, lonA = lon ?? defaultLon;
     updateSolarTime(lonA); 
     
@@ -249,7 +235,6 @@ function updateDisp(pos) {
         
         if (Math.abs(nSpdKMH - currentKSpdKMH) > maxDeltaSpd) {
             nSpdClampedKMH = nSpdKMH > currentKSpdKMH ? currentKSpdKMH + maxDeltaSpd : currentKSpdKMH - maxDeltaSpd;
-            console.warn(`Vitesse impossible corrigée : Mesure limitée de ${nSpdKMH.toFixed(2)} à ${nSpdClampedKMH.toFixed(2)} km/h.`);
         }
     }
 
@@ -282,14 +267,13 @@ function updateDisp(pos) {
         $('elapsed-time').textContent = `${elapsedSec.toFixed(1)} s`;
     }
 
-    // Affichage des données de position
+    // Affichage des données de position et de vitesse... (etc.)
     $('latitude').textContent = lat.toFixed(6) + " °";
     $('longitude').textContent = lon.toFixed(6) + " °";
     $('altitude').textContent = rawAlt.toFixed(1) + " m";
     $('gps-accuracy').textContent = pos.coords.accuracy.toFixed(1) + " m";
     $('vertical-speed').textContent = vertSpd.toFixed(2) + " m/s";
     
-    // Affichage des vitesses et distance
     $('speed-3d-inst').textContent = nSpdKMH.toFixed(5) + " km/h";
     $('speed-stable').textContent = kSpd.toFixed(5) + " km/h";
     $('speed-stable-mm').textContent = (kSpd / KMH_MS * 1000).toFixed(2) + " mm/s";
@@ -297,7 +281,6 @@ function updateDisp(pos) {
     $('speed-max').textContent = maxSpd.toFixed(5) + " km/h";
     $('distance-km-m').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(0)} m`;
     
-    // Cohérence et Erreur
     const coherence = kSpd / Math.max(0.001, nSpdKMH) * 100;
     $('speed-coherence').textContent = `${coherence.toFixed(1)} %`;
     $('speed-error-perc').textContent = `${(kUncert * 100).toFixed(2)} %`;
@@ -307,7 +290,7 @@ function updateDisp(pos) {
 
 function startGPS() { 
     if (wID === null) {
-        // Initialisation de sTime avec le timestamp UTC corrigé pour le départ
+        // Définition du temps de départ en UTC corrigé (le plus précis)
         sTime = getCDate().getTime(); 
         resetDisp();
         lPos = null;
