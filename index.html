@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard GPS Avancé</title>
+    <title>Dashboard GPS/IMU Micro-Précision</title>
     <style>
+        /* Styles de base, vous pouvez les ajuster */
         body { font-family: monospace; background-color: #1e1e1e; color: #00ff7f; margin: 0; padding: 10px; }
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
         .data-section { background-color: #2a2a2a; padding: 15px; border-radius: 8px; border: 1px solid #00ff7f; }
@@ -15,11 +16,13 @@
         button { background-color: #00ff7f; color: #1e1e1e; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-left: 10px;}
         button:hover { background-color: #00cc66; }
         .controls { margin-bottom: 15px; background-color: #2a2a2a; padding: 15px; border-radius: 8px; border: 1px solid #00ff7f; }
+        .note { color: #ff0000; font-size: 0.8em; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-    <h2>TABLEAU DE BORD GPS/IMU</h2>
+    <h2>TABLEAU DE BORD GPS/IMU MICRO-PRÉCISION</h2>
+    <p class="note">Vitesse Stable calée sur 1 mm/s (0.001 m/s) en utilisant l'IMU.</p>
     
     <div class="controls">
         <span class="data-label">Matériau Réflecteur :</span>
@@ -77,4 +80,4 @@
 
     <script src="dashboard.js"></script>
 </body>
-    </html>
+                                                                                                          </html>
