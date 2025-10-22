@@ -3,373 +3,281 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tableau de Bord GPS & Astrologique V2</title>
+    <title>Dashboard GPS Avancé & Chronométrie Céleste</title>
     <style>
-        /* --- STYLES GÉNÉRAUX --- */
+        /* Styles de base pour le thème sombre et le mode nuit */
         body {
             font-family: 'Consolas', monospace;
-            background-color: #f4f4f4;
-            color: #333;
+            background-color: #121212;
+            color: #e0e0e0;
             padding: 20px;
             transition: background-color 0.5s, color 0.5s;
         }
-
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            border: 1px solid #ccc;
-            padding: 20px;
-            border-radius: 8px;
-            background-color: #fff;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.5s, border-color 0.5s;
+        .night-mode {
+            background-color: #000033; /* Bleu très foncé pour la nuit */
+            color: #99ccff;
         }
-
-        /* --- TYPOGRAPHIE ET EN-TÊTE --- */
-        h1 {
-            text-align: center;
-            color: #007bff;
-            margin-bottom: 5px;
-        }
-
-        .header-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding: 10px;
-            border-bottom: 2px solid #eee;
-        }
-
-        .data-header {
-            text-align: right;
-            border-left: 3px solid #ffc107;
-            padding-left: 10px;
-        }
-
-        .section-title {
-            font-size: 1.5em;
-            border-bottom: 1px solid #007bff;
-            padding-bottom: 5px;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            color: #007bff;
-        }
-
-        /* --- GRILLE D'AFFICHAGE --- */
-        .grid {
+        h1 { color: #f9d342; margin-bottom: 5px; }
+        h2 { border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 15px; color: #b0b0b0; }
+        .data-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px 20px;
-        }
-
-        .data-item {
-            padding: 8px 0;
-            border-bottom: 1px dashed #ddd;
-        }
-        
-        .data-item:last-child {
-            border-bottom: none;
-        }
-
-        .label {
-            font-size: 0.8em;
-            color: #666;
-            text-transform: uppercase;
-            display: block;
-        }
-
-        .value {
-            font-size: 1.1em;
-            font-weight: bold;
-            word-wrap: break-word;
-            display: block;
-        }
-
-        /* --- CONTRÔLES --- */
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
             margin-bottom: 20px;
         }
-
-        button {
+        .data-box {
+            background-color: #1e1e1e;
             padding: 10px 15px;
-            border: 1px solid #007bff;
-            background-color: #007bff;
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s, opacity 0.3s;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         }
+        .data-box strong {
+            display: block;
+            font-size: 0.8em;
+            color: #aaaaaa;
+            margin-bottom: 2px;
+        }
+        .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #00ff99; /* Vert fluo pour les données principales */
+        }
+        .night-mode .value { color: #ffcc00; /* Jaune-orange pour les données en mode nuit */ }
 
-        button:hover:not(:disabled) {
-            background-color: #0056b3;
+        .time-header {
+            font-size: 2.2em;
+            color: #f9d342;
+            margin-top: 0;
         }
-        
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-            border-color: #999;
-            opacity: 0.7;
+        .controls button {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
         }
+        #start-btn { background-color: #4CAF50; color: white; }
+        #stop-btn { background-color: #f44336; color: white; }
+        #reset-max-btn { background-color: #2196F3; color: white; }
+        #set-default-loc-btn { background-color: #ff9800; color: white; }
+        #set-target-btn { background-color: #9C27B0; color: white; }
+        #toggle-mode-btn, #auto-mode-btn { background-color: #607D8B; color: white; }
+        #nether-toggle-btn { background-color: #8B0000; color: white; }
         
         #error-message {
-            margin-top: 15px;
+            background-color: #330000;
+            color: #ff6666;
             padding: 10px;
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            border-radius: 4px;
+            border-radius: 5px;
+            margin-bottom: 20px;
             display: none;
         }
-
-        /* --- ACCENTUATION --- */
         .max-precision {
-            color: #28a745 !important;
-            font-weight: bold;
-        }
-
-        /* --- MODE NUIT (DARK MODE) --- */
-        body.night-mode {
-            background-color: #121212;
-            color: #e0e0e0;
-        }
-
-        body.night-mode .container {
-            border-color: #333;
-            background-color: #1e1e1e;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-        }
-
-        body.night-mode h1 {
-            color: #90caf9;
-        }
-        
-        body.night-mode .section-title {
-            color: #90caf9;
-            border-bottom-color: #333;
-        }
-
-        body.night-mode .data-header {
-            border-left-color: #ffeb3b;
-        }
-
-        body.night-mode .data-item {
-            border-bottom-color: #333;
-        }
-
-        body.night-mode .label {
-            color: #b0b0b0;
-        }
-
-        body.night-mode button {
-            background-color: #66bb6a;
-            border-color: #4caf50;
-            color: #1e1e1e;
-        }
-
-        body.night-mode button:hover:not(:disabled) {
-            background-color: #4caf50;
-        }
-        
-        body.night-mode button:disabled {
-            background-color: #333;
-            color: #666;
-        }
-
-        body.night-mode #error-message {
-            background-color: #4e1d20;
-            color: #f8d7da;
-            border-color: #6b2e31;
+            color: #4dff4d !important;
+            font-weight: 700;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header-info">
-            <h1>TABLEAU DE BORD GPS</h1>
-            <div class="data-header">
-                <div class="label">Heure Solaire Vraie (HSV)</div>
-                <div id="solar-true-header" class="value">00:00:00</div>
-            </div>
-        </div>
 
-        <div class="controls">
-            <button id="start-btn">▶️ Démarrer GPS</button>
-            <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
-            <button id="reset-max-btn" disabled>🔄 RàZ Max</button>
-            <button id="set-target-btn">🗺️ Cible</button>
-            <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
-            <button id="auto-mode-btn" style="display:none;">AUTO</button>
+    <header>
+        <h1 id="solar-true-header" class="time-header">00:00:00 (HSV)</h1>
+        <h1 id="solar-mean-header" class="time-header" style="font-size: 1.2em; color: #00ff99;">00:00:00 (LSM)</h1>
+    </header>
+
+    <div id="error-message"></div>
+
+    <div class="controls">
+        <button id="start-btn">▶️ Démarrer GPS</button>
+        <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
+        <button id="reset-max-btn" disabled>🔁 Réinitialiser Max</button>
+        <button id="set-default-loc-btn">📍 Changer Défaut</button>
+        <button id="set-target-btn">🗺️ Cible</button>
+    </div>
+    
+    <div class="controls" style="margin-top: 10px;">
+        <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
+        <button id="auto-mode-btn" style="display: none;">🔄 Retour Auto</button>
+        <button id="nether-toggle-btn">🔥 Nether</button>
+    </div>
+    <p style="margin-top: 5px;"><strong id="mode-indicator">Mode: Jour ☀️</strong></p>
+    
+    <h2>🚀 Vitesse & Chronométrie</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Vitesse Stable (km/h)</strong>
+            <span id="speed-stable" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Instantanée 3D (km/h)</strong>
+            <span id="speed-3d-inst" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Stable (mm/s)</strong>
+            <span id="speed-stable-mm" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Max (km/h)</strong>
+            <span id="speed-max" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Moyenne (km/h)</strong>
+            <span id="speed-avg" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Verticale (m/s)</strong>
+            <span id="vertical-speed" class="value">0.00 m/s</span>
+        </div>
+        <div class="data-box">
+            <strong>Distance Totale</strong>
+            <span id="distance-km-m" class="value">-- km | -- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Écoulé</strong>
+            <span id="elapsed-time" class="value">-- s</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Brute (m/s)</strong>
+            <span id="speed-ms" class="value">-- m/s</span>
+        </div>
+        <div class="data-box">
+            <strong>Source Vitesse</strong>
+            <span id="speed-source-indicator" class="value" style="font-size: 1.2em;">Source: N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>Cohérence du Signal (%)</strong>
+            <span id="speed-error-perc" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Fréquence MàJ DOM</strong>
+            <span id="update-frequency" class="value">--</span>
+        </div>
+    </div>
+    
+    <h2>📍 Données GPS</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Latitude (°)</strong>
+            <span id="latitude" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Longitude (°)</strong>
+            <span id="longitude" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Altitude (m)</strong>
+            <span id="altitude" class="value">-- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Précision (m)</strong>
+            <span id="gps-accuracy" class="value">-- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Cap (Heading, °)</strong>
+            <span id="heading" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Cap vers Cible (°)</strong>
+            <span id="cap-dest" class="value">N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>En Souterrain (< -50m)</strong>
+            <span id="underground" class="value">Non</span>
+        </div>
+    </div>
+
+    <h2>🌌 Chronométrie Céleste & Environnement</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Temps Solaire Vrai (HSV)</strong>
+            <span id="solar-true" class="value">00:00:00 (HSV)</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Solaire Moyen (LSM)</strong>
+            <span id="solar-mean" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Culmination Solaire (LSM)</strong>
+            <span id="solar-culmination" class="value">00:00:00 (LSM)</span>
+        </div>
+        <div class="data-box">
+            <strong>Équation du Temps (EoT)</strong>
+            <span id="eot" class="value">-- min</span>
+        </div>
+        <div class="data-box">
+            <strong>Élévation Solaire (°)</strong>
+            <span id="sun-elevation" class="value">-- °</span>
+        </div>
+        <div class="data-box">
+            <strong>Longitude Solaire (°)</strong>
+            <span id="solar-longitude-val" class="value">-- °</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Lunaire (HSV)</strong>
+            <span id="lunar-time" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Phase Lunaire (%)</strong>
+            <span id="lunar-phase-perc" class="value">--%</span>
+        </div>
+        <div class="data-box">
+            <strong>Illuminance (Lux)</strong>
+            <span id="illuminance-lux" class="value">Initialisation...</span>
+        </div>
+    </div>
+    
+    <h2>⚙️ Métriques Physiques & Autres</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Accélération Longitudinale (m/s²)</strong>
+            <span id="accel-long" class="value">0.000 m/s²</span>
+        </div>
+        <div class="data-box">
+            <strong>Force G (G)</strong>
+            <span id="g-force" class="value">0.00 G</span>
+        </div>
+        <div class="data-box">
+            <strong>Force de Traînée (N)</strong>
+            <span id="drag-force" class="value">0.0 N</span>
+        </div>
+        <div class="data-box">
+            <strong>Puissance de Traînée (kW)</strong>
+            <span id="drag-power-kw" class="value">0.00 kW</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse vs Lumière (%)</strong>
+            <span id="perc-light" class="value">--%</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse vs Son (%)</strong>
+            <span id="perc-sound" class="value">--%</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Minecraft (MC)</strong>
+            <span id="mc-time" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Mode Nether (1:8)</strong>
+            <span id="nether-indicator" class="value">DÉSACTIVÉ (1:1)</span>
         </div>
         
-        <div id="error-message"></div>
-
-        <div class="section-title">🚀 Vitesse & Mouvement</div>
-        <div class="grid">
-            <div class="data-item">
-                <div class="label">Vitesse Stable (Kalman)</div>
-                <div id="speed-stable" class="value">0.00000 km/h</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse Instantanée 3D</div>
-                <div id="speed-3d-inst" class="value">0.00000 km/h</div>
-            </div>
-             <div class="data-item">
-                <div class="label">Vitesse Maximale</div>
-                <div id="speed-max" class="value">0.00000 km/h</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse Moyenne</div>
-                <div id="speed-avg" class="value">0.00000 km/h</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="label">Vitesse Stable (mm/s)</div>
-                <div id="speed-stable-mm" class="value">0.00 mm/s</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse Instantanée (m/s)</div>
-                <div id="speed-ms" class="value">0.00000 m/s</div>
-            </div>
-            <div class="data-item">
-                <div class="label">% Vitesse Lumière ($c$)</div>
-                <div id="perc-light" class="value">0.00000%</div>
-            </div>
-            <div class="data-item">
-                <div class="label">% Vitesse Son (Mach)</div>
-                <div id="perc-sound" class="value">0.00000%</div>
-            </div>
+        <div class="data-box">
+            <strong>Température Air (C)</strong>
+            <span id="air-temp" class="value">N/A (API désactivée)</span>
         </div>
-
-        <div class="section-title">📍 Position & Navigation</div>
-        <div class="grid">
-            <div class="data-item">
-                <div class="label">Latitude</div>
-                <div id="latitude" class="value">--</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Longitude</div>
-                <div id="longitude" class="value">--</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Altitude (WGS84)</div>
-                <div id="altitude" class="value">-- m</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Précision GPS (H)</div>
-                <div id="gps-accuracy" class="value">-- m</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Distance Totale</div>
-                <div id="distance-km-m" class="value">-- km | -- m</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Cap (Heading)</div>
-                <div id="heading" class="value">--</div>
-            </div>
-             <div class="data-item">
-                <div class="label">Cap vers Cible</div>
-                <div id="cap-dest" class="value">N/A</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Potentiel Souterrain</div>
-                <div id="underground" class="value">Non</div>
-            </div>
+        <div class="data-box">
+            <strong>Pression (hPa)</strong>
+            <span id="pressure" class="value">N/A (API désactivée)</span>
         </div>
-        
-        <div class="section-title">📡 État & Statistiques Système</div>
-        <div class="grid">
-            <div class="data-item">
-                <div class="label">Fréquence RAFRAÎCHISSEMENT DOM</div>
-                <div id="update-frequency" class="value">--</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Source Vitesse</div>
-                <div id="speed-source-indicator" class="value">Source: N/A</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Temps Écoulé (Depuis Départ)</div>
-                <div id="elapsed-time" class="value">-- s</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Erreur Vitesse (€ Kalman)</div>
-                <div id="speed-error-perc" class="value">--</div>
-            </div>
+        <div class="data-box">
+            <strong>Taux d'Oxygène (%)</strong>
+            <span id="o2-perc" class="value">20.95 %</span>
         </div>
-
-        <div class="section-title">🌕 Horodatage & Astronomie</div>
-        <div class="grid">
-            <div class="data-item">
-                <div class="label">INDICATEUR JOUR/NUIT</div>
-                <div id="mode-indicator" class="value">Mode: Jour ☀️</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Luminosité Ambiante (ALS)</div>
-                <div id="illuminance-lux" class="value">Initialisation...</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Heure Solaire Vraie (HSV)</div>
-                <div id="solar-true" class="value">00:00:00 (HSV)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Heure Solaire Moyenne (LSM)</div>
-                <div id="solar-mean" class="value">00:00:00</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Heure Lunaire</div>
-                <div id="lunar-time" class="value">00:00:00</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Heure Minecraft (Ticks)</div>
-                <div id="mc-time" class="value">00:00:00</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Élévation Solaire</div>
-                <div id="sun-elevation" class="value">-- °</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Phase Lunaire (Éclairage)</div>
-                <div id="lunar-phase-perc" class="value">--%</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Équation du Temps (EoT)</div>
-                <div id="eot" class="value">-- min</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Longitude Solaire</div>
-                <div id="solar-longitude-val" class="value">-- °</div>
-            </div>
-        </div>
-
-        <div class="section-title">🌡️ Capteurs Supplémentaires (Désactivés)</div>
-        <div class="grid">
-            <div class="data-item">
-                <div class="label">Température de l'Air</div>
-                <div id="air-temp" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Pression Barométrique</div>
-                <div id="pressure" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Humidité Relative</div>
-                <div id="humidity" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Vitesse du Vent</div>
-                <div id="wind-speed" class="value">N/A (API désactivée)</div>
-            </div>
-             <div class="data-item">
-                <div class="label">Point d'Ébullition Eau (Altitude)</div>
-                <div id="boiling-point" class="value">N/A (API désactivée)</div>
-            </div>
-            <div class="data-item">
-                <div class="label">Niveau à Bulle (Accéléromètre)</div>
-                <div id="bubble-level" class="value">N/A (API désactivée)</div>
-            </div>
+        <div class="data-box">
+            <strong>Champ Magnétique ($\mu\text{T}$)</strong>
+            <span id="mag-field" class="value">-- $\mu\text{T}$</span>
         </div>
     </div>
 
