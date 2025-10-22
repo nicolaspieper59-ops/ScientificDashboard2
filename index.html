@@ -4,60 +4,79 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard GPS Avancé & Chronométrie Céleste</title>
+    
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script> 
+    
     <style>
         /* Styles de base pour le thème sombre et le mode nuit */
         body {
             font-family: 'Consolas', monospace;
             background-color: #121212;
             color: #e0e0e0;
-            padding: 20px;
+            padding: 10px; 
             transition: background-color 0.5s, color 0.5s;
         }
         .night-mode {
-            background-color: #000033; /* Bleu très foncé pour la nuit */
+            background-color: #000033;
             color: #99ccff;
         }
         h1 { color: #f9d342; margin-bottom: 5px; }
         h2 { border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 15px; color: #b0b0b0; }
+        
+        /* RESPONSIVITÉ POUR TOUS LES ÉCRANS */
         .data-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 15px;
+            /* Par défaut, une seule colonne sur les petits écrans */
+            grid-template-columns: repeat(auto-fit, minmax(100%, 1fr)); 
+            gap: 10px; 
             margin-bottom: 20px;
         }
+        
+        /* Media Query pour les tablettes et plus (600px) */
+        @media (min-width: 600px) {
+            .data-grid {
+                /* Deux ou plus colonnes sur les écrans plus larges */
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            }
+        }
+        
         .data-box {
             background-color: #1e1e1e;
-            padding: 10px 15px;
+            padding: 8px 10px; 
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         }
         .data-box strong {
             display: block;
-            font-size: 0.8em;
+            font-size: 0.75em; 
             color: #aaaaaa;
             margin-bottom: 2px;
         }
         .value {
-            font-size: 1.5em;
+            font-size: 1.3em; 
             font-weight: bold;
-            color: #00ff99; /* Vert fluo pour les données principales */
+            color: #00ff99; 
         }
-        .night-mode .value { color: #ffcc00; /* Jaune-orange pour les données en mode nuit */ }
+        .night-mode .value { color: #ffcc00; }
 
         .time-header {
-            font-size: 2.2em;
+            font-size: 1.8em; 
             color: #f9d342;
             margin-top: 0;
         }
+        
         .controls button {
-            padding: 10px 15px;
-            margin: 5px;
+            padding: 8px 10px;
+            margin: 5px 5px 5px 0; 
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-weight: bold;
             transition: background-color 0.2s;
+            font-size: 0.9em; 
         }
+        
+        /* Styles des boutons spécifiques */
         #start-btn { background-color: #4CAF50; color: white; }
         #stop-btn { background-color: #f44336; color: white; }
         #reset-max-btn { background-color: #2196F3; color: white; }
@@ -65,14 +84,19 @@
         #set-target-btn { background-color: #9C27B0; color: white; }
         #toggle-mode-btn, #auto-mode-btn { background-color: #607D8B; color: white; }
         #nether-toggle-btn { background-color: #8B0000; color: white; }
+        #capture-btn { background-color: #007bff; color: white; }
+        #reset-all-btn { background-color: #f44336; color: white; border: 2px solid white; }
+        #freq-manual-btn { background-color: #ff4500; color: white; } /* Bouton de fréquence */
+
         
         #error-message {
             background-color: #330000;
             color: #ff6666;
             padding: 10px;
             border-radius: 5px;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             display: none;
+            font-size: 0.9em;
         }
         .max-precision {
             color: #4dff4d !important;
@@ -92,8 +116,8 @@
     <div class="controls">
         <button id="start-btn">▶️ Démarrer GPS</button>
         <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
+        <button id="reset-all-btn">💣 Réinitialiser Tout</button>
         <button id="reset-max-btn" disabled>🔁 Réinitialiser Max</button>
-        <button id="set-default-loc-btn">📍 Changer Défaut</button>
         <button id="set-target-btn">🗺️ Cible</button>
     </div>
     
@@ -101,7 +125,14 @@
         <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
         <button id="auto-mode-btn" style="display: none;">🔄 Retour Auto</button>
         <button id="nether-toggle-btn">🔥 Nether</button>
+        <button id="set-default-loc-btn">📍 Changer Défaut</button>
     </div>
+    
+    <div class="controls" style="margin-top: 10px;">
+        <button id="freq-manual-btn">⚡ Fréquence: Auto</button> 
+        <button id="capture-btn">📸 Capturer</button>
+    </div>
+    
     <p style="margin-top: 5px;"><strong id="mode-indicator">Mode: Jour ☀️</strong></p>
     
     <h2>🚀 Vitesse & Chronométrie</h2>
@@ -123,7 +154,7 @@
             <span id="speed-max" class="value">--</span>
         </div>
         <div class="data-box">
-            <strong>Vitesse Moyenne (km/h)</strong>
+            <strong>Vitesse Moyenne (km/h) (Session)</strong>
             <span id="speed-avg" class="value">--</span>
         </div>
         <div class="data-box">
@@ -135,7 +166,7 @@
             <span id="distance-km-m" class="value">-- km | -- m</span>
         </div>
         <div class="data-box">
-            <strong>Temps Écoulé</strong>
+            <strong>Temps Écoulé (Session)</strong>
             <span id="elapsed-time" class="value">-- s</span>
         </div>
         <div class="data-box">
@@ -283,4 +314,4 @@
 
     <script src="dashboard.js"></script>
 </body>
-    </html>
+                </html>
