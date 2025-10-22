@@ -1,7 +1,6 @@
 // =================================================================
-// FICHIER COMPLET ET FINAL : dashboard.js
-// Version Ultime Pédagogique avec Synchro time.is Persistante, Correction de Vitesse Dynamique
-// et Utilisation Stricte de l'UTC pour les calculs astro
+// FICHIER COMPLET ET FINAL : dashboard.js (VERSION STABLE ET FIABLE)
+// Priorité à la stabilité, au filtre Kalman, et à la gestion GPS/Temps simple
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -10,9 +9,7 @@ const C_L = 299792458, C_S = 343, R_E = 6371000, KMH_MS = 3.6;
 const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0;
 const W_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
 const DOM_MS = 17, MIN_DT = 1, MAX_ACC = 10, MIN_SPD = 0.001, ALT_TH = -50; 
-const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0, L_PREC_TH = 60;
-const SUN_NIGHT_TH = -12; 
-const LUX_NIGHT_TH = 50; 
+const Q_NOISE = 0.005, R_MIN = 0.005, R_MAX = 5.0; // Kalman
 const NETHER_RATIO = 8; 
 const AIR_DENSITY = 1.225; 
 const CDA_EST = 0.6;      
@@ -20,28 +17,21 @@ const PRESSURE_SEA = 1013.25;
 const LAPSE_RATE = 0.0065;   
 const B_EARTH_AVG = 50.0; 
 
-// Variables pour le lieu par défaut (Modifiable)
 let defaultLat = 48.8566; 
 let defaultLon = 2.3522;  
 
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
-let distM = 0, maxSpd = 0, tLat = null, tLon = null, lDomT = null;
+let distM = 0, maxSpd = 0, lDomT = null;
 let kSpd = 0, kUncert = 1000; 
-let lServH = null, lLocH = null; 
-let als = null, lastLux = null, manualMode = null; 
+let lServH = null, lLocH = null; // Heure time.is pour correction UTC
 let netherMode = false; 
-let todayLC = 0; 
 
 let lastSpd3D = 0;        
 let accellLong = 0;       
-let ambientTemp = 20.0; 
-let ambientPressure = 1013.25; 
-let magSensor = null; 
 
 // --- REFERENCES DOM ---
 const $ = id => document.getElementById(id);
 const startBtn = $('start-btn'), stopBtn = $('stop-btn'), resetMaxBtn = $('reset-max-btn');
-const netherToggleBtn = $('nether-toggle-btn');
 const solarTrueHeader = $('solar-true-header'); 
 const solarMeanHeader = $('solar-mean-header'); 
 
@@ -50,6 +40,7 @@ const solarMeanHeader = $('solar-mean-header');
 // ===========================================
 
 const dist = (lat1, lon1, lat2, lon2) => { 
+    // Calcul de la distance de Haversine (inchangé)
     const R = R_E, dLat = (lat2 - lat1) * D2R, dLon = (lon2 - lon1) * D2R;
     lat1 *= D2R; lat2 *= D2R;
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
@@ -57,6 +48,7 @@ const dist = (lat1, lon1, lat2, lon2) => {
 };
 
 async function syncH() { 
+    // Synchronisation de l'heure UTC via time.is (inchangée)
     try {
         const res = await fetch(`https://time.is/UTC?json`, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error(`Erreur réseau: ${res.status}`);
@@ -64,19 +56,19 @@ async function syncH() {
         lServH = data.unixtime * 1000; 
         lLocH = Date.now(); 
     } catch (e) {
-        console.warn(`Échec de la synchronisation de l'heure. Maintien de la dernière correction. Raison: ${e.message}`);
+        console.warn(`Échec de la synchronisation de l'heure. Raison: ${e.message}`);
+        // Le système continuera d'utiliser l'horloge interne, ce qui est normal pour la dégradation.
     }
 }
 
-/** Obtient l'heure actuelle en tant qu'objet Date, basée sur le timestamp UTC corrigé. */
+/** Obtient l'heure actuelle en tant qu'objet Date, corrigée par time.is si la synchro a réussi. */
 function getCDate() { 
     let estT = Date.now();
     if (lServH !== null) {
         // Applique l'offset de synchro sur le temps local actuel (maintenant en millisecondes UTC)
         estT = lServH + (Date.now() - lLocH);
     } 
-    // L'objet Date créé à partir d'un timestamp (estT) EST un objet UTC.
-    return new Date(estT);
+    return new Date(estT); // Retourne un objet Date basé sur l'UTC corrigé
 }
 
 /** FILTRE DE KALMAN (Gère le lissage et l'incertitude) */
@@ -93,6 +85,7 @@ function kFilter(nSpd, dt, R_dyn) {
 }
 
 function setDefaultLocation() { 
+    // Gestion du lieu par défaut (inchangée)
     const newLatStr = prompt(`Entrez la nouvelle Latitude par défaut (actuel: ${defaultLat}) :`);
     if (newLatStr !== null && !isNaN(parseFloat(newLatStr))) { defaultLat = parseFloat(newLatStr); }
     const newLonStr = prompt(`Entrez la nouvelle Longitude par défaut (actuel: ${defaultLon}) :`);
@@ -105,8 +98,9 @@ function setDefaultLocation() {
 // ===========================================
 
 function calcSolar() { 
+    // Calculs de base pour l'Équation du Temps (EoT) et l'élévation (inchangés)
     const now = getCDate(), J2K_MS = 946728000000;
-    const D = (now.getTime() - J2K_MS) / 86400000; // Jours depuis J2000
+    const D = (now.getTime() - J2K_MS) / 86400000; 
     const M = (357.529 + 0.98560028 * D) * D2R; 
     const L = (280.466 + 0.98564736 * D) * D2R; 
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
@@ -132,24 +126,19 @@ function calcSolar() {
     let sLon = (lambda * R2D) % 360;
     if (sLon < 0) sLon += 360;
     
-    todayLC = 12 - (EoT_m / 60); 
-
-    return { eot: EoT_m, solarLongitude: sLon, elevation: h * R2D, lambda: lambda };
+    return { eot: EoT_m, solarLongitude: sLon, elevation: h * R2D };
 }
 
 function updateSolarTime(cLon) { 
     const now = getCDate();
     
-    // Temps Solaire Moyen (LSM)
-    // UTILISATION SYSTÉMATIQUE DE getUTC* POUR IGNORER LE FUSEAU HORAIRE LOCAL
+    // Temps Solaire Moyen (LSM) : Basé sur UTC
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-    
-    // LSM = UTC + Longitude (4 min/degré)
     const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
     const hsmH = Math.floor(sLSM / 3600), hsmM = Math.floor((sLSM % 3600) / 60), hsmS = Math.floor(sLSM % 60);
     const hsmStr = `${String(hsmH).padStart(2, '0')}:${String(hsmM).padStart(2, '0')}:${String(hsmS).padStart(2, '0')}`;
     
-    // Heure Solaire Vraie (HSV)
+    // Heure Solaire Vraie (HSV) : Basé sur LSM corrigé par l'Équation du Temps (EoT)
     const sD = calcSolar(), EoT_s = sD.eot * 60;
     const sLSM_C = sLSM + EoT_s; 
     const sHSV = (sLSM_C + 86400) % 86400;
@@ -172,10 +161,10 @@ function updateSolarTime(cLon) {
 // ===========================================
 
 function initExtendedSensors() { 
-    // 1. Capteur de Magnétisme (avec dégradation gracieuse)
+    // 1. Capteur de Magnétisme (dégradation gracieuse confirmée)
     if ('Magnetometer' in window) {
         try {
-            magSensor = new Magnetometer({ frequency: 10 });
+            const magSensor = new Magnetometer({ frequency: 10 });
             magSensor.addEventListener('reading', () => {
                 const magTotal = Math.sqrt(magSensor.x ** 2 + magSensor.y ** 2 + magSensor.z ** 2);
                 $('mag-field').textContent = `${magTotal.toFixed(2)} \u00B5T`; 
@@ -192,9 +181,9 @@ function initExtendedSensors() {
         $('mag-field').textContent = `${B_EARTH_AVG.toFixed(2)} \u00B5T (Estimé)`;
     }
 
-    // 2. Luminosité (ALS) - Logique simplifiée
+    // 2. Luminosité (ALS)
     if ('AmbientLightSensor' in window) { 
-        $('illuminance-lux').textContent = "Capteur ALS non actif.";
+        $('illuminance-lux').textContent = "Capteur ALS non actif."; // Simplifié pour éviter le code lourd
     } else {
         $('illuminance-lux').textContent = "API ALS non supportée.";
     }
@@ -202,22 +191,22 @@ function initExtendedSensors() {
 
 /** Mise à jour de la Pression et de la Température (ICAO Standard) */
 function updateThermo(alt_m) { 
+    // Calcul de la Pression selon ICAO (inchangé)
     const P_curr = PRESSURE_SEA * Math.pow(1 - (LAPSE_RATE * alt_m) / 288.15, 5.255);
-    ambientPressure = P_curr;
     $('pressure-hpa').textContent = `${P_curr.toFixed(2)} hPa`;
     
-    ambientTemp = 20.0 - (LAPSE_RATE * alt_m); 
+    // Température simulée (inchangée)
+    const ambientTemp = 20.0 - (LAPSE_RATE * alt_m); 
     $('air-temp').textContent = `${ambientTemp.toFixed(1)} \u00B0C (Simulé)`;
     
-    const alt_baro = 44330.8 * (1 - Math.pow(P_curr / PRESSURE_SEA, 0.19029));
-    $('alt-baro').textContent = `${alt_baro.toFixed(0)} m`;
-    
+    // Point d'ébullition (inchangé)
     const teb = 100.0 - (alt_m / 300);
     $('boiling-point').textContent = `${teb.toFixed(2)} \u00B0C`;
 }
 
 
 function fastDOM() { 
+    // Fonction de rafraîchissement rapide (inchangée)
     const latA = lat ?? defaultLat, lonA = lon ?? defaultLon;
     updateSolarTime(lonA); 
     
@@ -275,7 +264,7 @@ function updateDisp(pos) {
 
     lat = rawLat; lon = rawLon;
     
-    // Calcul de l'Accélération Longitudinale (Dérivée)
+    // Calcul de l'Accélération Longitudinale
     accellLong = dt > 0 ? (spd3D - lastSpd3D) / dt : 0;
     lastSpd3D = spd3D; 
     
@@ -289,10 +278,10 @@ function updateDisp(pos) {
         distM += currentDist * (netherMode ? NETHER_RATIO : 1);
     }
     
-    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ ---
+    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ (Retour à Date.now() pour la stabilité) ---
     if (sTime) {
-        // Utilise getCDate().getTime() (qui est l'UTC corrigé) pour calculer le temps écoulé
-        const elapsedSec = (getCDate().getTime() - sTime) / 1000;
+        // Temps écoulé utilisant l'horloge interne (plus fiable pour cette seule mesure)
+        const elapsedSec = (Date.now() - sTime) / 1000; 
         $('elapsed-time').textContent = `${elapsedSec.toFixed(1)} s`;
     }
 
@@ -321,8 +310,8 @@ function updateDisp(pos) {
 
 function startGPS() { 
     if (wID === null) {
-        // Définir sTime avec le timestamp UTC corrigé au moment du démarrage
-        sTime = getCDate().getTime(); 
+        // Initialiser sTime avec le simple Date.now() pour garantir l'horloge de départ
+        sTime = Date.now(); 
         resetDisp();
         lPos = null;
         wID = navigator.geolocation.watchPosition(updateDisp, (e) => {
@@ -358,19 +347,19 @@ function resetDisp() {
 document.addEventListener('DOMContentLoaded', () => {
     resetDisp();
     if (lLocH === null) lLocH = Date.now();
-    syncH(); 
+    syncH(); // Tentative de synchronisation UTC en arrière-plan
     initExtendedSensors(); 
     
     if (domID === null) domID = setInterval(fastDOM, DOM_MS); 
     
     startBtn.addEventListener('click', startGPS);
     stopBtn.addEventListener('click', stopGPS);
-    resetMaxBtn.addEventListener('click', () => { maxSpd = 0; $('speed-max').textContent = '0.00000 km/h'; });
+    $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; $('speed-max').textContent = '0.00000 km/h'; });
     $('set-default-loc-btn').addEventListener('click', setDefaultLocation); 
     $('nether-toggle-btn').addEventListener('click', () => {
         netherMode = !netherMode;
         distM = 0; maxSpd = 0; 
         $('nether-indicator').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
-        netherToggleBtn.textContent = netherMode ? "🌍 Overworld" : "🔥 Nether";
+        $('nether-toggle-btn').textContent = netherMode ? "🌍 Overworld" : "🔥 Nether";
     });
 });
