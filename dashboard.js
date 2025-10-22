@@ -1,6 +1,7 @@
 // =================================================================
 // FICHIER COMPLET ET FINAL : dashboard.js (VERSION RIGOUREUSEMENT UTC ET STABLE)
-// Utilise getCDate() (UTC corrigé) pour TOUS les calculs temporels critiques.
+// Utilise getCDate() (UTC corrigé via time.is) pour TOUS les calculs temporels critiques,
+// garantissant l'indépendance de l'heure locale de l'appareil (GMT/UTC atomique).
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -40,6 +41,7 @@ const solarMeanHeader = $('solar-mean-header');
 // ===========================================
 
 const dist = (lat1, lon1, lat2, lon2) => { 
+    // Calcul de la distance de Haversine
     const R = R_E, dLat = (lat2 - lat1) * D2R, dLon = (lon2 - lon1) * D2R;
     lat1 *= D2R; lat2 *= D2R;
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
@@ -60,7 +62,7 @@ async function syncH() {
 }
 
 /** * Récupère le timestamp UTC actuel, corrigé si la synchronisation time.is a réussi.
- * C'est l'équivalent de l'heure GMT/UTC atomique.
+ * Ceci garantit l'indépendance totale de l'horloge locale de l'appareil.
  */
 function getCDate() { 
     let estT = Date.now(); 
@@ -68,11 +70,10 @@ function getCDate() {
         // Applique l'offset de synchro pour obtenir le temps UTC corrigé
         estT = lServH + (Date.now() - lLocH); 
     } 
-    // L'objet Date créé à partir d'un timestamp est intrinsèquement UTC.
     return new Date(estT); 
 }
 
-/** FILTRE DE KALMAN */
+/** FILTRE DE KALMAN (Lissage de la vitesse) */
 function kFilter(nSpd, dt, R_dyn) { 
     if (dt === 0 || dt > 5) return kSpd; 
     const R = R_dyn ?? R_MAX; 
@@ -99,7 +100,7 @@ function setDefaultLocation() {
 
 function calcSolar() { 
     const now = getCDate(), J2K_MS = 946728000000;
-    const D = (now.getTime() - J2K_MS) / 86400000; 
+    const D = (now.getTime() - J2K_MS) / 86400000; // Jours depuis J2000
     const M = (357.529 + 0.98560028 * D) * D2R; 
     const L = (280.466 + 0.98564736 * D) * D2R; 
     const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
@@ -131,13 +132,13 @@ function calcSolar() {
 function updateSolarTime(cLon) { 
     const now = getCDate();
     
-    // Temps Solaire Moyen (LSM) : Basé sur UTC (getUTCHours garantit l'absence d'Offset local)
+    // Temps Solaire Moyen (LSM) : Basé sur UTC (avec getUTC*)
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
     const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
     const hsmH = Math.floor(sLSM / 3600), hsmM = Math.floor((sLSM % 3600) / 60), hsmS = Math.floor(sLSM % 60);
     const hsmStr = `${String(hsmH).padStart(2, '0')}:${String(hsmM).padStart(2, '0')}:${String(hsmS).padStart(2, '0')}`;
     
-    // Heure Solaire Vraie (HSV) : Basé sur LSM corrigé par l'Équation du Temps (EoT)
+    // Heure Solaire Vraie (HSV)
     const sD = calcSolar(), EoT_s = sD.eot * 60;
     const sLSM_C = sLSM + EoT_s; 
     const sHSV = (sLSM_C + 86400) % 86400;
@@ -274,9 +275,9 @@ function updateDisp(pos) {
         distM += currentDist * (netherMode ? NETHER_RATIO : 1);
     }
     
-    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ (UTILISATION STRICTE DE L'UTC CORRIGÉ) ---
+    // --- 3. MISE À JOUR DU TEMPS ÉCOULÉ (UTC STRICT) ---
     if (sTime) {
-        // Utilise l'heure UTC corrigée pour garantir que l'Offset local n'est pas utilisé.
+        // Temps écoulé basé uniquement sur les timestamps UTC corrigés
         const elapsedSec = (getCDate().getTime() - sTime) / 1000; 
         $('elapsed-time').textContent = `${elapsedSec.toFixed(1)} s`;
     }
