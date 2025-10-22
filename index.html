@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="manifest" href="manifest.json">
     <style>
-        /* --- STYLES GÉNÉRAUX (Peut être mis dans un fichier dashboard.css) --- */
+        /* --- STYLES GÉNÉRAUX (Pour une bonne présentation) --- */
         body { font-family: 'Consolas', monospace; background-color: #f4f4f4; color: #333; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; border: 1px solid #ccc; padding: 20px; border-radius: 8px; background-color: #fff; box-shadow: 0 0 15px rgba(0, 0, 0, 0.1); }
         h1 { text-align: center; color: #007bff; margin-bottom: 5px; }
@@ -22,8 +22,6 @@
         button { padding: 10px 15px; border: 1px solid #007bff; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; }
         button:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.7; }
         #error-message { margin-top: 15px; padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px; display: none; }
-        body.night-mode { background-color: #121212; color: #e0e0e0; }
-        body.night-mode .container { background-color: #1e1e1e; }
     </style>
 </head>
 <body>
@@ -44,10 +42,9 @@
             <button id="start-btn">▶️ Démarrer GPS</button>
             <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
             <button id="reset-max-btn" disabled>🔄 RàZ Max</button>
-            <button id="set-target-btn">🗺️ Cible</button>
+            <button id="set-target-btn">🗺️ Cible</button> 
             <button id="set-default-loc-btn">⚙️ Lieu Défaut</button>
             <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
-            <button id="auto-mode-btn" style="display:none;">AUTO</button>
             <button id="nether-toggle-btn">🔥 Nether</button>
         </div>
         
@@ -98,7 +95,7 @@
              <div class="data-item"><div class="label">Cap vers Cible</div><div id="cap-dest" class="value">N/A</div></div>
         </div>
         
-        <div class="section-title">🌕 Horodatage & Astronomie</div>
+        <div class="section-title">🌕 Horodatage & Astronomie (UTC)</div>
         <div class="grid">
             <div class="data-item"><div class="label">INDICATEUR JOUR/NUIT</div><div id="mode-indicator" class="value">Mode: Jour ☀️</div></div>
             <div class="data-item"><div class="label">Luminosité Ambiante (ALS)</div><div id="illuminance-lux" class="value">Initialisation...</div></div>
@@ -124,17 +121,6 @@
 
     </div>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
-                    console.log('SW enregistré:', registration.scope);
-                }).catch(err => {
-                    console.error('Échec enregistrement SW:', err);
-                });
-            });
-        }
-    </script>
     <script src="dashboard.js"></script>
 </body>
     </html>
