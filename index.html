@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tableau de Bord GPS & Astrologique V2</title>
+    <title>Tableau de Bord GPS & Astrologique V3</title>
     <style>
         /* --- STYLES GÉNÉRAUX --- */
         body {
@@ -203,6 +203,7 @@
             <button id="set-target-btn">🗺️ Cible</button>
             <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
             <button id="auto-mode-btn" style="display:none;">AUTO</button>
+            <button id="nether-toggle-btn">🔥 Nether</button>
         </div>
         
         <div id="error-message"></div>
@@ -234,6 +235,12 @@
                 <div class="label">Vitesse Instantanée (m/s)</div>
                 <div id="speed-ms" class="value">0.00000 m/s</div>
             </div>
+            
+            <div class="data-item">
+                <div class="label">Vitesse Verticale</div>
+                <div id="vertical-speed" class="value">0.00 m/s</div>
+            </div>
+            
             <div class="data-item">
                 <div class="label">% Vitesse Lumière ($c$)</div>
                 <div id="perc-light" class="value">0.00000%</div>
@@ -282,6 +289,17 @@
         
         <div class="section-title">📡 État & Statistiques Système</div>
         <div class="grid">
+            
+            <div class="data-item">
+                <div class="label">MODE MINECRAFT (RATIO)</div>
+                <div id="nether-indicator" class="value">DÉSACTIVÉ (1:1)</div> 
+            </div>
+            
+            <div class="data-item">
+                <div class="label">Taux Décalage Horaire (Chgt Long.)</div>
+                <div id="time-shift-rate" class="value">-- sec/min</div>
+            </div>
+            
             <div class="data-item">
                 <div class="label">Fréquence RAFRAÎCHISSEMENT DOM</div>
                 <div id="update-frequency" class="value">--</div>
@@ -297,6 +315,11 @@
             <div class="data-item">
                 <div class="label">Erreur Vitesse (€ Kalman)</div>
                 <div id="speed-error-perc" class="value">--</div>
+            </div>
+            
+            <div class="data-item">
+                <div class="label">Cohérence Vitesse / Sec</div>
+                <div id="speed-coherence" class="value">--</div>
             </div>
         </div>
 
@@ -314,10 +337,22 @@
                 <div class="label">Heure Solaire Vraie (HSV)</div>
                 <div id="solar-true" class="value">00:00:00 (HSV)</div>
             </div>
+            
+            <div class="data-item">
+                <div class="label">CULMINATION SOLAIRE (MIDI VRAI)</div>
+                <div id="solar-culmination" class="value">00:00:00 (HSV)</div>
+            </div>
+            
             <div class="data-item">
                 <div class="label">Heure Solaire Moyenne (LSM)</div>
                 <div id="solar-mean" class="value">00:00:00</div>
             </div>
+            
+            <div class="data-item">
+                <div class="label">CULMINATION LUNAIRE (TRANSIT)</div>
+                <div id="lunar-culmination" class="value">00:00:00</div>
+            </div>
+
             <div class="data-item">
                 <div class="label">Heure Lunaire</div>
                 <div id="lunar-time" class="value">00:00:00</div>
@@ -375,4 +410,4 @@
 
     <script src="dashboard.js"></script>
 </body>
-    </html>
+                </html>
