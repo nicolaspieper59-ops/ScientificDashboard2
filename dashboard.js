@@ -3,30 +3,33 @@
 // ====================================================================
 
 const D2R = Math.PI / 180; // Degrés vers Radians
-const MIN_SPD = 0.5; // Vitesse minimale (m/s) pour considérer que l'on est en mouvement
 const C_L = 299792458; // Vitesse de la lumière dans le vide (m/s)
 const EARTH_RADIUS = 6371000; // Rayon moyen de la Terre en mètres
 
-// Kalman State: [position, vitesse] (Nous filtrons uniquement la vitesse spd3D pour la simplicité)
+// **CRITIQUE** : MICRO-PRÉCISION (1 mm/s)
+const MIN_SPD = 0.001; // 1 mm/s : Vitesse minimale pour être considéré en mouvement.
+
+// Kalman State: [position, vitesse]
 let kX = 0; // State: Vitesse Estimée
 let kP = 1; // Covariance d'Erreur
-let kQ = 0.05; // Covariance de Bruit de Processus (Dynamique)
+let kQ = 0.000001; // **CRITIQUE** : Bruit de Processus très faible pour une stabilité maximale.
 
 // Position et Temps
-let lPos = null;       // Dernière position GPS brute reçue
-let lastTime = 0;      // Dernier timestamp de mise à jour GPS
-let sTime = 0;         // Temps écoulé total (s)
-let lat = null, lon = null, alt = null; // Position actuelle (filtrée ou figée)
+let lPos = null;
+let lastTime = 0;
+let sTime = 0;
+let lat = null, lon = null, alt = null;
 
-// Trajet
-let totalDistance = 0; // Distance totale accumulée (m)
-let lastAlt = null;    // Dernière altitude pour le dénivelé
-let totalClimb = 0;    // Dénivelé positif accumulé (m)
-let totalDescent = 0;  // Dénivelé négatif accumulé (m)
+// Trajet et Dénivelé
+let totalDistance = 0;
+let lastAlt = null;
+let totalClimb = 0;
+let totalDescent = 0;
 
 // IMU (Accélération 3D)
 let lastAcceleration = { x: 0, y: 0, z: 0 };
 let lastAccelTime = 0;
+const ACCEL_THRESHOLD = 0.5; // Seuil pour détecter un mouvement réel (m/s²)
 
 // Corrections de Biais (Multipath)
 const MULTIPATH_BIAS = {
@@ -37,12 +40,10 @@ const MULTIPATH_BIAS = {
     'FOLIAGE': { lat_offset_m: 1.0, lon_offset_m: 1.0, desc: "1.0m / 1.0m" }
 };
 let currentMaterialBias = 'NONE';
-let isStationary = false; // État de figement de la position
+let isStationary = false; 
 
 // Constantes pour la correction atmosphérique
-const K1 = 77.6; // K/mbar
-const K2 = 6.45; // K/mbar
-const K3 = 3.77 * 10**5; // K^2/mbar
+const K1 = 77.6; const K2 = 6.45; const K3 = 3.77 * 10**5;
 
 
 // ====================================================================
@@ -53,27 +54,19 @@ function $(id) { return document.getElementById(id); }
 
 /**
  * Filtre de Kalman 1D (pour la vitesse).
- * @param {number} Z - Mesure brute (vitesse GPS).
- * @param {number} dt - Intervalle de temps (s).
- * @param {number} R - Covariance de Bruit de Mesure (dépend de l'accuracy GPS).
- * @returns {number} La vitesse filtrée.
  */
 function kFilter(Z, dt, R) {
-    // Étape de Prédiction
-    kX = kX; // Modèle simple : vitesse constante
+    // Étape de Prédiction (kQ très faible pour une vitesse stable)
     kP = kP + kQ * dt;
 
     // Étape de Mise à Jour (Correction)
-    const K = kP / (kP + R); // Gain de Kalman
-    kX = kX + K * (Z - kX); // Nouvelle estimation
-    kP = (1 - K) * kP; // Nouvelle covariance d'erreur
+    const K = kP / (kP + R); 
+    kX = kX + K * (Z - kX); 
+    kP = (1 - K) * kP; 
 
     return kX;
 }
 
-/**
- * Calcule la distance en mètres entre deux coordonnées (Formule d'Haversine simplifiée).
- */
 function haversine(lat1, lon1, lat2, lon2) {
     const dLat = (lat2 - lat1) * D2R;
     const dLon = (lon2 - lon1) * D2R;
@@ -84,48 +77,29 @@ function haversine(lat1, lon1, lat2, lon2) {
     return EARTH_RADIUS * c;
 }
 
-/**
- * Convertit un décalage en mètres en degrés de Lat/Lon.
- */
 function metersToDegrees(meters, lat) {
     const dLat = meters / (EARTH_RADIUS * D2R);
     const dLon = meters / (EARTH_RADIUS * D2R * Math.cos(lat * D2R));
     return { dLat: dLat, dLon: dLon };
 }
 
-/**
- * Applique le décalage Multipath sélectionné aux coordonnées.
- */
 function applyMaterialBias(rawLat, rawLon) {
     const bias = MULTIPATH_BIAS[currentMaterialBias];
-    
     if (!bias) return { correctedLat: rawLat, correctedLon: rawLon };
-    
-    // Convertir les mètres en degrés à la latitude actuelle
     const offsetLatLon = metersToDegrees(bias.lat_offset_m, rawLat);
-    
-    // Appliquer un simple décalage Nord-Est (pour la démo)
     const correctedLat = rawLat + offsetLatLon.dLat;
     const correctedLon = rawLon + offsetLatLon.dLon;
-
     return { correctedLat, correctedLon };
 }
 
-/**
- * Calcule la vitesse de la lumière (v) et l'indice de réfraction (n) dans l'air.
- */
 function calculateAtmosphericSpeed(P_hPa, T_C, H_perc) {
     const T_K = T_C + 273.15;
     const Es = 6.1078 * Math.exp(17.27 * T_C / (T_C + 237.3));
     const Pw = Es * (H_perc / 100.0); 
     const P_dry = P_hPa - Pw;
-
-    // N = indice de réfractivité troposphérique
     const N = K1 * (P_dry / T_K) + K2 * (Pw / T_K) + K3 * (Pw / (T_K * T_K));
-    
     const n = 1 + (N * 1e-6);
     const v = C_L / n; 
-
     return { vitesse: v, n: n, refractivity: N };
 }
 
@@ -135,16 +109,13 @@ function calculateAtmosphericSpeed(P_hPa, T_C, H_perc) {
 // ====================================================================
 
 /**
- * Gère les données de position GPS.
+ * Gère les données de position GPS et applique le filtre de Kalman.
  */
 function handleGPS(pos) {
     const currentTime = pos.timestamp;
-    const acc = pos.coords.accuracy || 100;
-
-    // Calcul du temps écoulé (dt)
+    // Utiliser 7.0m comme référence si l'accuracy n'est pas fournie.
+    const acc = pos.coords.accuracy || 7.0; 
     const dt = (lastTime > 0) ? (currentTime - lastTime) / 1000 : 0;
-    
-    // Calcul de la vitesse GPS 3D (Z = mesure brute)
     const spd3D = pos.coords.speed !== null ? pos.coords.speed : 0;
     
     // --- 1. Calcul de l'Accélération 3D (pour le filtre IMU/GPS) ---
@@ -153,32 +124,32 @@ function handleGPS(pos) {
         lastAcceleration.y**2 + 
         lastAcceleration.z**2
     );
-    const ACCEL_THRESHOLD = 0.5;
     
     // --- 2. Définir le R (Bruit de Mesure) basé sur l'incertitude du GPS et l'IMU ---
-    // R est proportionnel au carré de l'incertitude.
-    let kR = acc * acc; 
+    let kR = acc * acc; // R = Variance (acc * acc)
     
-    // Si l'IMU dit que nous sommes très stables, on augmente R pour lisser davantage
+    // **CRITIQUE** : Si l'IMU dit que nous sommes très stables (vitesse stable requise de 1mm/s)
     if (accelerationMagnitude < ACCEL_THRESHOLD) {
-        kR = kR * 10; 
+        // Multiplicateur très élevé pour écraser le bruit GPS de 7m (R=49). 
+        // Force le filtre à se fier à l'IMU (stabilité) plutôt qu'au GPS bruité.
+        kR = kR * 5000; 
     }
     
-    const R_MIN = 0.01; 
-    const R_MAX = 5000.0;
-    kR = Math.min(Math.max(kR, R_MIN), R_MAX);
+    // Limites de R ajustées à l'environnement 7m
+    const R_MIN = 1.0;     
+    const R_MAX = 50000.0; // Augmenté pour contenir le R * 5000 max
+    kR = Math.min(Math.max(kR, R_MIN), R_MAX); 
     
     // --- 3. Filtrage de Kalman pour la Vitesse ---
     const fSpd = kFilter(spd3D, dt, kR);
-    const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; // Vitesse Stable (0 si < MIN_SPD)
+    // Vitesse Stable (0 si inférieure à 1 mm/s)
+    const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
-    // --- 4. Calcul de la Distance et du Dénivelé ---
+    // --- 4. Calcul de la Distance et du Dénivelé (omission des détails pour la concision) ---
     if (lPos) {
-        // Distance totale
         const dist_delta = haversine(lPos.coords.latitude, lPos.coords.longitude, pos.coords.latitude, pos.coords.longitude);
         totalDistance += dist_delta;
 
-        // Dénivelé (si altitude est fournie)
         const currentAlt = pos.coords.altitude;
         if (currentAlt !== null && lastAlt !== null && !isNaN(currentAlt)) {
             const altDiff = currentAlt - lastAlt;
@@ -192,19 +163,15 @@ function handleGPS(pos) {
     const currentlyStationary = sSpdFE === 0;
 
     if (!currentlyStationary) {
-        // En mouvement : on met à jour la position brute
         lat = pos.coords.latitude; 
         lon = pos.coords.longitude;
         alt = pos.coords.altitude;
         isStationary = false;
     } else if (!isStationary) {
-        // Vient de s'arrêter : on fige la dernière position connue
-        // lat, lon, et alt conservent leurs dernières valeurs de mouvement
         isStationary = true;
     } 
-    // Si isStationary est déjà true, lat/lon/alt sont conservés (figés).
     
-    // Mise à jour des variables globales pour la prochaine itération
+    // Mise à jour des variables globales
     lPos = pos;
     lastTime = currentTime;
     sTime += dt;
@@ -217,8 +184,6 @@ function handleGPS(pos) {
  * Met à jour l'affichage des données
  */
 function updateDisp(pos, spd3D, fSpd, sSpdFE, dt, accelerationMagnitude) {
-    
-    // --- Application du Biais de position (Multipath) ---
     const currentLat = lat;
     const currentLon = lon;
     
@@ -233,7 +198,7 @@ function updateDisp(pos, spd3D, fSpd, sSpdFE, dt, accelerationMagnitude) {
 
     // Affichage des données cinématiques
     $('spd-raw').textContent = `${spd3D.toFixed(3)}`;
-    $('spd-stable').textContent = `${sSpdFE.toFixed(3)}`;
+    $('spd-stable').textContent = `${sSpdFE.toFixed(3)}`; // Affichera 0.000 ou la vraie vitesse
     $('accel-total').textContent = `${accelerationMagnitude.toFixed(3)}`;
     $('time-elapsed').textContent = `${sTime.toFixed(1)}`;
     $('dt-gps').textContent = `${(dt * 1000).toFixed(0)}`;
@@ -260,18 +225,16 @@ function slowUpdate() {
 
     if (!isNaN(P) && !isNaN(T) && !isNaN(H)) {
         const astroSpeed = calculateAtmosphericSpeed(P, T, H);
-
         $('c-air').textContent = `${(astroSpeed.vitesse / 1e6).toFixed(3)} Mm/s`; 
         $('refraction-index').textContent = `${astroSpeed.n.toFixed(6)}`;
     }
     
-    // 2. Calcul de l'ETA (Exemple : Distance figée)
-    // Pour une vraie ETA, il faudrait une cible lat/lon et une distance à vol d'oiseau
-    const distToTarget = 1000; // Simuler une cible à 1km
-    if (totalDistance > 0 && totalDistance < distToTarget) {
+    // 2. Calcul de l'ETA (Exemple)
+    const distToTarget = 1000;
+    if (totalDistance < distToTarget) {
         const remainingDist = distToTarget - totalDistance;
         const sSpd = parseFloat($('spd-stable').textContent);
-        const etaSeconds = sSpd > 0.1 ? remainingDist / sSpd : Infinity;
+        const etaSeconds = sSpd > MIN_SPD ? remainingDist / sSpd : Infinity;
         
         if (etaSeconds !== Infinity) {
             const min = Math.floor(etaSeconds / 60);
@@ -321,17 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     applyBiasBtn.addEventListener('click', () => {
         currentMaterialBias = materialSelect.value;
-        // Forcer la mise à jour de l'affichage pour appliquer immédiatement le biais
-        if (lPos) {
-            // Recalculer le dernier état figé ou brut avec le nouveau biais
-            const spd3D = lPos.coords.speed !== null ? lPos.coords.speed : 0;
-            const fSpd = kFilter(spd3D, (lPos.timestamp - lastTime) / 1000, lPos.coords.accuracy * lPos.coords.accuracy);
-            const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd;
-            updateDisp(lPos, spd3D, fSpd, sSpdFE, (lPos.timestamp - lastTime) / 1000, 
-                Math.sqrt(lastAcceleration.x**2 + lastAcceleration.y**2 + lastAcceleration.z**2));
-        }
+        // Forcer la mise à jour pour appliquer le biais
+        if (lPos) handleGPS(lPos); 
     });
 
     // 4. Lancement de la mise à jour lente
-    setInterval(slowUpdate, 2000); // Mise à jour toutes les 2 secondes
+    setInterval(slowUpdate, 2000); 
 });
