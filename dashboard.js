@@ -186,8 +186,18 @@ function getSunTimes(sD, cLat) { /* ... (Logique getSunTimes) ... */
     };
 }
 
+// ... (code précédent inchangé) ...
+
 function updateSolarTime(cLon) { 
     const now = getCDate();
+    
+    // Temps Solaire Moyen (LSM)
+    // *** UTILISATION DE getUTCHours/Minutes/Seconds POUR IGNORER L'OFFSET DU FUSEAU HORAIRE LOCAL ***
+    const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+    
+    // Le LSM est l'heure UTC (Temps au Méridien 0°) ajustée par la longitude GPS de l'utilisateur.
+    const sLSM = (sUT + (cLon * 4 * 60) + 86400) % 86400;
+// ... (le reste de la fonction est inchangé) ...
     
     // Temps Solaire Moyen (LSM)
     const sUT = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
