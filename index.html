@@ -25,6 +25,12 @@
     <p class="note">Vitesse Stable calée sur 1 mm/s (0.001 m/s) en utilisant l'IMU.</p>
     
     <div class="controls">
+        <span class="data-label">Mode de Navigation :</span>
+        <select id="mode-select">
+            <option value="HYBRID">Hybride (GPS + IMU)</option>
+            <option value="IMU_ONLY">IMU Seul (Accéléromètre/Drift)</option>
+        </select>
+        <hr style="border-color: #333; margin: 10px 0;">
         <span class="data-label">Matériau Réflecteur :</span>
         <select id="material-select">
             <option value="NONE">Ciel Dégagé (Pas de correction)</option>
@@ -41,11 +47,12 @@
 
         <div class="data-section">
             <h3>Vitesse & Mouvement</h3>
+            <p><span class="data-label">Mode Actuel:</span> <span class="data-value" id="current-mode">HYBRIDE</span></p>
             <p><span class="data-label">Vitesse Brute (m/s):</span> <span class="data-value" id="spd-raw">--</span></p>
             <p><span class="data-label">Vitesse Stable (m/s):</span> <span class="data-value" id="spd-stable">--</span></p>
             <p><span class="data-label">Accélération Totale (m/s²):</span> <span class="data-value" id="accel-total">--</span></p>
             <p><span class="data-label">Temps Écoulé (s):</span> <span class="data-value" id="time-elapsed">--</span></p>
-            <p><span class="data-label">Temps GPS (ms/maj):</span> <span class="data-value" id="dt-gps">--</span></p>
+            <p><span class="data-label">Temps Delta (ms):</span> <span class="data-value" id="dt-gps">--</span></p>
         </div>
 
         <div class="data-section">
@@ -80,4 +87,4 @@
 
     <script src="dashboard.js"></script>
 </body>
-                                                                                                          </html>
+</html>
