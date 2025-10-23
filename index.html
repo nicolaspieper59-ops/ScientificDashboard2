@@ -3,95 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard GNSS V3.3 | Physique & Sécurité</title>
+    <title>Dashboard GNSS V3.1 | Physique, Astro & Kalman</title>
     <style>
-        /* CSS Inclus pour respecter le bloc de code unique du HTML */
-        body { font-family: 'Arial', sans-serif; background: #000; color: #0f0; margin: 0; padding: 10px; }
-        .dashboard { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
-            gap: 12px; 
-            margin-bottom: 20px;
-        }
-        .metric { 
-            background: #111; 
-            padding: 15px; 
-            border: 1px solid #040; 
-            border-radius: 5px; 
-            min-height: 80px; 
-        }
-        .metric h4 { margin-top: 0; margin-bottom: 5px; font-size: 0.9em; color: #0c0; }
-        .value { font-size: 1.6em; font-weight: bold; word-break: break-all; }
-        .controls, .alerts { margin-bottom: 20px; padding: 10px; border-radius: 5px; }
-        .controls { background: #222; }
-        .alerts { background: #400; color: #fcc; font-weight: bold; text-align: center; }
-        button { background: #004d00; color: white; border: none; padding: 10px 15px; margin-right: 10px; border-radius: 3px; cursor: pointer; }
-        button:hover { background: #008000; }
-        .sensor-advanced { 
-            display: flex; 
-            flex-wrap: wrap; 
-            gap: 8px; 
-            padding-top: 10px;
-            font-size: 0.85em;
-        }
-        .sensor-advanced > div { 
-            flex: 1 1 150px; 
-            background: #080; 
-            color: black; 
-            padding: 5px 8px; 
-            border-radius: 3px; 
-        }
-        .footer-status { margin-top: 10px; font-size: 0.75em; color: #555; }
+        /* Styles condensés pour respecter le bloc de code unique du HTML */
+        body { font-family: 'Arial', sans-serif; background: #121212; color: #00ff99; margin: 0; padding: 10px; }
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-bottom: 20px;}
+        .metric { background: #1e1e1e; padding: 10px; border: 1px solid #004d00; border-radius: 5px; min-height: 70px; }
+        .metric h4 { margin: 0 0 5px 0; font-size: 0.8em; color: #99ccff; }
+        .value { font-size: 1.4em; font-weight: bold; word-break: break-all; color: #f9d342; }
+        .controls { margin-bottom: 15px; }
+        button { background: #4CAF50; color: white; border: none; padding: 8px 12px; margin-right: 5px; border-radius: 3px; cursor: pointer; transition: background-color 0.2s; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        #stop-btn { background: #f44336; }
+        #error-message { background: #400; color: #fcc; padding: 10px; border-radius: 5px; display: none; }
+        .sensor-advanced { font-size: 0.8em; margin-top: 10px; color: #b0b0b0; }
+        .sensor-advanced div { margin-top: 3px; }
+        .status-footer { font-size: 0.7em; color: #555; margin-top: 15px; }
     </style>
 </head>
 <body>
 
-<div class="alerts" id="system-alert">Système de sécurité en veille.</div>
+<div id="error-message">Système d'alerte.</div>
 
 <div class="controls">
-    <button id="start-btn">Démarrer GNSS</button>
-    <button id="stop-btn">Arrêter GNSS</button>
+    <button id="start-btn">► Démarrer GNSS</button>
+    <button id="stop-btn" disabled>■ Arrêter GNSS</button>
+    <button id="freq-manual-btn">⌁ Fréquence: Auto</button>
 </div>
 
+<h2>🛰️ Vitesse & Précision (GNSS + Kalman)</h2>
 <div class="dashboard">
-    <div class="metric"><h4>Vitesse Stable (Kalman)</h4><div class="value" id="speed-stable">--</div></div>
-    <div class="metric"><h4>Cohérence du Filtre</h4><div class="value" id="speed-coherence">--</div></div>
-    <div class="metric"><h4>Précision GPS (Corrigée)</h4><div class="value" id="gps-accuracy">--</div></div>
-    <div class="metric"><h4>Vitesse Verticale</h4><div class="value" id="vertical-speed">--</div></div>
-    
-    <div class="metric"><h4>Accélération (GNSS)</h4><div class="value" id="g-force-gnss">--</div></div>
-    <div class="metric"><h4>Force Nette (M*a)</h4><div class="value" id="force-newton">--</div></div>
-    <div class="metric"><h4>Puissance (Instantanée)</h4><div class="value" id="power-watts">--</div></div>
-    <div class="metric"><h4>Énergie (Joule/s)</h4><div class="value" id="energy-joules">--</div></div>
-    <div class="metric"><h4>Force Centrifuge</h4><div class="value" id="force-centrifugal">--</div></div>
-
-    <div class="metric"><h4>Latitude / Longitude</h4><div class="value" id="lat-lon">--</div></div>
-    <div class="metric"><h4>Heure Système</h4><div class="value" id="current-time">--</div></div>
-    <div class="metric"><h4>Équation du Temps (EoT)</h4><div class="value" id="eot-value">--</div></div>
-    <div class="metric"><h4>Midi Solaire Vrai</h4><div class="value" id="solar-culmination">--</div></div>
-    
-    <div class="metric"><h4>Pression Atm.</h4><div class="value" id="pressure">--</div></div>
-    <div class="metric"><h4>Température Air</h4><div class="value" id="air-temp">--</div></div>
-    <div class="metric"><h4>Humidité Air</h4><div class="value" id="humidity">--</div></div>
-    <div class="metric"><h4>Altitude Baro</h4><div class="value" id="alt-baro">--</div></div>
+    <div class="metric"><h4>Vitesse Stable (km/h)</h4><div class="value" id="speed-stable">--</div></div>
+    <div class="metric"><h4>Vitesse Instantanée (km/h)</h4><div class="value" id="speed-3d-inst">--</div></div>
+    <div class="metric"><h4>Cohérence du Filtre (%)</h4><div class="value" id="speed-coherence">--</div></div>
+    <div class="metric"><h4>Précision GPS (Corrigée)</h4><div class="value" id="gps-accuracy">-- m</div></div>
+    <div class="metric"><h4>Vitesse Verticale</h4><div class="value" id="vertical-speed">-- m/s</div></div>
+    <div class="metric"><h4>Mode GNSS/Fréquence</h4><div class="value" id="gnss-mode">OFF</div></div>
 </div>
 
-<h3>Capteurs Locaux et Avancés</h3>
+<h2>📊 Physique & Astro</h2>
+<div class="dashboard">
+    <div class="metric"><h4>Accélération Long. (m/s²)</h4><div class="value" id="accel-long">0.000 m/s²</div></div>
+    <div class="metric"><h4>Force G (Capteur)</h4><div class="value" id="g-force">0.00 G</div></div>
+    <div class="metric"><h4>Puissance Traînée (kW)</h4><div class="value" id="drag-power-kw">0.00 kW</div></div>
+    <div class="metric"><h4>Cap (Heading)</h4><div class="value" id="heading">-- °</div></div>
+    <div class="metric"><h4>Équation du Temps (EoT)</h4><div class="value" id="eot-value">-- min</div></div>
+    <div class="metric"><h4>Midi Solaire Vrai (HSV)</h4><div class="value" id="solar-culmination">--</div></div>
+    <div class="metric"><h4>Altitude Baro (Corrigée)</h4><div class="value" id="alt-baro">N/A</div></div>
+    <div class="metric"><h4>Pression Atm. (hPa)</h4><div class="value" id="pressure">--</div></div>
+    <div class="metric"><h4>Température Air (°C)</h4><div class="value" id="air-temp">--</div></div>
+    <div class="metric"><h4>Illuminance (Lux)</h4><div class="value" id="illuminance-lux">N/A</div></div>
+</div>
+
 <div class="sensor-advanced">
-    <div>Boussole/Cap (Mag/GNSS): <span id="heading">--</span></div>
-    <div>Niveau à Bulle (Tilt): <span id="bubble-level">--</span></div>
-    <div>Éclairement (Lux): <span id="illuminance-lux">--</span></div>
-    <div>Statut Batterie: <span id="battery-status">--</span></div>
-    <div>Mode Souterrain: <span id="underground">--</span></div>
-    <div>Connexion Externe: <span id="external-sensor-status">--</span></div>
+    <div>Niveau à Bulle (Tilt): <span id="bubble-level">N/A</span></div>
+    <div>Champ Magnétique (μT): <span id="mag-field">N/A</span></div>
+    <div>Mode Souterrain (< -50m): <span id="underground">Non</span></div>
+    <div>Statut Connexion Externe: <span id="external-sensor-status">N/A</span></div>
 </div>
 
-<div class="footer-status">
-    Fréquence DOM: <span id="update-frequency">--</span> |
-    Vitesse 3D Instant.: <span id="speed-3d-inst">--</span> |
-    Mode GNSS: <span id="gnss-mode">--</span>
+<div class="status-footer">
+    Latitude: <span id="latitude">--</span> | Longitude: <span id="longitude">--</span> | 
+    Fréquence MÀJ DOM: <span id="update-frequency">--</span> | 
+    Délai Troposphérique ZTD: <span id="ztd-delay">-- m</span>
 </div>
 
 <script src="dashboard.js"></script>
 </body>
-                                                            </html>
+                                                      </html>
