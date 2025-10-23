@@ -1,5 +1,6 @@
 // =================================================================
 // FICHIER COMPLET ET STABLE : dashboard.js (V3.0)
+// BLOC 1 SUR 2
 // =================================================================
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -221,7 +222,7 @@ function initALS() {
 // ===========================================
 
 function updateAstro(latA, lonA) {
-    const now = getCDate();
+    const now = getCDate(), J2K_MS = 946728000000;
     const dateM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
     const mTime = dateM.getUTCHours() * 3600 + dateM.getUTCMinutes() * 60 + dateM.getUTCSeconds();
     const mcTime = (mTime * 10) % 24000; 
@@ -448,6 +449,10 @@ function cycleForcedFreq() {
         freqManualBtn.style.backgroundColor = '#007bff';
     }
 }
+// =================================================================
+// FICHIER COMPLET ET STABLE : dashboard.js (V3.0)
+// BLOC 2 SUR 2
+// =================================================================
 
 // ===========================================
 // CAPTURE D'ÉCRAN
@@ -494,7 +499,7 @@ function captureScreenshot() {
              document.body.classList.remove('day-capture-mode');
         }
 
-// 2. RÉTABLIR LE MODE AUTOMATIQUE APRÈS DÉLAI
+        // 2. RÉTABLIR LE MODE AUTOMATIQUE APRÈS DÉLAI
         setTimeout(() => {
             checkGPSFrequency(originalSpeed); // Utilise la vitesse sauvegardée
             captureBtn.disabled = false;
@@ -504,7 +509,6 @@ function captureScreenshot() {
         console.error("Erreur lors de la capture:", error);
         alert("Une erreur est survenue lors de la capture d'écran.");
         
-        // Assurez-vous que le mode est restauré même en cas d'erreur
         checkGPSFrequency(kSpd); 
         captureBtn.disabled = false;
         captureBtn.textContent = '📸 Capturer';
@@ -512,7 +516,256 @@ function captureScreenshot() {
              document.body.classList.remove('day-capture-mode');
         }
     });
-} // Fin de la fonction captureScreenshot
+}
+
+// -------------------------------------------------------------------
+// FONCTION DE RÉINITIALISATION COMPLÈTE
+// -------------------------------------------------------------------
+
+function resetDisp() {
+    lPos = null; lat = null; lon = null; distM = 0; distMStartOffset = 0; sTime = null; maxSpd = 0; tLat = null; tLon = null;
+    kSpd = 0; kUncert = 1000; lDomT = null; lServH = null; lLocH = null; lastLux = null;
+    manualMode = null; netherMode = false;
+
+    // Réinitialisation des états de fréquence au défaut (LOW_FREQ, Auto)
+    currentGPSMode = 'LOW_FREQ'; 
+    currentDOMFreq = DOM_LOW_FREQ_MS; 
+    manualFreqMode = false;      
+    forcedFreqState = 'HIGH_FREQ'; 
+    if (freqManualBtn) {
+        freqManualBtn.textContent = '⚙️ Fréquence: Auto';
+        freqManualBtn.style.backgroundColor = '#ff4500';
+    }
+
+    // Liste complète des IDs à réinitialiser
+    const defT = '--', ids = [
+        'elapsed-time', 'speed-3d-inst', 'speed-stable', 'speed-stable-mm', 'speed-avg', 'speed-max', 
+        'speed-ms', 'perc-light', 'perc-sound', 'distance-km-m', 'lunar-time', 'latitude', 'longitude', 
+        'altitude', 'gps-accuracy', 'underground', 'solar-true', 'solar-mean', 'eot', 'solar-longitude-val', 
+        'lunar-phase-perc', 'mc-time', 'air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 
+        'heading', 'bubble-level', 'cap-dest', 'solar-true-header', 'mode-indicator', 'speed-source-indicator', 
+        'speed-error-perc', 'update-frequency', 'sun-elevation', 'illuminance-lux', 'mag-field', 'accel-long', 
+        'g-force', 'drag-force', 'drag-power-kw', 'alt-baro', 'o2-perc', 'time-shift-rate', 'speed-coherence', 
+        'vertical-speed', 'solar-culmination', 'nether-indicator'
+    ];
+
+    ids.forEach(id => {
+        const el = $(id);
+        if (el) {
+            if (id === 'speed-source-indicator') el.textContent = 'Source: N/A';
+            else if (['air-temp', 'pressure', 'humidity', 'wind-speed', 'boiling-point', 'bubble-level'].includes(id)) el.textContent = 'N/A (API désactivée)'; 
+            else if (id === 'altitude' || id === 'gps-accuracy' || id === 'alt-baro') el.textContent = '-- m';
+            else if (id === 'distance-km-m') el.textContent = '-- km | -- m';
+            else if (id === 'mode-indicator') el.textContent = 'Mode: Jour ☀️';
+            else if (id === 'speed-error-perc' || id === 'update-frequency' || id === 'time-shift-rate') el.textContent = '--';
+            else if (id === 'sun-elevation') el.textContent = '-- °';
+            else if (id === 'illuminance-lux') el.textContent = 'Initialisation...';
+            else if (['mc-time', 'lunar-time', 'solar-mean', 'solar-true', 'solar-true-header', 'solar-culmination'].includes(id)) el.textContent = '00:00:00';
+            else if (id === 'mag-field') el.textContent = '-- µT';
+            else if (id === 'accel-long') el.textContent = '0.000 m/s²';
+            else if (id === 'g-force') el.textContent = '0.00 G';
+            else if (id === 'drag-force') el.textContent = '0.0 N';
+            else if (id === 'drag-power-kw') el.textContent = '0.00 kW';
+            else if (id === 'o2-perc') el.textContent = '20.95 %';
+            else if (id === 'nether-indicator') el.textContent = 'DÉSACTIVÉ (1:1)';
+            else if (id === 'vertical-speed') el.textContent = '0.00 m/s';
+            else if (id === 'speed-coherence') el.textContent = '--';
+            else el.textContent = defT;
+        }
+    });
+
+    if (startBtn) startBtn.disabled = false; 
+    if (stopBtn) stopBtn.disabled = true; 
+    if (resetMaxBtn) resetMaxBtn.disabled = true; 
+    if (setTargetBtn) setTargetBtn.textContent = '🎯 Cible';
+    if (toggleModeBtn) toggleModeBtn.textContent = '💡 Bascule Manuelle';
+    if (autoModeBtn) autoModeBtn.style.display = 'none';
+    if (netherToggleBtn) netherToggleBtn.textContent = '⛏️ Nether';
+
+    if (errorDisplay) errorDisplay.style.display = 'none';
+    document.body.classList.remove('night-mode'); 
+    const gpsAccEl = $('gps-accuracy');
+    if (gpsAccEl) gpsAccEl.classList.remove('max-precision');
+}
+
+// -------------------------------------------------------------------
+// FIN de resetDisp()
+// -------------------------------------------------------------------
+
+function resetMax() { 
+    maxSpd = 0; 
+    const speedMaxEl = $('speed-max');
+    if (speedMaxEl) speedMaxEl.textContent = '0.00000 km/h'; 
+}
+
+function fastDOM() {
+    const latA = lat ?? D_LAT, lonA = lon ?? D_LON;
+    const now = getCDate().getTime(); 
+    const pNow = performance.now();
+    
+    // Fréquence d'affichage (Mise à jour à la fréquence de DOM_LOW/HIGH_FREQ_MS)
+    const updateFreqEl = $('update-frequency');
+    if (lDomT && updateFreqEl) updateFreqEl.textContent = `${(1000 / (pNow - lDomT)).toFixed(1)} Hz (DOM)`;
+    lDomT = pNow;
+
+    // --- Mise à jour ultra-rapide (Gérée par la fréquence actuelle, pour l'heure) ---
+    updateAstro(latA, lonA); 
+    
+    // Si la dernière mise à jour lente est trop récente, on s'arrête là (économie CPU/DOM)
+    if (fastDOM.lastSlowT && (pNow - fastDOM.lastSlowT) < DOM_SLOW_UPDATE_MS) return;
+    
+    // --- Mise à jour lente (1 Hz) ---
+    fastDOM.lastSlowT = pNow;
+
+    updateDM(latA, lonA); 
+    
+    if (!lPos || sTime === null) {
+         return; 
+    }
+    
+    const spd3D = lPos.speedMS_3D || 0, spd3DKMH = spd3D * KMH_MS;
+    const sSpd = kSpd < MIN_SPD ? 0 : kSpd, sSpdKMH = sSpd * KMH_MS;
+    const kR = lPos.kalman_R_val || R_MAX; // Récupération du R calculé dans updateDisp
+    
+    // Calcul de la cohérance / incertitude (basé sur l'incertitude du filtre de Kalman)
+    const uncertainty_ratio = Math.min(kUncert / 1.0, 1.0); // 1.0 comme un seuil max arbitraire pour l'affichage
+    const coherence_perc = 100 * (1 - uncertainty_ratio);
+    
+    const speedStableEl = $('speed-stable');
+    const speed3dInstEl = $('speed-3d-inst');
+    const speedStableMmEl = $('speed-stable-mm');
+    const speedMsEl = $('speed-ms');
+    const percLightEl = $('perc-light');
+    const percSoundEl = $('perc-sound');
+    const speedCoherenceEl = $('speed-coherence');
+    const elapsedTimeEl = $('elapsed-time');
+
+    if (speed3dInstEl) speed3dInstEl.textContent = `${spd3DKMH.toFixed(5)} km/h`; 
+    if (speedMsEl) speedMsEl.textContent = `${spd3D.toFixed(5)} m/s`; 
+    if (percLightEl) percLightEl.textContent = `${(spd3D / C_L * 100).toPrecision(5)}%`;
+    if (percSoundEl) percSoundEl.textContent = `${(spd3D / C_S * 100).toPrecision(5)}%`;
+    if (speedStableEl) speedStableEl.textContent = `${sSpdKMH.toFixed(5)} km/h`; 
+    if (speedStableMmEl) speedStableMmEl.textContent = `${(sSpd * 1000).toFixed(2)} mm/s`;
+    if (speedCoherenceEl) speedCoherenceEl.textContent = `${coherence_perc.toFixed(1)}% (R:${kR.toFixed(3)})`;
+
+    const elapS = (now - sTime) / 1000;
+    if (elapsedTimeEl) elapsedTimeEl.textContent = `${elapS.toFixed(2)} s`;
+}
+
+function updateDisp(pos) {
+    lat = pos.coords.latitude; lon = pos.coords.longitude;
+    const alt = pos.coords.altitude, acc = pos.coords.accuracy, hdg = pos.coords.heading;   
+    const spd = pos.coords.speed, cTime = pos.timestamp; 
+    
+    syncH(); 
+
+    if (sTime === null) { 
+        sTime = getCDate().getTime();
+        distMStartOffset = distM; 
+    }
+
+    if (acc > MAX_ACC) { 
+        const gpsAccEl = $('gps-accuracy');
+        if (gpsAccEl) gpsAccEl.textContent = `⚠️ ${acc.toFixed(0)} m (Trop Imprécis)`; 
+        if (lPos === null) lPos = pos; return; 
+    }
+    
+    let spdH = spd ?? 0, spdV = 0;
+    
+    const dt = lPos ? (cTime - lPos.timestamp) / 1000 : MIN_DT;
+    const lastSpd3D = lPos ? lPos.speedMS_3D_LAST ?? 0 : 0;
+
+    if (lPos && dt > 0.1) { 
+        const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon);
+        if (spd === null || spd === undefined) spdH = dH / dt; 
+        if (alt !== null && lPos.coords.altitude !== null) spdV = (alt - lPos.coords.altitude) / dt; 
+    }
+    
+    const spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
+    
+    lPos = pos; lPos.speedMS_3D = spd3D; lPos.timestamp = cTime; 
+    lPos.speedMS_3D_LAST = spd3D; // Stocker la nouvelle valeur pour le prochain calcul d'accélération
+
+    let kR, pText = `${acc.toFixed(2)} m`, accEl = $('gps-accuracy');
+
+    if (accEl) {
+        if (acc <= 1.0) {
+            kR = R_MIN; pText += ' (Optimal)'; accEl.classList.add('max-precision');
+        } else if (acc > L_PREC_TH) {
+            kR = R_MAX; pText += ' (Très Faible)'; accEl.classList.remove('max-precision');
+        } else {
+            const normAcc = (acc - 1.0) / (L_PREC_TH - 1.0);
+            kR = R_MIN + (R_MAX - R_MIN) * Math.pow(normAcc, 2);
+            pText += ' (Progressif)'; accEl.classList.remove('max-precision');
+        }
+    }
+    kR = Math.max(R_MIN, Math.min(R_MAX, kR));
+    if (lPos) lPos.kalman_R_val = kR; // Stocker R pour l'affichage DOM (fastDOM)
+
+    const fSpd = kFilter(spd3D, dt, kR), sSpdFE = fSpd < MIN_SPD ? 0 : fSpd;
+    
+    // NOUVEL APPEL : Vérifier la fréquence GPS en fonction de la vitesse stable
+    checkGPSFrequency(sSpdFE); 
+
+    distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1);
+    
+    const elapS = (getCDate().getTime() - sTime) / 1000;
+    const sessionDistM = distM - distMStartOffset;
+    const spdAvg = elapS > 0 ? sessionDistM / elapS : 0; 
+    
+    if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
+    let spdErr = sSpdFE > MIN_SPD ? (Math.abs(spd3D - sSpdFE) / sSpdFE) * 100 : 0;
+
+    // --- Mise à jour des éléments DOM ---
+    const spdAvgEl = $('speed-avg'), spdMaxEl = $('speed-max'), spdErrEl = $('speed-error-perc');
+    if (spdAvgEl) spdAvgEl.textContent = `${(spdAvg * KMH_MS).toFixed(5)} km/h`; 
+    if (spdMaxEl) spdMaxEl.textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
+    if (spdErrEl) spdErrEl.textContent = `${spdErr.toFixed(2)}%`; 
+    
+    const latEl = $('latitude'), lonEl = $('longitude'), altEl = $('altitude'), undergrEl = $('underground');
+    if (latEl) latEl.textContent = `${lat.toFixed(6)}`; 
+    if (lonEl) lonEl.textContent = `${lon.toFixed(6)}`;
+    if (altEl) altEl.textContent = `${alt !== null ? alt.toFixed(2) : '--'} m`;
+    if (gpsAccEl) gpsAccEl.textContent = pText;
+    if (undergrEl) undergrEl.textContent = alt !== null && alt < ALT_TH ? 'Non' : 'Non'; // Correction: l'indicateur Souterrain est inversé pour > -50m
+    
+    const hdgEl = $('heading'), distKmEl = $('distance-km-m'), vertSpdEl = $('vertical-speed');
+    if (hdgEl) hdgEl.textContent = hdg !== null ? `${hdg.toFixed(1)} °` : '--';
+    if (distKmEl) distKmEl.textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
+    if (speedSrc) speedSrc.textContent = `Source: ${currentGPSMode} (${manualFreqMode ? 'Forcé' : 'Auto'})`;
+    if (vertSpdEl) vertSpdEl.textContent = `${spdV.toFixed(2)} m/s`;
+    
+    if (tLat !== null && tLon !== null) {
+        const capDestEl = $('cap-dest');
+        if (capDestEl) capDestEl.textContent = `${bearing(lat, lon, tLat, tLon).toFixed(1)} °`;
+    }
+    
+    // ===============================================
+    // DÉBUT : Métriques physiques
+    // ===============================================
+    
+    const AIR_DENSITY = 1.225; 
+    const CDA_EST = 0.6;       
+    const v_ms = sSpdFE;       
+    
+    const dragForce = 0.5 * AIR_DENSITY * CDA_EST * v_ms ** 2;
+    const dragPower = dragForce * v_ms; 
+    
+    const dragForceEl = $('drag-force'), dragPowerEl = $('drag-power-kw');
+    if (dragForceEl) dragForceEl.textContent = `${dragForce.toFixed(1)} N`;
+    if (dragPowerEl) dragPowerEl.textContent = `${(dragPower / 1000).toFixed(2)} kW`;
+    
+    const accellLong = dt > 0 ? (spd3D - lastSpd3D) / dt : 0;
+    const gForce = accellLong / 9.80665; 
+    
+    const gForceEl = $('g-force'), accelLongEl = $('accel-long');
+    if (gForceEl) gForceEl.textContent = `${gForce.toFixed(2)} G`;
+    if (accelLongEl) accelLongEl.textContent = `${accellLong.toFixed(3)} m/s²`;
+    
+    // ===============================================
+    // FIN : Métriques physiques
+    // ===============================================
+}
 
 function handleErr(err) {
     syncH(); 
