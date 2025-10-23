@@ -513,3 +513,133 @@ function captureScreenshot() {
         }
     });
 } // Fin de la fonction captureScreenshot
+
+function handleErr(err) {
+    syncH(); 
+    if (!errorDisplay) return;
+    errorDisplay.style.display = 'block';
+    let msg = "⚠️ Erreur GPS inconnue. Utilisation du temps Internet/Local.";
+    if (err.code === err.PERMISSION_DENIED) msg = "❌ L'accès à la localisation a été refusé. Utilisation du temps Internet/Local.";
+    else if (err.code === err.POSITION_UNAVAILABLE) msg = "🛰️ Position non disponible. Signal GPS faible. Utilisation du temps Internet/Local.";
+    else if (err.code === err.TIMEOUT) msg = "⌛ Délai de recherche du GPS dépassé. Signal faible. Utilisation du temps Internet/Local.";
+    errorDisplay.textContent = msg;
+    stopGPS(false); 
+}
+
+function startGPS() {
+    if (navigator.geolocation && startBtn && stopBtn && resetMaxBtn && $('gps-accuracy') && speedSrc) {
+        syncH(); 
+        
+        distMStartOffset = distM; 
+        sTime = getCDate().getTime(); 
+        resetMax(); 
+        
+        // Démarrage initial en mode LOW_FREQ (GPS)
+        const opts = GPS_OPTS['LOW_FREQ'];
+        wID = navigator.geolocation.watchPosition(updateDisp, handleErr, opts);
+        currentGPSMode = 'LOW_FREQ';
+
+        // Démarrage initial en mode faible fréquence (DOM/CPU)
+        if (domID !== null) clearInterval(domID);
+        domID = setInterval(fastDOM, DOM_LOW_FREQ_MS);
+        currentDOMFreq = DOM_LOW_FREQ_MS;
+        fastDOM.lastSlowT = 0; 
+        
+        startBtn.disabled = true; stopBtn.disabled = false; resetMaxBtn.disabled = false;
+        $('gps-accuracy').classList.remove('max-precision');
+        speedSrc.textContent = `Source: LOW_FREQ (Auto)`; 
+    } else {
+        if (errorDisplay) {
+            errorDisplay.textContent = "❌ Géolocalisation non supportée par votre navigateur.";
+            errorDisplay.style.display = 'block';
+        }
+    }
+}
+
+function stopGPS(clearT = true) {
+    if (wID !== null) { navigator.geolocation.clearWatch(wID); wID = null; }
+    
+    if (clearT) sTime = null;
+    
+    // S'assurer que le mode d'affichage est au moins LOW_FREQ
+    if (currentDOMFreq !== DOM_LOW_FREQ_MS && domID !== null) {
+        clearInterval(domID);
+        domID = setInterval(fastDOM, DOM_LOW_FREQ_MS);
+        currentDOMFreq = DOM_LOW_FREQ_MS;
+    }
+
+    if (startBtn) startBtn.disabled = false; 
+    if (stopBtn) stopBtn.disabled = true; 
+    if (errorDisplay) {
+        errorDisplay.style.display = 'block';
+        errorDisplay.textContent = "PAUSE : Géolocalisation arrêtée. La distance totale est conservée.";
+    }
+}
+
+// --- DÉMARRAGE INITIAL ---
+document.addEventListener('DOMContentLoaded', () => {
+    resetDisp();
+    syncH(); 
+    initALS(); 
+    
+    // Démarrage initial de la boucle DOM en mode éco (LOW_FREQ_MS)
+    if (domID === null) {
+        domID = setInterval(fastDOM, DOM_LOW_FREQ_MS); 
+        fastDOM.lastSlowT = 0; 
+        currentDOMFreq = DOM_LOW_FREQ_MS;
+    }
+    
+    // Connexion des boutons (Vérification des références DOM)
+    if (startBtn) startBtn.addEventListener('click', startGPS);
+    if (stopBtn) stopBtn.addEventListener('click', stopGPS);
+    if (resetMaxBtn) resetMaxBtn.addEventListener('click', resetMax);
+    if (setTargetBtn) setTargetBtn.addEventListener('click', setTarget);
+    if (toggleModeBtn) toggleModeBtn.addEventListener('click', toggleManualMode);
+    if (autoModeBtn) autoModeBtn.addEventListener('click', setAutoMode);
+    
+    if (netherToggleBtn) netherToggleBtn.addEventListener('click', () => {
+        netherMode = !netherMode;
+        netherToggleBtn.textContent = netherMode ? '✨ Real World' : '⛏️ Nether';
+        const netherIndEl = $('nether-indicator');
+        if (netherIndEl) netherIndEl.textContent = netherMode ? 'ACTIVÉ (1:8)' : 'DÉSACTIVÉ (1:1)';
+    });
+    
+    if ($('capture-btn')) $('capture-btn').addEventListener('click', captureScreenshot);
+
+    // Événement RESET TOUT
+    if (resetAllBtn) resetAllBtn.addEventListener('click', () => { 
+        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser (Distance, Max, Cible) ?")) {
+            stopGPS(true);
+            resetDisp();
+        }
+    });
+
+    // Événement CLIC en mode manuel pour basculer la fréquence
+    if (freqManualBtn) {
+        freqManualBtn.addEventListener('click', (event) => {
+            if (manualFreqMode) {
+                cycleForcedFreq();
+                event.stopPropagation();
+            } else {
+                toggleManualFreq();
+            }
+        });
+    }
+
+    // Gestionnaire du bouton pour définir la localisation par défaut
+    const setDefaultLocBtn = $('set-default-loc-btn');
+    if (setDefaultLocBtn) {
+        setDefaultLocBtn.addEventListener('click', () => { 
+            const newLatStr = prompt(`Entrez la nouvelle Latitude par défaut (actuel: ${D_LAT}) :`);
+            if (newLatStr !== null && !isNaN(parseFloat(newLatStr))) { 
+                const newLonStr = prompt(`Entrez la nouvelle Longitude par défaut (actuel: ${D_LON}) :`);
+                if (newLonStr !== null && !isNaN(parseFloat(newLonStr))) {
+                    D_LAT = parseFloat(newLatStr);
+                    D_LON = parseFloat(newLonStr);
+                    alert(`Nouvelle localisation par défaut : ${D_LAT.toFixed(4)}, ${D_LON.toFixed(4)}`);
+                    resetDisp(); // Réinitialiser l'affichage avec la nouvelle position
+                }
+            }
+        });
+    }
+});
