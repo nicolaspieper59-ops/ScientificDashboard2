@@ -1,30 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Scientifique V4.2 - Multi-Grandeurs</title>
+    
+    <style>
+        /* Styles de base pour le thème sombre */
+        body {
+            font-family: 'Consolas', monospace;
+            background-color: #121212;
+            color: #e0e0e0;
+            padding: 15px;
+            margin: 0;
+        }
+        h1 { color: #00ff99; margin-bottom: 5px; border-bottom: 2px solid #00ff99; padding-bottom: 5px; }
+        h2 { border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 15px; color: #b0b0b0; }
+        
+        /* Grille de données responsive */
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .data-box {
+            background-color: #222;
+            padding: 10px;
+            border-left: 3px solid #f9d342; /* Jaune pour les indicateurs */
+            font-size: 0.9em;
+        }
+        .value {
+            float: right;
+            font-weight: bold;
+            color: #00ff99; /* Vert pour les valeurs */
+        }
+        .btn-group button {
+            background-color: #444;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            margin-right: 5px;
+            transition: background-color 0.3s;
+        }
+        .btn-group button:hover {
+            background-color: #666;
+        }
+        #emergency-stop-btn {
+            background-color: #cc0000;
+        }
+        #emergency-stop-btn:hover {
+            background-color: #ff3333;
+        }
+        #map-placeholder {
+            cursor: pointer;
+            padding: 20px;
+            border: 2px dashed #00ff99;
+            background: #1a1a1a;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
 <div id="dashboard-container">
-    <div class="header">
-        <h1>Dashboard Avancé V4.1</h1>
-        <div id="error-message" style="color: red; display: none;"></div>
+    <h1>Dashboard Scientifique V4.2 🧪</h1>
+    <div id="error-message" style="color: red; display: none; margin-bottom: 10px; font-weight: bold;"></div>
+
+    <div class="btn-group" style="margin-bottom: 20px;">
+        <button id="start-btn">Démarrer GPS</button>
+        <button id="stop-btn">Arrêter GPS</button>
+        <button id="reset-all-btn">Réinitialiser Session</button>
+        <button id="emergency-stop-btn">🛑 ARRÊT D'URGENCE MANUEL</button>
     </div>
 
-    <h2>Localisation par Défaut (D_LAT/D_LON)</h2>
-    <div id="map-interface" style="margin-bottom: 20px;">
+    <h2>Localisation & Configuration</h2>
+    <div id="map-interface">
+        <div id="map-placeholder">
+            🗺️ **Carte Interactive (Cliquez pour Définir D_LAT/D_LON)** 🌍
+            <br>Position Actuelle par Défaut: Lat=48.8566, Lon=2.3522
         </div>
+    </div>
+    
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Masse Sélectionnée (Physique)</strong>
+            <span id="mass-indicator" class="value">75.0 kg</span>
+            <button id="set-mass-btn" style="float: right; margin-left: 5px; padding: 3px 8px;">Choisir</button>
+        </div>
+        <div class="data-box">
+            <strong>Environnement (Facteur R)</strong>
+            <select id="environment-select" style="float: right; background: #333; color: #e0e0e0; border: none;">
+                <option value="NORMAL">Normal</option><option value="METAL">Métal</option><option value="FOREST">Forêt</option><option value="CONCRETE">Béton</option>
+            </select>
+        </div>
+        <div class="data-box">
+            <strong>Météo (Facteur Traînée)</strong>
+            <select id="weather-select" style="float: right; background: #333; color: #e0e0e0; border: none;">
+                <option value="CLEAR">Clair</option><option value="RAIN">Pluie</option><option value="SNOW">Neige</option><option value="STORM">Tempête</option>
+            </select>
+        </div>
+    </div>
 
-    <h2>Système d'Alimentation</h2>
+    <h2>Système d'Alimentation (Vitesse de Charge/Décharge)</h2>
     <div class="data-grid">
         <div class="data-box">
             <strong>Batterie Principale</strong>
-            <span id="battery-indicator" class="value">N/A</span>
+            <span id="battery-indicator" class="value">N/A (API Manquante)</span>
         </div>
         <div class="data-box">
             <strong>Type de Charge</strong>
             <span id="charge-type" class="value">N/A</span>
         </div>
         <div class="data-box">
-            <strong>Batterie de Secours</strong>
+            <strong>Consommation Estimée</strong>
+            <span id="power-consumption" class="value">0.0 W</span>
+        </div>
+        <div class="data-box" style="border-left-color: #ff3333;">
+            <strong>Batterie Secours (Autonomie)</strong>
             <span id="backup-battery-status" class="value">Désactivée</span>
         </div>
     </div>
     
-    <h2>Chronométrie Céleste & LSM</h2>
+    <h2>Chronométrie Céleste & Temps Solaire Local (LSM)</h2>
     <div class="data-grid">
         <div class="data-box">
             <strong>Heure Solaire Vraie (HSV)</strong>
@@ -39,9 +139,107 @@
             <span id="solar-culmination" class="value">--:--:--</span>
         </div>
         <div class="data-box">
+            <strong>Longitude Solaire</strong>
+            <span id="solar-longitude-val" class="value">-- °</span>
+        </div>
+        <div class="data-box">
             <strong>Équation du Temps (EoT)</strong>
             <span id="eot" class="value">-- min</span>
+        </div>
+        <div class="data-box">
+            <strong>Phase Lunaire</strong>
+            <span id="lunar-phase-perc" class="value">-- %</span>
+        </div>
+        <div class="data-box">
+            <strong>Altitude GNSS</strong>
+            <span id="altitude" class="value">-- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Altitude Baro (Sim.)</strong>
+            <span id="alt-baro" class="value">-- m</span>
+        </div>
+    </div>
+    
+    <h2>Cinétique, Physique & Mécanique</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Vitesse Stable (km/h)</strong>
+            <span id="speed-stable" class="value">0.00000 km/h</span>
+        </div>
+        <div class="data-box">
+            <strong>Distance Totale</strong>
+            <span id="distance-km-m" class="value">0.000 km | 0.00 m</span>
+        </div>
+        <div class="data-box">
+            <strong>Énergie Cinétique</strong>
+            <span id="kinetic-energy" class="value">0.000 kJ</span>
+        </div>
+        <div class="data-box">
+            <strong>Quantité de Mouvement</strong>
+            <span id="momentum" class="value">0.000 kg·m/s</span>
+        </div>
+        <div class="data-box">
+            <strong>Force de Traînée</strong>
+            <span id="drag-force" class="value">0.0 N</span>
+        </div>
+        <div class="data-box">
+            <strong>Puissance de Traînée</strong>
+            <span id="drag-power-kw" class="value">0.00 kW</span>
+        </div>
+        <div class="data-box">
+            <strong>Travail/Énergie Dépensée</strong>
+            <span id="work-energy" class="value">0.00 MJ</span>
+        </div>
+        <div class="data-box">
+            <strong>Accélération Longitudinale</strong>
+            <span id="accel-long" class="value">0.000 m/s²</span>
+        </div>
+        <div class="data-box">
+            <strong>Force G</strong>
+            <span id="g-force" class="value">0.00 G</span>
+        </div>
+    </div>
+
+    <h2>Météo, Chimie & SVT (Simulation)</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Température Air</strong>
+            <span id="air-temp" class="value">-- °C</span>
+        </div>
+        <div class="data-box">
+            <strong>Pression (hPa/Pa)</strong>
+            <span id="pressure" class="value">-- hPa (-- Pa)</span>
+        </div>
+        <div class="data-box">
+            <strong>Humidité (%)</strong>
+            <span id="humidity" class="value">-- %</span>
+        </div>
+        <div class="data-box">
+            <strong>Masse Volumique Air</strong>
+            <span id="air-density-calc" class="value">-- kg/m³</span>
+        </div>
+        <div class="data-box">
+            <strong>Volume Molaire (Est.)</strong>
+            <span id="molar-volume" class="value">-- L/mol</span>
+        </div>
+        <div class="data-box">
+            <strong>Taux d'Oxygène (%)</strong>
+            <span id="o2-level-sim" class="value">-- %</span>
+        </div>
+        <div class="data-box">
+            <strong>Saturation SpO₂ (Est.)</strong>
+            <span id="spo2-sim" class="value">-- %</span>
+        </div>
+        <div class="data-box">
+            <strong>Calories Brûlées (Est.)</strong>
+            <span id="calorie-burn" class="value">0.0 Cal</span>
+        </div>
+        <div class="data-box">
+            <strong>Puissance Totale (Métabolique)</strong>
+            <span id="power-output" class="value">0.0 W</span>
         </div>
     </div>
 
 </div>
+
+<script>
