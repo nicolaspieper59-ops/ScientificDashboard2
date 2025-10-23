@@ -3,88 +3,319 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard GPS/IMU Avancé V2.0</title>
+    <title>Dashboard GPS Avancé & Chronométrie Céleste</title>
+    
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script> 
+    
     <style>
-        body { font-family: monospace; background-color: #1e1e1e; color: #00ff7f; margin: 0; padding: 10px; }
-        .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
-        .data-section { background-color: #2a2a2a; padding: 15px; border-radius: 8px; border: 1px solid #00ff7f; }
-        h2, h3 { color: #00ff7f; margin-top: 0; border-bottom: 1px dashed #00ff7f44; padding-bottom: 5px; }
-        .data-label { font-weight: bold; display: inline-block; width: 60%; }
-        .data-value { float: right; color: #ffffff; }
-        input[type="number"], select { background-color: #3a3a3a; color: #ffffff; border: 1px solid #00ff7f; padding: 3px; border-radius: 3px; }
-        button { background-color: #00ff7f; color: #1e1e1e; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-left: 10px;}
-        button:hover { background-color: #00cc66; }
-        .controls { margin-bottom: 15px; background-color: #2a2a2a; padding: 15px; border-radius: 8px; border: 1px solid #00ff7f; }
-        .note { color: #ff0000; font-size: 0.8em; margin-top: 5px; }
+        /* Styles de base pour le thème sombre et le mode nuit */
+        body {
+            font-family: 'Consolas', monospace;
+            background-color: #121212;
+            color: #e0e0e0;
+            padding: 10px; 
+            transition: background-color 0.5s, color 0.5s;
+        }
+        .night-mode {
+            background-color: #000033;
+            color: #99ccff;
+        }
+        h1 { color: #f9d342; margin-bottom: 5px; }
+        h2 { border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 15px; color: #b0b0b0; }
+        
+        /* RESPONSIVITÉ POUR TOUS LES ÉCRANS */
+        .data-grid {
+            display: grid;
+            /* Par défaut, une seule colonne sur les petits écrans */
+            grid-template-columns: repeat(auto-fit, minmax(100%, 1fr)); 
+            gap: 10px; 
+            margin-bottom: 20px;
+        }
+        
+        /* Media Query pour les tablettes et plus (600px) */
+        @media (min-width: 600px) {
+            .data-grid {
+                /* Deux ou plus colonnes sur les écrans plus larges */
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            }
+        }
+        
+        .data-box {
+            background-color: #1e1e1e;
+            padding: 8px 10px; 
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        .data-box strong {
+            display: block;
+            font-size: 0.75em; 
+            color: #aaaaaa;
+            margin-bottom: 2px;
+        }
+        .value {
+            font-size: 1.3em; 
+            font-weight: bold;
+            color: #00ff99; 
+        }
+        .night-mode .value { color: #ffcc00; }
+
+        .time-header {
+            font-size: 1.8em; 
+            color: #f9d342;
+            margin-top: 0;
+        }
+        
+        .controls button {
+            padding: 8px 10px;
+            margin: 5px 5px 5px 0; 
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            font-size: 0.9em; 
+        }
+        
+        /* Styles des boutons spécifiques */
+        #start-btn { background-color: #4CAF50; color: white; }
+        #stop-btn { background-color: #f44336; color: white; }
+        #reset-max-btn { background-color: #2196F3; color: white; }
+        #set-default-loc-btn { background-color: #ff9800; color: white; }
+        #set-target-btn { background-color: #9C27B0; color: white; }
+        #toggle-mode-btn, #auto-mode-btn { background-color: #607D8B; color: white; }
+        #nether-toggle-btn { background-color: #8B0000; color: white; }
+        #capture-btn { background-color: #007bff; color: white; }
+        #reset-all-btn { background-color: #f44336; color: white; border: 2px solid white; }
+        #freq-manual-btn { background-color: #ff4500; color: white; } /* Bouton de fréquence */
+
+        
+        #error-message {
+            background-color: #330000;
+            color: #ff6666;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            display: none;
+            font-size: 0.9em;
+        }
+        .max-precision {
+            color: #4dff4d !important;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body>
 
-    <h2>TABLEAU DE BORD GPS/IMU AVANCÉ</h2>
-    <p class="note">Vitesse Stable calée sur 1 mm/s (0.001 m/s) en utilisant la fusion IMU/GPS.</p>
-    
+    <header>
+        <h1 id="solar-true-header" class="time-header">00:00:00 (HSV)</h1>
+        <h1 id="solar-mean-header" class="time-header" style="font-size: 1.2em; color: #00ff99;">00:00:00 (LSM)</h1>
+    </header>
+
+    <div id="error-message"></div>
+
     <div class="controls">
-        <span class="data-label">Mode de Navigation :</span>
-        <select id="mode-select">
-            <option value="HYBRID">Hybride (GPS + IMU)</option>
-            <option value="IMU_ONLY">IMU Seul (Accéléromètre/Drift)</option>
-        </select>
-        <hr style="border-color: #333; margin: 10px 0;">
-        <span class="data-label">Matériau Réflecteur :</span>
-        <select id="material-select">
-            <option value="NONE">Ciel Dégagé (Pas de correction)</option>
-            <option value="METAL">Métal (Réflexion forte)</option>
-            <option value="CONCRETE">Béton (Réflexion modérée)</option>
-            <option value="WET_GROUND">Sol Humide (Réflexion basse)</option>
-            <option value="FOLIAGE">Feuillage Dense (Diffusion)</option>
-        </select>
-        <button id="apply-bias-btn">📐 Appliquer Biais</button>
-        <span class="data-value" style="display: block; text-align: right; margin-top: 5px;" id="bias-applied">0.0m / 0.0m</span>
+        <button id="start-btn">▶️ Démarrer GPS</button>
+        <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
+        <button id="reset-all-btn">🗑️ Réinitialiser Tout</button>
+        <button id="reset-max-btn" disabled>⭕ Réinitialiser Max</button>
+        <button id="set-target-btn">🎯 Cible</button>
+    </div>
+    
+    <div class="controls" style="margin-top: 10px;">
+        <button id="toggle-mode-btn">💡 Bascule Manuelle</button>
+        <button id="auto-mode-btn" style="display: none;">🔄 Retour Auto</button>
+        <button id="nether-toggle-btn">⛏️ Nether</button>
+        <button id="set-default-loc-btn">📍 Changer Défaut</button>
+    </div>
+    
+    <div class="controls" style="margin-top: 10px;">
+        <button id="freq-manual-btn">⚙️ Fréquence: Auto</button> 
+        <button id="capture-btn">📸 Capturer</button>
+    </div>
+    
+    <p style="margin-top: 5px;"><strong id="mode-indicator">Mode: Jour ☀️</strong></p>
+    
+    <h2>🚀 Vitesse & Chronométrie</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Vitesse Stable (km/h)</strong>
+            <span id="speed-stable" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Instantanée 3D (km/h)</strong>
+            <span id="speed-3d-inst" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Stable (mm/s)</strong>
+            <span id="speed-stable-mm" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Max (km/h)</strong>
+            <span id="speed-max" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Moyenne (km/h) (Session)</strong>
+            <span id="speed-avg" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Verticale (m/s)</strong>
+            <span id="vertical-speed" class="value">0.00 m/s</span>
+        </div>
+        <div class="data-box">
+            <strong>Distance Totale</strong>
+            <span id="distance-km-m" class="value">-- km | -- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Écoulé (Session)</strong>
+            <span id="elapsed-time" class="value">-- s</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Brute (m/s)</strong>
+            <span id="speed-ms" class="value">-- m/s</span>
+        </div>
+        <div class="data-box">
+            <strong>Source Vitesse</strong>
+            <span id="speed-source-indicator" class="value" style="font-size: 1.2em;">Source: N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>Écart Vitesse Stable/Brute (%)</strong>
+            <span id="speed-error-perc" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Cohérence du Signal (R/%)</strong>
+            <span id="speed-coherence" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Fréquence MàJ DOM</strong>
+            <span id="update-frequency" class="value">--</span>
+        </div>
+    </div>
+    
+    <h2>🗺️ Données GPS</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Latitude (°)</strong>
+            <span id="latitude" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Longitude (°)</strong>
+            <span id="longitude" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Altitude (m)</strong>
+            <span id="altitude" class="value">-- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Précision (m)</strong>
+            <span id="gps-accuracy" class="value">-- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Cap (Heading, °)</strong>
+            <span id="heading" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Cap vers Cible (°)</strong>
+            <span id="cap-dest" class="value">N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>En Souterrain (< -50m)</strong>
+            <span id="underground" class="value">Non</span>
+        </div>
     </div>
 
-    <div class="grid-container">
-
-        <div class="data-section">
-            <h3>Vitesse & Mouvement</h3>
-            <p><span class="data-label">Mode Actuel:</span> <span class="data-value" id="current-mode">HYBRIDE</span></p>
-            <p><span class="data-label">Cohérence Signal (%):</span> <span class="data-value" id="signal-coherence">-- %</span></p>
-            <p><span class="data-label">Vitesse Brute (m/s):</span> <span class="data-value" id="spd-raw">--</span></p>
-            <p><span class="data-label">Vitesse Stable (m/s):</span> <span class="data-value" id="spd-stable">--</span></p>
-            <p><span class="data-label">Accélération Totale (m/s²):</span> <span class="data-value" id="accel-total">--</span></p>
-            <p><span class="data-label">Temps Écoulé (s):</span> <span class="data-value" id="time-elapsed">--</span></p>
-            <p><span class="data-label">Temps Delta (ms):</span> <span class="data-value" id="dt-gps">--</span></p>
+    <h2>🔭 Chronométrie Céleste & Environnement</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Temps Solaire Vrai (HSV)</strong>
+            <span id="solar-true" class="value">00:00:00</span>
         </div>
-
-        <div class="data-section">
-            <h3>Position & Précision</h3>
-            <p><span class="data-label">Latitude:</span> <span class="data-value" id="latitude">--</span></p>
-            <p><span class="data-label">Longitude:</span> <span class="data-value" id="longitude">--</span></p>
-            <p><span class="data-label">Précision (m):</span> <span class="data-value" id="accuracy">--</span></p>
-            <p><span class="data-label">Altitude (m):</span> <span class="data-value" id="altitude">--</span></p>
-            <p><span class="data-label">Cap (Degrés):</span> <span class="data-value" id="heading">--</span></p>
+        <div class="data-box">
+            <strong>Temps Solaire Moyen (LSM)</strong>
+            <span id="solar-mean" class="value">00:00:00</span>
         </div>
-
-        <div class="data-section">
-            <h3>Performance & Trajet</h3>
-            <p><span class="data-label">Distance Totale (m):</span> <span class="data-value" id="dist-total">--</span></p>
-            <p><span class="data-label">Vitesse Moyenne (Globale):</span> <span class="data-value" id="avg-speed">--</span></p>
-            <p><span class="data-label">Dénivelé Positif:</span> <span class="data-value" id="climb-total">-- m</span></p>
-            <p><span class="data-label">Dénivelé Négatif:</span> <span class="data-value" id="descent-total">-- m</span></p>
-            <p><span class="data-label">Temps Restant (ETA):</span> <span class="data-value" id="eta-target">--</span></p>
+        <div class="data-box">
+            <strong>Culmination Solaire (LSM)</strong>
+            <span id="solar-culmination" class="value">00:00:00</span>
         </div>
-
-        <div class="data-section">
-            <h3>Correction Atmosphérique (Théorique)</h3>
-            <p><span class="data-label">Température (°C) :</span> <input type="number" id="temp-input" value="15.0" step="0.1" style="width:60px; float:right;"></p>
-            <p><span class="data-label">Pression (hPa) :</span> <input type="number" id="press-input" value="1013.25" step="0.5" style="width:60px; float:right;"></p>
-            <p><span class="data-label">Humidité (%) :</span> <input type="number" id="hum-input" value="50.0" step="1.0" min="0" max="100" style="width:60px; float:right;"></p>
-            <hr style="border-color: #333;">
-            <p><span class="data-label">Vitesse Lumière (Air):</span> <span class="data-value" id="c-air">--</span></p>
-            <p><span class="data-label">Indice de Réfraction (n):</span> <span class="data-value" id="refraction-index">--</span></p>
+        <div class="data-box">
+            <strong>Équation du Temps (EoT)</strong>
+            <span id="eot" class="value">-- min</span>
         </div>
-
+        <div class="data-box">
+            <strong>Élévation Solaire (°)</strong>
+            <span id="sun-elevation" class="value">-- °</span>
+        </div>
+        <div class="data-box">
+            <strong>Longitude Solaire (°)</strong>
+            <span id="solar-longitude-val" class="value">-- °</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Lunaire (HSV)</strong>
+            <span id="lunar-time" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Phase Lunaire (%)</strong>
+            <span id="lunar-phase-perc" class="value">--%</span>
+        </div>
+        <div class="data-box">
+            <strong>Illuminance (Lux)</strong>
+            <span id="illuminance-lux" class="value">Initialisation...</span>
+        </div>
+    </div>
+    
+    <h2>🔬 Métriques Physiques & Autres</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Accélération Longitudinale ($m/s^2$)</strong>
+            <span id="accel-long" class="value">0.000 m/s²</span>
+        </div>
+        <div class="data-box">
+            <strong>Force G (G)</strong>
+            <span id="g-force" class="value">0.00 G</span>
+        </div>
+        <div class="data-box">
+            <strong>Force de Traînée (N)</strong>
+            <span id="drag-force" class="value">0.0 N</span>
+        </div>
+        <div class="data-box">
+            <strong>Puissance de Traînée (kW)</strong>
+            <span id="drag-power-kw" class="value">0.00 kW</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse vs Lumière (%)</strong>
+            <span id="perc-light" class="value">--%</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse vs Son (%)</strong>
+            <span id="perc-sound" class="value">--%</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Minecraft (MC)</strong>
+            <span id="mc-time" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Mode Nether (1:8)</strong>
+            <span id="nether-indicator" class="value">DÉSACTIVÉ (1:1)</span>
+        </div>
+        
+        <div class="data-box">
+            <strong>Température Air (°C)</strong>
+            <span id="air-temp" class="value">N/A (API désactivée)</span>
+        </div>
+        <div class="data-box">
+            <strong>Pression (hPa)</strong>
+            <span id="pressure" class="value">N/A (API désactivée)</span>
+        </div>
+        <div class="data-box">
+            <strong>Taux d'Oxygène (%)</strong>
+            <span id="o2-perc" class="value">20.95 %</span>
+        </div>
+        <div class="data-box">
+            <strong>Champ Magnétique ($\mu\text{T}$)</strong>
+            <span id="mag-field" class="value">-- $\mu\text{T}$</span>
+        </div>
     </div>
 
     <script src="dashboard.js"></script>
 </body>
-    </html>
+                                                     </html>
