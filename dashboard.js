@@ -266,7 +266,7 @@ function calcMiddayMetrics() {
     return { 
         solarLongitude: sLon, 
         eot: EoT_m 
-    }
+}
 // ===========================================
 // CAPTEURS AVANCÉS (V3.0/V3.1)
 // ===========================================
