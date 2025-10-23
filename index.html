@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard GPS/IMU Micro-Précision</title>
+    <title>Dashboard GPS/IMU Avancé V2.0</title>
     <style>
-        /* Styles de base, vous pouvez les ajuster */
         body { font-family: monospace; background-color: #1e1e1e; color: #00ff7f; margin: 0; padding: 10px; }
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
         .data-section { background-color: #2a2a2a; padding: 15px; border-radius: 8px; border: 1px solid #00ff7f; }
@@ -21,8 +20,8 @@
 </head>
 <body>
 
-    <h2>TABLEAU DE BORD GPS/IMU MICRO-PRÉCISION</h2>
-    <p class="note">Vitesse Stable calée sur 1 mm/s (0.001 m/s) en utilisant l'IMU.</p>
+    <h2>TABLEAU DE BORD GPS/IMU AVANCÉ</h2>
+    <p class="note">Vitesse Stable calée sur 1 mm/s (0.001 m/s) en utilisant la fusion IMU/GPS.</p>
     
     <div class="controls">
         <span class="data-label">Mode de Navigation :</span>
@@ -48,6 +47,7 @@
         <div class="data-section">
             <h3>Vitesse & Mouvement</h3>
             <p><span class="data-label">Mode Actuel:</span> <span class="data-value" id="current-mode">HYBRIDE</span></p>
+            <p><span class="data-label">Cohérence Signal (%):</span> <span class="data-value" id="signal-coherence">-- %</span></p>
             <p><span class="data-label">Vitesse Brute (m/s):</span> <span class="data-value" id="spd-raw">--</span></p>
             <p><span class="data-label">Vitesse Stable (m/s):</span> <span class="data-value" id="spd-stable">--</span></p>
             <p><span class="data-label">Accélération Totale (m/s²):</span> <span class="data-value" id="accel-total">--</span></p>
@@ -87,4 +87,4 @@
 
     <script src="dashboard.js"></script>
 </body>
-</html>
+    </html>
