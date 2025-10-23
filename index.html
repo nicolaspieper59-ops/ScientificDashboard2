@@ -8,6 +8,12 @@
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script> 
     
     <style>
+        /* NOUVEAU: Facteur global de taille de police (V3.2) */
+        :root {
+            --global-font-factor: 1.0; 
+            --base-font-size: 13px;
+        }
+
         /* Styles de base pour le thème sombre et le mode nuit */
         body {
             font-family: 'Consolas', monospace;
@@ -15,6 +21,7 @@
             color: #e0e0e0;
             padding: 10px; 
             transition: background-color 0.5s, color 0.5s;
+            font-size: calc(var(--base-font-size) * var(--global-font-factor)); /* Taille ajustée */
         }
         .night-mode {
             background-color: #000033;
@@ -44,19 +51,19 @@
             margin-bottom: 2px;
         }
         .value {
-            font-size: 1.3em; 
+            font-size: calc(1.3em * var(--global-font-factor)); /* Taille ajustée */
             font-weight: bold;
             color: #00ff99; 
         }
         .night-mode .value { color: #ffcc00; }
 
         .time-header {
-            font-size: 1.8em; 
+            font-size: calc(1.8em * var(--global-font-factor)); /* Taille ajustée */
             color: #f9d342;
             margin-top: 0;
         }
         
-        .controls button {
+        .controls button, .controls select {
             padding: 8px 10px;
             margin: 5px 5px 5px 0; 
             border: none;
@@ -64,16 +71,16 @@
             cursor: pointer;
             font-weight: bold;
             transition: background-color 0.2s;
-            font-size: 0.9em; 
+            font-size: calc(0.9em * var(--global-font-factor)); /* Taille ajustée */
+            background-color: #333;
+            color: #fff;
         }
         
-        /* Styles des boutons spécifiques (couleurs V3.0) */
+        /* Styles des boutons spécifiques */
         #start-btn { background-color: #4CAF50; color: white; }
         #stop-btn { background-color: #f44336; color: white; }
-        /* ... autres boutons ... */
-        #freq-manual-btn { background-color: #ff4500; color: white; } /* Bouton de fréquence */
+        #freq-manual-btn { background-color: #ff4500; color: white; } 
 
-        
         #error-message {
             background-color: #330000;
             color: #ff6666;
@@ -111,11 +118,36 @@
         <button id="auto-mode-btn" style="display: none;">🔄 Retour Auto</button>
         <button id="nether-toggle-btn">🔥 Nether</button>
         <button id="set-default-loc-btn">📍 Changer Défaut</button>
+        <button id="freq-manual-btn">⚡ Fréquence: Auto</button> 
     </div>
     
     <div class="controls" style="margin-top: 10px;">
-        <button id="freq-manual-btn">⚡ Fréquence: Auto</button> 
+        <button id="emergency-stop-btn" style="background-color: #f44336; color: white;">🚨 Arrêt Urgence Batterie</button>
         <button id="capture-btn">📸 Capturer</button>
+    </div>
+    
+    <h2>⚙️ Réglages Système & Filtrage (V3.2)</h2>
+    <div class="controls">
+        <label>Taille Affichage : </label>
+        <button id="size-small-btn">A-</button>
+        <button id="size-normal-btn" style="background-color: #007bff; color: white;">A</button>
+        <button id="size-large-btn">A+</button>
+    </div>
+    <div class="controls" style="margin-top: 10px;">
+        <label for="environment-select">Environnement/Matériau :</label>
+        <select id="environment-select">
+            <option value="NORMAL">Normal/Ouvert</option>
+            <option value="METAL">Intérieur Métallique/Véhicule</option>
+            <option value="FOREST">Forêt Dense</option>
+            <option value="CONCRETE">Ville Dense/Béton</option>
+        </select>
+        <label for="weather-select" style="margin-left: 15px;">Météo (Perturbation) :</label>
+        <select id="weather-select">
+            <option value="CLEAR">Clair</option>
+            <option value="RAIN">Pluie Forte/Grésil</option>
+            <option value="SNOW">Neige/Grêle</option>
+            <option value="STORM">Orage/Interférence</option>
+        </select>
     </div>
     
     <p style="margin-top: 5px;"><strong id="mode-indicator">Mode: Jour ☀️</strong></p>
@@ -204,7 +236,7 @@
         </div>
         <div class="data-box">
             <strong>Altitude Baro (Corrigée) (m)</strong>
-            <span id="alt-baro" class="value">-- m</span>
+            <span id="alt-baro" class="value">-- m (Baro)</span>
         </div>
     </div>
 
@@ -221,26 +253,27 @@
         <div class="data-box">
             <strong>Culmination Solaire (LSM)</strong>
             <span id="solar-culmination" class="value">00:00:00 (LSM)</span>
-            <div class="data-grid">
-    <div class="data-box" style="background-color: #2b1f1f;"> 
-        <strong>Longitude Solaire (12h00 UTC)</strong>
-        <span id="solar-longitude-midday" class="value" style="color: #FF5733;">-- °</span>
-    </div>
-    <div class="data-box" style="background-color: #2b1f1f;">
-        <strong>Équation du Temps (12h00 UTC)</strong>
-        <span id="eot-midday" class="value" style="color: #FF5733;">-- min</span>
-    </div>
         </div>
         <div class="data-box">
             <strong>Équation du Temps (EoT)</strong>
             <span id="eot" class="value">-- min</span>
         </div>
+        
+        <div class="data-box" style="background-color: #2b1f1f;"> 
+            <strong>Longitude Solaire (12h00 UTC)</strong>
+            <span id="solar-longitude-midday" class="value" style="color: #FF5733;">-- °</span>
+        </div>
+        <div class="data-box" style="background-color: #2b1f1f;">
+            <strong>Équation du Temps (12h00 UTC)</strong>
+            <span id="eot-midday" class="value" style="color: #FF5733;">-- min</span>
+        </div>
+        
         <div class="data-box">
             <strong>Élévation Solaire (°)</strong>
             <span id="sun-elevation" class="value">-- °</span>
         </div>
         <div class="data-box">
-            <strong>Longitude Solaire (°)</strong>
+            <strong>Longitude Solaire (Inst.) (°)</strong>
             <span id="solar-longitude-val" class="value">-- °</span>
         </div>
         <div class="data-box">
@@ -259,6 +292,26 @@
     
     <h2>⚙️ Métriques Physiques & Autres</h2>
     <div class="data-grid">
+        <div class="data-box">
+            <strong>Batterie</strong>
+            <span id="battery-indicator" class="value">N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>Arrêt Urgence (Status)</strong>
+            <span id="emergency-status" class="value">INACTIF</span>
+        </div>
+        <div class="data-box">
+            <strong>Matériau/Env. (Filtre)</strong>
+            <span id="selected-environment-ind" class="value">NORMAL</span>
+        </div>
+        <div class="data-box">
+            <strong>Météo (Filtre)</strong>
+            <span id="selected-weather-ind" class="value">CLAIR</span>
+        </div>
+        <div class="data-box">
+            <strong>Taille Affichage</strong>
+            <span id="display-size-indicator" class="value">NORMAL</span>
+        </div>
         <div class="data-box">
             <strong>Accélération Longitudinale (m/s²)</strong>
             <span id="accel-long" class="value">0.000 m/s²</span>
@@ -313,6 +366,7 @@
         </div>
     </div>
 
-    <script src="dashboard.js"></script>
+    <script src="dashboard_part1.js"></script>
+    <script src="dashboard_part2.js"></script>
 </body>
     </html>
