@@ -224,6 +224,50 @@ function calcLunarTime(lon) {
 }
 
 // ===========================================
+// CALCULS ASTRO & ENV (V3.0) - NOUVELLE LOGIQUE
+// ===========================================
+
+// Fonction utilitaire pour obtenir midi UTC pour une date locale donnée
+function getUTCMidday(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    // Créer une nouvelle Date à midi (12h00:00) en UTC
+    const midday = new Date(Date.UTC(year, month, day, 12, 0, 0));
+    return midday;
+}
+
+// Fonction de calcul des métriques de midi UTC
+function calcMiddayMetrics() {
+    // 1. Déterminer la date d'aujourd'hui (Locale)
+    const now = getCDate();
+    
+    // 2. Créer une Date de référence à 12:00:00 UTC pour cette journée
+    const utcMidday = getUTCMidday(now);
+    
+    // 3. Effectuer le calcul solaire avec la Date de midi UTC
+    // REMARQUE: Nous dupliquons/adaptons calcSolar pour utiliser un temps spécifique
+    const J2K_MS = 946728000000;
+    const D = (utcMidday.getTime() - J2K_MS) / 86400000;
+    const M = (357.529 + 0.98560028 * D) * D2R; 
+    const L = (280.466 + 0.98564736 * D) * D2R; 
+    const Ce = 2 * ECC * Math.sin(M) + 1.25 * ECC ** 2 * Math.sin(2 * M);
+    const lambda = L + Ce; // Longitude Solaire
+    
+    let sLon = (lambda * R2D) % 360;
+    if (sLon < 0) sLon += 360;
+    
+    const alpha = Math.atan2(Math.cos(OBLIQ) * Math.sin(lambda), Math.cos(lambda));
+    let EoT_deg = (L - alpha) * R2D;
+    while (EoT_deg > 180) EoT_deg -= 360;
+    while (EoT_deg < -180) EoT_deg += 360;
+    const EoT_m = EoT_deg * 4; 
+    
+    return { 
+        solarLongitude: sLon, 
+        eot: EoT_m 
+    }
+// ===========================================
 // CAPTEURS AVANCÉS (V3.0/V3.1)
 // ===========================================
 
@@ -479,6 +523,31 @@ function fastDOM() {
     if (fastDOM.lastSlowT && (pNow - fastDOM.lastSlowT) < DOM_SLOW_UPDATE_MS) return;
     
     fastDOM.lastSlowT = pNow;
+    // Dans la fonction fastDOM() (BLOC 2/2) :
+
+function fastDOM() {
+    // ... (Début de la fonction fastDOM() inchangé)
+    
+    updateAstro(latA, lonA); 
+    
+    if (fastDOM.lastSlowT && (pNow - fastDOM.lastSlowT) < DOM_SLOW_UPDATE_MS) return;
+    
+    // --- Mise à jour lente (1 Hz) ---
+    fastDOM.lastSlowT = pNow;
+
+    updateDM(latA, lonA); 
+    
+    // NOUVEAU: Calcul et affichage des métriques de midi UTC
+    const middayData = calcMiddayMetrics();
+    
+    const solarLongitudeMiddayEl = $('solar-longitude-midday');
+    if (solarLongitudeMiddayEl) solarLongitudeMiddayEl.textContent = `${middayData.solarLongitude.toFixed(8)} °`;
+
+    const eotMiddayEl = $('eot-midday');
+    if (eotMiddayEl) eotMiddayEl.textContent = `${middayData.eot.toFixed(4)} min`;
+    
+    // ... (Reste de la fonction fastDOM() inchangé)
+        }
 
     updateDM(latA, lonA); 
     
