@@ -3,23 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard GNSS Avancé (V3.2)</title>
+    <title>Dashboard GNSS V3.3 | Physique & Sécurité</title>
     <style>
         /* CSS Inclus pour respecter le bloc de code unique du HTML */
         body { font-family: 'Arial', sans-serif; background: #000; color: #0f0; margin: 0; padding: 10px; }
-        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
-        .metric { background: #111; padding: 15px; border: 1px solid #040; border-radius: 5px; }
+        .dashboard { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+            gap: 12px; 
+            margin-bottom: 20px;
+        }
+        .metric { 
+            background: #111; 
+            padding: 15px; 
+            border: 1px solid #040; 
+            border-radius: 5px; 
+            min-height: 80px; 
+        }
         .metric h4 { margin-top: 0; margin-bottom: 5px; font-size: 0.9em; color: #0c0; }
-        .value { font-size: 1.8em; font-weight: bold; }
-        .controls, .alerts { margin-bottom: 20px; padding: 10px; background: #222; border-radius: 5px; }
-        .alerts { background: #400; color: #fcc; font-weight: bold; }
+        .value { font-size: 1.6em; font-weight: bold; word-break: break-all; }
+        .controls, .alerts { margin-bottom: 20px; padding: 10px; border-radius: 5px; }
+        .controls { background: #222; }
+        .alerts { background: #400; color: #fcc; font-weight: bold; text-align: center; }
         button { background: #004d00; color: white; border: none; padding: 10px 15px; margin-right: 10px; border-radius: 3px; cursor: pointer; }
         button:hover { background: #008000; }
+        .sensor-advanced { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 8px; 
+            padding-top: 10px;
+            font-size: 0.85em;
+        }
+        .sensor-advanced > div { 
+            flex: 1 1 150px; 
+            background: #080; 
+            color: black; 
+            padding: 5px 8px; 
+            border-radius: 3px; 
+        }
         .footer-status { margin-top: 10px; font-size: 0.75em; color: #555; }
-        
-        /* Styles spécifiques aux capteurs avancés */
-        .sensor-advanced { display: flex; flex-wrap: wrap; gap: 10px; }
-        .sensor-advanced > div { flex: 1 1 120px; min-width: 120px; background: #080; color: black; padding: 8px; border-radius: 3px; font-size: 0.8em; }
     </style>
 </head>
 <body>
@@ -39,12 +61,12 @@
     
     <div class="metric"><h4>Accélération (GNSS)</h4><div class="value" id="g-force-gnss">--</div></div>
     <div class="metric"><h4>Force Nette (M*a)</h4><div class="value" id="force-newton">--</div></div>
-    <div class="metric"><h4>Puissance (Régime)</h4><div class="value" id="power-watts">--</div></div>
+    <div class="metric"><h4>Puissance (Instantanée)</h4><div class="value" id="power-watts">--</div></div>
     <div class="metric"><h4>Énergie (Joule/s)</h4><div class="value" id="energy-joules">--</div></div>
     <div class="metric"><h4>Force Centrifuge</h4><div class="value" id="force-centrifugal">--</div></div>
 
     <div class="metric"><h4>Latitude / Longitude</h4><div class="value" id="lat-lon">--</div></div>
-    <div class="metric"><h4>Heure (Sync)</h4><div class="value" id="current-time">--</div></div>
+    <div class="metric"><h4>Heure Système</h4><div class="value" id="current-time">--</div></div>
     <div class="metric"><h4>Équation du Temps (EoT)</h4><div class="value" id="eot-value">--</div></div>
     <div class="metric"><h4>Midi Solaire Vrai</h4><div class="value" id="solar-culmination">--</div></div>
     
@@ -52,17 +74,16 @@
     <div class="metric"><h4>Température Air</h4><div class="value" id="air-temp">--</div></div>
     <div class="metric"><h4>Humidité Air</h4><div class="value" id="humidity">--</div></div>
     <div class="metric"><h4>Altitude Baro</h4><div class="value" id="alt-baro">--</div></div>
-    <div class="metric"><h4>Mode Souterrain</h4><div class="value" id="underground">--</div></div>
 </div>
 
-<h3>Capteurs Avancés (Local)</h3>
+<h3>Capteurs Locaux et Avancés</h3>
 <div class="sensor-advanced">
     <div>Boussole/Cap (Mag/GNSS): <span id="heading">--</span></div>
     <div>Niveau à Bulle (Tilt): <span id="bubble-level">--</span></div>
     <div>Éclairement (Lux): <span id="illuminance-lux">--</span></div>
     <div>Statut Batterie: <span id="battery-status">--</span></div>
+    <div>Mode Souterrain: <span id="underground">--</span></div>
     <div>Connexion Externe: <span id="external-sensor-status">--</span></div>
-    <div>Accélération Longitudinale: <span id="accel-long">--</span></div>
 </div>
 
 <div class="footer-status">
@@ -73,4 +94,4 @@
 
 <script src="dashboard.js"></script>
 </body>
-    </html>
+                                                            </html>
