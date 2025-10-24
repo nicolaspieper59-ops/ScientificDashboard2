@@ -960,6 +960,23 @@ function initAll() {
         netherToggleBtn.textContent = netherMode ? "🌍 Overworld" : "🔥 Nether";
     });
     
+    if (newLonStr !== null && !isNaN(parseFloat(newLonStr))) { D_LON = parseFloat(newLonStr); }
+        alert(`Nouvelle position par défaut : Lat=${D_LAT.toFixed(4)}, Lon=${D_LON.toFixed(4)}.`);
+        resetDisp();
+    });
+
+    if (setTargetBtn) setTargetBtn.addEventListener('click', setTarget);
+    if (toggleModeBtn) toggleModeModeBtn.addEventListener('click', toggleManualMode);
+    if (autoModeBtn) autoModeBtn.addEventListener('click', setAutoMode);
+    
+    if (netherToggleBtn) netherToggleBtn.addEventListener('click', () => {
+        netherMode = !netherMode;
+        distM = distMStartOffset; 
+        maxSpd = 0; 
+        if ($('nether-indicator')) $('nether-indicator').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
+        netherToggleBtn.textContent = netherMode ? "🌍 Overworld" : "🔥 Nether";
+    });
+    
     if (freqManualBtn) {
         freqManualBtn.addEventListener('click', () => {
             if (manualFreqMode) { cycleForcedFreq(); } else { toggleManualFreq(); }
@@ -985,4 +1002,11 @@ function initAll() {
         const currentMass = parseFloat($('user-mass')?.textContent) || 70.0;
         const newMassStr = prompt(`Entrez la nouvelle masse utilisateur en kg (actuel: ${currentMass.toFixed(3)}) :`);
         if (newMassStr !== null && !isNaN(parseFloat(newMassStr))) { 
-            const
+            const newMass = parseFloat(newMassStr);
+            if ($('user-mass')) $('user-mass').textContent = `${newMass.toFixed(3)} kg`;
+        }
+    });
+
+}
+
+document.addEventListener('DOMContentLoaded', initAll);
