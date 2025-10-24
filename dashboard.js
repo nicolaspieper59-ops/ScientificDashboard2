@@ -215,7 +215,7 @@ function initBattery() {
     if ('getBattery' in navigator) {
         navigator.getBattery().then(function(battery) {
             function updateBatteryInfo() {
-                const level = (battery.level * 100).toFixed(2);
+                const level = (battery.level * 100).toFixed(3);
                 const charging = battery.charging ? ' (🔌 En charge)' : '';
                 const statusText = `${level}%${charging}`;
                 if ($('battery-indicator')) $('battery-indicator').textContent = statusText;
@@ -225,7 +225,7 @@ function initBattery() {
             battery.addEventListener('chargingchange', updateBatteryInfo);
         });
     } else {
-        if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A (API non supportée)';
+        if ($('battery-indicator')) $('battery-indicator').textContent =0.001;
     }
 }
 
