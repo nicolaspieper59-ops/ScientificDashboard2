@@ -1,290 +1,319 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Scientifique V4.2 - Core V3.2 🧪</title>
-    
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script> 
-    
-    <style>
-        /* NOUVEAU: Facteur global de taille de police (V3.2) */
-        :root {
-            --global-font-factor: 1.0; 
-            --base-font-size: 13px;
-        }
-
-        /* Styles de base pour le thème sombre et le mode nuit */
-        body {
-            font-family: 'Consolas', monospace;
-            background-color: #121212;
-            color: #e0e0e0;
-            padding: 10px; 
-            transition: background-color 0.5s, color 0.5s;
-            font-size: calc(var(--base-font-size) * var(--global-font-factor));
-        }
-        .night-mode {
-            background-color: #000033;
-            color: #99ccff;
-        }
-        h1 { color: #f9d342; margin-bottom: 5px; }
-        h2 { border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 15px; color: #b0b0b0; }
-        .controls, .sub-controls { margin-bottom: 15px; }
-        /* Style des boutons (ajusté pour la cohérence visuelle) */
-        button, select { background-color: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; margin-right: 5px; cursor: pointer; transition: background-color 0.3s, transform 0.1s; border-radius: 4px; font-weight: bold; }
-        button:hover:not(:disabled), select:hover { background-color: #555; }
-        #emergency-stop-btn { background-color: #f44336; }
-        /* Grid V3.2: Plus de boîtes, nécessite plus de place ou minmax dynamique */
-        .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
-        .data-box { background-color: #1e1e1e; padding: 10px; border-radius: 8px; border-left: 3px solid #00ff99; display: flex; flex-direction: column; justify-content: space-between; font-size: 1.0em; }
-        .data-box strong { color: #b3b3b3; flex-grow: 1; margin-bottom: 5px; }
-        .data-box .value { color: #00ff99; font-weight: bold; font-size: 1.2em; text-align: right; white-space: nowrap; }
-        #speed-stable { color: #f9d342; font-size: 1.5em; }
-        .indicator { margin-top: 10px; font-size: 0.9em; }
-        #error-message { background-color: #800000; color: white; padding: 10px; border-radius: 4px; margin-bottom: 15px; display: none; }
-        #map-placeholder { background-color: #333; border: 2px dashed #555; padding: 20px; text-align: center; cursor: pointer; border-radius: 8px; margin-top: 10px; color: #ccc; }
-    </style>
-</head>
-<body onload="initAll()">
-
-    <div id="error-message"></div>
-
-    <div class="indicator">
-        <span id="solar-true-header">--:--:-- (HSV)</span> | 
-        <span id="solar-mean-header">--:--:-- (LSM)</span> |
-        <span id="mode-indicator">Mode: Jour ☀️</span>
-    </div>
-    
-    <h1>Dashboard Scientifique V4.2 🧪 <span id="local-time" class="value">--:--:--</span></h1>
-
-    <div class="controls">
-        <button id="start-btn">▶️ Démarrer GPS</button>
-        <button id="stop-btn" disabled>⏸️ Arrêter GPS</button>
-        <button id="reset-all-btn">💣 Réinitialiser Tout</button>
-        <button id="emergency-stop-btn">🚨 Arrêt Urgence</button>
-        <button id="reset-max-btn">🔁 Réinitialiser Max</button>
-        <button id="set-target-btn">🗺️ Cible</button>
-    </div>
-    
-    <div class="sub-controls">
-        <button id="toggle-mode-btn">🌗 Bascule Manuelle</button>
-        <button id="nether-toggle-btn">🔥 Nether</button>
-        <button id="set-default-loc-btn">📍 Changer Défaut</button>
-        <button id="freq-manual-btn">⚡ Fréquence: Auto</button>
-        <button id="capture-btn">📸 Capturer</button>
+<button id="capture-btn">📸 Capturer</button>
+        
+        <label for="recharge-select">Charge:</label>
+        <select id="recharge-select">
+            <option value="OFF">DÉSACTIVÉ</option>
+            <option value="SECTOR">SECTEUR (Rapide)</option>
+            <option value="SOLAR">SOLAIRE/DYNAMO (Lente)</option>
+        </select>
+        (<span id="selected-recharge-ind">DÉSACTIVÉ</span>)
         
         <span id="display-size-indicator" class="indicator">
-            Taille:
-            <button id="size-normal-btn">Normal</button>
-            <button id="size-small-btn">Petit</button>
-            <button id="size-large-btn">Grand</button>
-        </span>
-    </div>
+            ```
+
+***
+
+## 2. Fichier `dashboard_part1.js` (Core V3.2 & Gestion de la Recharge)
+
+J'ai introduit la variable `currentRechargeSource` et les taux de charge correspondants.
+
+**Enregistrez ce code sous le nom de `dashboard_part1.js`.**
+
+```javascript
+// =================================================================
+// FICHIER JS PARTIE 1/2 : dashboard_part1.js (V3.2 Core & Kalman Ajusté)
+// Contient : Constantes, Variables d'État, Kalman (Q=0.5), GPS, Batterie Secours.
+// NOUVEAUTÉ : Gestion de la Source de Recharge et des Taux.
+// =================================================================
+
+// --- FONCTIONS UTILITAIRES DE BASE ---
+const $ = id => document.getElementById(id); 
+
+// --- CLÉS D'API ET CONSTANTES V3.2 ---
+const API_KEYS = { WEATHER_API: 'VOTRE_CLE_API_METEO_ICI' };
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const C_L = 299792458, C_S = 343, R_E = 6371000, KMH_MS = 3.6;
+const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0; 
+const G_ACCEL = 9.80665;
+let D_LAT = 48.8566, D_LON = 2.3522; 
+const MIN_DT = 0.01; 
+
+// CONFIGURATIONS GPS
+const GPS_OPTS = {
+    HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
+    LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
+};
+
+// PÉNALITÉS ENVIRONNEMENTALES POUR LE FILTRE DE KALMAN
+const ENV_NOISE = {
+    NORMAL: 0.1, METAL: 0.3, FOREST: 0.2, CONCRETE: 0.15
+};
+
+// --- VARIABLES D'ÉTAT PRINCIPALES ---
+let wID = null; 
+let lat = D_LAT, lon = D_LON, alt = 0, spd = 0, acc = 'N/A';
+let maxSpd = 0, avgSpd = 0, totalDistM = 0, startTime = 0;
+let userMassKg = 70.0; 
+let currentEnvironment = 'NORMAL';
+let currentWeather = 'CLEAR';
+let isDayMode = true;
+let emergencyActive = false;
+let manualFreqMode = false;
+let currentFreqMode = 'AUTO';
+let netherMode = false;
+
+// --- VARIABLES KALMAN ---
+let kSpd = 0; 
+let kUncert = 1000; 
+let kPred = 0; 
+let kalmanInitialized = false;
+let lastTime = 0;
+let lastSpd = 0;
+// Q AUGMENTÉ (0.5) pour une MEILLEURE RÉACTIVITÉ à l'accélération
+const Q = 0.5; 
+
+// --- VARIABLES D'ÉTAT BATTERIE ---
+let batteryLevel = 'N/A';
+let batteryCharging = false;
+let backupBatterySource = 'EXTERNE (Power Bank Li-Ion)';
+let backupBatteryLevel = 0.95; 
+let backupAutonomyHours = 'N/A';
+
+// --- CONSTANTES POUR LE CALCUL D'AUTONOMIE SIMULÉE ---
+const BACKUP_CAPACITY_WH = 50.0;
+const BACKUP_CONSUMPTION_W = 5.0;
+
+// NOUVEAU: Source et Taux de Recharge
+let currentRechargeSource = 'OFF';
+const RECHARGE_RATES_PER_MINUTE = {
+    // Taux de charge en fraction de 1 (1 = 100%) par minute
+    // La batterie principale (simulée ici par l'API) suit l'API réelle.
     
-    <div class="indicator">
-        <span id="emergency-status" style="color:#00ff99;">INACTIF</span> | 
-        <span id="nether-indicator">DÉSACTIVÉ (1:1)</span> |
-        Masse: <span id="user-mass">70.0 kg</span> <button id="set-mass-btn">Choisir</button> |
-        
-        <label for="environment-select">Env:</label>
-        <select id="environment-select">
-            <option value="NORMAL">NORMAL</option>
-            <option value="METAL">MÉTAL</option>
-            <option value="FOREST">FORÊT</option>
-            <option value="CONCRETE">BÉTON</option>
-        </select>
-        (<span id="selected-environment-ind">NORMAL</span>) |
-        
-        <label for="weather-select">Météo (Fixe):</label>
-        <select id="weather-select">
-            <option value="CLEAR">CLAIRE</option>
-            <option value="RAIN">PLUIE</option>
-            <option value="SNOW">NEIGE</option>
-            <option value="STORM">ORAGE</option>
-        </select>
-        (<span id="selected-weather-ind">CLAIRE</span>)
-    </div>
+    // Taux appliqués à la Batterie de Secours uniquement:
+    SECTOR: 0.016, // Charge rapide (environ 1.6% par minute -> 60 minutes)
+    SOLAR: 0.003,  // Charge lente (environ 0.3% par minute -> 5.5 heures)
+    OFF: 0.0,
+};
 
-    <div id="map-placeholder">
-        🗺️ **Carte Interactive (Cliquez pour Définir D_LAT/D_LON)** 🌍
-        <br>Position Actuelle par Défaut: Lat=48.8566, Lon=2.3522
-    </div>
+// =================================================================
+// --- LOGIQUE KALMAN (AJUSTÉE POUR L'ACCÉLÉRATION) ---
+// =================================================================
 
-    <h2>🚀 Vitesse & Chronométrie</h2>
-    <div class="data-grid">
-        <div class="data-box" style="border-left-color: #f9d342;">
-            <strong>Vitesse Stable (km/h) - Kalman</strong>
-            <span id="speed-stable" class="value">--</span>
-        </div>
-        <div class="data-box">
-            <strong>Vitesse Instantanée 3D (km/h)</strong>
-            <span id="speed-3d-inst" class="value">--</span>
-        </div>
-        <div class="data-box">
-            <strong>Vitesse Max (km/h)</strong>
-            <span id="speed-max" class="value">--</span>
-        </div>
-        <div class="data-box">
-            <strong>Vitesse Moyenne (km/h)</strong>
-            <span id="speed-avg" class="value">--</span>
-        </div>
-        <div class="data-box">
-            <strong>Distance Totale (Nether Adj.)</strong>
-            <span id="distance-km-m" class="value">-- km | -- m</span>
-        </div>
-        <div class="data-box">
-            <strong>Temps Écoulé (Session)</strong>
-            <span id="time-elapsed" class="value">-- s</span>
-        </div>
-        <div class="data-box">
-            <strong>Vitesse vs Lumière (%)</strong>
-            <span id="perc-light" class="value">--%</span>
-        </div>
-        <div class="data-box">
-            <strong>Vitesse vs Son (%)</strong>
-            <span id="perc-sound" class="value">--%</span>
-        </div>
-    </div>
+function getKalmanR(hpe, env) {
+    let noiseFactor = ENV_NOISE[env] || ENV_NOISE['NORMAL'];
+    return Math.pow(hpe, 2) * noiseFactor * 0.1; 
+}
 
-    <h2>📍 Données GNSS & Corrections (Kalman V4.2)</h2>
-    <div class="data-grid">
-        <div class="data-box">
-            <strong>Latitude (°)</strong>
-            <span id="latitude" class="value">--</span>
-        </div>
-        <div class="data-box">
-            <strong>Longitude (°)</strong>
-            <span id="longitude" class="value">--</span>
-        </div>
-        <div class="data-box">
-            <strong>Altitude GNSS (m)</strong>
-            <span id="altitude" class="value">-- m</span>
-        </div>
-        <div class="data-box">
-            <strong>Vitesse Verticale (m/s)</strong>
-            <span id="vertical-speed" class="value">0.00 m/s</span>
-        </div>
-        <div class="data-box">
-            <strong>Précision GNSS (m)</strong>
-            <span id="accuracy" class="value">-- m</span>
-        </div>
-        <div class="data-box" style="border-left-color: #FF00FF;">
-            <strong>Cohérence Signal (Uncert. Kalman)</strong>
-            <span id="kalman-uncert" class="value">-- m/s</span>
-        </div>
-        <div class="data-box" style="border-left-color: #FF00FF;">
-            <strong>Qualité Kalman (R)</strong>
-            <span id="kalman-r" class="value">-- m²</span>
-        </div>
-        <div class="data-box">
-            <strong>Délai Tropo. Fixé (ZTD)</strong>
-            <span id="ztd" class="value">0.000 m</span>
-        </div>
-        <div class="data-box">
-            <strong>Cap vers Cible (°)</strong>
-            <span id="target-bearing" class="value">N/A</span>
-        </div>
-        <div class="data-box">
-            <strong>Distance à Cible</strong>
-            <span id="target-dist" class="value">N/A</span>
-        </div>
-    </div>
+function runKalmanFilter(measurementSpd, measurementHpe) {
+    if (!kalmanInitialized) {
+        kSpd = measurementSpd;
+        kUncert = measurementHpe * 2; 
+        kalmanInitialized = true;
+        lastTime = performance.now(); 
+        return kSpd;
+    }
 
-    <h2>🌌 Chronométrie Céleste & Sensors (Astro V3.2)</h2>
-    <div class="data-grid">
-        <div class="data-box">
-            <strong>Temps Solaire Vrai (HSV)</strong>
-            <span id="solar-true" class="value">00:00:00</span>
-        </div>
-        <div class="data-box">
-            <strong>Temps Solaire Moyen (LSM)</strong>
-            <span id="solar-mean" class="value">00:00:00</span>
-        </div>
-        <div class="data-box">
-            <strong>Culmination Solaire (LSM)</strong>
-            <span id="solar-culmination" class="value">--:--:--</span>
-        </div>
-        <div class="data-box">
-            <strong>Équation du Temps (EoT)</strong>
-            <span id="eot" class="value">-- min</span>
-        </div>
-        <div class="data-box">
-            <strong>Phase Lunaire (%)</strong>
-            <span id="lunar-phase-perc" class="value">-- %</span>
-        </div>
-        <div class="data-box">
-            <strong>Temps Minecraft (MC)</strong>
-            <span id="mc-time" class="value">00:00:00</span>
-        </div>
-        <div class="data-box">
-            <strong>Illuminance (Lux)</strong>
-            <span id="illuminance-lux" class="value">N/A</span>
-        </div>
-        <div class="data-box">
-            <strong>Champ Magnétique ($\mu\text{T}$)</strong>
-            <span id="mag-field" class="value">N/A</span>
-        </div>
-    </div>
-
-    <h2>⚙️ Métriques Physiques & Alimentation (Non-Simulées)</h2>
-    <div class="data-grid">
-        <div class="data-box">
-            <strong>Accélération Longitudinale (m/s²)</strong>
-            <span id="accel-long" class="value">0.000 m/s²</span>
-        </div>
-        <div class="data-box">
-            <strong>Force G (G)</strong>
-            <span id="g-force" class="value">0.00 G</span>
-        </div>
-        <div class="data-box">
-            <strong>Travail/Énergie Dépensée (Masse)</strong>
-            <span id="work-energy" class="value">0.00 MJ</span>
-        </div>
-        <div class="data-box">
-            <strong>Puissance de Traînée (kW)</strong>
-            <span id="drag-power-kw" class="value">0.00 kW</span>
-        </div>
-        <div class="data-box">
-            <strong>Calories Brûlées (Est. Mécanique)</strong>
-            <span id="calorie-burn" class="value">0.0 Cal</span>
-        </div>
-        <div class="data-box">
-            <strong>Puissance Utilisateur (Est.)</strong>
-            <span id="power-output" class="value">N/A</span>
-        </div>
-        
-        <div class="data-box">
-            <strong>Batterie Principale (Niveau)</strong>
-            <span id="battery-indicator" class="value">N/A</span>
-        </div>
-        
-        <div class="data-box" style="border-left-color: #ff9800;">
-            <strong>Batterie Secours (Niveau)</strong>
-            <span id="backup-battery-level" class="value">N/A</span>
-        </div>
-        <div class="data-box" style="border-left-color: #ff9800;">
-            <strong>Autonomie Secours (Est.)</strong>
-            <span id="backup-autonomy" class="value">N/A</span>
-        </div>
-        
-        <div class="data-box">
-            <strong>Température Air (C)</strong>
-            <span id="air-temp" class="value">N/A</span>
-        </div>
-        <div class="data-box">
-            <strong>Pression (hPa)</strong>
-            <span id="pressure" class="value">N/A</span>
-        </div>
-        <div class="data-box">
-            <strong>Altitude Barométrique</strong>
-            <span id="alt-baro" class="value">N/A</span>
-        </div>
-        <div class="data-box">
-            <strong>Saturation SpO₂ (Est.)</strong>
-            <span id="spo2-sim" class="value">N/A</span>
-        </div>
-    </div>
+    const now = performance.now();
+    const dt = (now - lastTime) / 1000;
     
-    <script src="dashboard.js"></script>
-</body>
-                </html>
+    // 1. Prédiction (L'accélération mesurée par le GPS influence fortement le prochain état via Q=0.5)
+    const acceleration = (kSpd - lastSpd) / (dt || MIN_DT); 
+    kPred = kSpd + (acceleration * dt); 
+    let kPredUncert = kUncert + Q; 
+
+    // 2. Correction
+    const R = getKalmanR(measurementHpe, currentEnvironment);
+    const K = kPredUncert / (kPredUncert + R); 
+    
+    kSpd = kPred + K * (measurementSpd - kPred); 
+    kUncert = kPredUncert * (1 - K); 
+
+    lastSpd = kSpd;
+    lastTime = now;
+    return kSpd;
+}
+
+// =================================================================
+// --- GESTION GPS & BATTERIE ---
+// =================================================================
+
+function handleErr(err) {
+    if ($('error-message')) {
+        let msg = `❌ Erreur GNSS (code ${err.code}): `;
+        switch (err.code) {
+            case 1: msg += "Permission refusée. Utilisez un serveur web (http/https)."; break;
+            case 2: msg += "Position non disponible ou signal perdu."; break;
+            case 3: msg += "Délai d'attente dépassé."; break;
+            default: msg += "Erreur inconnue."; break;
+        }
+        $('error-message').textContent = msg;
+        $('error-message').style.display = 'block';
+    }
+    stopGPS(false);
+}
+
+function updateDisp(pos) {
+    $('error-message').style.display = 'none';
+
+    const coords = pos.coords;
+    const now = performance.now();
+    const currentTime = pos.timestamp;
+    
+    const newSpdMS = coords.speed !== null ? coords.speed : 0; 
+    const dt = (now - lastTime) / 1000;
+
+    if (kalmanInitialized) {
+        const distanceStep = kSpd * dt; 
+        totalDistM += distanceStep;
+    }
+
+    lat = coords.latitude;
+    lon = coords.longitude;
+    alt = coords.altitude !== null ? coords.altitude : 0;
+    spd = newSpdMS;
+    acc = coords.accuracy;
+
+    runKalmanFilter(newSpdMS, acc);
+    
+    if (kSpd * KMH_MS > maxSpd) {
+        maxSpd = kSpd * KMH_MS;
+    }
+
+    if (startTime === 0) startTime = currentTime;
+}
+
+function updateBackupBatteryInfo() {
+    if (typeof backupBatteryLevel !== 'number') return;
+    
+    const remainingWh = backupBatteryLevel * BACKUP_CAPACITY_WH;
+    const autonomy = remainingWh / BACKUP_CONSUMPTION_W;
+    backupAutonomyHours = autonomy; 
+}
+
+function simulateBackupCycle() {
+    if (backupBatteryLevel > 0) {
+        // 1. Décharge (Toujours en cours si non rechargée et non à 0)
+        const dischargeRate = (BACKUP_CONSUMPTION_W / BACKUP_CAPACITY_WH) * (60 / 3600); 
+        backupBatteryLevel = Math.max(0, backupBatteryLevel - dischargeRate);
+    }
+    
+    // 2. Recharge (Si une source est sélectionnée)
+    const chargeRate = RECHARGE_RATES_PER_MINUTE[currentRechargeSource];
+
+    if (chargeRate > 0 && backupBatteryLevel < 1.0) {
+        // Augmentation du niveau par minute
+        backupBatteryLevel = Math.min(1.0, backupBatteryLevel + chargeRate);
+        
+        // Si l'appareil principal supporte l'API (batteryCharging), on le met en charge
+        // Ceci est une hypothèse, car l'API du navigateur est limitée.
+        batteryCharging = true; 
+    } else if (currentRechargeSource === 'OFF') {
+        // S'il n'y a pas de source, l'appareil principal n'est pas "en charge" via cette source.
+        // On ne modifie pas le statut de l'API de batterie native, qui pourrait indiquer une charge USB.
+        // Cependant, pour simuler la logique du système, on indique que la source de secours n'est pas connectée.
+        batteryCharging = false;
+    }
+
+    updateBackupBatteryInfo();
+}
+
+function initBattery() {
+    updateBackupBatteryInfo(); 
+    // Cycle de batterie toutes les 60 secondes (1 minute)
+    setInterval(simulateBackupCycle, 60000); 
+
+    if ('getBattery' in navigator) {
+        navigator.getBattery().then(function(battery) {
+            
+            function updateBatteryInfo() {
+                // Utilisation des valeurs réelles pour l'appareil principal
+                batteryLevel = battery.level; 
+                
+                // Note: batteryCharging est mis à jour par l'API pour l'appareil.
+                // Notre simulation de recharge EXTERNE ne modifie que la variable backupBatteryLevel.
+                // Pour l'affichage, nous utilisons le statut API si la source est OFF,
+                // sinon nous utilisons notre statut simulé si la source est SOLAR/SECTOR.
+                
+                const percentage = batteryLevel * 100;
+                const levelDisplay = percentage.toFixed(2); 
+                
+                let chargingText = '';
+                if (currentRechargeSource !== 'OFF') {
+                    // Si on a sélectionné une source EXTERNE, on l'affiche comme source principale.
+                    chargingText = ` (🔌 Charge: ${currentRechargeSource})`;
+                } else if (battery.charging) {
+                    // Sinon, on revient au statut natif du navigateur
+                    chargingText = ' (🔌 En charge)';
+                }
+
+                const statusText = `${levelDisplay} %${chargingText}`;
+                
+                if ($('battery-indicator')) {
+                    const indicatorElement = $('battery-indicator');
+                    indicatorElement.textContent = statusText;
+                    
+                    if (percentage <= 15) { indicatorElement.style.color = '#f44336'; } 
+                    else if (percentage <= 30) { indicatorElement.style.color = '#ff9800'; } 
+                    else { indicatorElement.style.color = '#00ff99'; } 
+                }
+            }
+            
+            updateBatteryInfo();
+            battery.addEventListener('levelchange', updateBatteryInfo);
+            battery.addEventListener('chargingchange', updateBatteryInfo);
+            
+        }).catch(error => {
+            console.error("Erreur d'accès à l'API de batterie:", error);
+            if ($('battery-indicator')) $('battery-indicator').textContent = 'API Rejetée';
+        });
+        
+    } else {
+        if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A (API absente)';
+    }
+}
+
+// =================================================================
+// --- CONTRÔLE GPS & INITIALISATION FINALE ---
+// =================================================================
+
+function startGPS() {
+    if (wID === null) {
+        $('error-message').style.display = 'none';
+        const opts = (currentFreqMode === 'LOW') ? GPS_OPTS.LOW_FREQ : GPS_OPTS.HIGH_FREQ;
+        wID = navigator.geolocation.watchPosition(updateDisp, handleErr, opts);
+        $('start-btn').disabled = true;
+        $('stop-btn').disabled = false;
+        if (typeof window.startFastDOM === 'function') window.startFastDOM();
+    }
+}
+
+function stopGPS(resetID = true) {
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID);
+        if (resetID) wID = null;
+    }
+    $('start-btn').disabled = false;
+    $('stop-btn').disabled = true;
+    if (typeof window.stopFastDOM === 'function') window.stopFastDOM();
+}
+
+window.emergencyStop = function() {
+    if (emergencyActive) {
+        if (typeof window.resetAllState === 'function') window.resetAllState();
+        $('emergency-status').textContent = 'INACTIF';
+        $('emergency-status').style.color = '#00ff99';
+        $('emergency-stop-btn').textContent = '🚨 Arrêt Urgence';
+        emergencyActive = false;
+    } else {
+        stopGPS(true); 
+        $('emergency-status').textContent = 'ACTIF (GPS Off)';
+        $('emergency-status').style.color = '#f44336';
+        $('emergency-stop-btn').textContent = '🟢 Démarrer Système';
+        emergencyActive = true;
+    }
+};
+
+function initAll() {
+    initBattery();
+    if (typeof window.initControls === 'function') window.initControls();
+}
