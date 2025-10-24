@@ -1,8 +1,10 @@
 // =================================================================
-// FICHIER JS PARTIE 1/3 : dashboard_part1.js (V3.2 Core & Init)
-// Contient constantes, variables d'état, fonctions de base (Géo/Temps/Kalman)
-// et les fonctions d'initialisation des capteurs (ALS/Batterie).
-// DOIT ÊTRE CHARGÉ EN PREMIER.
+// DÉBUT DU FICHIER JAVASCRIPT COMPLET
+// =================================================================
+
+// =================================================================
+// PARTIE 1/3 : Core Engine, Constantes & Utilitaires
+// (Contient constantes, variables d'état, fonctions de base et init capteurs)
 // =================================================================
 
 // --- CLÉS D'API ---
@@ -24,18 +26,18 @@ const GPS_OPTS = {
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
 };
 
-// PARAMÈTRES AVANCÉS DU FILTRE DE KALMAN (V3.1)
+// PARAMÈTRES AVANCÉS DU FILTRE DE KALMAN (V3.2)
 const Q_NOISE = 0.01;       
 const R_MIN = 0.05, R_MAX = 50.0; 
 const MAX_ACC = 50, MIN_SPD = 0.001, ALT_TH = -50;
 const SPEED_THRESHOLD = 0.5; 
 
-// Fréquences pour la boucle principale fastDOM (définies dans Part 3)
+// Fréquences pour la boucle principale fastDOM
 const DOM_HIGH_FREQ_MS = 17;   
 const DOM_LOW_FREQ_MS = 250;   
 const DOM_SLOW_UPDATE_MS = 1000; 
 
-// CONSTANTES POUR LES MODÈLES PHYSIQUES (V3.1)
+// CONSTANTES POUR LES MODÈLES PHYSIQUES (V3.2)
 const AIR_DENSITY = 1.225; 
 const G_ACCEL = 9.80665;   
 const CDA_EST = 0.6;       
@@ -44,7 +46,7 @@ const SUN_NIGHT_TH = -12;
 const LUX_NIGHT_TH = 50; 
 const NETHER_RATIO = 8; 
 
-// NOUVELLES CONSTANTES POUR FILTRAGE AMÉLIORÉ (V3.2)
+// FACTEURS POUR MODÉLISATION V3.2
 const ENVIRONMENT_FACTORS = {
     'NORMAL': { R_MULT: 1.0, DRAG_MULT: 1.0 },
     'METAL': { R_MULT: 2.5, DRAG_MULT: 1.0 },      
@@ -176,7 +178,7 @@ function initAdvancedSensors() {
             const beta = event.beta, gamma = event.gamma; 
             const bubbleEl = $('bubble-level'), magFieldEl = $('mag-field');
             if (bubbleEl) bubbleEl.textContent = `${beta !== null ? beta.toFixed(1) : '--'}°/${gamma !== null ? gamma.toFixed(1) : '--'}°`;
-            if (magFieldEl && alpha !== null) magFieldEl.textContent = `${alpha.toFixed(1)} ° (Mag)`; 
+            // Suppression de magFieldEl car non utilisé dans l'HTML final
         }, true);
     } 
 
@@ -184,7 +186,7 @@ function initAdvancedSensors() {
         window.addEventListener('devicemotion', (event) => {
             const accel = event.acceleration;
             if (accel && accel.x !== null) {
-                const a_long = accel.y ?? 0; // Utilise l'axe Y comme accélération longitudinale (selon orientation appareil)
+                const a_long = accel.y ?? 0; 
                 const g_force = a_long / G_ACCEL;
                 const gForceEl = $('g-force'), accelLongEl = $('accel-long');
                 if (gForceEl) gForceEl.textContent = `${g_force.toFixed(2)} G`;
@@ -220,14 +222,9 @@ async function initBattery() {
     }
 }
 // =================================================================
-// FICHIER JS PARTIE 2/3 : dashboard_part2.js (Astro, Météo & Data Processing)
-// Contient les fonctions de correction GNSS, les calculs astronomiques 
-// et la fonction principale de traitement des données GPS (updateDisp).
-// DOIT ÊTRE CHARGÉ APRÈS dashboard_part1.js.
+// PARTIE 2/3 : Astro, Météo & Traitement de Données GPS
+// (Dépend des variables et fonctions de la Partie 1)
 // =================================================================
-
-// Les constantes et variables d'état (D_LAT, kFilter, $, etc.) 
-// sont définies dans la Partie 1 et accessibles via la portée globale.
 
 // ===========================================
 // CORRECTIONS MÉTÉO/TROPOSPHÈRE
@@ -238,14 +235,14 @@ function getTroposphericDelay(P_hPa, T_K, H_frac, alt_m, lat_deg) {
     const ZHD = 0.0022768 * P_hPa / (1 - 0.00266 * Math.cos(2 * lat_deg * D2R) - 0.00028 * alt_m / 1000);
     // Calcul de la ZWD (Zenith Wet Delay)
     const T_C = T_K - 273.15;
-    const SVP = 6.11 * Math.exp(19.7 * T_C / (T_C + 273.15)); // Pression de vapeur saturante (approximation)
-    const e = H_frac * SVP; // Pression de vapeur réelle
+    const SVP = 6.11 * Math.exp(19.7 * T_C / (T_C + 273.15)); 
+    const e = H_frac * SVP; 
     const ZWD = 0.002277 * (TROPO_K2 / T_K) * (e / 100); 
     return ZHD + ZWD;
 }
 
 function getKalmanR(acc, alt, ztd_m) {
-    let R = acc ** 2; // R est proportionnel au carré de l'incertitude GPS (accuracy)
+    let R = acc ** 2; 
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT;
@@ -254,11 +251,11 @@ function getKalmanR(acc, alt, ztd_m) {
     R *= envFactor;
     R *= weatherFactor;
     
-    if (ztd_m > 2.5) { R *= 1.1; } // Augmente R si le délai troposphérique est élevé (plus d'erreurs potentielles)
+    if (ztd_m > 2.5) { R *= 1.1; } 
 
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     
-    if (emergencyStopActive) { R = Math.min(R, 10.0); } // Précision maximale si l'arrêt est actif (pour éviter les dérives)
+    if (emergencyStopActive) { R = Math.min(R, 10.0); } 
 
     return R;
 }
@@ -364,9 +361,9 @@ function calcLunarTime(lon) {
     const T = (JD - JD_2K) / 36525.0; 
     let GST = 280.4606 + 360.9856473 * (JD - JD_2K) + 0.000388 * T ** 2;
     GST = GST % 360; if (GST < 0) GST += 360;
-    let Lm = 218.316 + 488204.661 * T; // Longitude moyenne de la Lune
+    let Lm = 218.316 + 488204.661 * T; 
     Lm = Lm % 360; if (Lm < 0) Lm += 360;
-    let HAm = GST + lon - Lm; // Angle horaire moyen de la Lune
+    let HAm = GST + lon - Lm; 
     HAm = HAm % 360; if (HAm < 0) HAm += 360;
     
     const LMT_h = HAm / 15.0; 
@@ -411,6 +408,10 @@ function calcMiddayMetrics() {
 // ===========================================
 // GESTIONNAIRE DE DONNÉES GPS PRINCIPAL
 // ===========================================
+
+function checkGPSFrequency(currentSpeed); // Déclaration anticipée (pour la Partie 3)
+function handleErr(err); // Déclaration anticipée
+function stopGPS(clearT = true); // Déclaration anticipée
 
 function updateDisp(pos) {
     lat = pos.coords.latitude; lon = pos.coords.longitude;
@@ -467,7 +468,6 @@ function updateDisp(pos) {
     lPos.kalman_R_val = R_dyn; 
     lPos.kalman_kSpd_LAST = fSpd; 
 
-    // checkGPSFrequency est dans la partie 3, mais elle est appelée ici
     checkGPSFrequency(sSpdFE); 
 
     distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
@@ -477,7 +477,7 @@ function updateDisp(pos) {
     const spdAvg = elapS > 0 ? sessionDistM / elapS : 0; 
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // --- AFFICHAGE BASIQUE (Le reste est fait dans fastDOM - Partie 3) ---
+    // --- AFFICHAGE BASIQUE (Le reste est fait dans fastDOM) ---
     let pText = `${acc.toFixed(2)} m`;
     pText += R_dyn <= R_MIN * 1.5 ? ' (Optimal/Corrigé)' : ' (Ajusté)'; 
 
@@ -509,18 +509,16 @@ function handleErr(err) {
         errEl.style.display = 'block';
         errEl.textContent = `❌ Erreur GNSS (${err.code}): Signal perdu. Bascule vers la prédiction/dernière position.`;
     }
-    // stopGPS est dans la partie 3
     stopGPS(false);
-        }
-// =================================================================
-// FICHIER JS PARTIE 3/3 : dashboard_part3.js (DOM, Boucles & Contrôle Système)
-// Contient la boucle d'affichage (fastDOM), les fonctions de contrôle GPS
-// et les gestionnaires d'événements (boutons, sélections).
-// DOIT ÊTRE CHARGÉ APRÈS dashboard_part1.js et dashboard_part2.js.
-// =================================================================
+}
 
-// Les fonctions de calculs (calcSolar, getCDate, updateDisp, etc.) 
-// sont définies dans les Parties 1 et 2 et accessibles via la portée globale.
+// =================================================================
+// FIN DE LA PARTIE 2/3 (Coupure Artificielle)
+// =================================================================
+// =================================================================
+// PARTIE 3/3 : DOM, Boucles & Contrôle Système
+// (Dépend des fonctions des Parties 1 et 2)
+// =================================================================
 
 // ===========================================
 // LOGIQUE D'AFFICHAGE & DOM
@@ -611,7 +609,7 @@ function fastDOM() {
     
     const middayData = calcMiddayMetrics(); 
     if ($('solar-longitude-midday')) $('solar-longitude-midday').textContent = `${middayData.solarLongitude.toFixed(8)} °`;
-    if ($('eot-midday')) $('eot-midday').textContent = `${middayData.eot.toFixed(4)} min`;
+    // Éléments du DOM qui n'existent pas dans l'HTML (eot-midday) sont ignorés
     
     if (!lPos || sTime === null) { return; }
     
@@ -620,12 +618,10 @@ function fastDOM() {
     const elapS = (now - sTime) / 1000;
     
     if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${spd3DKMH.toFixed(5)} km/h`; 
-    if ($('speed-ms')) $('speed-ms').textContent = `${spd3D.toFixed(5)} m/s`; 
     if ($('perc-light')) $('perc-light').textContent = `${(spd3D / C_L * 100).toPrecision(5)}%`; 
     if ($('perc-sound')) $('perc-sound').textContent = `${(spd3D / C_S * 100).toPrecision(5)}%`; 
     if ($('speed-stable')) $('speed-stable').textContent = `${sSpdKMH.toFixed(5)} km/h`; 
     if ($('speed-stable-mm')) $('speed-stable-mm').textContent = `${(sSpd * 1000).toFixed(2)} mm/s`;
-    if ($('elapsed-time')) $('elapsed-time').textContent = `${elapS.toFixed(2)} s`;
 
     const kR = lPos.kalman_R_val || R_MAX; 
     const uncertainty_ratio = Math.min(kUncert / 1.0, 1.0); 
@@ -675,7 +671,6 @@ function setGPSMode(newMode) {
     currentGPSMode = newMode;
     
     const opts = GPS_OPTS[newMode]; 
-    // updateDisp et handleErr sont définis dans la Partie 2
     wID = navigator.geolocation.watchPosition(updateDisp, handleErr, opts); 
     
     const newDOMFreq = newMode === 'HIGH_FREQ' ? DOM_HIGH_FREQ_MS : (emergencyStopActive ? DOM_LOW_FREQ_MS * 4 : DOM_LOW_FREQ_MS);
@@ -889,7 +884,7 @@ function captureScreenshot() {
         });
     } else {
         if (controls) controls.style.display = 'block'; 
-        alert("Erreur: La librairie html2canvas n'est pas chargée. Ajoutez la balise script correspondante.");
+        alert("Erreur: La librairie html2canvas n'est pas chargée. Ajoutez la balise script correspondante dans votre HTML.");
     }
 }
 
@@ -981,6 +976,10 @@ function initAll() {
         }
     });
 
-}
+} // Fin de la fonction initAll
 
 document.addEventListener('DOMContentLoaded', initAll);
+
+// =================================================================
+// FIN DU FICHIER JAVASCRIPT COMPLET
+// =================================================================
