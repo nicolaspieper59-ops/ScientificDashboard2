@@ -1,7 +1,7 @@
 // =================================================================
 // FICHIER JS PARTIE 1/2 : dashboard_part1.js (V3.2 Core & Kalman Ajusté)
 // Contient : Constantes, Variables d'État, Kalman (Q=0.5), GPS, Batterie Secours.
-// LIGNES : ~250 (Contrainte < 400 respectée)
+// CLARIFICATION : Logique de la Batterie Externe (Autonomie vs Recharge).
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES DE BASE ---
@@ -31,7 +31,7 @@ const ENV_NOISE = {
 let wID = null; 
 let lat = D_LAT, lon = D_LON, alt = 0, spd = 0, acc = 'N/A';
 let maxSpd = 0, avgSpd = 0, totalDistM = 0, startTime = 0;
-let userMassKg = 70.0; // Masse utilisateur par défaut
+let userMassKg = 70.0; 
 let currentEnvironment = 'NORMAL';
 let currentWeather = 'CLEAR';
 let isDayMode = true;
@@ -53,12 +53,23 @@ const Q = 0.5;
 // --- VARIABLES D'ÉTAT BATTERIE ---
 let batteryLevel = 'N/A';
 let batteryCharging = false;
+let backupBatterySource = 'EXTERNE (Power Bank Li-Ion)';
 let backupBatteryLevel = 0.95; 
 let backupAutonomyHours = 'N/A';
 
 // --- CONSTANTES POUR LE CALCUL D'AUTONOMIE SIMULÉE ---
 const BACKUP_CAPACITY_WH = 50.0;
-const BACKUP_CONSUMPTION_W = 5.0;
+// Consommation par le dispositif si la Power Bank est utilisée
+const BACKUP_CONSUMPTION_W = 5.0; 
+
+// NOUVEAU: Source et Taux de Recharge
+let currentRechargeSource = 'OFF';
+const RECHARGE_RATES_PER_MINUTE = {
+    // Taux de charge en fraction de 1 (1 = 100%) par minute, appliqués à la Batterie de Secours.
+    SECTOR: 0.016, // Charge rapide (~60 minutes pour 100%)
+    SOLAR: 0.003,  // Charge lente (~5.5 heures pour 100%)
+    OFF: 0.0,
+};
 
 // =================================================================
 // --- LOGIQUE KALMAN (AJUSTÉE POUR L'ACCÉLÉRATION) ---
@@ -81,7 +92,7 @@ function runKalmanFilter(measurementSpd, measurementHpe) {
     const now = performance.now();
     const dt = (now - lastTime) / 1000;
     
-    // 1. Prédiction (Utilisation de la dernière accélération pour prédire le prochain état)
+    // 1. Prédiction 
     const acceleration = (kSpd - lastSpd) / (dt || MIN_DT); 
     kPred = kSpd + (acceleration * dt); 
     let kPredUncert = kUncert + Q; 
@@ -150,34 +161,54 @@ function updateDisp(pos) {
 function updateBackupBatteryInfo() {
     if (typeof backupBatteryLevel !== 'number') return;
     
+    // Le niveau d'énergie stockée est la base de l'autonomie, quelle que soit la source de recharge.
     const remainingWh = backupBatteryLevel * BACKUP_CAPACITY_WH;
     const autonomy = remainingWh / BACKUP_CONSUMPTION_W;
     backupAutonomyHours = autonomy; 
 }
 
-function simulateBackupDischarge() {
+function simulateBackupCycle() {
+    // 1. DÉCHARGE (Consommation de l'appareil par la Power Bank)
+    // La Power Bank se décharge toujours (lentement) car elle est connectée et alimente l'appareil.
     if (backupBatteryLevel > 0) {
         const dischargeRate = (BACKUP_CONSUMPTION_W / BACKUP_CAPACITY_WH) * (60 / 3600); 
         backupBatteryLevel = Math.max(0, backupBatteryLevel - dischargeRate);
-        updateBackupBatteryInfo();
     }
+    
+    // 2. RECHARGE (Ajout d'énergie par une source externe)
+    const chargeRate = RECHARGE_RATES_PER_MINUTE[currentRechargeSource];
+
+    if (chargeRate > 0 && backupBatteryLevel < 1.0) {
+        // La charge compense la décharge (et la dépasse fortement avec SECTEUR)
+        backupBatteryLevel = Math.min(1.0, backupBatteryLevel + chargeRate);
+    }
+
+    // Mise à jour de l'autonomie après le cycle
+    updateBackupBatteryInfo();
 }
 
 function initBattery() {
     updateBackupBatteryInfo(); 
-    setInterval(simulateBackupDischarge, 60000); 
+    // Cycle de batterie toutes les 60 secondes (1 minute)
+    setInterval(simulateBackupCycle, 60000); 
 
     if ('getBattery' in navigator) {
         navigator.getBattery().then(function(battery) {
             
             function updateBatteryInfo() {
                 batteryLevel = battery.level; 
-                batteryCharging = battery.charging;
-                
                 const percentage = batteryLevel * 100;
-                // CORRECTION: Batterie principale affichée avec 2 décimales
                 const levelDisplay = percentage.toFixed(2); 
-                const chargingText = batteryCharging ? ' (🔌 En charge)' : '';
+                
+                let chargingText = '';
+                if (currentRechargeSource !== 'OFF') {
+                    // Si on a sélectionné une source EXTERNE, on l'affiche, car elle charge la Power Bank et l'appareil.
+                    chargingText = ` (🔌 Charge: ${currentRechargeSource})`;
+                } else if (battery.charging) {
+                    // Sinon, on revient au statut natif du navigateur si une charge USB est détectée.
+                    chargingText = ' (🔌 En charge)';
+                }
+
                 const statusText = `${levelDisplay} %${chargingText}`;
                 
                 if ($('battery-indicator')) {
@@ -248,11 +279,11 @@ window.emergencyStop = function() {
 function initAll() {
     initBattery();
     if (typeof window.initControls === 'function') window.initControls();
-}
+               }
 // =================================================================
 // FICHIER JS PARTIE 2/2 : dashboard_part2.js (V3.2 DOM & Avancé)
 // Contient : Logique DOM, Astro, ZTD, Contrôles utilisateur.
-// LIGNES : ~350 (Contrainte < 400 respectée)
+// CLARIFICATION : Affichage Cohérent de l'Autonomie de Secours.
 // =================================================================
 
 // --- CONSTANTES DE TEMPS ---
@@ -343,10 +374,8 @@ function updateDOM() {
         avgSpd = totalAvgSpd / totalAvgCount * KMH_MS;
     }
 
-    // Calculs dérivés
-    // Remarque : currentAccel est calculé à partir de kSpd pour la cohérence Kalman,
-    // ce qui le rend plus réaliste que de prendre l'accélération brute du GPS.
-    const currentAccel = (kSpd - lastSpd) / (performance.now() - lastTime) / 1000 || 0;
+    // Calculs dérivés (Utilise la vitesse filtrée Kalman)
+    const currentAccel = (kSpd - lastSpd) / ((performance.now() - lastTime) / 1000 || MIN_DT);
     const dragCoeff = getDragCoefficient(currentWeather);
     const dragForce = 0.5 * dragCoeff * 1.225 * Math.pow(kSpd, 2);
     const dragPower = dragForce * kSpd; 
@@ -360,6 +389,7 @@ function updateDOM() {
     const astro = getAstroData(date);
     const ZTD = calculateZTD(alt, 1013.25, 15, 50); 
     
+    // Vitesse vs Son (%) (Rétabli V3.2)
     const percSound = (kSpd / C_S) * 100;
 
     // --- MISE À JOUR DU DOM ---
@@ -401,15 +431,24 @@ function updateDOM() {
     $('calorie-burn').textContent = calorieBurn.toFixed(1) + ' Cal';
     $('user-mass').textContent = userMassKg.toFixed(3) + ' kg';
     
-    // Batterie de Secours (précision à 3 décimales - CONSERVÉE)
+    // Batterie de Secours (3 décimales) et Source
     if ($('backup-battery-level') && typeof backupBatteryLevel === 'number') {
         const backupPercentage = backupBatteryLevel * 100;
-        // La simulation utilise 3 décimales pour la précision expérimentale
         const backupLevelDisplay = backupPercentage.toFixed(3); 
-        $('backup-battery-level').textContent = `${backupLevelDisplay} %`;
+        
+        let charge_status = '';
+        if (currentRechargeSource === 'SECTOR') {
+            charge_status = ' (Charge RAPIDE - SECTEUR)';
+        } else if (currentRechargeSource === 'SOLAR') {
+             charge_status = ' (Charge LENTE - SOLAIRE)';
+        }
+        
+        // La Power Bank affiche son niveau stocké + le statut de recharge
+        $('backup-battery-level').textContent = `${backupLevelDisplay} %${charge_status}`;
     }
+    // Autonomie (3 décimales)
     if ($('backup-autonomy') && typeof backupAutonomyHours === 'number') {
-        $('backup-autonomy').textContent = backupAutonomyHours.toFixed(3) + ' h';
+        $('backup-autonomy').textContent = backupAutonomyHours.toFixed(3) + ' h (Stock d\'énergie)';
     }
 
     if ($('nether-indicator')) {
@@ -497,6 +536,13 @@ function initControls() {
     if ($('weather-select')) $('weather-select').addEventListener('change', (e) => {
         currentWeather = e.target.value;
         $('selected-weather-ind').textContent = currentWeather;
+    });
+    
+    // NOUVEAU: Événement de la Source de Recharge
+    if ($('recharge-select')) $('recharge-select').addEventListener('change', (e) => {
+        currentRechargeSource = e.target.value;
+        // Met à jour l'indicateur
+        $('selected-recharge-ind').textContent = e.target.options[e.target.selectedIndex].text.split('(')[0].trim();
     });
 
     // Événements de taille d'affichage
