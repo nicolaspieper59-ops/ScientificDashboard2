@@ -30,9 +30,11 @@
         h1 { color: #f9d342; margin-bottom: 5px; }
         h2 { border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 15px; color: #b0b0b0; }
         .controls, .sub-controls { margin-bottom: 15px; }
+        /* Style des boutons (ajusté pour la cohérence visuelle) */
         button, select { background-color: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; margin-right: 5px; cursor: pointer; transition: background-color 0.3s, transform 0.1s; border-radius: 4px; font-weight: bold; }
         button:hover:not(:disabled), select:hover { background-color: #555; }
         #emergency-stop-btn { background-color: #f44336; }
+        /* Grid V3.2: Plus de boîtes, nécessite plus de place ou minmax dynamique */
         .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
         .data-box { background-color: #1e1e1e; padding: 10px; border-radius: 8px; border-left: 3px solid #00ff99; display: flex; flex-direction: column; justify-content: space-between; font-size: 1.0em; }
         .data-box strong { color: #b3b3b3; flex-grow: 1; margin-bottom: 5px; }
@@ -72,6 +74,7 @@
         <button id="capture-btn">📸 Capturer</button>
         
         <span id="display-size-indicator" class="indicator">
+            Taille:
             <button id="size-normal-btn">Normal</button>
             <button id="size-small-btn">Petit</button>
             <button id="size-large-btn">Grand</button>
@@ -82,6 +85,7 @@
         <span id="emergency-status" style="color:#00ff99;">INACTIF</span> | 
         <span id="nether-indicator">DÉSACTIVÉ (1:1)</span> |
         Masse: <span id="user-mass">70.0 kg</span> <button id="set-mass-btn">Choisir</button> |
+        
         <label for="environment-select">Env:</label>
         <select id="environment-select">
             <option value="NORMAL">NORMAL</option>
@@ -90,7 +94,8 @@
             <option value="CONCRETE">BÉTON</option>
         </select>
         (<span id="selected-environment-ind">NORMAL</span>) |
-        <label for="weather-select">Météo:</label>
+        
+        <label for="weather-select">Météo (Fixe):</label>
         <select id="weather-select">
             <option value="CLEAR">CLAIRE</option>
             <option value="RAIN">PLUIE</option>
@@ -108,7 +113,7 @@
     <h2>🚀 Vitesse & Chronométrie</h2>
     <div class="data-grid">
         <div class="data-box" style="border-left-color: #f9d342;">
-            <strong>Vitesse Stable (km/h)</strong>
+            <strong>Vitesse Stable (km/h) - Kalman</strong>
             <span id="speed-stable" class="value">--</span>
         </div>
         <div class="data-box">
@@ -120,7 +125,11 @@
             <span id="speed-max" class="value">--</span>
         </div>
         <div class="data-box">
-            <strong>Distance Totale</strong>
+            <strong>Vitesse Moyenne (km/h)</strong>
+            <span id="speed-avg" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Distance Totale (Nether Adj.)</strong>
             <span id="distance-km-m" class="value">-- km | -- m</span>
         </div>
         <div class="data-box">
@@ -131,9 +140,13 @@
             <strong>Temps Minecraft (MC)</strong>
             <span id="mc-time" class="value">00:00:00</span>
         </div>
+        <div class="data-box">
+            <strong>Vitesse vs Lumière (%)</strong>
+            <span id="perc-light" class="value">--%</span>
+        </div>
     </div>
 
-    <h2>📍 Données GNSS & Corrections</h2>
+    <h2>📍 Données GNSS & Corrections (Kalman V4.2)</h2>
     <div class="data-grid">
         <div class="data-box">
             <strong>Latitude (°)</strong>
@@ -155,11 +168,11 @@
             <strong>Précision GNSS (m)</strong>
             <span id="accuracy" class="value">-- m</span>
         </div>
-        <div class="data-box">
+        <div class="data-box" style="border-left-color: #FF00FF;">
             <strong>Cohérence Signal (Uncert. Kalman)</strong>
             <span id="kalman-uncert" class="value">-- m/s</span>
         </div>
-        <div class="data-box">
+        <div class="data-box" style="border-left-color: #FF00FF;">
             <strong>Qualité Kalman (R)</strong>
             <span id="kalman-r" class="value">-- m²</span>
         </div>
@@ -171,9 +184,13 @@
             <strong>Cap vers Cible (°)</strong>
             <span id="target-bearing" class="value">N/A</span>
         </div>
+        <div class="data-box">
+            <strong>Distance à Cible</strong>
+            <span id="target-dist" class="value">N/A</span>
+        </div>
     </div>
 
-    <h2>🌌 Chronométrie Céleste & Sensors</h2>
+    <h2>🌌 Chronométrie Céleste & Sensors (Astro V3.2)</h2>
     <div class="data-grid">
         <div class="data-box">
             <strong>Temps Solaire Vrai (HSV)</strong>
@@ -205,14 +222,18 @@
         </div>
     </div>
 
-    <h2>⚙️ Métriques Physiques, SVT & Alimentation (Non-Simulées)</h2>
+    <h2>⚙️ Métriques Physiques & Alimentation (Non-Simulées)</h2>
     <div class="data-grid">
         <div class="data-box">
             <strong>Accélération Longitudinale (m/s²)</strong>
             <span id="accel-long" class="value">0.000 m/s²</span>
         </div>
         <div class="data-box">
-            <strong>Travail/Énergie Dépensée</strong>
+            <strong>Force G (G)</strong>
+            <span id="g-force" class="value">0.00 G</span>
+        </div>
+        <div class="data-box">
+            <strong>Travail/Énergie Dépensée (Masse)</strong>
             <span id="work-energy" class="value">0.00 MJ</span>
         </div>
         <div class="data-box">
@@ -220,12 +241,12 @@
             <span id="drag-power-kw" class="value">0.00 kW</span>
         </div>
         <div class="data-box">
-            <strong>Force G (G)</strong>
-            <span id="g-force" class="value">0.00 G</span>
+            <strong>Calories Brûlées (Est. Mécanique)</strong>
+            <span id="calorie-burn" class="value">0.0 Cal</span>
         </div>
         <div class="data-box">
-            <strong>Vitesse vs Lumière (%)</strong>
-            <span id="perc-light" class="value">--%</span>
+            <strong>Puissance Utilisateur (Est.)</strong>
+            <span id="power-output" class="value">N/A</span>
         </div>
         <div class="data-box">
             <strong>Température Air (C)</strong>
@@ -240,20 +261,16 @@
             <span id="alt-baro" class="value">N/A</span>
         </div>
         <div class="data-box">
-            <strong>Saturation SpO₂ (Est.)</strong>
-            <span id="spo2-sim" class="value">N/A</span>
-        </div>
-        <div class="data-box">
-            <strong>Calories Brûlées (Est.)</strong>
-            <span id="calorie-burn" class="value">0.0 Cal (Mécanique)</span>
-        </div>
-        <div class="data-box">
             <strong>Batterie Principale (Niveau)</strong>
             <span id="battery-indicator" class="value">N/A</span>
         </div>
         <div class="data-box">
-            <strong>Batterie Secours</strong>
+            <strong>Batterie Secours (Sim. Retirée)</strong>
             <span id="backup-battery-status" class="value">Désactivée (Supprimé)</span>
+        </div>
+        <div class="data-box">
+            <strong>Saturation SpO₂ (Est.)</strong>
+            <span id="spo2-sim" class="value">N/A</span>
         </div>
     </div>
     
