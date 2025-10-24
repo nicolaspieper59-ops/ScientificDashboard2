@@ -211,56 +211,6 @@ function kFilter(z, dt, R) {
     return kSpd;
 }
 
-function initBattery() {
-    if ('getBattery' in navigator) {
-        navigator.getBattery().then(function(battery) {
-            function updateBatteryInfo() {
-                const level = (battery.level * 100).toFixed(3);
-                const charging = battery.charging ? ' (🔌 En charge)' : '';
-                const statusText = `${level}%${charging}`;
-                if ($('battery-indicator')) $('battery-indicator').textContent = statusText;
-                // --- Mise à jour du Niveau de Batterie (V4.2 Modifiée) ---   
-    // Vérifie si la valeur est un nombre (entre 0.0 et 1.0 par l'API)
-                if (typeof batteryLevel === 'number') {
-        // Multiplie par 100 pour obtenir le pourcentage
-        let percentage = batteryLevel * 100;
-        
-        // Applique toFixed(3) pour forcer trois décimales (ex: 12.123)
-        indicatorElement.textContent = percentage.toFixed(3) + ' %';
-        
-        // Changement de couleur basé sur le niveau (logique de base)
-        if (percentage <= 15) {
-            indicatorElement.style.color = '#f44336'; // Rouge
-        } else if (percentage <= 30) {
-            indicatorElement.style.color = '#ff9800'; // Orange
-        } else {
-            indicatorElement.style.color = '#00ff99'; // Vert
-        }
-    } else {
-        // Affiche la valeur par défaut ('N/A' ou autre) si ce n'est pas un nombre
-        indicatorElement.textContent = batteryLevel;
-        indicatorElement.style.color = '#b0b0b0';
-    }
-            }
-            }
-            updateBatteryInfo();
-            battery.addEventListener('levelchange', updateBatteryInfo);
-            battery.addEventListener('chargingchange', updateBatteryInfo);
-        });
-    } else {
-        if ($('battery-indicator')) $('battery-indicator').textContent =0.001;
-    }
-}
-
-function handleEnvironmentChange() {
-    const select = $('environment-select');
-    if (select) selectedEnvironment = select.value;
-    if ($('selected-environment-ind')) $('selected-environment-ind').textContent = selectedEnvironment;
-}
-function handleWeatherChange() {
-    const select = $('weather-select');
-    if (select) selectedWeather = select.value;
-    if ($('selected-weather-ind')) $('selected-weather-ind').textContent = selectedWeather;
 }
 
 function updateDisplayMode() {
@@ -283,7 +233,62 @@ function updateDisplayMode() {
 
     body.classList.toggle('night-mode', isNightMode);
     if (modeIndicator) modeIndicator.textContent = `Mode: ${manualMode ? 'Manuel' : 'Auto'} ${isNightMode ? '🌒' : '☀️'}`;
-}
+// Assurez-vous que les variables globales 'batteryLevel' et '$' sont définies
+// Ex: let batteryLevel = ; 
+// Ex: const $ = id => document.getElementById(id); // Si dans le même fichier
+
+function initBattery() {
+    if ('getBattery' in navigator) {
+        navigator.getBattery().then(function(battery) {
+            
+            // Fonction principale de mise à jour des données de batterie
+            function updateBatteryInfo() {
+                // 1. Mise à jour de la variable globale pour les autres calculs/affichages
+                // NOTE: La variable 'batteryLevel' doit être une variable globale (e.g., dans dashboard_part1.js)
+                // On stocke le niveau fractionnaire (0.0 à 1.0)
+                if (typeof window.setBatteryLevel === 'function') { 
+                    window.setBatteryLevel(battery.level); 
+                }
+                
+                // 2. Formatage pour l'affichage précis à trois décimales
+                const percentage = battery.level * 100;
+                const levelDisplay = percentage.toFixed(3); // Ex: 12.123
+                const charging = battery.charging ? ' (🔌 En charge)' : '';
+                
+                // 3. Mise à jour du contenu textuel (y compris le %)
+                const statusText = `${levelDisplay} %${charging}`;
+                
+                if ($('battery-indicator')) {
+                    const indicatorElement = $('battery-indicator');
+                    indicatorElement.textContent = statusText;
+                    
+                    // 4. Gestion de la couleur (logique de votre V4.2)
+                    if (percentage <= 15) {
+                        indicatorElement.style.color = '#f44336'; // Rouge
+                    } else if (percentage <= 30) {
+                        indicatorElement.style.color = '#ff9800'; // Orange
+                    } else {
+                        indicatorElement.style.color = '#00ff99'; // Vert
+                    }
+                }
+            }
+            
+            // Écouteurs d'événements
+            updateBatteryInfo();
+            battery.addEventListener('levelchange', updateBatteryInfo);
+            battery.addEventListener('chargingchange', updateBatteryInfo);
+            
+        // Gestion des erreurs ou rejet de la promesse
+        }).catch(error => {
+            console.error("Erreur d'accès à l'API de batterie:", error);
+            if ($('battery-indicator')) $('battery-indicator').textContent = 'API Rejetée';
+        });
+        
+    } else {
+        // Fallback si l'API n'est pas supportée
+        if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A';
+    }
+                                                                                              
 
 // --- GESTION DE L'URGENCE (SANS SIMULATION DE BATTERIE) ---
 
