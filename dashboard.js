@@ -529,6 +529,7 @@ function emergencyStop() {
             stopInd.style.color = '#00ff99';
         }
     }
+}
 
 // =================================================================
 // FICHIER JS BLOC 2/2 : dashboard_block2.js (V3.2 Logic & DOM)
