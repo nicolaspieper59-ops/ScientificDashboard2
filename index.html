@@ -45,7 +45,7 @@
         #map-placeholder { background-color: #333; border: 2px dashed #555; padding: 20px; text-align: center; cursor: pointer; border-radius: 8px; margin-top: 10px; color: #ccc; }
     </style>
 </head>
-<body>
+<body onload="initAll()">
 
     <div id="error-message"></div>
 
@@ -260,14 +260,21 @@
             <strong>Altitude Barométrique</strong>
             <span id="alt-baro" class="value">N/A</span>
         </div>
+        
         <div class="data-box">
             <strong>Batterie Principale (Niveau)</strong>
             <span id="battery-indicator" class="value">N/A</span>
         </div>
-        <div class="data-box">
-            <strong>Batterie Secours (Sim. Retirée)</strong>
-            <span id="backup-battery-status" class="value">Désactivée (Supprimé)</span>
+        
+        <div class="data-box" style="border-left-color: #ff9800;">
+            <strong>Batterie Secours (Niveau)</strong>
+            <span id="backup-battery-level" class="value">N/A</span>
         </div>
+        <div class="data-box" style="border-left-color: #ff9800;">
+            <strong>Autonomie Secours (Est.)</strong>
+            <span id="backup-autonomy" class="value">N/A</span>
+        </div>
+        
         <div class="data-box">
             <strong>Saturation SpO₂ (Est.)</strong>
             <span id="spo2-sim" class="value">N/A</span>
