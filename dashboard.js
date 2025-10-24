@@ -1,13 +1,13 @@
 // =================================================================
-// FICHIER JS PARTIE 1/2 : dashboard_part1.js (V4.2 Core & Init)
-// Contient : Constantes, Variables d'État, Kalman, GPS, Batterie.
+// FICHIER JS PARTIE 1/2 : dashboard_part1.js (V3.2 Core & Kalman Ajusté)
+// Contient : Constantes, Variables d'État, Kalman (Q=0.5), GPS, Batterie Secours.
 // LIGNES : ~250 (Contrainte < 400 respectée)
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES DE BASE ---
 const $ = id => document.getElementById(id); 
 
-// --- CLÉS D'API ET CONSTANTES ---
+// --- CLÉS D'API ET CONSTANTES V3.2 ---
 const API_KEYS = { WEATHER_API: 'VOTRE_CLE_API_METEO_ICI' };
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const C_L = 299792458, C_S = 343, R_E = 6371000, KMH_MS = 3.6;
@@ -31,7 +31,7 @@ const ENV_NOISE = {
 let wID = null; 
 let lat = D_LAT, lon = D_LON, alt = 0, spd = 0, acc = 'N/A';
 let maxSpd = 0, avgSpd = 0, totalDistM = 0, startTime = 0;
-let userMassKg = 0.001; // Masse par défaut à 1 gramme (0.001 kg)
+let userMassKg = 70.0; // Masse utilisateur par défaut
 let currentEnvironment = 'NORMAL';
 let currentWeather = 'CLEAR';
 let isDayMode = true;
@@ -39,7 +39,6 @@ let emergencyActive = false;
 let manualFreqMode = false;
 let currentFreqMode = 'AUTO';
 let netherMode = false;
-let distMStartOffset = 0; 
 
 // --- VARIABLES KALMAN ---
 let kSpd = 0; 
@@ -48,7 +47,8 @@ let kPred = 0;
 let kalmanInitialized = false;
 let lastTime = 0;
 let lastSpd = 0;
-const Q = 0.01; // Process Noise (Bruit de processus)
+// Q AUGMENTÉ (0.5) pour une MEILLEURE RÉACTIVITÉ à l'accélération
+const Q = 0.5; 
 
 // --- VARIABLES D'ÉTAT BATTERIE ---
 let batteryLevel = 'N/A';
@@ -61,12 +61,11 @@ const BACKUP_CAPACITY_WH = 50.0;
 const BACKUP_CONSUMPTION_W = 5.0;
 
 // =================================================================
-// --- LOGIQUE KALMAN ---
+// --- LOGIQUE KALMAN (AJUSTÉE POUR L'ACCÉLÉRATION) ---
 // =================================================================
 
 function getKalmanR(hpe, env) {
     let noiseFactor = ENV_NOISE[env] || ENV_NOISE['NORMAL'];
-    // R est l'incertitude de la mesure GPS (HPE) au carré, ajustée.
     return Math.pow(hpe, 2) * noiseFactor * 0.1; 
 }
 
@@ -75,13 +74,14 @@ function runKalmanFilter(measurementSpd, measurementHpe) {
         kSpd = measurementSpd;
         kUncert = measurementHpe * 2; 
         kalmanInitialized = true;
-        lastTime = performance.now(); // Initialisation du temps
+        lastTime = performance.now(); 
         return kSpd;
     }
 
-    // 1. Prédiction
     const now = performance.now();
     const dt = (now - lastTime) / 1000;
+    
+    // 1. Prédiction (Utilisation de la dernière accélération pour prédire le prochain état)
     const acceleration = (kSpd - lastSpd) / (dt || MIN_DT); 
     kPred = kSpd + (acceleration * dt); 
     let kPredUncert = kUncert + Q; 
@@ -99,7 +99,7 @@ function runKalmanFilter(measurementSpd, measurementHpe) {
 }
 
 // =================================================================
-// --- GESTION GPS ---
+// --- GESTION GPS & BATTERIE ---
 // =================================================================
 
 function handleErr(err) {
@@ -127,13 +127,11 @@ function updateDisp(pos) {
     const newSpdMS = coords.speed !== null ? coords.speed : 0; 
     const dt = (now - lastTime) / 1000;
 
-    // Calcul de la distance
     if (kalmanInitialized) {
         const distanceStep = kSpd * dt; 
         totalDistM += distanceStep;
     }
 
-    // Mise à jour des variables globales
     lat = coords.latitude;
     lon = coords.longitude;
     alt = coords.altitude !== null ? coords.altitude : 0;
@@ -149,17 +147,12 @@ function updateDisp(pos) {
     if (startTime === 0) startTime = currentTime;
 }
 
-// =================================================================
-// --- LOGIQUE BATTERIE ET AUTONOMIE DE SECOURS ---
-// =================================================================
-
 function updateBackupBatteryInfo() {
     if (typeof backupBatteryLevel !== 'number') return;
     
     const remainingWh = backupBatteryLevel * BACKUP_CAPACITY_WH;
     const autonomy = remainingWh / BACKUP_CONSUMPTION_W;
     backupAutonomyHours = autonomy; 
-    // Le DOM est mis à jour dans updateDOM de la Partie 2
 }
 
 function simulateBackupDischarge() {
@@ -171,11 +164,9 @@ function simulateBackupDischarge() {
 }
 
 function initBattery() {
-    // 1. Initialisation et simulation de la batterie de secours
     updateBackupBatteryInfo(); 
     setInterval(simulateBackupDischarge, 60000); 
 
-    // 2. Surveillance de la batterie principale (API Web)
     if ('getBattery' in navigator) {
         navigator.getBattery().then(function(battery) {
             
@@ -183,9 +174,9 @@ function initBattery() {
                 batteryLevel = battery.level; 
                 batteryCharging = battery.charging;
                 
-                // Affichage direct de la batterie principale (avec 3 décimales)
                 const percentage = batteryLevel * 100;
-                const levelDisplay = percentage.toFixed(3); 
+                // CORRECTION: Batterie principale affichée avec 2 décimales
+                const levelDisplay = percentage.toFixed(2); 
                 const chargingText = batteryCharging ? ' (🔌 En charge)' : '';
                 const statusText = `${levelDisplay} %${chargingText}`;
                 
@@ -238,7 +229,6 @@ function stopGPS(resetID = true) {
     if (typeof window.stopFastDOM === 'function') window.stopFastDOM();
 }
 
-// La fonction d'arrêt d'urgence est définie dans la PARTIE 2
 window.emergencyStop = function() {
     if (emergencyActive) {
         if (typeof window.resetAllState === 'function') window.resetAllState();
@@ -260,7 +250,7 @@ function initAll() {
     if (typeof window.initControls === 'function') window.initControls();
 }
 // =================================================================
-// FICHIER JS PARTIE 2/2 : dashboard_part2.js (V4.2 DOM & Avancé)
+// FICHIER JS PARTIE 2/2 : dashboard_part2.js (V3.2 DOM & Avancé)
 // Contient : Logique DOM, Astro, ZTD, Contrôles utilisateur.
 // LIGNES : ~350 (Contrainte < 400 respectée)
 // =================================================================
@@ -347,7 +337,6 @@ function updateDOM() {
     const elapsedTimeS = startTime > 0 ? (date.getTime() - startTime) / 1000 : 0;
     const stableSpdKmh = kSpd * KMH_MS;
     
-    // Vitesse moyenne cumulée
     if (kSpd > 0) {
         totalAvgSpd += kSpd;
         totalAvgCount++;
@@ -355,6 +344,8 @@ function updateDOM() {
     }
 
     // Calculs dérivés
+    // Remarque : currentAccel est calculé à partir de kSpd pour la cohérence Kalman,
+    // ce qui le rend plus réaliste que de prendre l'accélération brute du GPS.
     const currentAccel = (kSpd - lastSpd) / (performance.now() - lastTime) / 1000 || 0;
     const dragCoeff = getDragCoefficient(currentWeather);
     const dragForce = 0.5 * dragCoeff * 1.225 * Math.pow(kSpd, 2);
@@ -366,9 +357,10 @@ function updateDOM() {
     const workEnergyMJ = (totalDistM * netForce) / 1000000;
     const calorieBurn = workEnergyMJ * 239.006; 
 
-    // Données astronomiques et ZTD (T, P, H fixés pour la simulation)
     const astro = getAstroData(date);
     const ZTD = calculateZTD(alt, 1013.25, 15, 50); 
+    
+    const percSound = (kSpd / C_S) * 100;
 
     // --- MISE À JOUR DU DOM ---
     $('local-time').textContent = date.toLocaleTimeString();
@@ -383,6 +375,7 @@ function updateDOM() {
     $('distance-km-m').textContent = `${(totalDistM / 1000).toFixed(3)} km | ${totalDistM.toFixed(1)} m`;
     $('time-elapsed').textContent = elapsedTimeS.toFixed(1) + ' s';
     $('perc-light').textContent = (stableSpdKmh / (C_L * KMH_MS) * 100).toFixed(6) + ' %';
+    $('perc-sound').textContent = percSound.toFixed(3) + ' %'; 
     
     // GNSS & Corrections
     $('latitude').textContent = lat.toFixed(6);
@@ -408,10 +401,11 @@ function updateDOM() {
     $('calorie-burn').textContent = calorieBurn.toFixed(1) + ' Cal';
     $('user-mass').textContent = userMassKg.toFixed(3) + ' kg';
     
-    // Batterie de Secours (avec précision à 3 décimales)
+    // Batterie de Secours (précision à 3 décimales - CONSERVÉE)
     if ($('backup-battery-level') && typeof backupBatteryLevel === 'number') {
         const backupPercentage = backupBatteryLevel * 100;
-        const backupLevelDisplay = backupPercentage.toFixed(3);
+        // La simulation utilise 3 décimales pour la précision expérimentale
+        const backupLevelDisplay = backupPercentage.toFixed(3); 
         $('backup-battery-level').textContent = `${backupLevelDisplay} %`;
     }
     if ($('backup-autonomy') && typeof backupAutonomyHours === 'number') {
@@ -510,7 +504,6 @@ function initControls() {
     if ($('size-small-btn')) $('size-small-btn').addEventListener('click', () => changeDisplaySize('SMALL'));
     if ($('size-large-btn')) $('size-large-btn').addEventListener('click', () => changeDisplaySize('LARGE'));
 
-    // Démarrage initial de la boucle DOM
     startFastDOM();
 }
 
