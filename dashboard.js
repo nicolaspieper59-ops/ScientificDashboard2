@@ -959,14 +959,14 @@ function initAll() {
         if ($('nether-indicator')) $('nether-indicator').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
         netherToggleBtn.textContent = netherMode ? "🌍 Overworld" : "🔥 Nether";
     });
-    
-    if (newLonStr !== null && !isNaN(parseFloat(newLonStr))) { D_LON = parseFloat(newLonStr); }
+
+        if (newLonStr !== null && !isNaN(parseFloat(newLonStr))) { D_LON = parseFloat(newLonStr); }
         alert(`Nouvelle position par défaut : Lat=${D_LAT.toFixed(4)}, Lon=${D_LON.toFixed(4)}.`);
         resetDisp();
     });
 
     if (setTargetBtn) setTargetBtn.addEventListener('click', setTarget);
-    if (toggleModeBtn) toggleModeModeBtn.addEventListener('click', toggleManualMode);
+    if (toggleModeBtn) toggleModeBtn.addEventListener('click', toggleManualMode);
     if (autoModeBtn) autoModeBtn.addEventListener('click', setAutoMode);
     
     if (netherToggleBtn) netherToggleBtn.addEventListener('click', () => {
@@ -1007,6 +1007,7 @@ function initAll() {
         }
     });
 
-}
+} // FERMETURE DE LA FONCTION initAll
 
+// Lancement de l'initialisation après le chargement complet du document HTML
 document.addEventListener('DOMContentLoaded', initAll);
