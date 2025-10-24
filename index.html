@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard GNSS & Astro - V3.2</title>
+    <title>Dashboard GNSS & Astro - V3.2 Avancée</title>
     
     <style>
         /* --- VARIABLES GLOBALES --- */
@@ -36,14 +36,18 @@
             --color-module-bg: #ffffff;
         }
 
-        /* --- STRUCTURE & MISE EN PAGE --- */
+        /* --- STRUCTURE & MISE EN PAGE (4 colonnes pour plus de données) --- */
         #dashboard-container {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 20px;
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }
+        
+        /* Ajustements pour les grandes sections */
+        .full-width { grid-column: 1 / 5; }
+        .half-width { grid-column: span 2; }
 
         .module {
             background-color: var(--color-module-bg);
@@ -58,7 +62,7 @@
             border-bottom: 2px solid var(--color-border);
             padding-bottom: 5px;
             margin-top: 0;
-            font-size: calc(1.2rem * var(--global-font-factor));
+            font-size: calc(1.1rem * var(--global-font-factor));
         }
 
         .data-point {
@@ -74,7 +78,6 @@
         }
 
         .main-display {
-            grid-column: 1 / 4;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -84,43 +87,26 @@
             border-radius: 10px;
             border: 3px solid #ff4500;
         }
+        
+        .main-display-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+        }
 
         #speed-stable {
-            font-size: calc(4.5rem * var(--global-font-factor));
+            font-size: calc(4.0rem * var(--global-font-factor));
             font-weight: 900;
             color: #ff4500; /* Vitesse en Rouge-Orange Vif */
             line-height: 1.1;
         }
 
         #speed-unit {
-            font-size: calc(1.5rem * var(--global-font-factor));
+            font-size: calc(1.3rem * var(--global-font-factor));
             color: var(--color-text-main);
             margin-top: -10px;
         }
-
-        #local-time-header {
-            font-size: calc(2.0rem * var(--global-font-factor));
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
         
-        .status-module {
-            grid-column: 1 / 4;
-            display: flex;
-            justify-content: space-between;
-            gap: 20px;
-            padding: 10px 0;
-            border-bottom: 1px dashed var(--color-border);
-            margin-bottom: 20px;
-        }
-
-        .status-module span {
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: calc(1.0rem * var(--global-font-factor));
-        }
-
         .indicator {
             padding: 3px 8px;
             border-radius: 4px;
@@ -130,9 +116,8 @@
             border: 1px solid #00ff99;
         }
 
-        /* --- COMMANDES ET ERREURS --- */
+        /* --- COMMANDES --- */
         #controls {
-            grid-column: 1 / 4;
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
@@ -152,56 +137,29 @@
             background-color: #555577;
             color: var(--color-text-main);
         }
-
-        button:hover {
-            background-color: #6a6a8a;
-        }
-        
-        button#start-btn { background-color: #4CAF50; }
-        button#stop-btn { background-color: #f44336; }
-        button#emergency-stop-btn { background-color: #ff0000; color: white; }
-
-        #error-message {
-            grid-column: 1 / 4;
-            background-color: #ffdddd;
-            color: #d8000c;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #d8000c;
-            display: none;
-            font-weight: bold;
-        }
-        
-        /* Ajustements spécifiques des indicateurs de statut */
-        #mode-indicator, #emergency-status, #battery-indicator {
-             font-weight: bold;
-             color: var(--color-text-accent);
-        }
         
         /* Réactivité */
-        @media (max-width: 900px) {
-            #dashboard-container {
-                grid-template-columns: 1fr;
-            }
-            .main-display, .status-module, .module, #controls, #error-message {
-                grid-column: 1 / 2;
-            }
-            .status-module {
-                flex-direction: column;
-                gap: 10px;
-            }
+        @media (max-width: 1200px) {
+            #dashboard-container { grid-template-columns: repeat(2, 1fr); }
+            .full-width { grid-column: 1 / 3; }
+            .half-width { grid-column: span 1; }
+        }
+        @media (max-width: 768px) {
+            #dashboard-container { grid-template-columns: 1fr; }
+            .full-width, .half-width { grid-column: 1 / 2; }
         }
     </style>
 </head>
 <body class="night-mode">
 
-    <div id="error-message"></div>
+    <div id="error-message" class="full-width"></div>
 
-    <div id="controls">
+    <div id="controls" class="full-width">
         <button id="start-btn">▶ Démarrer GNSS</button>
         <button id="stop-btn" disabled>■ Arrêter GNSS</button>
         <button id="reset-all-btn">🔄 Reset Tous</button>
-        <button id="emergency-stop-btn">🚨 Arrêt Urgence</button>
+        <button id="reset-max-btn">⬆️ Reset Max</button>
+        <button id="emergency-stop-btn">🚨 Arrêt Urgence Batterie</button>
         <span id="emergency-status" class="indicator" style="color:#00ff99;">INACTIF</span>
 
         <hr style="width:100%; border-color:var(--color-border);">
@@ -223,40 +181,42 @@
             <option value="STORM">ORAGE</option>
         </select>
         (<span id="selected-weather-ind" class="indicator">DÉGAGÉE</span>)
-        
-        <label for="recharge-select">Charge Externe:</label>
-        <select id="recharge-select">
-            <option value="OFF">DÉSACTIVÉ</option>
-            <option value="SECTOR">SECTEUR (Rapide)</option>
-            <option value="SOLAR">SOLAIRE/DYNAMO (Lente)</option>
-        </select>
-        (<span id="selected-recharge-ind" class="indicator">DÉSACTIVÉ</span>)
-        
+
         <hr style="width:100%; border-color:var(--color-border);">
 
-        <button id="toggle-mode-btn">🌗 Mode Nuit/Jour</button>
-        <button id="set-mass-btn">⚖️ Définir Masse</button>
-        <button id="nether-toggle-btn">🔥 Nether Mode</button>
+        <button id="set-target-btn">📍 Définir Cible</button>
+        <button id="set-default-loc-btn">🏡 Pos. Par Défaut</button>
+        <button id="nether-toggle-btn">🔥 Nether</button>
         (<span id="nether-indicator" class="indicator">DÉSACTIVÉ (1:1)</span>)
+        
+        <button id="freq-manual-btn">⚡ Fréquence: Auto</button>
+        <span id="speed-source-indicator" class="indicator">Source: LOW_FREQ (Auto)</span>
+
+        <button id="toggle-mode-btn">🌓 Mode Manuel</button>
+        <button id="auto-mode-btn" style="display: none;">☀️ Mode Auto</button>
         
         <hr style="width:100%; border-color:var(--color-border);">
         
         <button id="size-small-btn">Taille S</button>
         <button id="size-normal-btn">Taille M</button>
         <button id="size-large-btn">Taille L</button>
+        (Actuel: <span id="display-size-indicator" class="indicator">NORMAL</span>)
+        <button id="capture-btn">📸 Capture Écran</button>
+
     </div>
     
     <div id="dashboard-container">
 
-        <div class="main-display">
-            <div id="local-time-header">Heure Locale: <span id="local-time">--:--:--</span></div>
-            <div id="solar-true-header">Heure Solaire Vraie: <span id="solar-true">--:--:--</span> (HSV)</div>
-            <div id="solar-mean-header">Heure Solaire Moyenne: <span id="solar-mean">--:--:--</span> (LSM)</div>
+        <div class="main-display half-width">
+            <div class="main-display-header">
+                Heure Locale: <span id="local-time">--:--:--</span>
+                | Heure MC: <span id="mc-time">--:--:--</span>
+            </div>
             
             <div style="margin-top: 15px;">
                 <span style="font-size: calc(1.5rem * var(--global-font-factor)); color: var(--color-text-main);">VITESSE STABLE (Kalman)</span>
             </div>
-            <div id="speed-stable">0.000</div>
+            <div id="speed-stable">0.00000</div>
             <div id="speed-unit">km/h</div>
             
             <div style="margin-top: 15px; width: 100%; display:flex; justify-content:space-around;">
@@ -264,56 +224,86 @@
                  <span id="mode-indicator">Mode: Nuit 🌙</span>
             </div>
         </div>
-
-        <div class="module">
-            <h2>STAT. VITESSE & ACCÉLÉRATION</h2>
-            <div class="data-point">Vitesse 3D (Inst.): <span id="speed-3d-inst">0.000 km/h</span></div>
-            <div class="data-point">Vitesse Max (Kalman): <span id="speed-max">0.000 km/h</span></div>
-            <div class="data-point">Vitesse Moy. (Total): <span id="speed-avg">0.000 km/h</span></div>
-            <div class="data-point">Distance Totale: <span id="distance-km-m">0.000 km | 0.0 m</span></div>
-            <div class="data-point">Temps Écoulé: <span id="time-elapsed">0.0 s</span></div>
-            <hr style="border-color:var(--color-border);">
-            <div class="data-point">Accélération Long.: <span id="accel-long">0.000 m/s²</span></div>
-            <div class="data-point">Force G (Longitudinale): <span id="g-force">0.000 G</span></div>
-            <div class="data-point">Vitesse vs Lumière: <span id="perc-light">0.000000 %</span></div>
-            <div class="data-point">Vitesse vs Son: <span id="perc-sound">0.000 %</span></div>
-        </div>
-
-        <div class="module">
-            <h2>GNSS & CORRECTIONS</h2>
-            <div class="data-point">Latitude: <span id="latitude">0.000000</span></div>
-            <div class="data-point">Longitude: <span id="longitude">0.000000</span></div>
-            <div class="data-point">Altitude: <span id="altitude">0.0 m</span></div>
-            <div class="data-point">Précision (HPE): <span id="accuracy">N/A</span></div>
-            <hr style="border-color:var(--color-border);">
-            <div class="data-point">Retard Zénithal T. (ZTD): <span id="ztd">0.000 m</span></div>
-            <div class="data-point">Incertitude Kalman (P): <span id="kalman-uncert">0.000 m/s</span></div>
-            <div class="data-point">Bruit de Mesure (R): <span id="kalman-r">0.0000 m²</span></div>
-            <div class="data-point">Masse Utilisateur: <span id="user-mass">70.000 kg</span></div>
-        </div>
-
-        <div class="module">
-            <h2>ASTRO & ALIMENTATION</h2>
+        
+        <div class="module half-width">
+            <h2>ASTRO & CHRONOMÉTRIE</h2>
             <div class="data-point">Heure Solaire Vraie (HSV): <span id="solar-true">--:--:--</span></div>
             <div class="data-point">Heure Solaire Moyenne (LSM): <span id="solar-mean">--:--:--</span></div>
+            <div class="data-point">Temps Lunaire Moyen (LMT): <span id="lunar-time">--:--:--</span></div>
+            <hr style="border-color:var(--color-border);">
             <div class="data-point">Culmination Solaire (LSM): <span id="solar-culmination">--:--:--</span></div>
-            <div class="data-point">Équation du Temps (EoT): <span id="eot">0.000 min</span></div>
+            <div class="data-point">Équation du Temps (EoT): <span id="eot">0.00 min</span></div>
+            <div class="data-point">Éq. du Temps (Midi UTC): <span id="eot-midday">0.0000 min</span></div>
+            <div class="data-point">Élévation Solaire: <span id="sun-elevation">0.00 °</span></div>
+            <div class="data-point">Longitude Solaire (Actuel): <span id="solar-longitude-val">0.00 °</span></div>
+            <div class="data-point">Longitude Sol. (Midi UTC): <span id="solar-longitude-midday">0.00000000 °</span></div>
             <div class="data-point">Phase Lunaire: <span id="lunar-phase-perc">0.0 %</span></div>
+        </div>
+
+        <div class="module">
+            <h2>VITESSE & PERFORMANCE</h2>
+            <div class="data-point">Temps Écoulé (Session): <span id="elapsed-time">0.00 s</span></div>
+            <div class="data-point">Fréquence DOM: <span id="update-frequency">0.0 Hz (DOM)</span></div>
+            <div class="data-point">Distance Totale: <span id="distance-km-m">0.000 km | 0.00 m</span></div>
             <hr style="border-color:var(--color-border);">
-            <div class="data-point">Énergie Travail (Net): <span id="work-energy">0.000 MJ</span></div>
-            <div class="data-point">Puissance Résistance Air: <span id="drag-power-kw">0.000 kW</span></div>
-            <div class="data-point">Calories Brûlées: <span id="calorie-burn">0.0 Cal</span></div>
+            <div class="data-point">Vitesse 3D (Inst.) : <span id="speed-3d-inst">0.00000 km/h</span></div>
+            <div class="data-point">Vitesse 3D (Inst.) : <span id="speed-ms">0.00000 m/s</span></div>
+            <div class="data-point">Vitesse Filtrée : <span id="speed-stable-mm">0.00 mm/s</span></div>
             <hr style="border-color:var(--color-border);">
-            <div class="data-point">BATTERIE SECOURS: <span id="backup-battery-level">0.000 %</span></div>
-            <div class="data-point">AUTONOMIE SEC.: <span id="backup-autonomy">N/A</span></div>
+            <div class="data-point">Vitesse Max : <span id="speed-max">0.00000 km/h</span></div>
+            <div class="data-point">Vitesse Moy. (Total) : <span id="speed-avg">0.00000 km/h</span></div>
+            <div class="data-point">Cohérence Kalman: <span id="speed-error-perc">100.0%</span></div>
+        </div>
+
+        <div class="module">
+            <h2>GNSS & NAVIGATION</h2>
+            <div class="data-point">Latitude: <span id="latitude">0.000000</span></div>
+            <div class="data-point">Longitude: <span id="longitude">0.000000</span></div>
+            <div class="data-point">Altitude (GPS): <span id="altitude">-- m</span></div>
+            <div class="data-point">Altitude (Baro): <span id="alt-baro">N/A (Baro)</span></div>
+            <div class="data-point">Précision (HPE): <span id="gps-accuracy">N/A</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">Cap (Heading): <span id="heading">-- °</span></div>
+            <div class="data-point">Vitesse Verticale: <span id="vertical-speed">0.00 m/s</span></div>
+            <div class="data-point">Sous-sol: <span id="underground">Non</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">Distance Cible: <span id="dist-target">N/A</span></div>
+            <div class="data-point">Cap Cible: <span id="cap-dest">N/A</span></div>
+        </div>
+
+        <div class="module">
+            <h2>CAPTEURS & MÉTÉO</h2>
+            <div class="data-point">Luminosité : <span id="illuminance-lux">N/A</span></div>
+            <div class="data-point">Niveau à bulle (BG) : <span id="bubble-level">--°/--°</span></div>
+            <div class="data-point">Champ Magnétique : <span id="mag-field">-- ° (Mag)</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">Pression Atmosphérique: <span id="pressure">N/A</span></div>
+            <div class="data-point">Température Air: <span id="air-temp">N/A</span></div>
+            <div class="data-point">Humidité Relative: <span id="humidity">N/A</span></div>
+            <div class="data-point">Retard Zénithal T. (ZTD): <span id="ztd">N/A</span></div>
+        </div>
+        
+        <div class="module">
+            <h2>PHYSIQUE & ÉNERGIE</h2>
+            <div class="data-point">Accélération Long.: <span id="accel-long">0.000 m/s²</span></div>
+            <div class="data-point">Force G (Longitudinale): <span id="g-force">0.00 G</span></div>
+            <div class="data-point">Force de Traînée: <span id="drag-force">0.0 N</span></div>
+            <div class="data-point">Puissance Résistance Air: <span id="drag-power-kw">0.00 kW</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">Vitesse vs Lumière: <span id="perc-light">0.00000%</span></div>
+            <div class="data-point">Vitesse vs Son: <span id="perc-sound">0.000%</span></div>
         </div>
         
     </div>
 
     <script src="dashboard.js"></script>
     <script>
-        // Initialisation après le chargement des deux parties
-        document.addEventListener('DOMContentLoaded', initAll);
+        // Le code JS original charge les fonctions initAll / DOMContentLoaded pour démarrer.
+        // Assurez-vous que les deux fichiers JS ci-dessus sont bien enregistrés sous ces noms.
+        
+        // La librairie 'html2canvas' est nécessaire pour le bouton de capture
+        // Si vous souhaitez utiliser le bouton '📸 Capture Écran', vous devez l'ajouter ici :
+        // <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     </script>
 </body>
-                </html>
+        </html>
