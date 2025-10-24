@@ -515,6 +515,72 @@ function handleErr(err) {
 // LOGIQUE D'AFFICHAGE & DOM
 // ===========================================
 
+
+    
+    // Fonctions de contrôle et utilitaires (Raccourcis
+// =================================================================
+// PARTIE 3/3 : DOM, Boucles & Contrôle Système
+// (Dépend des fonctions des Parties 1 et 2)
+// =================================================================
+
+// ===========================================
+// FONCTIONS DE PERSISTENCE D'ÉTAT (NOUVEAU)
+// ===========================================
+
+const STATE_KEY = 'qdgnss_state_v4';
+
+function saveState() {
+    const state = {
+        distM: distM,
+        maxSpd: maxSpd,
+        tLat: tLat,
+        tLon: tLon,
+        D_LAT: lat ?? D_LAT, 
+        D_LON: lon ?? D_LON,
+        netherMode: netherMode,
+        externalBatteryLevel: externalBatteryLevel,
+        manualMode: manualMode
+    };
+    try {
+        localStorage.setItem(STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn("Échec de la sauvegarde de l'état.", e);
+    }
+}
+
+function loadState() {
+    try {
+        const savedState = localStorage.getItem(STATE_KEY);
+        if (savedState) {
+            const state = JSON.parse(savedState);
+            distM = state.distM || 0;
+            distMStartOffset = state.distM || 0;
+            maxSpd = state.maxSpd || 0;
+            tLat = state.tLat || null;
+            tLon = state.tLon || null;
+            netherMode = state.netherMode || false;
+            externalBatteryLevel = state.externalBatteryLevel || 99.999;
+            // Charge la dernière position GPS connue comme position par défaut
+            D_LAT = state.D_LAT || D_LAT; 
+            D_LON = state.D_LON || D_LON;
+            manualMode = state.manualMode === true || state.manualMode === false ? state.manualMode : null;
+            
+            // Mise à jour initiale de l'affichage
+            if ($('nether-indicator')) $('nether-indicator').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
+            if ($('nether-toggle-btn')) $('nether-toggle-btn').textContent = netherMode ? "🌍 Overworld" : "🔥 Nether";
+            document.body.classList.toggle('night-mode', manualMode !== null ? manualMode : false);
+            return true;
+        }
+    } catch (e) {
+        console.error("Échec du chargement de l'état.", e);
+    }
+    return false;
+}
+
+// ===========================================
+// LOGIQUE D'AFFICHAGE & DOM
+// ===========================================
+
 function calcLunarTime(lon) { 
     const now = getCDate(), JD = now.getTime() / 86400000 + 2440587.5; 
     const T = (JD - JD_2K) / 36525.0; 
@@ -539,15 +605,7 @@ function updateAstro(latA, lonA) {
     const now = getCDate(), sData = calcSolar(); 
     const hDeg = sData.elevation;
     
-    // Temps Minecraft (calcul conservé)
-    const dateM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
-    const mTime = dateM.getUTCHours() * 3600 + dateM.getUTCMinutes() * 60 + dateM.getUTCSeconds();
-    const mcTime = (mTime * 10) % 24000; 
-    const mcH = Math.floor(mcTime / 1000) % 24, mcM = Math.floor((mcTime % 1000) / (1000/60));
-    const mcTimeEl = $('mc-time');
-    if (mcTimeEl) mcTimeEl.textContent = `${String(mcH).padStart(2, '0')}:${String(mcM).padStart(2, '0')}:--`;
-
-    // Temps Solaire Vrai et Moyen (calcul conservé)
+    // Temps Solaire Vrai et Moyen
     let sTimeH = (now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds()) / 3600;
     let trueSolarTimeH = sTimeH + (lonA / 15) + (sData.eot / 60);
     trueSolarTimeH = (trueSolarTimeH % 24 + 24) % 24;
@@ -596,7 +654,6 @@ function updateDM(latA, lonA) {
 /** Boucle principale pour les mises à jour rapides du DOM. */
 function fastDOM() {
     const latA = lat ?? D_LAT, lonA = lon ?? D_LON;
-    const now = getCDate().getTime(); 
     const pNow = performance.now();
     
     const updateFrequencyEl = $('update-frequency');
@@ -607,29 +664,30 @@ function fastDOM() {
 
     updateAstro(latA, lonA); 
     
-    // Contrôle de la fréquence lente (1 Hz)
+    // Contrôle de la fréquence lente (1 Hz) et Sauvegarde de l'état
     if (fastDOM.lastSlowT && (pNow - fastDOM.lastSlowT) < DOM_SLOW_UPDATE_MS) return;
     
     fastDOM.lastSlowT = pNow;
+    saveState(); // <<< SAUVEGARDE DE L'ÉTAT
 
     updateDM(latA, lonA); 
     
     const middayData = calcMiddayMetrics(); 
     if ($('solar-longitude-midday')) $('solar-longitude-midday').textContent = `${middayData.solarLongitude.toFixed(8)} °`;
     
-    if (!lPos || sTime === null) { return; }
+    if (!lPos && sTime !== null) { return; } // Retourne si GPS en cours mais sans données récentes
     
-    const spd3D = lPos.speedMS_3D || 0, spd3DKMH = spd3D * KMH_MS; 
+    const spd3D = lPos?.speedMS_3D || 0, spd3DKMH = spd3D * KMH_MS; 
     const sSpd = kSpd < MIN_SPD ? 0 : kSpd, sSpdKMH = sSpd * KMH_MS; 
     
-    const spd4D_perc = (spd3D / C_L * 100); // Vitesse 4D est interprétée comme le % de la vitesse de la lumière (c)
+    const spd4D_perc = (spd3D / C_L * 100); 
 
     if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${spd3DKMH.toFixed(5)} km/h`; 
     if ($('speed-4d-perc')) $('speed-4d-perc').textContent = `${spd4D_perc.toPrecision(5)} %`; 
     if ($('perc-sound')) $('perc-sound').textContent = `${(spd3D / C_S * 100).toFixed(5)} %`; 
     if ($('speed-stable')) $('speed-stable').textContent = `${sSpdKMH.toFixed(5)} km/h`; 
 
-    const kR = lPos.kalman_R_val || R_MAX; 
+    const kR = lPos?.kalman_R_val || R_MAX; 
     const uncertainty_ratio = Math.min(kUncert / 1.0, 1.0); 
     const coherence_perc = 100 * (1 - uncertainty_ratio);
     if ($('speed-error-perc')) $('speed-error-perc').textContent = `${coherence_perc.toFixed(1)}% (R:${kR.toFixed(3)})`;
@@ -762,10 +820,18 @@ function cycleForcedFreq() {
         $('freq-manual-btn').style.backgroundColor = forcedFreqState === 'HIGH_FREQ' ? '#007bff' : '#4CAF50';
     }
 }
-function resetDisp() {
+
+/** Réinitialisation de la session (garde les réglages permanents sauf si fullReset). */
+function resetDisp(fullReset = true) {
     stopGPS(false);
-    distM = 0; distMStartOffset = 0; maxSpd = 0; 
-    kSpd = 0; kUncert = 1000; tLat = null; tLon = null;
+    if (fullReset) { 
+        distM = 0; distMStartOffset = 0; maxSpd = 0; 
+        tLat = null; tLon = null;
+        externalBatteryLevel = 99.999;
+        manualMode = null;
+        localStorage.removeItem(STATE_KEY); // Efface les données persistantes
+    }
+    kSpd = 0; kUncert = 1000;
     lastReliableHeading = null; sTime = null; lPos = null; 
 }
 function resetMax() { maxSpd = 0; }
@@ -795,23 +861,25 @@ function captureScreenshot() {
 
 function initAll() { 
     // Initialisation
-    resetDisp(); syncH(); initALS(); initAdvancedSensors(); 
+    loadState(); // <<< CHARGEMENT DE L'ÉTAT AU DÉMARRAGE
+    resetDisp(false); // Réinitialise les variables GPS/Kalman mais garde l'état de session
+    syncH(); initALS(); initAdvancedSensors(); 
     fetchWeather(D_LAT, D_LON); initBattery(); changeDisplaySize('NORMAL'); initMap();
 
     if (domID === null) { domID = setInterval(fastDOM, DOM_LOW_FREQ_MS); fastDOM.lastSlowT = 0; currentDOMFreq = DOM_LOW_FREQ_MS; }
     
-    // Événements
+    // Événements (Aucun changement)
     if ($('start-btn')) $('start-btn').addEventListener('click', startGPS);
-    if ($('stop-btn')) $('stop-btn').addEventListener('click', stopGPS);
+    if ($('stop-btn')) $('stop-btn').addEventListener('click', () => stopGPS(true));
     if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', resetMax);
-    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { if (confirm("Réinitialiser tout ?")) { stopGPS(true); resetDisp(); } });
+    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { if (confirm("Réinitialiser toutes les données de session ?")) { stopGPS(true); resetDisp(true); } });
     if ($('set-default-loc-btn')) $('set-default-loc-btn').addEventListener('click', () => { 
         const newLatStr = prompt(`Lat (actuel: ${D_LAT}) :`);
         if (newLatStr !== null && !isNaN(parseFloat(newLatStr))) { D_LAT = parseFloat(newLatStr); }
         const newLonStr = prompt(`Lon (actuel: ${D_LON}) :`);
         if (newLonStr !== null && !isNaN(parseFloat(newLonStr))) { D_LON = parseFloat(newLonStr); }
         alert(`Nouvelle position par défaut : Lat=${D_LAT.toFixed(4)}, Lon=${D_LON.toFixed(4)}.`);
-        resetDisp();
+        resetDisp(false);
     });
 
     if ($('set-target-btn')) $('set-target-btn').addEventListener('click', setTarget);
@@ -844,5 +912,5 @@ function initAll() {
 document.addEventListener('DOMContentLoaded', initAll);
 
 // =================================================================
-// FIN DU FICHIER JAVASCRIPT COMPLET (Env. 390 Lignes)
+// FIN DU FICHIER JAVASCRIPT COMPLET
 // =================================================================
