@@ -110,11 +110,150 @@
         <br>Position Actuelle par Défaut: Lat=48.8566, Lon=2.3522
     </div>
 
+    <h2>🚀 Vitesse & Chronométrie</h2>
     <div class="data-grid">
+        <div class="data-box" style="border-left-color: #f9d342;">
+            <strong>Vitesse Stable (km/h) - Kalman</strong>
+            <span id="speed-stable" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Instantanée 3D (km/h)</strong>
+            <span id="speed-3d-inst" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Max (km/h)</strong>
+            <span id="speed-max" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Moyenne (km/h)</strong>
+            <span id="speed-avg" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Distance Totale (Nether Adj.)</strong>
+            <span id="distance-km-m" class="value">-- km | -- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Écoulé (Session)</strong>
+            <span id="time-elapsed" class="value">-- s</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse vs Lumière (%)</strong>
+            <span id="perc-light" class="value">--%</span>
+        </div>
+    </div>
+
+    <h2>📍 Données GNSS & Corrections (Kalman V4.2)</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Latitude (°)</strong>
+            <span id="latitude" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Longitude (°)</strong>
+            <span id="longitude" class="value">--</span>
+        </div>
+        <div class="data-box">
+            <strong>Altitude GNSS (m)</strong>
+            <span id="altitude" class="value">-- m</span>
+        </div>
+        <div class="data-box">
+            <strong>Vitesse Verticale (m/s)</strong>
+            <span id="vertical-speed" class="value">0.00 m/s</span>
+        </div>
+        <div class="data-box">
+            <strong>Précision GNSS (m)</strong>
+            <span id="accuracy" class="value">-- m</span>
+        </div>
+        <div class="data-box" style="border-left-color: #FF00FF;">
+            <strong>Cohérence Signal (Uncert. Kalman)</strong>
+            <span id="kalman-uncert" class="value">-- m/s</span>
+        </div>
+        <div class="data-box" style="border-left-color: #FF00FF;">
+            <strong>Qualité Kalman (R)</strong>
+            <span id="kalman-r" class="value">-- m²</span>
+        </div>
+        <div class="data-box">
+            <strong>Délai Tropo. Fixé (ZTD)</strong>
+            <span id="ztd" class="value">0.000 m</span>
+        </div>
+        <div class="data-box">
+            <strong>Cap vers Cible (°)</strong>
+            <span id="target-bearing" class="value">N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>Distance à Cible</strong>
+            <span id="target-dist" class="value">N/A</span>
+        </div>
+    </div>
+
+    <h2>🌌 Chronométrie Céleste & Sensors (Astro V3.2)</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Temps Solaire Vrai (HSV)</strong>
+            <span id="solar-true" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Solaire Moyen (LSM)</strong>
+            <span id="solar-mean" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Culmination Solaire (LSM)</strong>
+            <span id="solar-culmination" class="value">--:--:--</span>
+        </div>
+        <div class="data-box">
+            <strong>Équation du Temps (EoT)</strong>
+            <span id="eot" class="value">-- min</span>
+        </div>
+        <div class="data-box">
+            <strong>Phase Lunaire (%)</strong>
+            <span id="lunar-phase-perc" class="value">-- %</span>
+        </div>
+        <div class="data-box">
+            <strong>Temps Minecraft (MC)</strong>
+            <span id="mc-time" class="value">00:00:00</span>
+        </div>
+        <div class="data-box">
+            <strong>Illuminance (Lux)</strong>
+            <span id="illuminance-lux" class="value">N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>Champ Magnétique ($\mu\text{T}$)</strong>
+            <span id="mag-field" class="value">N/A</span>
+        </div>
+    </div>
+
+    <h2>⚙️ Métriques Physiques & Alimentation (Non-Simulées)</h2>
+    <div class="data-grid">
+        <div class="data-box">
+            <strong>Accélération Longitudinale (m/s²)</strong>
+            <span id="accel-long" class="value">0.000 m/s²</span>
+        </div>
+        <div class="data-box">
+            <strong>Force G (G)</strong>
+            <span id="g-force" class="value">0.00 G</span>
+        </div>
+        <div class="data-box">
+            <strong>Travail/Énergie Dépensée (Masse)</strong>
+            <span id="work-energy" class="value">0.00 MJ</span>
+        </div>
+        <div class="data-box">
+            <strong>Puissance de Traînée (kW)</strong>
+            <span id="drag-power-kw" class="value">0.00 kW</span>
+        </div>
+        <div class="data-box">
+            <strong>Calories Brûlées (Est. Mécanique)</strong>
+            <span id="calorie-burn" class="value">0.0 Cal</span>
+        </div>
+        <div class="data-box">
+            <strong>Puissance Utilisateur (Est.)</strong>
+            <span id="power-output" class="value">N/A</span>
+        </div>
+        
         <div class="data-box">
             <strong>Batterie Principale (Niveau)</strong>
             <span id="battery-indicator" class="value">N/A</span>
         </div>
+        
         <div class="data-box" style="border-left-color: #ff9800;">
             <strong>Batterie Secours (Niveau)</strong>
             <span id="backup-battery-level" class="value">N/A</span>
@@ -123,7 +262,24 @@
             <strong>Autonomie Secours (Est.)</strong>
             <span id="backup-autonomy" class="value">N/A</span>
         </div>
+        
+        <div class="data-box">
+            <strong>Température Air (C)</strong>
+            <span id="air-temp" class="value">N/A</span>
         </div>
+        <div class="data-box">
+            <strong>Pression (hPa)</strong>
+            <span id="pressure" class="value">N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>Altitude Barométrique</strong>
+            <span id="alt-baro" class="value">N/A</span>
+        </div>
+        <div class="data-box">
+            <strong>Saturation SpO₂ (Est.)</strong>
+            <span id="spo2-sim" class="value">N/A</span>
+        </div>
+    </div>
     
     <script src="dashboard_part1.js"></script> 
     <script src="dashboard_part2.js"></script> 
