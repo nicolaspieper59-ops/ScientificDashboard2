@@ -215,7 +215,7 @@ function initBattery() {
     if ('getBattery' in navigator) {
         navigator.getBattery().then(function(battery) {
             function updateBatteryInfo() {
-                const level = (battery.level * 100).toFixed(0);
+                const level = (battery.level * 100).toFixed(2);
                 const charging = battery.charging ? ' (🔌 En charge)' : '';
                 const statusText = `${level}%${charging}`;
                 if ($('battery-indicator')) $('battery-indicator').textContent = statusText;
@@ -563,9 +563,9 @@ function changeMass(newMassStr) {
     const newMass = parseFloat(newMassStr);
     if (!isNaN(newMass) && newMass > 1) {
         selectedMass_kg = newMass;
-        if ($('user-mass')) $('user-mass').textContent = `${selectedMass_kg.toFixed(1)} kg`;
+        if ($('user-mass')) $('user-mass').textContent = `${selectedMass_kg.toFixed(3)} kg`;
     } else {
-        alert("Masse invalide. Veuillez entrer un nombre supérieur à 1 kg.");
+        alert("Masse invalide. Veuillez entrer un nombre supérieur à 000.1 kg.");
     }
 }
 
