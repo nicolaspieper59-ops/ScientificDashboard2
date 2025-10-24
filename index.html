@@ -1,319 +1,319 @@
-<button id="capture-btn">📸 Capturer</button>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard GNSS & Astro - V3.2</title>
+    
+    <style>
+        /* --- VARIABLES GLOBALES --- */
+        :root {
+            --color-bg: #1a1a2e;
+            --color-text-main: #e0f7fa;
+            --color-text-accent: #00ff99;
+            --color-border: #4a4e69;
+            --color-module-bg: #2c2c54;
+            --global-font-factor: 1.0;
+        }
+
+        /* --- MODE NUIT (Par défaut) --- */
+        body {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background-color: var(--color-bg);
+            color: var(--color-text-main);
+            margin: 0;
+            padding: 20px;
+            transition: background-color 0.5s, color 0.5s;
+            font-size: calc(14px * var(--global-font-factor));
+        }
+
+        /* --- MODE JOUR --- */
+        body.night-mode {
+            --color-bg: #f0f0f5;
+            --color-text-main: #333333;
+            --color-text-accent: #008080;
+            --color-border: #cccccc;
+            --color-module-bg: #ffffff;
+        }
+
+        /* --- STRUCTURE & MISE EN PAGE --- */
+        #dashboard-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .module {
+            background-color: var(--color-module-bg);
+            padding: 15px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: var(--color-text-accent);
+            border-bottom: 2px solid var(--color-border);
+            padding-bottom: 5px;
+            margin-top: 0;
+            font-size: calc(1.2rem * var(--global-font-factor));
+        }
+
+        .data-point {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: calc(0.9rem * var(--global-font-factor));
+        }
         
-        <label for="recharge-select">Charge:</label>
+        .data-point strong {
+            color: var(--color-text-accent);
+            font-weight: bold;
+        }
+
+        .main-display {
+            grid-column: 1 / 4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            background-color: var(--color-module-bg);
+            padding: 20px;
+            border-radius: 10px;
+            border: 3px solid #ff4500;
+        }
+
+        #speed-stable {
+            font-size: calc(4.5rem * var(--global-font-factor));
+            font-weight: 900;
+            color: #ff4500; /* Vitesse en Rouge-Orange Vif */
+            line-height: 1.1;
+        }
+
+        #speed-unit {
+            font-size: calc(1.5rem * var(--global-font-factor));
+            color: var(--color-text-main);
+            margin-top: -10px;
+        }
+
+        #local-time-header {
+            font-size: calc(2.0rem * var(--global-font-factor));
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        
+        .status-module {
+            grid-column: 1 / 4;
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 10px 0;
+            border-bottom: 1px dashed var(--color-border);
+            margin-bottom: 20px;
+        }
+
+        .status-module span {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: calc(1.0rem * var(--global-font-factor));
+        }
+
+        .indicator {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #00ff99;
+            background-color: #3e3e5c;
+            border: 1px solid #00ff99;
+        }
+
+        /* --- COMMANDES ET ERREURS --- */
+        #controls {
+            grid-column: 1 / 4;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 15px;
+            background-color: var(--color-module-bg);
+            border-radius: 8px;
+            border: 1px solid var(--color-border);
+        }
+
+        button, select {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            background-color: #555577;
+            color: var(--color-text-main);
+        }
+
+        button:hover {
+            background-color: #6a6a8a;
+        }
+        
+        button#start-btn { background-color: #4CAF50; }
+        button#stop-btn { background-color: #f44336; }
+        button#emergency-stop-btn { background-color: #ff0000; color: white; }
+
+        #error-message {
+            grid-column: 1 / 4;
+            background-color: #ffdddd;
+            color: #d8000c;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #d8000c;
+            display: none;
+            font-weight: bold;
+        }
+        
+        /* Ajustements spécifiques des indicateurs de statut */
+        #mode-indicator, #emergency-status, #battery-indicator {
+             font-weight: bold;
+             color: var(--color-text-accent);
+        }
+        
+        /* Réactivité */
+        @media (max-width: 900px) {
+            #dashboard-container {
+                grid-template-columns: 1fr;
+            }
+            .main-display, .status-module, .module, #controls, #error-message {
+                grid-column: 1 / 2;
+            }
+            .status-module {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body class="night-mode">
+
+    <div id="error-message"></div>
+
+    <div id="controls">
+        <button id="start-btn">▶ Démarrer GNSS</button>
+        <button id="stop-btn" disabled>■ Arrêter GNSS</button>
+        <button id="reset-all-btn">🔄 Reset Tous</button>
+        <button id="emergency-stop-btn">🚨 Arrêt Urgence</button>
+        <span id="emergency-status" class="indicator" style="color:#00ff99;">INACTIF</span>
+
+        <hr style="width:100%; border-color:var(--color-border);">
+        
+        <label for="environment-select">Env:</label>
+        <select id="environment-select">
+            <option value="NORMAL">NORMAL</option>
+            <option value="METAL">MÉTAL</option>
+            <option value="FOREST">FORÊT</option>
+            <option value="CONCRETE">BÉTON</option>
+        </select>
+        (<span id="selected-environment-ind" class="indicator">NORMAL</span>)
+
+        <label for="weather-select">Météo:</label>
+        <select id="weather-select">
+            <option value="CLEAR">DÉGAGÉE</option>
+            <option value="RAIN">PLUIE</option>
+            <option value="SNOW">NEIGE</option>
+            <option value="STORM">ORAGE</option>
+        </select>
+        (<span id="selected-weather-ind" class="indicator">DÉGAGÉE</span>)
+        
+        <label for="recharge-select">Charge Externe:</label>
         <select id="recharge-select">
             <option value="OFF">DÉSACTIVÉ</option>
             <option value="SECTOR">SECTEUR (Rapide)</option>
             <option value="SOLAR">SOLAIRE/DYNAMO (Lente)</option>
         </select>
-        (<span id="selected-recharge-ind">DÉSACTIVÉ</span>)
+        (<span id="selected-recharge-ind" class="indicator">DÉSACTIVÉ</span>)
         
-        <span id="display-size-indicator" class="indicator">
-            ```
+        <hr style="width:100%; border-color:var(--color-border);">
 
-***
-
-## 2. Fichier `dashboard_part1.js` (Core V3.2 & Gestion de la Recharge)
-
-J'ai introduit la variable `currentRechargeSource` et les taux de charge correspondants.
-
-**Enregistrez ce code sous le nom de `dashboard_part1.js`.**
-
-```javascript
-// =================================================================
-// FICHIER JS PARTIE 1/2 : dashboard_part1.js (V3.2 Core & Kalman Ajusté)
-// Contient : Constantes, Variables d'État, Kalman (Q=0.5), GPS, Batterie Secours.
-// NOUVEAUTÉ : Gestion de la Source de Recharge et des Taux.
-// =================================================================
-
-// --- FONCTIONS UTILITAIRES DE BASE ---
-const $ = id => document.getElementById(id); 
-
-// --- CLÉS D'API ET CONSTANTES V3.2 ---
-const API_KEYS = { WEATHER_API: 'VOTRE_CLE_API_METEO_ICI' };
-const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-const C_L = 299792458, C_S = 343, R_E = 6371000, KMH_MS = 3.6;
-const OBLIQ = 23.44 * D2R, ECC = 0.0167, JD_2K = 2451545.0; 
-const G_ACCEL = 9.80665;
-let D_LAT = 48.8566, D_LON = 2.3522; 
-const MIN_DT = 0.01; 
-
-// CONFIGURATIONS GPS
-const GPS_OPTS = {
-    HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
-    LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
-};
-
-// PÉNALITÉS ENVIRONNEMENTALES POUR LE FILTRE DE KALMAN
-const ENV_NOISE = {
-    NORMAL: 0.1, METAL: 0.3, FOREST: 0.2, CONCRETE: 0.15
-};
-
-// --- VARIABLES D'ÉTAT PRINCIPALES ---
-let wID = null; 
-let lat = D_LAT, lon = D_LON, alt = 0, spd = 0, acc = 'N/A';
-let maxSpd = 0, avgSpd = 0, totalDistM = 0, startTime = 0;
-let userMassKg = 70.0; 
-let currentEnvironment = 'NORMAL';
-let currentWeather = 'CLEAR';
-let isDayMode = true;
-let emergencyActive = false;
-let manualFreqMode = false;
-let currentFreqMode = 'AUTO';
-let netherMode = false;
-
-// --- VARIABLES KALMAN ---
-let kSpd = 0; 
-let kUncert = 1000; 
-let kPred = 0; 
-let kalmanInitialized = false;
-let lastTime = 0;
-let lastSpd = 0;
-// Q AUGMENTÉ (0.5) pour une MEILLEURE RÉACTIVITÉ à l'accélération
-const Q = 0.5; 
-
-// --- VARIABLES D'ÉTAT BATTERIE ---
-let batteryLevel = 'N/A';
-let batteryCharging = false;
-let backupBatterySource = 'EXTERNE (Power Bank Li-Ion)';
-let backupBatteryLevel = 0.95; 
-let backupAutonomyHours = 'N/A';
-
-// --- CONSTANTES POUR LE CALCUL D'AUTONOMIE SIMULÉE ---
-const BACKUP_CAPACITY_WH = 50.0;
-const BACKUP_CONSUMPTION_W = 5.0;
-
-// NOUVEAU: Source et Taux de Recharge
-let currentRechargeSource = 'OFF';
-const RECHARGE_RATES_PER_MINUTE = {
-    // Taux de charge en fraction de 1 (1 = 100%) par minute
-    // La batterie principale (simulée ici par l'API) suit l'API réelle.
-    
-    // Taux appliqués à la Batterie de Secours uniquement:
-    SECTOR: 0.016, // Charge rapide (environ 1.6% par minute -> 60 minutes)
-    SOLAR: 0.003,  // Charge lente (environ 0.3% par minute -> 5.5 heures)
-    OFF: 0.0,
-};
-
-// =================================================================
-// --- LOGIQUE KALMAN (AJUSTÉE POUR L'ACCÉLÉRATION) ---
-// =================================================================
-
-function getKalmanR(hpe, env) {
-    let noiseFactor = ENV_NOISE[env] || ENV_NOISE['NORMAL'];
-    return Math.pow(hpe, 2) * noiseFactor * 0.1; 
-}
-
-function runKalmanFilter(measurementSpd, measurementHpe) {
-    if (!kalmanInitialized) {
-        kSpd = measurementSpd;
-        kUncert = measurementHpe * 2; 
-        kalmanInitialized = true;
-        lastTime = performance.now(); 
-        return kSpd;
-    }
-
-    const now = performance.now();
-    const dt = (now - lastTime) / 1000;
-    
-    // 1. Prédiction (L'accélération mesurée par le GPS influence fortement le prochain état via Q=0.5)
-    const acceleration = (kSpd - lastSpd) / (dt || MIN_DT); 
-    kPred = kSpd + (acceleration * dt); 
-    let kPredUncert = kUncert + Q; 
-
-    // 2. Correction
-    const R = getKalmanR(measurementHpe, currentEnvironment);
-    const K = kPredUncert / (kPredUncert + R); 
-    
-    kSpd = kPred + K * (measurementSpd - kPred); 
-    kUncert = kPredUncert * (1 - K); 
-
-    lastSpd = kSpd;
-    lastTime = now;
-    return kSpd;
-}
-
-// =================================================================
-// --- GESTION GPS & BATTERIE ---
-// =================================================================
-
-function handleErr(err) {
-    if ($('error-message')) {
-        let msg = `❌ Erreur GNSS (code ${err.code}): `;
-        switch (err.code) {
-            case 1: msg += "Permission refusée. Utilisez un serveur web (http/https)."; break;
-            case 2: msg += "Position non disponible ou signal perdu."; break;
-            case 3: msg += "Délai d'attente dépassé."; break;
-            default: msg += "Erreur inconnue."; break;
-        }
-        $('error-message').textContent = msg;
-        $('error-message').style.display = 'block';
-    }
-    stopGPS(false);
-}
-
-function updateDisp(pos) {
-    $('error-message').style.display = 'none';
-
-    const coords = pos.coords;
-    const now = performance.now();
-    const currentTime = pos.timestamp;
-    
-    const newSpdMS = coords.speed !== null ? coords.speed : 0; 
-    const dt = (now - lastTime) / 1000;
-
-    if (kalmanInitialized) {
-        const distanceStep = kSpd * dt; 
-        totalDistM += distanceStep;
-    }
-
-    lat = coords.latitude;
-    lon = coords.longitude;
-    alt = coords.altitude !== null ? coords.altitude : 0;
-    spd = newSpdMS;
-    acc = coords.accuracy;
-
-    runKalmanFilter(newSpdMS, acc);
-    
-    if (kSpd * KMH_MS > maxSpd) {
-        maxSpd = kSpd * KMH_MS;
-    }
-
-    if (startTime === 0) startTime = currentTime;
-}
-
-function updateBackupBatteryInfo() {
-    if (typeof backupBatteryLevel !== 'number') return;
-    
-    const remainingWh = backupBatteryLevel * BACKUP_CAPACITY_WH;
-    const autonomy = remainingWh / BACKUP_CONSUMPTION_W;
-    backupAutonomyHours = autonomy; 
-}
-
-function simulateBackupCycle() {
-    if (backupBatteryLevel > 0) {
-        // 1. Décharge (Toujours en cours si non rechargée et non à 0)
-        const dischargeRate = (BACKUP_CONSUMPTION_W / BACKUP_CAPACITY_WH) * (60 / 3600); 
-        backupBatteryLevel = Math.max(0, backupBatteryLevel - dischargeRate);
-    }
-    
-    // 2. Recharge (Si une source est sélectionnée)
-    const chargeRate = RECHARGE_RATES_PER_MINUTE[currentRechargeSource];
-
-    if (chargeRate > 0 && backupBatteryLevel < 1.0) {
-        // Augmentation du niveau par minute
-        backupBatteryLevel = Math.min(1.0, backupBatteryLevel + chargeRate);
+        <button id="toggle-mode-btn">🌗 Mode Nuit/Jour</button>
+        <button id="set-mass-btn">⚖️ Définir Masse</button>
+        <button id="nether-toggle-btn">🔥 Nether Mode</button>
+        (<span id="nether-indicator" class="indicator">DÉSACTIVÉ (1:1)</span>)
         
-        // Si l'appareil principal supporte l'API (batteryCharging), on le met en charge
-        // Ceci est une hypothèse, car l'API du navigateur est limitée.
-        batteryCharging = true; 
-    } else if (currentRechargeSource === 'OFF') {
-        // S'il n'y a pas de source, l'appareil principal n'est pas "en charge" via cette source.
-        // On ne modifie pas le statut de l'API de batterie native, qui pourrait indiquer une charge USB.
-        // Cependant, pour simuler la logique du système, on indique que la source de secours n'est pas connectée.
-        batteryCharging = false;
-    }
-
-    updateBackupBatteryInfo();
-}
-
-function initBattery() {
-    updateBackupBatteryInfo(); 
-    // Cycle de batterie toutes les 60 secondes (1 minute)
-    setInterval(simulateBackupCycle, 60000); 
-
-    if ('getBattery' in navigator) {
-        navigator.getBattery().then(function(battery) {
-            
-            function updateBatteryInfo() {
-                // Utilisation des valeurs réelles pour l'appareil principal
-                batteryLevel = battery.level; 
-                
-                // Note: batteryCharging est mis à jour par l'API pour l'appareil.
-                // Notre simulation de recharge EXTERNE ne modifie que la variable backupBatteryLevel.
-                // Pour l'affichage, nous utilisons le statut API si la source est OFF,
-                // sinon nous utilisons notre statut simulé si la source est SOLAR/SECTOR.
-                
-                const percentage = batteryLevel * 100;
-                const levelDisplay = percentage.toFixed(2); 
-                
-                let chargingText = '';
-                if (currentRechargeSource !== 'OFF') {
-                    // Si on a sélectionné une source EXTERNE, on l'affiche comme source principale.
-                    chargingText = ` (🔌 Charge: ${currentRechargeSource})`;
-                } else if (battery.charging) {
-                    // Sinon, on revient au statut natif du navigateur
-                    chargingText = ' (🔌 En charge)';
-                }
-
-                const statusText = `${levelDisplay} %${chargingText}`;
-                
-                if ($('battery-indicator')) {
-                    const indicatorElement = $('battery-indicator');
-                    indicatorElement.textContent = statusText;
-                    
-                    if (percentage <= 15) { indicatorElement.style.color = '#f44336'; } 
-                    else if (percentage <= 30) { indicatorElement.style.color = '#ff9800'; } 
-                    else { indicatorElement.style.color = '#00ff99'; } 
-                }
-            }
-            
-            updateBatteryInfo();
-            battery.addEventListener('levelchange', updateBatteryInfo);
-            battery.addEventListener('chargingchange', updateBatteryInfo);
-            
-        }).catch(error => {
-            console.error("Erreur d'accès à l'API de batterie:", error);
-            if ($('battery-indicator')) $('battery-indicator').textContent = 'API Rejetée';
-        });
+        <hr style="width:100%; border-color:var(--color-border);">
         
-    } else {
-        if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A (API absente)';
-    }
-}
+        <button id="size-small-btn">Taille S</button>
+        <button id="size-normal-btn">Taille M</button>
+        <button id="size-large-btn">Taille L</button>
+    </div>
+    
+    <div id="dashboard-container">
 
-// =================================================================
-// --- CONTRÔLE GPS & INITIALISATION FINALE ---
-// =================================================================
+        <div class="main-display">
+            <div id="local-time-header">Heure Locale: <span id="local-time">--:--:--</span></div>
+            <div id="solar-true-header">Heure Solaire Vraie: <span id="solar-true">--:--:--</span> (HSV)</div>
+            <div id="solar-mean-header">Heure Solaire Moyenne: <span id="solar-mean">--:--:--</span> (LSM)</div>
+            
+            <div style="margin-top: 15px;">
+                <span style="font-size: calc(1.5rem * var(--global-font-factor)); color: var(--color-text-main);">VITESSE STABLE (Kalman)</span>
+            </div>
+            <div id="speed-stable">0.000</div>
+            <div id="speed-unit">km/h</div>
+            
+            <div style="margin-top: 15px; width: 100%; display:flex; justify-content:space-around;">
+                 <span style="color:#ff9800;">BATTERIE PRINCIPALE: <span id="battery-indicator" style="color:#00ff99;">N/A</span></span>
+                 <span id="mode-indicator">Mode: Nuit 🌙</span>
+            </div>
+        </div>
 
-function startGPS() {
-    if (wID === null) {
-        $('error-message').style.display = 'none';
-        const opts = (currentFreqMode === 'LOW') ? GPS_OPTS.LOW_FREQ : GPS_OPTS.HIGH_FREQ;
-        wID = navigator.geolocation.watchPosition(updateDisp, handleErr, opts);
-        $('start-btn').disabled = true;
-        $('stop-btn').disabled = false;
-        if (typeof window.startFastDOM === 'function') window.startFastDOM();
-    }
-}
+        <div class="module">
+            <h2>STAT. VITESSE & ACCÉLÉRATION</h2>
+            <div class="data-point">Vitesse 3D (Inst.): <span id="speed-3d-inst">0.000 km/h</span></div>
+            <div class="data-point">Vitesse Max (Kalman): <span id="speed-max">0.000 km/h</span></div>
+            <div class="data-point">Vitesse Moy. (Total): <span id="speed-avg">0.000 km/h</span></div>
+            <div class="data-point">Distance Totale: <span id="distance-km-m">0.000 km | 0.0 m</span></div>
+            <div class="data-point">Temps Écoulé: <span id="time-elapsed">0.0 s</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">Accélération Long.: <span id="accel-long">0.000 m/s²</span></div>
+            <div class="data-point">Force G (Longitudinale): <span id="g-force">0.000 G</span></div>
+            <div class="data-point">Vitesse vs Lumière: <span id="perc-light">0.000000 %</span></div>
+            <div class="data-point">Vitesse vs Son: <span id="perc-sound">0.000 %</span></div>
+        </div>
 
-function stopGPS(resetID = true) {
-    if (wID !== null) {
-        navigator.geolocation.clearWatch(wID);
-        if (resetID) wID = null;
-    }
-    $('start-btn').disabled = false;
-    $('stop-btn').disabled = true;
-    if (typeof window.stopFastDOM === 'function') window.stopFastDOM();
-}
+        <div class="module">
+            <h2>GNSS & CORRECTIONS</h2>
+            <div class="data-point">Latitude: <span id="latitude">0.000000</span></div>
+            <div class="data-point">Longitude: <span id="longitude">0.000000</span></div>
+            <div class="data-point">Altitude: <span id="altitude">0.0 m</span></div>
+            <div class="data-point">Précision (HPE): <span id="accuracy">N/A</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">Retard Zénithal T. (ZTD): <span id="ztd">0.000 m</span></div>
+            <div class="data-point">Incertitude Kalman (P): <span id="kalman-uncert">0.000 m/s</span></div>
+            <div class="data-point">Bruit de Mesure (R): <span id="kalman-r">0.0000 m²</span></div>
+            <div class="data-point">Masse Utilisateur: <span id="user-mass">70.000 kg</span></div>
+        </div>
 
-window.emergencyStop = function() {
-    if (emergencyActive) {
-        if (typeof window.resetAllState === 'function') window.resetAllState();
-        $('emergency-status').textContent = 'INACTIF';
-        $('emergency-status').style.color = '#00ff99';
-        $('emergency-stop-btn').textContent = '🚨 Arrêt Urgence';
-        emergencyActive = false;
-    } else {
-        stopGPS(true); 
-        $('emergency-status').textContent = 'ACTIF (GPS Off)';
-        $('emergency-status').style.color = '#f44336';
-        $('emergency-stop-btn').textContent = '🟢 Démarrer Système';
-        emergencyActive = true;
-    }
-};
+        <div class="module">
+            <h2>ASTRO & ALIMENTATION</h2>
+            <div class="data-point">Heure Solaire Vraie (HSV): <span id="solar-true">--:--:--</span></div>
+            <div class="data-point">Heure Solaire Moyenne (LSM): <span id="solar-mean">--:--:--</span></div>
+            <div class="data-point">Culmination Solaire (LSM): <span id="solar-culmination">--:--:--</span></div>
+            <div class="data-point">Équation du Temps (EoT): <span id="eot">0.000 min</span></div>
+            <div class="data-point">Phase Lunaire: <span id="lunar-phase-perc">0.0 %</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">Énergie Travail (Net): <span id="work-energy">0.000 MJ</span></div>
+            <div class="data-point">Puissance Résistance Air: <span id="drag-power-kw">0.000 kW</span></div>
+            <div class="data-point">Calories Brûlées: <span id="calorie-burn">0.0 Cal</span></div>
+            <hr style="border-color:var(--color-border);">
+            <div class="data-point">BATTERIE SECOURS: <span id="backup-battery-level">0.000 %</span></div>
+            <div class="data-point">AUTONOMIE SEC.: <span id="backup-autonomy">N/A</span></div>
+        </div>
+        
+    </div>
 
-function initAll() {
-    initBattery();
-    if (typeof window.initControls === 'function') window.initControls();
-}
+    <script src="dashboard.js"></script>
+    <script>
+        // Initialisation après le chargement des deux parties
+        document.addEventListener('DOMContentLoaded', initAll);
+    </script>
+</body>
+                </html>
