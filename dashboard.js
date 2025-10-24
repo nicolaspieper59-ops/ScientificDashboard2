@@ -219,6 +219,29 @@ function initBattery() {
                 const charging = battery.charging ? ' (🔌 En charge)' : '';
                 const statusText = `${level}%${charging}`;
                 if ($('battery-indicator')) $('battery-indicator').textContent = statusText;
+                // --- Mise à jour du Niveau de Batterie (V4.2 Modifiée) ---   
+    // Vérifie si la valeur est un nombre (entre 0.0 et 1.0 par l'API)
+                if (typeof batteryLevel === 'number') {
+        // Multiplie par 100 pour obtenir le pourcentage
+        let percentage = batteryLevel * 100;
+        
+        // Applique toFixed(3) pour forcer trois décimales (ex: 12.123)
+        indicatorElement.textContent = percentage.toFixed(3) + ' %';
+        
+        // Changement de couleur basé sur le niveau (logique de base)
+        if (percentage <= 15) {
+            indicatorElement.style.color = '#f44336'; // Rouge
+        } else if (percentage <= 30) {
+            indicatorElement.style.color = '#ff9800'; // Orange
+        } else {
+            indicatorElement.style.color = '#00ff99'; // Vert
+        }
+    } else {
+        // Affiche la valeur par défaut ('N/A' ou autre) si ce n'est pas un nombre
+        indicatorElement.textContent = batteryLevel;
+        indicatorElement.style.color = '#b0b0b0';
+    }
+            }
             }
             updateBatteryInfo();
             battery.addEventListener('levelchange', updateBatteryInfo);
