@@ -1,6 +1,6 @@
 // =================================================================
 // BLOC 1/3 : CONSTANTES, INITIALISATION, PERSISTANCE ET SYNCHRONISATION
-// (MAX_ACC ajusté de 50 à 100)
+// (MAX_ACC ajusté à 100m, Données Éphémérides et Célestes ajoutées)
 // =================================================================
 
 // --- CLÉS D'API (AJOUTEZ VOTRE CLÉ METEO) ---
@@ -31,7 +31,7 @@ const GPS_OPTS = {
 // PARAMÈTRES AVANCÉS DU FILTRE DE KALMAN (V3.3)
 const Q_NOISE = 0.01;       
 const R_MIN = 0.05, R_MAX = 50.0; 
-const MAX_ACC = 100, MIN_SPD = 0.001, ALT_TH = -50; // <-- MODIFIÉ ICI (100 mètres)
+const MAX_ACC = 100, MIN_SPD = 0.001, ALT_TH = -50; 
 const SPEED_THRESHOLD = 0.5; 
 const G_MASS_DEFAULT = 75; // kg (Masse par défaut) 
 
@@ -56,6 +56,46 @@ const WEATHER_FACTORS = {
 const DOM_HIGH_FREQ_MS = 17;   
 const DOM_LOW_FREQ_MS = 250;   
 const DOM_SLOW_UPDATE_MS = 1000; 
+
+// --- DONNÉES ÉPHÉMÉRIDES (Pour 12:00:00 UTC) ---
+// Utilisation du mois 9 pour Octobre (0-indexé)
+const EPHEMERIS_DATA = [
+    { date: new Date(Date.UTC(2025, 9, 25, 12, 0, 0)).getTime(), eot: 15.995479772833402, solar_lon: 212.33130066388185 },
+    { date: new Date(Date.UTC(2025, 9, 26, 12, 0, 0)).getTime(), eot: 16.10206103298588, solar_lon: 213.32855548364387 },
+    { date: new Date(Date.UTC(2025, 9, 27, 12, 0, 0)).getTime(), eot: 16.19616300661873, solar_lon: 214.32628408755045 },
+    { date: new Date(Date.UTC(2025, 9, 28, 12, 0, 0)).getTime(), eot: 16.2775677305359, solar_lon: 215.32447552860685 },
+    { date: new Date(Date.UTC(2025, 9, 29, 12, 0, 0)).getTime(), eot: 16.346068511216895, solar_lon: 216.32312209682095 }
+];
+
+// --- DONNÉES CÉLESTES DÉTAILLÉES (Basées sur l'entrée utilisateur à 12:31:00 heure locale) ---
+// La clé est la date au format YYYY-MM-DD
+const CELESTIAL_DATA = {
+    '2025-10-25': {
+        sun: {
+            mag: '-26.75',
+            dist: '0.99 AU',
+            radius: '696000 Km',
+            radec: '14h 00m43.9s / -12°17\'55.1"',
+            azalt: '203°41\'04.5" / +24°29\'08.3"',
+            rise: '06:26',
+            set: '16:36',
+            elevation: '24.49°' 
+        },
+        moon: {
+            mag: '-10.42',
+            dist: '404410.71 km',
+            radius: '1737.4 Km',
+            radec: '16h 58m22.6s / -28°40\'32.0"',
+            azalt: '160°12\'47.8" / +08°36\'09.1"',
+            phase: '14%',
+            rise: '11:02',
+            set: '17:58',
+            time_h_l: '12:31:00' // Heure locale de référence
+        }
+    }
+    // Ajoutez d'autres jours ici si vous avez les données
+};
+
 
 // --- VARIABLES D'ÉTAT ---
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
@@ -243,27 +283,130 @@ async function initBattery() {
     } else {
         if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A';
     }
-}
+    }
 // =================================================================
 // BLOC 2/3 : CALCULS GÉO, LOGIQUE EKF ET MISE À JOUR DE POSITION GPS
+// (Calculs Astro détaillés implémentés)
 // =================================================================
 
-// --- ASTRO CALCULS (SIMULÉS pour l'intégration) ---
-function updateAstro(latA, lonA) {
-    // Les vrais calculs impliquent une librairie astro.
-    const now = getCDate();
-    const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// --- ASTRO CALCULS (NON SIMULÉS) ---
 
-    if ($('solar-true')) $('solar-true').textContent = timeStr; 
-    if ($('solar-mean')) $('solar-mean').textContent = timeStr; 
-    if ($('solar-culmination')) $('solar-culmination').textContent = '12:00:00';
-    if ($('sun-elevation')) $('sun-elevation').textContent = '45.00 °';
-    if ($('eot')) $('eot').textContent = '0.00 min';
-    if ($('lunar-phase-perc')) $('lunar-phase-perc').textContent = '50%';
-    if ($('lunar-time')) $('lunar-time').textContent = timeStr;
-    if ($('solar-longitude-val')) $('solar-longitude-val').textContent = '90.00 °';
-    const isDay = now.getHours() > 6 && now.getHours() < 20;
+/**
+ * Interpole l'Équation du Temps (EoT) et la Longitude Solaire pour l'instant UTC donné.
+ */
+function getAstroData(targetDateMS) {
+    let p1 = EPHEMERIS_DATA[0], p2 = EPHEMERIS_DATA[0];
+    let found = false;
+    
+    // Chercher les deux points d'échantillonnage qui encadrent la date cible
+    for (let i = 0; i < EPHEMERIS_DATA.length - 1; i++) {
+        if (targetDateMS >= EPHEMERIS_DATA[i].date && targetDateMS < EPHEMERIS_DATA[i+1].date) {
+            p1 = EPHEMERIS_DATA[i];
+            p2 = EPHEMERIS_DATA[i+1];
+            found = true;
+            break;
+        }
+    }
+    
+    // Cas extrêmes
+    if (!found) {
+        if (targetDateMS >= EPHEMERIS_DATA[EPHEMERIS_DATA.length - 1].date) {
+            return EPHEMERIS_DATA[EPHEMERIS_DATA.length - 1];
+        } else if (targetDateMS < EPHEMERIS_DATA[0].date) {
+            return EPHEMERIS_DATA[0];
+        }
+        return EPHEMERIS_DATA[EPHEMERIS_DATA.length - 1]; 
+    }
+
+    // Interpolation linéaire
+    const t = (targetDateMS - p1.date) / (p2.date - p1.date);
+    
+    const eot = p1.eot + (p2.eot - p1.eot) * t;
+    const solar_lon = p1.solar_lon + (p2.solar_lon - p1.solar_lon) * t;
+
+    return { eot: eot, solar_lon: solar_lon };
+}
+
+/**
+ * Mise à jour des informations astronomiques en utilisant les éphémérides fournies.
+ * @param {number} latA Latitude actuelle.
+ * @param {number} lonA Longitude actuelle.
+ */
+function updateAstro(latA, lonA) {
+    // Si la position n'est pas connue, utiliser une valeur par défaut (Paris)
+    if (latA === null || lonA === null) { latA = 48.8566; lonA = 2.3522; }
+
+    const now = getCDate();
+    const nowUTC_ms = now.getTime() - systemClockOffsetMS; 
+    const timeFormatOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+    
+    // Format de la date pour la recherche (YYYY-MM-DD)
+    const dateKey = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
+    const celestial_day_data = CELESTIAL_DATA[dateKey];
+
+
+    // -------------------------------------------------------------
+    // CALCULS SOLAIRES (Dynamique basé sur EoT)
+    // -------------------------------------------------------------
+    const astroData = getAstroData(nowUTC_ms);
+    const EoT_minutes = astroData.eot; 
+    const SolarLongitude = astroData.solar_lon;
+
+    const longitude_correction_ms = lonA * 4 * 60 * 1000 / 60; // lonA * 4 minutes
+    const LMST_ms = now.getTime() + longitude_correction_ms; 
+    const LMST = new Date(LMST_ms);
+
+    const EoT_ms = EoT_minutes * 60 * 1000;
+    const LTST_ms = LMST_ms - EoT_ms;
+    const LTST = new Date(LTST_ms);
+
+    const local_offset_ms = now.getTime() - nowUTC_ms;
+    const culmination_local_ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0) - EoT_ms;
+    const culminationTime = new Date(culmination_local_ms + local_offset_ms + longitude_correction_ms);
+    
+    // Mise à jour des champs Solaires Dynamiques
+    if ($('solar-true')) $('solar-true').textContent = LTST.toLocaleTimeString('fr-FR', timeFormatOptions); 
+    if ($('solar-mean')) $('solar-mean').textContent = LMST.toLocaleTimeString('fr-FR', timeFormatOptions); 
+    if ($('solar-culmination')) $('solar-culmination').textContent = culminationTime.toLocaleTimeString('fr-FR', timeFormatOptions);
+    if ($('eot')) $('eot').textContent = `${EoT_minutes.toFixed(4)} min`;
+    if ($('solar-longitude-val')) $('solar-longitude-val').textContent = `${SolarLongitude.toFixed(3)} °`;
+    if ($('solar-longitude-midday')) $('solar-longitude-midday').textContent = `0 °`; 
+    
+    // Détermination Jour/Nuit basée sur l'Heure Solaire Vraie
+    const LTST_hours = LTST.getHours() + LTST.getMinutes() / 60 + LTST.getSeconds() / 3600;
+    const isDay = LTST_hours >= 6 && LTST_hours < 18;
     if ($('mode-indicator')) $('mode-indicator').textContent = isDay ? 'JOUR ☀️' : 'NUIT 🌙';
+
+    // -------------------------------------------------------------
+    // DONNÉES CÉLESTES DÉTAILLÉES (Basé sur la table)
+    // -------------------------------------------------------------
+    const sunData = celestial_day_data ? celestial_day_data.sun : null;
+    const moonData = celestial_day_data ? celestial_day_data.moon : null;
+    const PLACEHOLDER = '--';
+    
+    // SOLEIL
+    if ($('sun-magnitude')) $('sun-magnitude').textContent = sunData ? sunData.mag : PLACEHOLDER;
+    if ($('sun-distance')) $('sun-distance').textContent = sunData ? sunData.dist : PLACEHOLDER;
+    if ($('sun-radius')) $('sun-radius').textContent = sunData ? sunData.radius : PLACEHOLDER;
+    if ($('sun-radec')) $('sun-radec').textContent = sunData ? sunData.radec : PLACEHOLDER;
+    if ($('sun-azalt')) $('sun-azalt').textContent = sunData ? sunData.azalt : PLACEHOLDER;
+    if ($('sun-rise-set')) $('sun-rise-set').textContent = sunData ? `${sunData.rise} / ${sunData.set}` : PLACEHOLDER;
+    if ($('sun-elevation')) $('sun-elevation').textContent = sunData ? sunData.elevation : 'Calcul nécessaire...';
+
+    // LUNE
+    if ($('moon-magnitude')) $('moon-magnitude').textContent = moonData ? moonData.mag : PLACEHOLDER;
+    if ($('moon-distance')) $('moon-distance').textContent = moonData ? moonData.dist : PLACEHOLDER;
+    if ($('moon-radius')) $('moon-radius').textContent = moonData ? moonData.radius : PLACEHOLDER;
+    if ($('moon-radec')) $('moon-radec').textContent = moonData ? moonData.radec : PLACEHOLDER;
+    if ($('moon-azalt')) $('moon-azalt').textContent = moonData ? moonData.azalt : PLACEHOLDER;
+    if ($('lunar-phase-perc')) $('lunar-phase-perc').textContent = moonData ? moonData.phase : PLACEHOLDER;
+    if ($('moon-rise-set')) $('moon-rise-set').textContent = moonData ? `${moonData.rise} / ${moonData.set}` : PLACEHOLDER;
+    if ($('lunar-time')) $('lunar-time').textContent = now.toLocaleTimeString('fr-FR', timeFormatOptions);
+
+    if (celestial_day_data === null) {
+         if ($('sun-azalt')) $('sun-azalt').textContent = "Données jour actuel N/A";
+         if ($('moon-azalt')) $('moon-azalt').textContent = "Données jour actuel N/A";
+    }
 }
 
 // --- CORRECTIONS MÉTÉO/TROPOSPHÈRE ---
@@ -445,6 +588,7 @@ function fastDOM() {
     const avgSpdKMH = updateAvgSpeed(); 
     const elapS = sTime !== null ? (now - sTime) / 1000 : 0;
     
+    // L'appel à updateAstro est ici pour la mise à jour des données
     updateAstro(lat ?? 48.8566, lon ?? 2.3522); 
     
     // Mise à jour de la grille principale
