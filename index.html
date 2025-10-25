@@ -215,6 +215,12 @@
             <option value="STORM">Météo Tempête</option>
         </select>
     </div>
+    <div class="control-group">
+    <h3>Fréquence d'Affichage</h3>
+    <label for="freq-range">Fréquence DOM : <span id="current-freq-display">62.5</span> Hz</label>
+    <input type="range" id="freq-range" min="16" max="1000" value="16" step="1" aria-label="Régler la fréquence d'actualisation du dashboard">
+    <p>Intervalle: <span id="update-frequency-ms">16</span> ms</p>
+    </div>
 
     <div class="data-panel-secondary">
         <h2>Statut Système et Géo</h2>
