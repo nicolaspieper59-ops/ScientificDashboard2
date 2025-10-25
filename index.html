@@ -19,10 +19,10 @@
         :root {
             --bg-color: #0d0d0d;
             --text-color: #eee;
-            --accent-green: #00ff99;  /* Vitesse / Statut OK */
-            --accent-red: #ff6666;    /* G-Force / Alerte */
-            --accent-blue: #66ccff;   /* Masse / Traction */
-            --accent-yellow: #ffff66; /* Accélération / Vitesse 3D */
+            --accent-green: #00ff99;  
+            --accent-red: #ff6666;    
+            --accent-blue: #66ccff;   
+            --accent-yellow: #ffff66; 
             --tile-bg: #1e1e1e;
             --border-color: #444;
             --font-size-base: 14px;
@@ -107,7 +107,7 @@
         /* 3. CONTRÔLES ET PANNEAUX SECONDAIRES/DÉTAILLÉS */
         /* ======================================================= */
 
-        .controls { margin: 5px 5px 10px 5px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .controls { margin: 10px 5px; display: flex; flex-wrap: wrap; gap: 6px; }
         .controls button, .controls select { padding: 8px 10px; background-color: #333; color: white; border: none; border-radius: 5px; font-size: 0.8em; cursor: pointer; flex-grow: 1; }
         
         .control-group-top { display: flex; justify-content: space-around; padding: 5px; gap: 8px; width: 100%; }
@@ -132,46 +132,6 @@
 <body>
 
     <div id="error-message" class="data-panel-secondary" style="display:none; color: var(--accent-red); text-align: center; font-weight: bold;"></div>
-
-    <div class="controls">
-        <div class="control-group-top">
-            <button id="start-btn" style="background-color: #4CAF50;">▶ DÉMARRER GPS</button>
-            <button id="stop-btn" disabled style="background-color: #993333;">■ ARRÊTER GPS</button>
-            <button id="emergency-stop-btn">🚨 Arrêt Urgence Batterie</button>
-        </div>
-        
-        <button id="set-target-btn">Fixer Cible (GPS)</button>
-        <button id="reset-max-btn">Réinitialiser Max Spd</button>
-        <button id="reset-all-btn">🔄 Réinitialiser TOUT</button>
-        <button id="set-default-loc-btn">Set Default Loc</button>
-        <button id="capture-btn">📸 Screenshot</button>
-    </div>
-
-    <div class="controls">
-        <button id="freq-manual-btn" style="background-color: #ff4500;">⚡ Fréquence: Auto</button>
-        <button id="toggle-mode-btn">Toggle Nuit/Jour</button>
-        <button id="recharge-internet-btn" style="background-color: #40c4ff;">🌐 Recalibrer Internet</button>
-        <button id="nether-toggle-btn">🔥 Nether</button>
-        
-        <button id="size-small-btn">Taille S</button>
-        <button id="size-normal-btn">Taille M</button>
-        <button id="size-large-btn">Taille L</button>
-    </div>
-    
-    <div class="controls">
-        <select id="environment-select">
-            <option value="NORMAL">Env. Normal</option>
-            <option value="METAL">Env. Métal</option>
-            <option value="FOREST">Env. Forêt</option>
-            <option value="CONCRETE">Env. Béton</option>
-        </select>
-        <select id="weather-select">
-            <option value="CLEAR">Météo Claire</option>
-            <option value="RAIN">Météo Pluie</option>
-            <option value="SNOW">Météo Neige</option>
-            <option value="STORM">Météo Tempête</option>
-        </select>
-    </div>
 
     <h2>Métriques Critiques</h2>
     <div class="main-dashboard-grid">
@@ -214,6 +174,46 @@
             <span class="unit">COHÉRENCE: <span id="speed-error-perc">--</span>% (R)</span>
         </div>
         
+    </div>
+
+    <div class="controls">
+        <div class="control-group-top">
+            <button id="start-btn" style="background-color: #4CAF50;">▶ DÉMARRER GPS</button>
+            <button id="stop-btn" disabled style="background-color: #993333;">■ ARRÊTER GPS</button>
+            <button id="emergency-stop-btn">🚨 Arrêt Urgence Batterie</button>
+        </div>
+        
+        <button id="set-target-btn">Fixer Cible (GPS)</button>
+        <button id="reset-max-btn">Réinitialiser Max Spd</button>
+        <button id="reset-all-btn">🔄 Réinitialiser TOUT</button>
+        <button id="set-default-loc-btn">Set Default Loc</button>
+        <button id="capture-btn">📸 Screenshot</button>
+    </div>
+
+    <div class="controls">
+        <button id="freq-manual-btn" style="background-color: #ff4500;">⚡ Fréquence: Auto</button>
+        <button id="toggle-mode-btn">Toggle Nuit/Jour</button>
+        <button id="recharge-internet-btn" style="background-color: #40c4ff;">🌐 Recalibrer Internet</button>
+        <button id="nether-toggle-btn">🔥 Nether</button>
+        
+        <button id="size-small-btn">Taille S</button>
+        <button id="size-normal-btn">Taille M</button>
+        <button id="size-large-btn">Taille L</button>
+    </div>
+    
+    <div class="controls">
+        <select id="environment-select">
+            <option value="NORMAL">Env. Normal</option>
+            <option value="METAL">Env. Métal</option>
+            <option value="FOREST">Env. Forêt</option>
+            <option value="CONCRETE">Env. Béton</option>
+        </select>
+        <select id="weather-select">
+            <option value="CLEAR">Météo Claire</option>
+            <option value="RAIN">Météo Pluie</option>
+            <option value="SNOW">Météo Neige</option>
+            <option value="STORM">Météo Tempête</option>
+        </select>
     </div>
 
     <div class="data-panel-secondary">
@@ -262,4 +262,4 @@
     <script src="dashboard.js"></script>
 
 </body>
-    </html>
+                </html>
