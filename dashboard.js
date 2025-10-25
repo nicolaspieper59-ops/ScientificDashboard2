@@ -22,6 +22,7 @@ function getCDate() {
 }
 
 // CONFIGURATIONS GPS POUR L'OPTIMISATION BATTERIE
+// HIGH_FREQ est la "fréquence normale" pour un suivi de vitesse actif.
 const GPS_OPTS = {
     HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
@@ -91,14 +92,18 @@ let currentGPSMode = 'LOW_FREQ';
 let emergencyStopActive = false;
 let selectedEnvironment = 'NORMAL'; 
 let selectedWeather = 'CLEAR'; 
-let currentBatteryLevel = 100;
-let externalBatteryLevel = 99.999; 
 let manualTractionForce = 0; 
 let calculatedMassKg = G_MASS_DEFAULT; 
 let netherMode = false; 
 let lastReliableHeading = null; 
 
-// NOUVEAU : Fréquence DOM personnalisée (par défaut 16 ms / 62.5 Hz)
+// Batteries et Autonomie (Mis à jour pour la précision)
+let currentBatteryLevelPrecise = null; // Niveau précis de la batterie de l'appareil (0.000 à 100.000)
+let deviceAutonomyS = Infinity;        // Autonomie en secondes (navigator.getBattery)
+let externalBatteryLevel = null;       // Niveau précis de la batterie externe (null si non renseigné)
+let externalAutonomyS = Infinity;      // Autonomie Externe simulée ou calculée (en secondes)
+
+// Fréquence DOM personnalisée (par défaut 16 ms / 62.5 Hz)
 let customDOMIntervalMS = 16; 
 
 // --- VARIABLES MÉTÉO (Base) ---
@@ -125,12 +130,13 @@ function saveState() {
         D_LAT: lat ?? 48.8566,
         D_LON: lon ?? 2.3522,
         netherMode: netherMode,
-        externalBatteryLevel: externalBatteryLevel,
+        externalBatteryLevel: externalBatteryLevel, // Ajout de l'état
+        externalAutonomyS: externalAutonomyS,       // Ajout de l'état
         manualTractionForce: manualTractionForce,
         calculatedMassKg: calculatedMassKg,
         systemClockOffsetMS: systemClockOffsetMS,
         lastNtpSync: lastNtpSync,
-        customDOMIntervalMS: customDOMIntervalMS // Persistance de la fréquence personnalisée
+        customDOMIntervalMS: customDOMIntervalMS
     };
     try {
         localStorage.setItem(STATE_KEY, JSON.stringify(state));
@@ -150,14 +156,15 @@ function loadState() {
             tLat = state.tLat || null;
             tLon = state.tLon || null;
             netherMode = state.netherMode || false;
-            externalBatteryLevel = state.externalBatteryLevel || 99.999;
+            externalBatteryLevel = state.externalBatteryLevel ?? null; // Chargement de l'état
+            externalAutonomyS = state.externalAutonomyS ?? Infinity;     // Chargement de l'état
             lat = state.D_LAT;
             lon = state.D_LON; 
             manualTractionForce = state.manualTractionForce || 0;
             calculatedMassKg = state.calculatedMassKg || G_MASS_DEFAULT;
             systemClockOffsetMS = state.systemClockOffsetMS || 0;
             lastNtpSync = state.lastNtpSync || 0;
-            customDOMIntervalMS = state.customDOMIntervalMS || 16; // Chargement de la fréquence
+            customDOMIntervalMS = state.customDOMIntervalMS || 16;
             return true;
         }
     } catch (e) {
@@ -265,12 +272,30 @@ async function syncRemoteData() {
 
 // --- GESTION ÉVÉNEMENTIELLE DE BASE ---
 
+/**
+ * Met à jour l'état et l'autonomie de la batterie de l'appareil
+ */
 function updateBatteryStatus(battery) {
-    const level = Math.floor(battery.level * 100);
+    const levelPrecise = battery.level * 100;
     const charging = battery.charging;
-    currentBatteryLevel = level;
+    const autonomy = battery.dischargingTime; // en secondes, ou Infinity pour charge/plein
+
+    currentBatteryLevelPrecise = levelPrecise;
+    deviceAutonomyS = autonomy;
+
+    // Mise à jour de l'indicateur de statut pour le feedback immédiat
     const batInd = $('battery-indicator');
-    if (batInd) batInd.textContent = `${level}% ${charging ? '🔌' : ''}`;
+    if (batInd) {
+        let status = 'Décharge';
+        if (charging) {
+            status = '🔌 Recharge';
+        } else if (autonomy === Infinity) {
+            status = 'Pleine/Infinie';
+        } else if (autonomy === -1) {
+            status = 'Inconnu';
+        }
+        batInd.textContent = status;
+    }
 }
 
 async function initBattery() {
@@ -278,15 +303,17 @@ async function initBattery() {
         try {
             const battery = await navigator.getBattery();
             updateBatteryStatus(battery);
+            // Ajout des écouteurs pour la précision et l'autonomie
             battery.addEventListener('levelchange', () => updateBatteryStatus(battery));
             battery.addEventListener('chargingchange', () => updateBatteryStatus(battery));
+            battery.addEventListener('dischargingtimechange', () => updateBatteryStatus(battery));
         } catch (e) {
-            if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A';
+            if ($('battery-indicator')) $('battery-indicator').textContent = 'Erreur API';
         }
     } else {
-        if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A';
+        if ($('battery-indicator')) $('battery-indicator').textContent = 'API N/A';
     }
-     }
+}
 // =================================================================
 // BLOC 2/3 : CALCULS GÉO, LOGIQUE EKF ET MISE À JOUR DE POSITION GPS
 // =================================================================
@@ -534,7 +561,7 @@ function updateDisp(pos) {
     lPos.kalman_R_val = R_dyn; 
     lPos.kalman_kSpd_LAST = kSpd; 
 
-    // Simplification : le DOM ne change plus la fréquence GPS
+    // Gestion de la fréquence GPS dynamique (la "mise à jour de vitesse")
     checkGPSFrequency(sSpdFE); 
 
     distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
@@ -561,16 +588,35 @@ function handleErr(err) {
     }
 }
 
+/**
+ * Ajuste la fréquence d'acquisition GPS entre LOW_FREQ et HIGH_FREQ
+ * en fonction de la vitesse pour optimiser la batterie (la "mise à jour de vitesse").
+ */
 function checkGPSFrequency(currentSpeed) {
-    // Logique de changement de fréquence GPS auto (ne contrôle plus le DOM)
     const targetMode = (currentSpeed * KMH_MS > 50) ? 'HIGH_FREQ' : 'LOW_FREQ';
     if (targetMode !== currentGPSMode) {
         setGPSMode(targetMode);
     }
-        }
+                }
 // =================================================================
 // BLOC 3/3 : CONTRÔLES, BOUCLES DOM ET FONCTIONS D'INITIALISATION
 // =================================================================
+
+/**
+ * Formate l'autonomie en secondes en une chaîne lisible (h, min, sec).
+ */
+function formatAutonomy(seconds) {
+    if (seconds === Infinity) return 'Pleine (Inf.)';
+    if (seconds <= 0 || seconds === -1) return 'Inconnu / Épuisé';
+
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.round(seconds % 60);
+
+    if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min`;
+    if (m > 0) return `${m} min ${String(s).padStart(2, '0')} sec`;
+    return `${s} sec`;
+}
 
 /**
  * Met à jour l'intervalle d'actualisation DOM basé sur la valeur du slider (en ms).
@@ -594,6 +640,29 @@ function updateFreqFromRange(msStr) {
     }
 }
 
+/**
+ * Permet à l'utilisateur de saisir manuellement le niveau de la batterie externe.
+ */
+function setExternalBatteryLevel() {
+    const currentLevel = externalBatteryLevel === null ? 0 : externalBatteryLevel.toFixed(3);
+    const newLevelStr = prompt(`Entrez le niveau de la batterie externe (en pourcentage, ex: 99.999). (Actuel: ${currentLevel} %) :`);
+
+    if (newLevelStr !== null && !isNaN(parseFloat(newLevelStr))) {
+        const newLevel = parseFloat(newLevelStr);
+        externalBatteryLevel = Math.max(0, Math.min(100, newLevel)); // Clamp entre 0 et 100
+
+        // Simulation d'une autonomie basée sur le niveau pour l'affichage
+        // (Autonomie max simulée à 3 heures = 10800 secondes)
+        if (externalBatteryLevel > 0) {
+            externalAutonomyS = (externalBatteryLevel / 100) * 10800; 
+        } else {
+            externalAutonomyS = 0;
+        }
+    } else if (newLevelStr !== null) {
+        alert("Valeur invalide. Veuillez entrer un nombre.");
+    }
+}
+
 
 function setGPSMode(newMode) {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
@@ -602,8 +671,6 @@ function setGPSMode(newMode) {
     const opts = GPS_OPTS[newMode]; 
     wID = navigator.geolocation.watchPosition(updateDisp, handleErr, opts);
     if ($('speed-source-indicator')) $('speed-source-indicator').textContent = `Source: ${newMode}`;
-    
-    // La fréquence DOM est désormais contrôlée uniquement par le slider (via customDOMIntervalMS), et non ici.
 }
 
 function updateAvgSpeed() {
@@ -658,7 +725,31 @@ function fastDOM() {
     
     // Mise à jour Astro 
     updateAstro(lat ?? 48.8566, lon ?? 2.3522); 
-    
+
+    // -----------------------------------------------------------------
+    // NOUVEL AFFICHAGE PRÉCIS DE LA BATTERIE
+    // -----------------------------------------------------------------
+    if (currentBatteryLevelPrecise !== null) {
+        if ($('battery-level-perc')) $('battery-level-perc').textContent = `${currentBatteryLevelPrecise.toFixed(3)} %`;
+        const autonomyStr = formatAutonomy(deviceAutonomyS);
+        if ($('device-autonomy')) $('device-autonomy').textContent = autonomyStr;
+    } else {
+        if ($('battery-level-perc')) $('battery-level-perc').textContent = '--.--- %';
+        if ($('device-autonomy')) $('device-autonomy').textContent = 'API N/A';
+    }
+
+    if (externalBatteryLevel !== null) {
+        if ($('external-battery-level')) $('external-battery-level').textContent = `${externalBatteryLevel.toFixed(3)} %`;
+        const autonomyStrEx = formatAutonomy(externalAutonomyS);
+        if ($('external-autonomy')) $('external-autonomy').textContent = autonomyStrEx;
+        if ($('external-battery-raw')) $('external-battery-raw').textContent = `OK (${externalBatteryLevel.toFixed(1)} V)`; // Simu tension
+    } else {
+        if ($('external-battery-level')) $('external-battery-level').textContent = 'N/A';
+        if ($('external-autonomy')) $('external-autonomy').textContent = '-- h -- min';
+        if ($('external-battery-raw')) $('external-battery-raw').textContent = 'N/A';
+    }
+    // -----------------------------------------------------------------
+
     // Mise à jour des vitesses et de l'écart
     if ($('speed-stable')) $('speed-stable').textContent = `${sSpdKMH.toFixed(3)}`; 
     if ($('speed-max-kmh')) $('speed-max-kmh').textContent = `${maxSpd.toFixed(2)}`;
@@ -756,6 +847,8 @@ function resetDisp(fullReset = true) {
         manualTractionForce = 0;
         calculatedMassKg = G_MASS_DEFAULT;
         systemClockOffsetMS = 0;
+        externalBatteryLevel = null; // Réinitialisation
+        externalAutonomyS = Infinity; // Réinitialisation
         localStorage.removeItem(STATE_KEY); 
     }
     kSpd = 0; kUncert = 1000;
@@ -819,8 +912,6 @@ if ($('nether-toggle-btn')) {
     });
 }
 
-// REMPLACEMENT : Suppression de l'ancien bouton de fréquence manuelle
-
 if ($('capture-btn')) {
     $('capture-btn').addEventListener('click', () => {
         html2canvas(document.body, { allowTaint: true, useCORS: true }).then(canvas => {
@@ -835,9 +926,9 @@ if ($('capture-btn')) {
 function initAll() { 
     loadState(); 
     resetDisp(false); 
-    initBattery(); 
+    initBattery(); // Initialisation de l'API batterie interne
     
-    // Initialisation de la boucle DOM
+    // Initialisation de la boucle DOM (Mise à jour de vitesse d'affichage)
     if (domID === null) {
         const initialInterval = customDOMIntervalMS;
         domID = setInterval(fastDOM, initialInterval); 
@@ -847,7 +938,7 @@ function initAll() {
         const initialFreqHz = (1000 / initialInterval).toFixed(1);
         if ($('update-frequency')) $('update-frequency').textContent = `${initialFreqHz} Hz`;
         
-        // NOUVEAU: Événement pour le slider de fréquence
+        // Événement pour le slider de fréquence
         const freqRangeSlider = $('freq-range');
         if (freqRangeSlider) {
             // Mettre à jour l'état initial du slider
@@ -874,6 +965,9 @@ function initAll() {
     if ($('set-mass-btn')) $('set-mass-btn').addEventListener('click', setManualTraction);
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', emergencyStop);
     if ($('recharge-internet-btn')) $('recharge-internet-btn').addEventListener('click', syncRemoteData);
+    
+    // Événement pour la batterie externe
+    if ($('set-external-level-btn')) $('set-external-level-btn').addEventListener('click', setExternalBatteryLevel);
     
     // Initialisation de l'état d'urgence
     if (emergencyStopActive) emergencyStop();
