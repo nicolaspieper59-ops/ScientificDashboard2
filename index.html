@@ -3,11 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dashboard GNSS V3.3 - Affichage Physique</title>
-    <meta name="description" content="Dashboard GNSS avancé avec filtres Kalman, correction astro/météo et mode hors ligne.">
+    <title>Dashboard Quantique GNSS (V3.3 - Physique)</title>
+    <meta name="description" content="Dashboard GNSS avancé avec filtres Kalman, correction astro/météo et estimation de masse.">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e1e1e">
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfBI9zY25Z38KdK5g8k+yC8J9hW+5oXf9" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20n6aR4vJ05/S3R5l92qf+121oT4I3u6iX64+uX7h40=" crossorigin=""></script>
+
     <style>
         /* ======================================================= */
         /* 1. STYLES GÉNÉRAUX & COULEURS */
@@ -23,16 +27,6 @@
             --border-color: #444;
             --font-size-base: 14px;
             --global-font-factor: 1.0;
-        }
-
-        .night-mode {
-            --bg-color: #000000;
-            --text-color: #f0f0f0;
-            --accent-green: #00e676; 
-            --accent-red: #ff3d00;
-            --accent-blue: #448aff;
-            --accent-yellow: #ffeb3b;
-            --tile-bg: #0a0a0a;
         }
 
         body {
@@ -106,7 +100,7 @@
         .accent-yellow { color: var(--accent-yellow); }
 
         /* ======================================================= */
-        /* 3. CONTRÔLES ET PANNEAUX SECONDAIRES */
+        /* 3. CONTRÔLES ET PANNEAUX SECONDAIRES/DÉTAILLÉS */
         /* ======================================================= */
 
         .controls { 
@@ -160,35 +154,22 @@
             color: var(--text-color);
         }
         
-        /* Styles pour la carte Leaflet */
-        #map {
-            height: 200px;
-            width: 100%;
-            background-color: #444;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: large;
-            margin: 10px 0;
-            border-radius: 6px;
-        }
+        #map { height: 200px; width: 100%; background-color: #444; color: white; display: flex; align-items: center; justify-content: center; font-size: large; margin: 10px 0; border-radius: 6px; }
+
+        /* Styles de l'ancien dashboard intégrés ici pour compatibilité */
+        .dashboard-section { margin-bottom: 20px; }
+        .data-item-old { display: flex; justify-content: space-between; padding: 2px 0; }
+        .data-item-old span:first-child { color: #aaa; }
 
         /* Pour les grands écrans (passer à 3 colonnes) */
         @media (min-width: 768px) {
-            .main-dashboard-grid {
-                grid-template-columns: 1fr 1fr 1fr;
-            }
+            .main-dashboard-grid { grid-template-columns: 1fr 1fr 1fr; }
         }
     </style>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfBI9zY25Z38KdK5g8k+yC8J9hW+5oXf9" crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20n6aR4vJ05/S3R5l92qf+121oT4I3u6iX64+uX7h40=" crossorigin=""></script>
 </head>
 <body>
 
-    <div id="error-message" class="data-panel-secondary" style="display:none; color: var(--accent-red);"></div>
+    <div id="error-message" class="data-panel-secondary" style="display:none; color: var(--accent-red); text-align: center; font-weight: bold;"></div>
 
     <div class="controls">
         <div class="control-group-top">
@@ -249,7 +230,7 @@
             <span class="label">MASSE ESTIMÉE</span>
             <span id="calculated-mass" class="value medium-display accent-blue">75.00</span>
             <span class="unit">KG</span>
-            <button id="set-mass-btn" style="padding: 5px 8px; background-color: #007bff; color: white; border: none; border-radius: 3px; font-size: 0.7em; margin-top: 5px; cursor: pointer;">Déclarer F (N)</button>
+            <button id="set-mass-btn" class="inline-control-btn" style="background-color: var(--accent-blue); color: black;">Déclarer F (N)</button>
         </div>
 
         <div class="metric-tile secondary-metric">
@@ -273,99 +254,50 @@
     </div>
 
     <div class="data-panel-secondary">
-        <h2>Statut Système et Environnement</h2>
-        <div class="data-item-row">
-            <span class="label">Mode d'Urgence</span>
-            <span id="emergency-status" class="info-value accent-green">INACTIF</span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Batterie Appareil</span>
-            <span id="battery-indicator" class="info-value">--%</span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Précision GPS (Mise à Jour R)</span>
-            <span id="gps-accuracy" class="info-value">-- m</span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Source Vitesse</span>
-            <span id="speed-source-indicator" class="info-value">Source: OFF</span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Altitude (Geo/Baro)</span>
-            <span class="info-value"><span id="altitude">--</span> m | <span id="alt-baro">N/A</span></span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Illuminance</span>
-            <span id="illuminance-lux" class="info-value">N/A</span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Mode Jour/Nuit</span>
-            <span id="mode-indicator" class="info-value">--</span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Mode Nether</span>
-            <span id="nether-indicator" class="info-value">DÉSACTIVÉ (1:1)</span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Environnement/Météo</span>
-            <span class="info-value"><span id="selected-environment-ind">NORMAL</span> / <span id="selected-weather-ind">CLEAR</span></span>
-        </div>
-        <div class="data-item-row">
-            <span class="label">Taille Affichage</span>
-            <span id="display-size-indicator" class="info-value">NORMAL</span>
-        </div>
-    </div>
-    
-    <div id="map">
-        Carte Interactive (Leaflet/OpenLayers) - Rendu Hors Ligne
+        <h2>Statut Système et Géo</h2>
+        <div class="data-item-row"><span class="label">Mode d'Urgence</span><span id="emergency-status" class="info-value accent-green">INACTIF</span></div>
+        <div class="data-item-row"><span class="label">Force de Traction (Manuel)</span><span id="traction-force" class="info-value accent-blue">0.0 N</span></div>
+        <div class="data-item-row"><span class="label">Latitude / Longitude</span><span class="info-value"><span id="latitude">--</span> / <span id="longitude">--</span></span></div>
+        <div class="data-item-row"><span class="label">Précision GPS (Acc / R)</span><span class="info-value"><span id="gps-accuracy">-- m</span> / <span id="speed-error-perc">--</span>%</span></div>
+        <div class="data-item-row"><span class="label">Altitude (Geo/Baro)</span><span class="info-value"><span id="altitude">--</span> m | <span id="alt-baro">N/A</span></span></div>
+        <div class="data-item-row"><span class="label">Vitesse Max / Moy.</span><span class="info-value"><span id="speed-max">-- km/h</span> / <span id="speed-avg">-- km/h</span></span></div>
+        <div class="data-item-row"><span class="label">Cap (Heading)</span><span id="heading" class="info-value">--</span></div>
+        <div class="data-item-row"><span class="label">Destination (Cap/Dist)</span><span class="info-value"><span id="cap-dest">--</span> / <span id="dist-target">--</span></span></div>
+        <div class="data-item-row"><span class="label">Vitesse Verticale</span><span id="vertical-speed" class="info-value">0.00 m/s</span></div>
+        <div class="data-item-row"><span class="label">Traînée Puissance / Force</span><span class="info-value"><span id="drag-power-kw">0.00 kW</span> / <span id="drag-force">0.0 N</span></span></div>
+        <div class="data-item-row"><span class="label">Batterie (Appareil / Externe)</span><span class="info-value"><span id="battery-indicator">--%</span> / <span id="external-battery-level">--%</span></span></div>
     </div>
 
-    <div id="js-compatibility-panel" style="display: none;">
-        <span id="speed-3d-inst"></span>
-        <span id="speed-ms"></span>
-        <span id="perc-light"></span>
-        <span id="perc-sound"></span>
-        <span id="speed-stable-mm"></span>
-        <span id="speed-avg"></span>
-        <span id="speed-max"></span>
-        <span id="vertical-speed"></span>
-        <span id="drag-force"></span>
-        <span id="drag-power-kw"></span>
-        <span id="latitude"></span>
-        <span id="longitude"></span>
-        <span id="underground"></span>
-        <span id="ztd"></span>
-        <span id="heading"></span>
-        <span id="cap-dest"></span>
-        <span id="dist-target"></span>
-        <span id="elapsed-time"></span>
-        <span id="battery-level-perc"></span>
-        <span id="external-battery-level"></span>
-        <span id="pressure"></span>
-        <span id="air-temp"></span>
-        <span id="humidity"></span>
-        <span id="weather-condition-api"></span>
-        <span id="bubble-level"></span>
-        <span id="mag-field"></span>
-        <span id="local-time"></span>
-        <span id="mc-time"></span>
-        <span id="solar-true-header"></span>
-        <span id="solar-true"></span>
-        <span id="solar-mean-header"></span>
-        <span id="solar-mean"></span>
-        <span id="solar-culmination"></span>
-        <span id="sun-elevation"></span>
-        <span id="eot"></span>
-        <span id="lunar-phase-perc"></span>
-        <span id="lunar-time"></span>
-        <span id="solar-longitude-val"></span>
-        <span id="solar-longitude-midday"></span>
-        <span id="eot-midday"></span>
-        <span id="traction-force"></span>
-        <span id="update-frequency"></span>
+    <div id="map">Carte Interactive (Chargement...)</div>
+
+    <div class="data-panel-secondary">
+        <h2>Informations Astro, Météo & Capteurs</h2>
+        <div class="data-item-row"><span class="label">Heure Locale / Temps Écoulé</span><span class="info-value"><span id="local-time">--</span> / <span id="elapsed-time">--</span> s</span></div>
+        <div class="data-item-row"><span class="label">Condition Météo (API)</span><span id="weather-condition-api" class="info-value">N/A</span></div>
+        <div class="data-item-row"><span class="label">Pression / Température / Humidité</span><span class="info-value"><span id="pressure">-- hPa</span> / <span id="air-temp">-- K</span> / <span id="humidity">--%</span></span></div>
+        <div class="data-item-row"><span class="label">Illuminance (Lux)</span><span id="illuminance-lux" class="info-value">N/A</span></div>
+        <div class="data-item-row"><span class="label">Délai Troposphérique (ZTD)</span><span id="ztd" class="info-value">0.00 m</span></div>
+        
+        <h3 style="margin-top:10px; color:#aaa; font-size:1em;">Astro & Solaire</h3>
+        <div class="data-item-row"><span class="label">Heure Solaire Vraie</span><span id="solar-true" class="info-value">--:--:--</span></div>
+        <div class="data-item-row"><span class="label">Heure Solaire Moyenne</span><span id="solar-mean" class="info-value">--:--:--</span></div>
+        <div class="data-item-row"><span class="label">Culmination Solaire</span><span id="solar-culmination" class="info-value">--:--:--</span></div>
+        <div class="data-item-row"><span class="label">Élévation Solaire</span><span id="sun-elevation" class="info-value">0.00 °</span></div>
+        <div class="data-item-row"><span class="label">Éq. du Temps (EoT)</span><span id="eot" class="info-value">0.00 min</span></div>
+        <div class="data-item-row"><span class="label">Phase Lunaire</span><span id="lunar-phase-perc" class="info-value">--%</span></div>
+        <div class="data-item-row"><span class="label">Heure Lunaire Locale</span><span id="lunar-time" class="info-value">--:--:--</span></div>
+        <div class="data-item-row"><span class="label">Longitude Solaire</span><span class="info-value"><span id="solar-longitude-val">-- °</span> | Midi UTC: <span id="solar-longitude-midday">-- °</span></span></div>
+    </div>
+
+    <div style="display: none;">
+        <span id="bubble-level"></span><span id="mag-field"></span><span id="ztd"></span><span id="speed-3d-inst"></span><span id="speed-ms"></span>
+        <span id="solar-true-header"></span><span id="solar-mean-header"></span><span id="eot-midday"></span><span id="update-frequency"></span>
+        <span id="perc-light"></span><span id="perc-sound"></span><span id="speed-stable-mm"></span><span id="underground"></span><span id="mc-time"></span>
+        <span id="selected-environment-ind">NORMAL</span><span id="selected-weather-ind">CLEAR</span><span id="nether-indicator">DÉSACTIVÉ (1:1)</span>
+        <span id="mode-indicator">--</span><span id="display-size-indicator">NORMAL</span>
     </div>
     
     <script src="dashboard.js"></script>
 
 </body>
-        </html>
+    </html>
