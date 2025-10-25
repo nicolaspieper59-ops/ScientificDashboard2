@@ -1,6 +1,5 @@
 // =================================================================
 // BLOC 1/3 : CONSTANTES, INITIALISATION, PERSISTANCE ET SYNCHRONISATION
-// Contenu fonctionnel : ~370 lignes
 // =================================================================
 
 // --- CLÉS D'API (AJOUTEZ VOTRE CLÉ METEO) ---
@@ -167,11 +166,17 @@ async function syncRemoteData() {
     const currentLat = lat ?? 48.8566;
     const currentLon = lon ?? 2.3522;
     let successCount = 0;
+    let ntpSuccess = false;
 
-    // 1. SYNCHRONISATION NTP (Horloge Maîtresse)
+    // 1. SYNCHRONISATION NTP (Horloge Maîtresse) - Utilisation d'un timeout de 5s
     try {
-        const timeResponse = await fetch('https://worldtimeapi.org/api/ip', { cache: 'no-store' });
-        if (!timeResponse.ok) throw new Error('Erreur de service de temps.');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s de timeout
+
+        const timeResponse = await fetch('https://worldtimeapi.org/api/ip', { cache: 'no-store', signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (!timeResponse.ok) throw new Error(`Erreur HTTP: ${timeResponse.status}`);
 
         const data = await timeResponse.json();
         const serverTime = new Date(data.utc_datetime).getTime();
@@ -180,9 +185,14 @@ async function syncRemoteData() {
         systemClockOffsetMS = serverTime - localTime;
         lastNtpSync = getCDate().getTime();
         successCount++;
+        ntpSuccess = true;
         console.log(`[NTP Sync] Dérive corrigée: ${systemClockOffsetMS} ms. Nouveau temps maître établi.`);
     } catch (error) {
-        console.warn(`[NTP Sync] Échec de la synchronisation NTP: ${error.message}`);
+        if (error.name === 'AbortError') {
+            console.warn(`[NTP Sync] Échec de la synchronisation NTP: Timeout (5s).`);
+        } else {
+            console.warn(`[NTP Sync] Échec de la synchronisation NTP: ${error.message}`);
+        }
     }
     
     // 2. FETCH MÉTÉO (Pour les corrections atmosphériques)
@@ -202,7 +212,7 @@ async function syncRemoteData() {
     }
 
     if (successCount > 0) {
-        alert(`Recalibrage Internet terminé: ${successCount} points synchronisés.`);
+        alert(`Recalibrage Internet terminé: ${successCount} points synchronisés.${ntpSuccess ? ' (Temps NTP OK)' : ' (Temps: Échec ou Timeout)'}`);
     } else {
         alert("Recalibrage Internet échoué ou aucune clé d'API fournie/valide.");
     }
@@ -235,7 +245,6 @@ async function initBattery() {
 }
 // =================================================================
 // BLOC 2/3 : CALCULS GÉO, LOGIQUE EKF ET MISE À JOUR DE POSITION GPS
-// Contenu fonctionnel : ~350 lignes
 // =================================================================
 
 // --- ASTRO CALCULS (SIMULÉS pour l'intégration) ---
@@ -313,10 +322,14 @@ function updateDisp(pos) {
 
     if (lPos && dt > 0.05) { 
         const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
+        // Si spd_gps est manquant, on le dérive de la distance horizontale
         if (spd_gps === null || spd_gps === undefined) spdH = dH / dt; 
         if (alt !== null && lPos.coords.altitude !== null) spdV = (alt - lPos.coords.altitude) / dt; 
     }
-    const spd3D = Math.sqrt(spdH ** 2 + spdV ** 2); // Vitesse 3D en m/s
+    
+    // VITESSE 3D INSTANTANÉE (Calculé à chaque mise à jour)
+    const spd3D = Math.sqrt(spdH ** 2 + spdV ** 2); 
+    
     const lastSpd3D = lPos ? (lPos.speedMS_3D_LAST ?? 0) : 0;
     const accellLong = dt > 0 ? (spd3D - lastSpd3D) / dt : 0; 
 
@@ -327,6 +340,7 @@ function updateDisp(pos) {
     const ztd_m = getTroposphericDelay(lastP_hPa, lastT_K, lastH_perc, alt ?? 0, lat); 
     const R_dyn = getKalmanR(acc, alt, ztd_m); 
     let K = kUncert_PREDICTED / (kUncert_PREDICTED + R_dyn); 
+    // CORRECTION: Utilise spd3D comme observation pour le Kalman
     kSpd = kSpd_PREDICTED + K * (spd3D - kSpd_PREDICTED); 
     kUncert = (1 - K) * kUncert_PREDICTED;
     const sSpdFE = kSpd < MIN_SPD ? 0 : kSpd;
@@ -356,7 +370,7 @@ function updateDisp(pos) {
     lPos = pos; 
     lPos.speedMS_3D = spd3D; 
     lPos.timestamp = cTime; 
-    lPos.speedMS_3D_LAST = spd3D; 
+    lPos.speedMS_3D_LAST = spd3D; // Stockage de la vitesse 3D pour le calcul d'accel au prochain cycle
     lPos.kalman_R_val = R_dyn; 
     lPos.kalman_kSpd_LAST = kSpd; 
 
@@ -366,7 +380,7 @@ function updateDisp(pos) {
     
     if (spd3D * KMH_MS > maxSpd) maxSpd = spd3D * KMH_MS; // Max est en KM/H
 
-    // --- MISE À JOUR DOM INSTANTANÉE (Mise à jour dans fastDOM aussi) ---
+    // --- MISE À JOUR DOM INSTANTANÉE (Pour la Vitesse 3D instantanée) ---
     if ($('gps-accuracy')) $('gps-accuracy').textContent = acc.toFixed(2) + ' m';
     if ($('altitude')) $('altitude').textContent = alt !== null ? alt.toFixed(2) : '--';
     if ($('heading')) $('heading').textContent = hdg_corr !== null ? `${hdg_corr.toFixed(1)} °` : '--';
@@ -392,10 +406,9 @@ function checkGPSFrequency(currentSpeed) {
     if (targetMode !== currentGPSMode) {
         setGPSMode(targetMode);
     }
-    }
+}
 // =================================================================
 // BLOC 3/3 : CONTRÔLES, BOUCLES DOM ET FONCTIONS D'INITIALISATION
-// Contenu fonctionnel : ~380 lignes
 // =================================================================
 
 function setGPSMode(newMode) {
