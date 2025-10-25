@@ -92,12 +92,16 @@
         .large-display { font-size: 2.3em; font-weight: bold; }
         .medium-display { font-size: 1.6em; font-weight: bold; }
         .small-display { font-size: 1.1em; font-weight: bold; }
+        
+        .medium-label { font-size: 0.9em; color: var(--text-color); margin-top: 5px; }
+
 
         /* Couleurs d'accentuation */
         .accent-green { color: var(--accent-green); }
         .accent-red { color: var(--accent-red); }
         .accent-blue { color: var(--accent-blue); }
         .accent-yellow { color: var(--accent-yellow); }
+        .accent-solar { color: #FFD700; } /* Or pour le solaire */
 
         /* ======================================================= */
         /* 3. CONTRÔLES ET PANNEAUX SECONDAIRES/DÉTAILLÉS */
@@ -156,11 +160,6 @@
         
         #map { height: 200px; width: 100%; background-color: #444; color: white; display: flex; align-items: center; justify-content: center; font-size: large; margin: 10px 0; border-radius: 6px; }
 
-        /* Styles de l'ancien dashboard intégrés ici pour compatibilité */
-        .dashboard-section { margin-bottom: 20px; }
-        .data-item-old { display: flex; justify-content: space-between; padding: 2px 0; }
-        .data-item-old span:first-child { color: #aaa; }
-
         /* Pour les grands écrans (passer à 3 colonnes) */
         @media (min-width: 768px) {
             .main-dashboard-grid { grid-template-columns: 1fr 1fr 1fr; }
@@ -211,7 +210,7 @@
         </select>
     </div>
 
-    <h2>Métriques Critiques</h2>
+    <h2>Métriques Critiques & Solaire</h2>
     <div class="main-dashboard-grid">
         
         <div class="metric-tile primary-metric">
@@ -224,6 +223,13 @@
             <span class="label">G-FORCE</span>
             <span id="g-force" class="value large-display accent-red">0.00</span>
             <span class="unit">G</span>
+        </div>
+
+        <div class="metric-tile primary-metric">
+            <span class="label">HEURE SOLAIRE</span>
+            <span class="value medium-label accent-solar">VRAIE: <span id="solar-true">--:--:--</span></span>
+            <span class="value medium-label accent-solar">MOYENNE: <span id="solar-mean">--:--:--</span></span>
+            <span class="unit">Culmination: <span id="solar-culmination">--:--:--</span></span>
         </div>
 
         <div class="metric-tile secondary-metric">
@@ -242,13 +248,7 @@
         <div class="metric-tile small-metric">
             <span class="label">DISTANCE TOTALE</span>
             <span id="distance-km-m" class="value small-display">0.000 km</span>
-            <span class="unit">Mètres/KM</span>
-        </div>
-
-        <div class="metric-tile small-metric">
-            <span class="label">COHÉRENCE EKF</span>
-            <span id="speed-error-perc" class="value small-display">--</span>
-            <span class="unit">% (R)</span>
+            <span class="unit">COHÉRENCE: <span id="speed-error-perc">--</span>% (R)</span>
         </div>
         
     </div>
@@ -256,6 +256,7 @@
     <div class="data-panel-secondary">
         <h2>Statut Système et Géo</h2>
         <div class="data-item-row"><span class="label">Mode d'Urgence</span><span id="emergency-status" class="info-value accent-green">INACTIF</span></div>
+        <div class="data-item-row"><span class="label">VITESSE 3D INST.</span><span id="speed-3d-inst" class="info-value accent-yellow">0.000 m/s</span></div>
         <div class="data-item-row"><span class="label">Force de Traction (Manuel)</span><span id="traction-force" class="info-value accent-blue">0.0 N</span></div>
         <div class="data-item-row"><span class="label">Latitude / Longitude</span><span class="info-value"><span id="latitude">--</span> / <span id="longitude">--</span></span></div>
         <div class="data-item-row"><span class="label">Précision GPS (Acc / R)</span><span class="info-value"><span id="gps-accuracy">-- m</span> / <span id="speed-error-perc">--</span>%</span></div>
@@ -278,10 +279,7 @@
         <div class="data-item-row"><span class="label">Illuminance (Lux)</span><span id="illuminance-lux" class="info-value">N/A</span></div>
         <div class="data-item-row"><span class="label">Délai Troposphérique (ZTD)</span><span id="ztd" class="info-value">0.00 m</span></div>
         
-        <h3 style="margin-top:10px; color:#aaa; font-size:1em;">Astro & Solaire</h3>
-        <div class="data-item-row"><span class="label">Heure Solaire Vraie</span><span id="solar-true" class="info-value">--:--:--</span></div>
-        <div class="data-item-row"><span class="label">Heure Solaire Moyenne</span><span id="solar-mean" class="info-value">--:--:--</span></div>
-        <div class="data-item-row"><span class="label">Culmination Solaire</span><span id="solar-culmination" class="info-value">--:--:--</span></div>
+        <h3 style="margin-top:10px; color:#aaa; font-size:1em;">Détails Astro</h3>
         <div class="data-item-row"><span class="label">Élévation Solaire</span><span id="sun-elevation" class="info-value">0.00 °</span></div>
         <div class="data-item-row"><span class="label">Éq. du Temps (EoT)</span><span id="eot" class="info-value">0.00 min</span></div>
         <div class="data-item-row"><span class="label">Phase Lunaire</span><span id="lunar-phase-perc" class="info-value">--%</span></div>
@@ -290,7 +288,7 @@
     </div>
 
     <div style="display: none;">
-        <span id="bubble-level"></span><span id="mag-field"></span><span id="ztd"></span><span id="speed-3d-inst"></span><span id="speed-ms"></span>
+        <span id="bubble-level"></span><span id="mag-field"></span><span id="speed-ms"></span>
         <span id="solar-true-header"></span><span id="solar-mean-header"></span><span id="eot-midday"></span><span id="update-frequency"></span>
         <span id="perc-light"></span><span id="perc-sound"></span><span id="speed-stable-mm"></span><span id="underground"></span><span id="mc-time"></span>
         <span id="selected-environment-ind">NORMAL</span><span id="selected-weather-ind">CLEAR</span><span id="nether-indicator">DÉSACTIVÉ (1:1)</span>
@@ -300,4 +298,4 @@
     <script src="dashboard.js"></script>
 
 </body>
-    </html>
+        </html>
