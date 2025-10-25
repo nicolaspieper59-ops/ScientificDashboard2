@@ -282,12 +282,12 @@ async function initBattery() {
     } else {
         if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A';
     }
-}
+            }
 // =================================================================
 // BLOC 2/3 : CALCULS GÉO, LOGIQUE EKF ET MISE À JOUR DE POSITION GPS
 // =================================================================
 
-// --- ASTRO CALCULS (SYNCHRONISÉS) ---
+// --- ASTRO CALCULS (SYNCHRONISÉS & CORRIGÉS) ---
 
 /**
  * Interpole l'Équation du Temps (EoT) et la Longitude Solaire pour l'instant UTC donné.
@@ -327,20 +327,19 @@ function getAstroData(targetDateMS) {
 
 /**
  * Mise à jour des informations astronomiques en utilisant les éphémérides fournies.
- * Toutes les valeurs dépendant du temps utilisent getCDate() (heure synchronisée).
+ * **CORRECTION** : Utilisation de la base UTC pour le calcul de l'heure solaire et
+ * correction de la magnitude de la longitude (4 minutes par degré = 240,000 ms/deg).
  * @param {number} latA Latitude actuelle.
- * @param {number} lonA Longitude actuelle.
+ * @param {number} lonA Longitude actuelle (Est +, Ouest -).
  */
 function updateAstro(latA, lonA) {
     // Si la position n'est pas connue, utiliser une valeur par défaut (Paris)
     if (latA === null || lonA === null) { latA = 48.8566; lonA = 2.3522; }
 
-    const now = getCDate(); // Utilisation de l'heure synchronisée
-    const nowUTC_ms = now.getTime() - systemClockOffsetMS; 
+    const now = getCDate(); // Utilisation de l'heure synchronisée (locale)
     const timeFormatOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
     
     // Format de la date pour la recherche (YYYY-MM-DD)
-    // Synchronisation de la date pour les données statiques
     const dateKey = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
     const celestial_day_data = CELESTIAL_DATA[dateKey];
 
@@ -348,21 +347,37 @@ function updateAstro(latA, lonA) {
     // -------------------------------------------------------------
     // CALCULS SOLAIRES (Dynamique basé sur EoT)
     // -------------------------------------------------------------
+    
+    // 1. Détermination de l'instant UTC corrigé
+    // now.getTimezoneOffset() retourne (Local - UTC) en minutes. (-120 pour UTC+2)
+    const nowUTC_ms = now.getTime() + now.getTimezoneOffset() * 60 * 1000;
     const astroData = getAstroData(nowUTC_ms);
+    
     const EoT_minutes = astroData.eot; 
     const SolarLongitude = astroData.solar_lon;
 
-    const longitude_correction_ms = lonA * 4 * 60 * 1000 / 60; // lonA * 4 minutes
-    const LMST_ms = now.getTime() + longitude_correction_ms; 
-    const LMST = new Date(LMST_ms);
-
+    // Correction pour 4 minutes par degré de longitude, en millisecondes
+    const MS_PER_DEGREE = 240000;
+    const longitude_correction_ms = lonA * MS_PER_DEGREE; 
     const EoT_ms = EoT_minutes * 60 * 1000;
+
+    // 2. Calcul du Temps Solaire Moyen Local (LMST)
+    // LMST = UTC + Correction Longitude (où la Longitude est signée)
+    const LMST_ms = nowUTC_ms + longitude_correction_ms; 
+    const LMST = new Date(LMST_ms); 
+    
+    // 3. Calcul du Temps Solaire Vrai Local (LTST)
+    // LTST = LMST - EoT
     const LTST_ms = LMST_ms - EoT_ms;
     const LTST = new Date(LTST_ms);
 
-    const local_offset_ms = now.getTime() - nowUTC_ms;
-    const culmination_local_ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0) - EoT_ms;
-    const culminationTime = new Date(culmination_local_ms + local_offset_ms + longitude_correction_ms);
+    // 4. Calcul de l'instant de Culmination (LTST = 12:00:00)
+    // Culmination UTC Timestamp = (12:00:00 UTC) - Longitude Correction - EoT
+    const midday_utc_ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0);
+    const culmination_utc_ms = midday_utc_ms - longitude_correction_ms - EoT_ms;
+    
+    // Le constructeur new Date() affichera cette heure UTC dans le fuseau horaire local
+    const culminationTime = new Date(culmination_utc_ms); 
     
     // Mise à jour des champs Solaires Dynamiques (Synchronisés)
     if ($('solar-true')) $('solar-true').textContent = LTST.toLocaleTimeString('fr-FR', timeFormatOptions); 
@@ -551,7 +566,7 @@ function checkGPSFrequency(currentSpeed) {
     if (targetMode !== currentGPSMode) {
         setGPSMode(targetMode);
     }
-}
+        }
 // =================================================================
 // BLOC 3/3 : CONTRÔLES, BOUCLES DOM ET FONCTIONS D'INITIALISATION
 // =================================================================
