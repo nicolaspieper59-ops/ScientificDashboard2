@@ -1,6 +1,5 @@
 // =================================================================
 // BLOC 1/3 : CONSTANTES, INITIALISATION, PERSISTANCE ET SYNCHRONISATION
-// (MAX_ACC ajusté à 100m, Données Éphémérides et Célestes ajoutées)
 // =================================================================
 
 // --- CLÉS D'API (AJOUTEZ VOTRE CLÉ METEO) ---
@@ -18,7 +17,7 @@ let systemClockOffsetMS = 0; // Décalage entre l'horloge locale et l'horloge NT
 let lastNtpSync = 0;
 
 function getCDate() { 
-    // Retourne l'heure corrigée par la dérive NTP
+    // Retourne l'heure corrigée (synchronisée en ligne) pour tous les calculs astronomiques et temporels
     return new Date(Date.now() + systemClockOffsetMS);
 }
 
@@ -57,7 +56,7 @@ const DOM_HIGH_FREQ_MS = 17;
 const DOM_LOW_FREQ_MS = 250;   
 const DOM_SLOW_UPDATE_MS = 1000; 
 
-// --- DONNÉES ÉPHÉMÉRIDES (Pour 12:00:00 UTC) ---
+// --- DONNÉES ÉPHÉMERIDES (Pour 12:00:00 UTC) ---
 // Utilisation du mois 9 pour Octobre (0-indexé)
 const EPHEMERIS_DATA = [
     { date: new Date(Date.UTC(2025, 9, 25, 12, 0, 0)).getTime(), eot: 15.995479772833402, solar_lon: 212.33130066388185 },
@@ -283,13 +282,12 @@ async function initBattery() {
     } else {
         if ($('battery-indicator')) $('battery-indicator').textContent = 'N/A';
     }
-    }
+}
 // =================================================================
 // BLOC 2/3 : CALCULS GÉO, LOGIQUE EKF ET MISE À JOUR DE POSITION GPS
-// (Calculs Astro détaillés implémentés)
 // =================================================================
 
-// --- ASTRO CALCULS (NON SIMULÉS) ---
+// --- ASTRO CALCULS (SYNCHRONISÉS) ---
 
 /**
  * Interpole l'Équation du Temps (EoT) et la Longitude Solaire pour l'instant UTC donné.
@@ -329,6 +327,7 @@ function getAstroData(targetDateMS) {
 
 /**
  * Mise à jour des informations astronomiques en utilisant les éphémérides fournies.
+ * Toutes les valeurs dépendant du temps utilisent getCDate() (heure synchronisée).
  * @param {number} latA Latitude actuelle.
  * @param {number} lonA Longitude actuelle.
  */
@@ -336,11 +335,12 @@ function updateAstro(latA, lonA) {
     // Si la position n'est pas connue, utiliser une valeur par défaut (Paris)
     if (latA === null || lonA === null) { latA = 48.8566; lonA = 2.3522; }
 
-    const now = getCDate();
+    const now = getCDate(); // Utilisation de l'heure synchronisée
     const nowUTC_ms = now.getTime() - systemClockOffsetMS; 
     const timeFormatOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
     
     // Format de la date pour la recherche (YYYY-MM-DD)
+    // Synchronisation de la date pour les données statiques
     const dateKey = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
     const celestial_day_data = CELESTIAL_DATA[dateKey];
 
@@ -364,7 +364,7 @@ function updateAstro(latA, lonA) {
     const culmination_local_ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0) - EoT_ms;
     const culminationTime = new Date(culmination_local_ms + local_offset_ms + longitude_correction_ms);
     
-    // Mise à jour des champs Solaires Dynamiques
+    // Mise à jour des champs Solaires Dynamiques (Synchronisés)
     if ($('solar-true')) $('solar-true').textContent = LTST.toLocaleTimeString('fr-FR', timeFormatOptions); 
     if ($('solar-mean')) $('solar-mean').textContent = LMST.toLocaleTimeString('fr-FR', timeFormatOptions); 
     if ($('solar-culmination')) $('solar-culmination').textContent = culminationTime.toLocaleTimeString('fr-FR', timeFormatOptions);
@@ -378,7 +378,7 @@ function updateAstro(latA, lonA) {
     if ($('mode-indicator')) $('mode-indicator').textContent = isDay ? 'JOUR ☀️' : 'NUIT 🌙';
 
     // -------------------------------------------------------------
-    // DONNÉES CÉLESTES DÉTAILLÉES (Basé sur la table)
+    // DONNÉES CÉLESTES DÉTAILLÉES (Basé sur la table et la date synchronisée)
     // -------------------------------------------------------------
     const sunData = celestial_day_data ? celestial_day_data.sun : null;
     const moonData = celestial_day_data ? celestial_day_data.moon : null;
@@ -580,6 +580,7 @@ function updateAvgSpeed() {
 }
 
 function fastDOM() {
+    // UTILISATION CRITIQUE DE L'HEURE SYNCHRONISÉE
     const now = getCDate().getTime(); 
     const pNow = performance.now();
     
@@ -588,7 +589,12 @@ function fastDOM() {
     const avgSpdKMH = updateAvgSpeed(); 
     const elapS = sTime !== null ? (now - sTime) / 1000 : 0;
     
-    // L'appel à updateAstro est ici pour la mise à jour des données
+    // Mise à jour de l'heure locale synchronisée
+    if ($('local-time')) $('local-time').textContent = getCDate().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    // Mise à jour du temps écoulé basé sur l'heure synchronisée
+    if ($('elapsed-time')) $('elapsed-time').textContent = `${elapS.toFixed(1)}`;
+    
+    // Mise à jour des calculs astro qui dépendent de cette heure synchronisée
     updateAstro(lat ?? 48.8566, lon ?? 2.3522); 
     
     // Mise à jour de la grille principale
@@ -601,8 +607,6 @@ function fastDOM() {
     if ($('speed-error-perc')) $('speed-error-perc').textContent = `${coherence_perc.toFixed(1)}`;
     if ($('calculated-mass')) $('calculated-mass').textContent = `${calculatedMassKg.toFixed(2)}`;
     if ($('traction-force')) $('traction-force').textContent = `${manualTractionForce.toFixed(1)} N`;
-    if ($('local-time')) $('local-time').textContent = getCDate().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    if ($('elapsed-time')) $('elapsed-time').textContent = `${elapS.toFixed(1)}`;
     if ($('distance-km-m')) $('distance-km-m').textContent = `${(distM / 1000).toFixed(3)} km`;
     
     // Mettre à jour les indicateurs d'état et les indicateurs météo/environnement
