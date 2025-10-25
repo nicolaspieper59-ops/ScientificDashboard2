@@ -1,5 +1,6 @@
 // =================================================================
 // BLOC 1/3 : CONSTANTES, INITIALISATION, PERSISTANCE ET SYNCHRONISATION
+// (MAX_ACC ajusté de 50 à 100)
 // =================================================================
 
 // --- CLÉS D'API (AJOUTEZ VOTRE CLÉ METEO) ---
@@ -30,7 +31,7 @@ const GPS_OPTS = {
 // PARAMÈTRES AVANCÉS DU FILTRE DE KALMAN (V3.3)
 const Q_NOISE = 0.01;       
 const R_MIN = 0.05, R_MAX = 50.0; 
-const MAX_ACC = 50, MIN_SPD = 0.001, ALT_TH = -50;
+const MAX_ACC = 100, MIN_SPD = 0.001, ALT_TH = -50; // <-- MODIFIÉ ICI (100 mètres)
 const SPEED_THRESHOLD = 0.5; 
 const G_MASS_DEFAULT = 75; // kg (Masse par défaut) 
 
@@ -312,6 +313,7 @@ function updateDisp(pos) {
 
     // --- Validation de l'Acquisition ---
     if (acc > MAX_ACC) { 
+        // L'acquisition est ignorée si la précision est trop faible (acc > 100m)
         if ($('gps-accuracy')) $('gps-accuracy').textContent = `❌ ${acc.toFixed(0)} m`; 
         if (lPos === null) lPos = pos; return; 
     }
@@ -327,7 +329,7 @@ function updateDisp(pos) {
         if (alt !== null && lPos.coords.altitude !== null) spdV = (alt - lPos.coords.altitude) / dt; 
     }
     
-    // VITESSE 3D INSTANTANÉE (Calculé à chaque mise à jour)
+    // VITESSE 3D INSTANTANÉE
     const spd3D = Math.sqrt(spdH ** 2 + spdV ** 2); 
     
     const lastSpd3D = lPos ? (lPos.speedMS_3D_LAST ?? 0) : 0;
