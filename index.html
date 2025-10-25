@@ -64,27 +64,6 @@
         }
         .controls button:hover, .controls select:hover { background-color: #00e5ff; }
         .controls button:disabled { background-color: #333; color: #666; cursor: not-allowed; }
-
-        /* Style spécifique pour le groupe de contrôle du slider */
-        .control-slider-group {
-            border: 1px solid var(--accent-color);
-            padding: 10px;
-            margin-bottom: 10px;
-            background-color: rgba(0, 0, 0, 0.1);
-        }
-        .control-slider-group h3 {
-            margin-top: 0;
-            margin-bottom: 5px;
-            color: var(--text-color);
-            font-size: calc(16px * var(--global-font-factor));
-        }
-        .control-slider-group label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        .control-slider-group input[type="range"] {
-            width: 100%;
-        }
         
         #map {
             height: 300px;
@@ -116,20 +95,93 @@
 
     <div class="controls">
         <button id="emergency-stop-btn" style="background-color: #f44336;">🚨 Arrêt Urgence Batterie</button>
-        <button id="set-external-level-btn" style="background-color: #ffaa00;">Saisir Niveau Batterie Externe</button>
+        <button id="freq-manual-btn" style="background-color: #ff4500;">⚡ Fréquence: Auto</button>
         <button id="toggle-mode-btn">Toggle Nuit/Jour</button>
         <button id="auto-mode-btn" style="display: none;">Mode Auto</button>
         <button id="nether-toggle-btn">🔥 Nether</button>
         <button id="capture-btn">📸 Screenshot</button>
     </div>
-
-    <div class="control-slider-group">
-        <h3>Régler la Fréquence d'Affichage</h3>
-        <label for="freq-range">Fréquence DOM : <span id="current-freq-display">62.5</span> Hz</label>
-        <input type="range" id="freq-range" min="16" max="1000" value="16" step="1" aria-label="Régler la fréquence d'actualisation du dashboard">
-        <p>Intervalle: <span id="update-frequency-ms">16</span> ms</p>
+    <h2>Vitesse et Distance</h2>
+    <div class="data-panel">
+        <div class="data-item"><span>Temps Écoulé:</span><span id="time-elapsed">0.00 s</span></div>
+        <div class="data-item"><span>Vitesse 3D Inst. (KM/H):</span><span id="speed-3d-inst">0.00000 km/h</span></div>
+        <div class="data-item"><span>Vitesse 3D Stable (KM/H):</span><span id="speed-stable">0.00000 km/h</span></div>
+        <div class="data-item"><span>Vitesse (m/s | mm/s):</span><span id="speed-ms">-- m/s</span></div>
+        <div class="data-item"><span>Vitesse Max Session:</span><span id="speed-max">0.00000 km/h</span></div>
+        <div class="data-item"><span>Vitesse Moyenne:</span><span id="speed-avg">0.00000 km/h</span></div>
+        <div class="data-item"><span>Vitesse Long. (IMU):</span><span id="accel-long">0.000 m/s²</span></div>
+        <div class="data-item"><span>G-Force (IMU):</span><span id="g-force">0.00 G</span></div>
+        <div class="data-item"><span>Vitesse Verticale:</span><span id="vertical-speed">0.00 m/s</span></div>
+        <div class="data-item"><span>Distance Totale:</span><span id="distance-km-m">0.000 km | 0.00 m</span></div>
+        <div class="data-item"><span>Distance Fine:</span><span id="distance-mm">0.00 mm</span></div>
+        <div class="data-item"><span>Distance Cosmique:</span><span id="cosmic-light-s">-- s lumière</span></div>
+        <div class="data-item"><span>Distance Cosmique (AL):</span><span id="cosmic-light-al">-- al</span></div>
+        <div class="data-item"><span>% Vitesse Son:</span><span id="perc-sound">0.00000 %</span></div>
+        <div class="data-item"><span>% Son Max:</span><span id="perc-sound-db">-- %</span></div>
+        <div class="data-item"><span>Force Traînée:</span><span id="drag-force">0.0 N</span></div>
+        <div class="data-item"><span>Puissance Traînée:</span><span id="drag-power-kw">0.00 kW</span></div>
+        <div class="data-item"><span>Vitesse 4D (c):</span><span id="speed-4d-perc">0.00000 %</span></div>
     </div>
+    <h2>Navigation et Astro (☀️🌙 Soleil & Lune)</h2>
+    <div id="map">
+        Carte Interactive (Leaflet/OpenLayers) - Rendu Hors Ligne
+    </div>
+    <div class="data-panel">
+        <div class="data-item"><span>Latitude:</span><span id="latitude">--.------</span></div>
+        <div class="data-item"><span>Longitude:</span><span id="longitude">--.------</span></div>
+        <div class="data-item"><span>Cap (Heading):</span><span id="heading">-- °</span></div>
+        <div class="data-item"><span>Cap Destination:</span><span id="cap-dest">-- °</span></div>
+        <div class="data-item"><span>Distance Cible:</span><span id="dist-target">-- km</span></div>
+        <div class="data-item"><span>Heure Solaire Vraie:</span><span id="solar-true">--:--:--</span></div>
+        <div class="data-item"><span>Heure Solaire Moy.:</span><span id="solar-mean">--:--:--</span></div>
+        <div class="data-item"><span>Culmination Soleil:</span><span id="solar-culmination">--:--:--</span></div>
+        <div class="data-item"><span>Élévation Solaire:</span><span id="sun-elevation">0.00 °</span></div>
+        <div class="data-item"><span>Éq. du Temps (EoT):</span><span id="eot">0.00 min</span></div>
+        <div class="data-item"><span>Phase Lunaire:</span><span id="lunar-phase-perc">--%</span></div>
+        <div class="data-item"><span>Lune Magnitude:</span><span id="moon-magnitude">--</span></div>
+        <div class="data-item"><span>Lever Lune:</span><span id="moon-rise">--</span></div>
+        <div class="data-item"><span>Coucher Lune:</span><span id="moon-set">--</span></div>
+        <div class="data-item"><span>Culmination Lune:</span><span id="moon-culmination">--</span></div>
+        <div class="data-item"><span>Heure Lunaire Locale:</span><span id="lunar-time">--:--:--</span></div>
+        <div class="data-item"><span>Longitude Solaire:</span><span id="solar-longitude-val">-- °</span></div>
+        <div class="data-item"><span>Longitude (Midi UTC):</span><span id="solar-longitude-midday">-- °</span></div>
+    </div>
+    <h2>Batterie & Capteurs IMU</h2>
+    <div class="data-panel">
+        <div class="data-item"><span>Batterie Appareil:</span><span id="battery-indicator">N/A</span></div>
+        <div class="data-item"><span>Niveau Appareil:</span><span id="battery-level-perc">--.---%</span></div>
+        <div class="data-item"><span>Autonomie Appareil:</span><span id="device-autonomy">N/A</span></div>
+        <div class="data-item"><span>Niveau Externe:</span><span id="external-battery-level">N/A</span></div>
+        <div class="data-item"><span>Autonomie Externe:</span><span id="external-autonomy">-- h -- min</span></div>
+        <div class="data-item"><span>Tension Externe:</span><span id="external-battery-raw">N/A</span></div>
+        <div class="data-item"><span>Bulles (Orient.):</span><span id="bubble-level">--°/--°</span></div>
+        <div class="data-item"><span>Illuminance (ALS):</span><span id="illuminance-lux">N/A</span></div>
+        <div class="data-item"><span>% Lumière Max:</span><span id="illuminance-perc">--%</span></div>
+    </div>
+    <h2>Statut Système & Environnement</h2>
+    <div class="data-panel">
+        <div class="data-item"><span>Heure Locale:</span><span id="local-time">--:--:--</span></div>
+        <div class="data-item"><span>Mode Jour/Nuit:</span><span id="mode-indicator">--</span></div>
+        <div class="data-item"><span>Mode Urgence:</span><span id="emergency-status" style="color: #00ff99;">INACTIF</span></div>
+        <div class="data-item"><span>Fréquence DOM:</span><span id="update-frequency">-- Hz (DOM)</span></div>
+        <div class="data-item"><span>Source Vitesse:</span><span id="speed-source-indicator">Source: OFF</span></div>
+        <div class="data-item"><span>GPS Précision (Mètres):</span><span id="gps-accuracy">-- m</span></div>
+        <div class="data-item"><span>Précision GPS (Pourcentage):</span><span id="gps-precision-perc">--%</span></div>
+        <div class="data-item"><span>Cohérence EKF:</span><span id="speed-error-perc">--%</span></div>
+        <div class="data-item"><span>Mode Nether:</span><span id="nether-indicator">DÉSACTIVÉ (1:1)</span></div>
+        <div class="data-item"><span>Environnement:</span><span id="selected-environment-ind">NORMAL</span></div>
+        <div class="data-item"><span>Météo API:</span><span id="weather-condition-api">N/A</span></div>
+        <div class="data-item"><span>Pression Atm.:</span><span id="pressure">-- hPa</span></div>
+        <div class="data-item"><span>Température Air:</span><span id="air-temp">-- °C</span></div>
+        <div class="data-item"><span>Humidité Air:</span><span id="humidity">-- %</span></div>
+        <div class="data-item"><span>Altitude GPS:</span><span id="altitude">-- m</span></div>
+        <div class="data-item"><span>Altitude Baro:</span><span id="alt-baro">N/A (Baro)</span></div>
+        <div class="data-item"><span>Sous-sol (-50m):</span><span id="underground">Non</span></div>
+        <div class="data-item"><span>Débit Tropo. (ZTD):</span><span id="ztd">0.000 m</span></div>
+    </div>
+
     <div class="controls">
+        <div class="data-item"><span>Taille Affichage:</span><span id="display-size-indicator">NORMAL</span></div>
         <button id="size-small-btn">Taille S</button>
         <button id="size-normal-btn">Taille M</button>
         <button id="size-large-btn">Taille L</button>
@@ -146,80 +198,7 @@
             <option value="STORM">Météo Tempête</option>
         </select>
     </div>
-
-    <h2>Vitesse et Distance</h2>
-    <div class="data-panel">
-        <div class="data-item"><span>Vitesse 3D Stable (KM/H):</span><span id="speed-stable">0.00000 km/h</span></div>
-        <div class="data-item"><span>Distance Totale:</span><span id="distance-km-m">0.000 km | 0.00 m</span></div>
-        <div class="data-item"><span>Vitesse 3D Inst. (KM/H):</span><span id="speed-3d-inst">0.00000 km/h</span></div>
-        <div class="data-item"><span>Vitesse Max Session:</span><span id="speed-max">0.00000 km/h</span></div>
-        <div class="data-item"><span>Vitesse Moyenne:</span><span id="speed-avg">0.00000 km/h</span></div>
-        <div class="data-item"><span>Vitesse 4D (c):</span><span id="speed-4d-perc">0.00000 %</span></div>
-        <div class="data-item"><span>Vitesse Verticale:</span><span id="vertical-speed">0.00 m/s</span></div>
-        <div class="data-item"><span>% Vitesse Son:</span><span id="perc-sound">0.00000 %</span></div>
-        <div class="data-item"><span>Force Traînée:</span><span id="drag-force">0.0 N</span></div>
-        <div class="data-item"><span>Puissance Traînée:</span><span id="drag-power-kw">0.00 kW</span></div>
-    </div>
-    <h2>Statut Système</h2>
-    <div class="data-panel">
-        <div class="data-item"><span>Heure Locale:</span><span id="local-time">--:--:--</span></div>
-        <div class="data-item"><span>Mode Jour/Nuit:</span><span id="mode-indicator">--</span></div>
-        <div class="data-item"><span>Mode Urgence:</span><span id="emergency-status" style="color: #00ff99;">INACTIF</span></div>
-        <div class="data-item"><span>Fréquence DOM:</span><span id="update-frequency">-- Hz (DOM)</span></div>
-        <div class="data-item"><span>Source Vitesse:</span><span id="speed-source-indicator">Source: OFF</span></div>
-        <div class="data-item"><span>GPS Précision:</span><span id="gps-accuracy">-- m</span></div>
-        <div class="data-item"><span>Mode Nether:</span><span id="nether-indicator">DÉSACTIVÉ (1:1)</span></div>
-        <div class="data-item"><span>Taille Affichage:</span><span id="display-size-indicator">NORMAL</span></div>
-        <div class="data-item"><span>Environnement:</span><span id="selected-environment-ind">NORMAL</span></div>
-        <div class="data-item"><span>Météo API:</span><span id="weather-condition-api">N/A</span></div>
-    </div>
-
-    <h2>Batterie & Autonomie</h2>
-    <div class="data-panel">
-        <div class="data-item"><span>Batterie Appareil (Statut):</span><span id="battery-indicator">N/A</span></div>
-        <div class="data-item"><span>Niveau Appareil:</span><span id="battery-level-perc">--.---%</span></div>
-        <div class="data-item"><span>Autonomie Appareil:</span><span id="device-autonomy">-- h -- min</span></div>
-        <div class="data-item"><span>Niveau Externe:</span><span id="external-battery-level">N/A</span></div>
-        <div class="data-item"><span>Autonomie Externe:</span><span id="external-autonomy">-- h -- min</span></div>
-        <div class="data-item"><span>Niveau Externe (Brut):</span><span id="external-battery-raw">N/A</span></div>
-        <div class="data-item"><span>Vitesse Long. (IMU):</span><span id="accel-long">0.000 m/s²</span></div>
-        <div class="data-item"><span>G-Force (IMU):</span><span id="g-force">0.00 G</span></div>
-        <div class="data-item"><span>Incertitude Kalman:</span><span id="speed-error-perc">--%</span></div>
-    </div>
-
-    <h2>Position et Météo</h2>
-    <div id="map">
-        Carte Interactive (Leaflet/OpenLayers) - Rendu Hors Ligne
-    </div>
-    <div class="data-panel">
-        <div class="data-item"><span>Latitude:</span><span id="latitude">--.------</span></div>
-        <div class="data-item"><span>Longitude:</span><span id="longitude">--.------</span></div>
-        <div class="data-item"><span>Altitude GPS:</span><span id="altitude">-- m</span></div>
-        <div class="data-item"><span>Altitude Baro:</span><span id="alt-baro">N/A (Baro)</span></div>
-        <div class="data-item"><span>Sous-sol (-50m):</span><span id="underground">Non</span></div>
-        <div class="data-item"><span>Débit Tropo. (ZTD):</span><span id="ztd">0.000 m</span></div>
-        <div class="data-item"><span>Pression Atm.:</span><span id="pressure">-- hPa</span></div>
-        <div class="data-item"><span>Température Air:</span><span id="air-temp">-- °C</span></div>
-        <div class="data-item"><span>Humidité Air:</span><span id="humidity">-- %</span></div>
-    </div>
-
-    <h2>Navigation et Astro</h2>
-    <div class="data-panel">
-        <div class="data-item"><span>Cap (Heading):</span><span id="heading">-- °</span></div>
-        <div class="data-item"><span>Cap Destination:</span><span id="cap-dest">-- °</span></div>
-        <div class="data-item"><span>Distance Cible:</span><span id="dist-target">-- km</span></div>
-        <div class="data-item"><span>Heure Solaire Vraie:</span><span id="solar-true">--:--:--</span></div>
-        <div class="data-item"><span>Heure Solaire Moy.:</span><span id="solar-mean">--:--:--</span></div>
-        <div class="data-item"><span>Culmination Solaire:</span><span id="solar-culmination">--:--:--</span></div>
-        <div class="data-item"><span>Élévation Solaire:</span><span id="sun-elevation">0.00 °</span></div>
-        <div class="data-item"><span>Éq. du Temps (EoT):</span><span id="eot">0.00 min</span></div>
-        <div class="data-item"><span>Phase Lunaire:</span><span id="lunar-phase-perc">--%</span></div>
-        <div class="data-item"><span>Heure Lunaire Locale:</span><span id="lunar-time">--:--:--</span></div>
-        <div class="data-item"><span>Longitude Solaire:</span><span id="solar-longitude-val">-- °</span></div>
-        <div class="data-item"><span>Longitude (Midi UTC):</span><span id="solar-longitude-midday">-- °</span></div>
-    </div>
-
-<script>
+    <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             // Le Service Worker doit être à la racine pour couvrir tout le scope
