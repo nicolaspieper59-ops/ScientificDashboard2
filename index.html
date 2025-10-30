@@ -15,8 +15,8 @@
             crossorigin=""></script>
 
     <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
-
-    </head>
+    
+</head>
 <body>
 
     <header>
@@ -57,11 +57,13 @@
         <section class="card movement-data">
             <h2>⚡ Mouvement & Échelle</h2>
             <p>Vitesse Stable: <span id="speed-stable">0.0 km/h</span></p>
+            <p>Vitesse Moyenne: <span id="speed-avg">0.0 km/h</span></p>
             <p>Vitesse Brute (m/s | mm/s): <span id="speed-ms-mms">N/A</span></p>
             <p>Vitesse Max: <span id="speed-max">0.0 km/h</span></p>
             <hr>
             <h3>Distance & Durée</h3>
             <p>Distance Totale: <span id="distance-total-km">0.0 km</span></p>
+            <p>Distance Cosmique: <span id="distance-cosmic">0.0e+00 s lumière</span></p>
             <p>Temps de Mouvement: <span id="time-moving">0.0 s</span></p>
             <p>Temps Écoulé (Session): <span id="time-elapsed">0.0 s</span></p>
             <p>Temps Nether (Minecraft): <span id="time-minecraft">00:00:00</span> <button id="nether-toggle-btn" class="small-btn">T/N</button></p>
@@ -78,6 +80,7 @@
         <section class="card corrections-data">
             <h2>🔬 Phys. & Ambiance</h2>
             <p>Force G (Totale): <span id="g-force">N/A</span></p>
+            <p>Force G (Latérale): <span id="g-force-centrifugal">N/A</span></p>
             <p>Accélération (Total): <span id="accel-total">N/A</span></p>
             <p>Angle (Pitch/Roll): <span id="pitch-roll">N/A</span></p>
             <hr>
@@ -85,6 +88,7 @@
             <p>Correction EOT: <span id="eot">N/A</span></p>
             <p>Vitesse du Son: <span id="perc-sound">0.00 % de V.son</span></p>
             <p>Vitesse Lumière: <span id="perc-speed-c">0.00e-00 % de C</span></p>
+            <p>Temp. Ébullition: <span id="boiling-point">N/A</span></p>
             <hr>
             <h3>Météo (Proxy Sécurisé)</h3>
             <p>Temp. Air: <span id="temp-air">N/A</span></p>
@@ -104,6 +108,8 @@
             <hr>
             <h3>Capteurs Bruts</h3>
             <p>Luminosité: <span id="light-level">N/A</span></p>
+            <p>Champ Magnétique: <span id="magnetic-field">N/A</span></p>
+            <p>Niveau Sonore: <span id="noise-level">N/A</span></p>
             <p>Status: <span id="sensor-status">Capteurs: En attente d'accès...</span></p>
             <hr>
             <p>Vitesse Brute (m/s): <span id="speed-raw-ms">N/A</span></p>
@@ -112,8 +118,8 @@
         </section>
         
     </main>
-    
-    <script src="gnss-dashboard-final.js"></script>
 
-    </body>
-      </html>
+    <script src="gnss-dashboard-v5.js"></script>
+
+</body>
+                </html>
