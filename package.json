@@ -1,0 +1,16 @@
+// ==========================================================
+// FICHIER : package.json (Dépendances)
+// ==========================================================
+{
+  "name": "gnss-proxy-server",
+  "version": "1.0.0",
+  "description": "Serveur proxy pour OpenWeatherMap",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-fetch": "^2.6.1"
+  }
+}
