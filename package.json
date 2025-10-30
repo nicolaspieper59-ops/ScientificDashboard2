@@ -1,11 +1,9 @@
 
 {
   "name": "gnss-proxy-server",
-  "version": "1.0.0",
-  "description": "Serveur proxy pour OpenWeatherMap",
-  "main": "server.js",
+  // ... (autres champs)
   "scripts": {
-    "start": "node server.js"
+    "start": "OPENWEATHER_API_KEY=$OPENWEATHER_API_KEY node server.js" 
   },
   "dependencies": {
     "express": "^4.19.2",
