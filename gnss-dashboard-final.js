@@ -420,8 +420,8 @@ function updateDisplay(){
     $('vertical-speed').textContent = rawData.vertical_speed !== null ? rawData.vertical_speed.toFixed(2) + ' m/s' : 'N/A';
 
     // VITESSE, DISTANCE & CORRECTIONS
-    $('speed-stable').textContent = speed_kmh.toFixed(1)+' km/h';
-    $('speed-ms-mms').textContent = `${speed_ms_stable.toFixed(2)} m/s | ${(speed_ms_stable*1000).toFixed(0)} mm/s`;
+    $('speed-stable').textContent = speed_kmh.toFixed(5)+' km/h';
+    $('speed-ms-mms').textContent = `${speed_ms_stable.toFixed(5)} m/s | ${(speed_ms_stable*1000).toFixed(0)} mm/s`;
     const avgSpeed = totalTimeMoving_s > 0 ? (totalDistance_m/1000)/(totalTimeMoving_s/3600) : 0;
     $('speed-avg').textContent = avgSpeed.toFixed(5)+' km/h';
     $('speed-max').textContent = maxSpeed_kmh.toFixed(5)+' km/h';
