@@ -8,12 +8,19 @@
 // 🚨 REMPLACER AVEC L'URL HTTPS VERCEL DE VOTRE PROXY NODE.JS
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app"; 
 const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
-// 🚨 ENDPOINT À IMPLÉMENTER POUR UNE VRAIE SYNCHRONISATION HORAIRE
+// 🚨 ENDPOINT À IMPLEMENTER POUR UNE VRAIE SYNCHRONISATION HORAIRE
+// Si cette URL n'est pas remplacée par un endpoint fonctionnel, l'heure locale sera utilisée.
 const SERVER_TIME_ENDPOINT = "https://votre-domaine-ici.com/api/timesync"; 
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-const C_L = 299792458, R_E = 6371000, KMH_MS = 3.6; // Vitesse de la Lumière, Rayon Terre, Conversion Vitesse
+const C_L = 299792458; // Vitesse de la Lumière (m/s)
+const R_E = 6371000;   // Rayon Terre (m)
+const KMH_MS = 3.6;    // Conversion km/h à m/s
+const C_S = 343;       // Vitesse du Son dans l'air sec à 20°C (m/s)
+const G_ACC = 9.80665; // Accélération standard de la gravité (m/s²)
+const MC_DAY_MS = 24 * 60 * 60 * 1000; // 1 jour Minecraft est 72 minutes (20*60*60*20 ticks)
+
 const J1970 = 2440588, J2000 = 2451545; // Jours Juliens
 const dayMs = 1000 * 60 * 60 * 24;      
 const MIN_DT = 0.01; 
@@ -41,10 +48,10 @@ const DOM_SLOW_UPDATE_MS = 1000;
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
 let distM = 0, distMStartOffset = 0, maxSpd = 0;
 let kSpd = 0, kUncert = 1000; // État du filtre de Kalman
+let timeMoving = 0; // Temps cumulé où la vitesse filtrée est > MIN_SPD
 
 let lServH = null, lLocH = null; // Pour la synchronisation horaire serveur
 
-// CHANGÉ À HIGH_FREQ PAR DÉFAUT
 let currentGPSMode = 'HIGH_FREQ'; 
 let emergencyStopActive = false;
 let netherMode = false;
@@ -52,6 +59,7 @@ let selectedEnvironment = 'NORMAL';
 let selectedWeather = 'CLEAR'; 
 
 let lastP_hPa = null, lastT_K = null, lastH_perc = null; 
+let lastFSpeed = 0; // Dernière vitesse filtrée pour le calcul d'accélération
 
 // --- REFERENCES DOM ---
 const $ = id => document.getElementById(id);
@@ -75,33 +83,25 @@ const dist3D = (lat1, lon1, alt1 = 0, lat2, lon2, alt2 = 0) => {
     return Math.sqrt(dH ** 2 + dV ** 2);     
 };
 
-const bearing = (lat1, lon1, lat2, lon2) => {
-    lat1 *= D2R; lon1 *= D2R; lat2 *= D2R; lon2 *= D2R;
-    const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
-    let b = Math.atan2(y, x) * R2D;
-    return (b + 360) % 360; 
-};
-
-
 // ===========================================
-// SYNCHRONISATION HORAIRE PAR SERVEUR
+// SYNCHRONISATION HORAIRE PAR SERVEUR (NTP/Atomique)
 // ===========================================
 
 async function syncH() { 
     if ($('local-time')) $('local-time').textContent = 'Synchronisation...';
     try {
-        // NOTE: L'URL du serveur est très probablement non fonctionnelle et va lancer l'erreur.
         const response = await fetch(SERVER_TIME_ENDPOINT, { cache: "no-store", mode: "cors" });
-        if (!response.ok) throw new Error(`Server time sync failed: ${response.statusText}`);
+        if (!response.ok || SERVER_TIME_ENDPOINT.includes('votre-domaine-ici')) throw new Error(`Server time sync failed: ${response.statusText}`);
         const serverData = await response.json(); 
         const serverTimestamp = serverData.timestamp; 
         
         lServH = serverTimestamp; 
         lLocH = performance.now(); 
+        console.log("Synchronisation NTP/Serveur réussie.");
     } catch (error) {
+        // Fallback vers l'heure locale si la synchro serveur échoue
         console.warn("Échec de la synchronisation de l'heure serveur. Utilisation de l'horloge locale.", error);
-        lServH = Date.now(); // Fallback vers l'heure locale
+        lServH = Date.now(); 
         lLocH = performance.now();
         if ($('local-time')) $('local-time').textContent = 'N/A (SYNCHRO ÉCHOUÉE)';
     }
@@ -131,7 +131,7 @@ function kFilter(nSpd, dt, R_dyn) {
 
 /** Calcule le Facteur R (Précision 3D Dynamique) du filtre de Kalman. */
 function getKalmanR(acc, alt, P_hPa) {
-    let R = acc ** 2; // Basé sur la précision horizontale au carré
+    let R = acc ** 2; 
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT;
@@ -156,9 +156,8 @@ function getKalmanR(acc, alt, P_hPa) {
 async function fetchWeather(latA, lonA) {
     lastP_hPa = null; lastT_K = null; lastH_perc = null; selectedWeather = 'CLEAR';
     
-    // Empêche l'exécution si l'URL est encore l'exemple
     if (!latA || !lonA || PROXY_BASE_URL.includes('scientific-dashboard2')) {
-        if ($('env-factor')) $('env-factor').textContent = selectedEnvironment;
+        if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`;
         return; 
     }
 
@@ -182,7 +181,6 @@ async function fetchWeather(latA, lonA) {
             else selectedWeather = 'CLEAR';
         }
         
-        // Mise à jour du DOM Météo
         if ($('temp-air')) $('temp-air').textContent = lastT_K ? `${(lastT_K - 273.15).toFixed(1)} °C` : 'N/A';
         if ($('pressure')) $('pressure').textContent = lastP_hPa ? `${lastP_hPa.toFixed(1)} hPa` : 'N/A';
         if ($('humidity')) $('humidity').textContent = lastH_perc ? `${(lastH_perc * 100).toFixed(0)} %` : 'N/A';
@@ -190,9 +188,8 @@ async function fetchWeather(latA, lonA) {
 
     } catch (error) {
         console.error("Échec de la récupération des données météo:", error);
-        if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (MÉTÉO ÉCHOUÉE)`;
     }
-    }
+}
 // =================================================================
 // FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
 // Contient la logique principale de mise à jour et les écouteurs d'événements.
@@ -200,7 +197,7 @@ async function fetchWeather(latA, lonA) {
 // =================================================================
 
 // ===========================================
-// FONCTIONS ASTRO
+// FONCTIONS ASTRO & TEMPS
 // ===========================================
 
 function toDays(date) { return (date.valueOf() / dayMs - 0.5 + J1970) - J2000; }
@@ -218,17 +215,11 @@ function getSolarTime(date, lon) {
     const M = solarMeanAnomaly(d);
     const L = eclipticLongitude(M);
 
-    // Équation du temps (EOT) en minutes
     const eot_min = 4 * R2D * (L - Math.sin(M) * 0.0167 * 2 - M - D2R * 102.9377);
-
     const msSinceMidnightUTC = (date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds();
     
-    // Heure Solaire Moyenne (MST)
-    // Correction de la formule : long * (24h / 360°) * (1 jour / 24h) = long * 4 minutes (mais on veut en ms)
     const mst_offset_ms = lon * dayMs / 360; 
     const mst_ms = (msSinceMidnightUTC + mst_offset_ms) % dayMs;
-
-    // Heure Solaire Vraie (TST)
     const tst_ms = (mst_ms - eot_min * 60000 + dayMs) % dayMs;
 
     const toTimeString = (ms) => {
@@ -238,11 +229,31 @@ function getSolarTime(date, lon) {
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
     
-    return { 
-        TST: toTimeString(tst_ms),
-        MST: toTimeString(mst_ms)
-    };
+    return { TST: toTimeString(tst_ms), MST: toTimeString(mst_ms) };
 }
+
+function getMinecraftTime(date) {
+    if (date === null) return 'N/A';
+    
+    // Temps écoulé depuis minuit UT
+    const msSinceMidnightUTC = date.getUTCHours() * 3600000 + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000 + date.getUTCMilliseconds();
+    
+    // Ratio de temps réel écoulé par rapport à une journée Minecraft
+    const timeRatio = (msSinceMidnightUTC % dayMs) / dayMs;
+    
+    // Temps Minecraft en ms (un jour Minecraft = 72 minutes réelles = MC_DAY_MS ms)
+    const mcTimeMs = (timeRatio * MC_DAY_MS + MC_DAY_MS) % MC_DAY_MS;
+
+    const toTimeString = (ms) => {
+        let h = Math.floor(ms / 3600000);
+        let m = Math.floor((ms % 3600000) / 60000);
+        let s = Math.floor((ms % 60000) / 1000);
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+    
+    return toTimeString(mcTimeMs);
+}
+
 
 function updateAstro(latA, lonA) {
     const now = getCDate(); 
@@ -255,10 +266,11 @@ function updateAstro(latA, lonA) {
     if (sTime) {
         const timeElapsed = (now.getTime() - sTime) / 1000;
         $('time-elapsed').textContent = `${timeElapsed.toFixed(2)} s`;
+        $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
+        $('time-minecraft').textContent = getMinecraftTime(now);
     }
 
     const solarTimes = getSolarTime(now, lonA);
-    // SunCalc doit être chargé via un CDN/script
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
     const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
 
@@ -279,13 +291,11 @@ function setGPSMode(mode) {
     
     wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[mode]);
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `⏸️ PAUSE GPS`;
-    // Assure que le sélecteur DOM est à jour
     if ($('freq-select')) $('freq-select').value = mode; 
 }
 
 function startGPS() {
     if (wID === null) {
-        // Assure que le mode HIGH_FREQ (défaut dans part1.js) est appliqué
         if ($('freq-select')) $('freq-select').value = currentGPSMode; 
         setGPSMode(currentGPSMode);
     }
@@ -316,8 +326,11 @@ function emergencyStop() {
 
 function resetDisp() {
     distM = 0; maxSpd = 0; distMStartOffset = 0; kSpd = 0; kUncert = 1000;
+    timeMoving = 0;
     if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`;
     if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`;
+    if ($('time-moving')) $('time-moving').textContent = `0.00 s`;
+    if ($('speed-avg-moving')) $('speed-avg-moving').textContent = `0.00000 km/h`;
 }
 
 function handleErr(err) {
@@ -351,48 +364,62 @@ function updateDisp(pos) {
     let spdH = spd ?? 0, spdV = 0; 
     const dt = lPos ? (cTime - lPos.timestamp) / 1000 : MIN_DT; 
 
-    // Calcul de la vitesse à partir de la distance parcourue (plus fiable que pos.coords.speed, surtout si speed est null)
-    if (lPos && dt > 0.05) { // Utiliser un seuil dt minimal pour éviter les divisions par zéro/très petits nombres
+    // Calcul de la vitesse 3D brute
+    if (lPos && dt > 0.05) { 
         const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
         spdH = dH / dt; 
         if (alt !== null && lPos.coords.altitude !== null) {
             spdV = (alt - lPos.coords.altitude) / dt; 
         }
     } else if (spd !== null) {
-        spdH = spd; // Fallback si le calcul dH/dt n'est pas possible
+        spdH = spd;
     }
     
-    // CALCUL DE LA VITESSE 3D
     const spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
 
     // FILTRAGE DE KALMAN AVEC FACTEUR R DYNAMIQUE
     const R_dyn = getKalmanR(acc, alt, lastP_hPa); 
     const fSpd = kFilter(spd3D, dt, R_dyn), sSpdFE = fSpd < MIN_SPD ? 0 : fSpd;
     
-    // INTÉGRATION DE LA DISTANCE TOTALE 3D
+    // CALCUL D'ACCÉLÉRATION LONGITUDINALE
+    let accel_long = 0;
+    if (dt > 0.05) {
+        accel_long = (sSpdFE - lastFSpeed) / dt;
+    }
+    lastFSpeed = sSpdFE;
+
+    // INTÉGRATION DE LA DISTANCE TOTALE ET DU TEMPS DE MOUVEMENT
     distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
+    if (sSpdFE > MIN_SPD) { timeMoving += dt; }
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // --- MISE À JOUR DU DOM (Affichage des données réalistes) ---
+    // --- MISE À JOUR DU DOM ---
     
     if ($('latitude')) $('latitude').textContent = lat.toFixed(6);
     if ($('longitude')) $('longitude').textContent = lon.toFixed(6);
     if ($('altitude-gps')) $('altitude-gps').textContent = alt !== null ? `${alt.toFixed(2)} m` : 'N/A';
     
     if ($('gps-precision')) $('gps-precision').textContent = `${acc.toFixed(2)} m`; 
-    if ($('speed-error-perc')) $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; // FACTEUR R (Précision 3D Dynamique)
+    if ($('speed-raw-ms')) $('speed-raw-ms').textContent = `${spd3D.toFixed(2)} m/s`;
+    
+    if ($('speed-error-perc')) $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; 
     if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`; 
     if ($('speed-stable')) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
+    if ($('speed-stable-ms')) $('speed-stable-ms').textContent = `${sSpdFE.toFixed(2)} m/s`;
+    
     if ($('vertical-speed')) $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
+
+    if ($('accel-long')) $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
+    if ($('force-g-long')) $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G`;
     
     if ($('distance-total-km')) $('distance-total-km').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
     if ($('speed-max')) $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
+    if ($('speed-avg-moving')) $('speed-avg-moving').textContent = timeMoving > 1 ? `${(distM / timeMoving * KMH_MS).toFixed(5)} km/h` : '0.00000 km/h';
+
+    if ($('perc-speed-sound')) $('perc-speed-sound').textContent = `${(spd3D / C_S * 100).toFixed(2)} %`;
     if ($('perc-speed-c')) $('perc-speed-c').textContent = `${(spd3D / C_L * 100).toExponential(2)}%`;
 
-    // Gestion du mode nether
     if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
-
-    // Mise à jour de l'état "Sous-sol"
     if ($('underground-status')) $('underground-status').textContent = alt !== null && alt < ALT_TH ? `OUI (< ${ALT_TH}m)` : 'Non';
 
     // Récupération météo toutes les 60s
@@ -418,51 +445,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const emergencyStopBtn = $('emergency-stop-btn');
     const freqSelect = $('freq-select'); 
     const netherToggleBtn = $('nether-toggle-btn');
+    const envSelect = $('env-select');
     
-    // Tentative de synchronisation horaire au démarrage (avec fallback local)
     syncH(); 
 
     // --- ÉVÉNEMENTS DE CONTRÔLE ---
     
-    // Démarrage/Pause GPS
     if (toggleGpsBtn) toggleGpsBtn.addEventListener('click', () => wID === null ? startGPS() : stopGPS());
-
-    // Sélecteur de fréquence
     if (freqSelect) freqSelect.addEventListener('change', (e) => setGPSMode(e.target.value));
-
-    // Arrêt d'urgence
     if (emergencyStopBtn) emergencyStopBtn.addEventListener('click', emergencyStop);
-
-    // Mode Nether
+    
     if (netherToggleBtn) netherToggleBtn.addEventListener('click', () => {
         netherMode = !netherMode;
         if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
     });
-    
-    // Sélecteur d'Environnement (Ajouté pour tester le facteur R du Kalman)
-    const envSelect = document.createElement('select');
-    envSelect.id = 'env-select';
-    Object.keys(ENVIRONMENT_FACTORS).forEach(env => {
-        const opt = document.createElement('option');
-        opt.value = env; opt.textContent = env;
-        envSelect.appendChild(opt);
-    });
-    envSelect.value = selectedEnvironment;
-    envSelect.addEventListener('change', (e) => {
+
+    if (envSelect) envSelect.addEventListener('change', (e) => {
         selectedEnvironment = e.target.value;
         if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`;
     });
-    // Ajoutez le sélecteur d'environnement au bloc de contrôle
-    const controlsSection = document.querySelector('.controls');
-    if (controlsSection) {
-        const envDiv = document.createElement('div');
-        envDiv.className = 'data-item';
-        envDiv.innerHTML = '<span class="label">Environnement Kalman</span>';
-        envDiv.appendChild(envSelect);
-        controlsSection.appendChild(envDiv);
-    }
 
-    // Réinitialisation
     if (resetDistBtn) resetDistBtn.addEventListener('click', () => { 
         distM = 0; distMStartOffset = 0; 
         if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`;
@@ -472,20 +474,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`;
     });
     if (resetAllBtn) resetAllBtn.addEventListener('click', () => {
-        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser (Distance, Max, etc.) ?")) {
+        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser (Distance, Max, Vitesse Moyenne) ?")) {
             resetDisp();
         }
     });
     
     // --- INITIALISATION ---
-    // Démarrage automatique du GPS
     startGPS(); 
 
-    // Initialisation du DOM pour les mises à jour lentes (Astro)
+    // Initialisation du DOM pour les mises à jour lentes (Astro/Temps)
     if (domID === null) {
         domID = setInterval(() => {
             if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
-            // Si pas de position, mettre à jour l'heure uniquement
             else updateAstro(null, null); 
         }, DOM_SLOW_UPDATE_MS); 
     }
