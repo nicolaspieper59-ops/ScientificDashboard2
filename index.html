@@ -17,7 +17,8 @@
         .controls button#emergency-stop-btn { background-color: #d9534f; color: white; }
         .controls button.active { animation: blink 1s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        #speed-stable, #speed-3d-inst, #distance-total-km { font-size: 1.2em; color: #ffeb3b; }
+        #speed-stable, #distance-total-km { font-size: 1.2em; color: #ffeb3b; }
+        #perc-speed-c { font-size: 1.1em; color: #d700ff; }
     </style>
     
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
@@ -47,7 +48,7 @@
             <button id="reset-dist-btn">❌ Distance</button>
             <button id="reset-max-btn">❌ Vitesse Max</button>
             <button id="reset-all-btn">⚠️ TOUT RÉINITIALISER</button>
-            <div class="data-item"><span class="label">Environnement Kalman</span><select id="env-select"><option value="NORMAL">NORMAL</option><option value="METAL">MÉTAL</option><option value="FOREST">FORÊT</option><option value="CONCRETE">BÉTON</option></select></div>
+            <button id="capture-btn">💾 Capturer</button>
         </div>
 
         <div class="section">
@@ -56,10 +57,11 @@
             <div class="data-item"><span class="label">Vitesse Max (Session)</span><span class="value" id="speed-max">0.00000 km/h</span></div>
             <div class="data-item"><span class="label">Vitesse Moyenne (Mvt)</span><span class="value" id="speed-avg-moving">0.00000 km/h</span></div>
             <div class="data-item"><span class="label">Vitesse 3D (Inst.)</span><span class="value" id="speed-3d-inst">-- km/h</span></div>
-            <div class="data-item"><span class="label">Vitesse stable (m/s)</span><span class="value" id="speed-stable-ms">-- m/s</span></div>
+            <div class="data-item"><span class="label">Vitesse stable (m/s | mm/s)</span><span class="value" id="speed-stable-ms">-- m/s | -- mm/s</span></div>
             <div class="data-item"><span class="label">% Vitesse du Son</span><span class="value" id="perc-speed-sound">-- %</span></div>
             <div class="data-item"><span class="label">% Vitesse de la Lumière (c)</span><span class="value" id="perc-speed-c">--%</span></div>
             <div class="data-item"><span class="label">Distance Totale</span><span class="value" id="distance-total-km">0.000 km | 0.00 m</span></div>
+            <div class="data-item"><span class="label">Distance Cosmique</span><span class="value" id="distance-cosmic">0.00e+00 s lumière | 0.00e+00 al</span></div>
             <div class="data-item"><span class="label">Précision Vitesse (R dyn)</span><span class="value" id="speed-error-perc">-- m²</span></div>
         </div>
 
@@ -71,26 +73,41 @@
             <div class="data-item"><span class="label">Précision GPS (EPE)</span><span class="value" id="gps-precision">N/A</span></div>
             <div class="data-item"><span class="label">Vitesse Brute (m/s)</span><span class="value" id="speed-raw-ms">N/A</span></div>
             <div class="data-item"><span class="label">Sous-sol (Seuil -50m)</span><span class="value" id="underground-status">Non</span></div> 
-            <div class="data-item"><span class="label">Vitesse Verticale</span><span class="value" id="vertical-speed">0.00 m/s</span></div>
+            <div class="data-item"><span class="label">Cap (Heading)</span><span class="value" id="heading">-- ° (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Accélération Totale (Capteur)</span><span class="value" id="accel-total-sensor">0.000 m/s² (Non impl.)</span></div>
             <div class="data-item"><span class="label">Accélération Longitudinale (Calculée)</span><span class="value" id="accel-long">0.000 m/s²</span></div>
             <div class="data-item"><span class="label">Force G (Longitudinale)</span><span class="value" id="force-g-long">0.00 G</span></div>
-            <div class="data-item"><span class="label">Cap (Heading)</span><span class="value" id="heading">-- °</span></div>
+            <div class="data-item"><span class="label">Accélération Centrifuge (Capteur Y)</span><span class="value" id="accel-centri-sensor">0.000 m/s² (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Force G (Centrifuge)</span><span class="value" id="force-g-centri">0.00 G (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Vitesse Verticale</span><span class="value" id="vertical-speed">0.00 m/s</span></div>
+            <div class="data-item"><span class="label">Force de Traînée (Est.)</span><span class="value" id="drag-force">0.0 N (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Puissance de Traînée (Est.)</span><span class="value" id="drag-power">0.00 kW (Non impl.)</span></div>
         </div>
 
         <div class="section">
             <h3>☀️ Soleil & Lune (SunCalc)</h3>
+            <div class="data-item"><span class="label">Date</span><span class="value" id="date-display">N/A</span></div>
             <div class="data-item"><span class="label">Élévation du Soleil</span><span class="value" id="sun-elevation">-- °</span></div>
             <div class="data-item"><span class="label">Heure Solaire Vraie (TST)</span><span class="value" id="time-solar-true">N/A</span></div>
+            <div class="data-item"><span class="label">Midi Solaire Local</span><span class="value" id="noon-solar">N/D</span></div>
             <div class="data-item"><span class="label">Temps Solaire Moyen Local (LSM)</span><span class="value" id="culmination-lsm">N/D</span></div>
+            <div class="data-item"><span class="label">Durée du Jour Solaire</span><span class="value" id="day-duration">N/A (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Longitude écliptique du Soleil</span><span class="value" id="ecliptic-long">-- ° (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Équation du Temps (EOT)</span><span class="value" id="eot-min">N/D min (Non impl.)</span></div>
             <div class="data-item"><span class="label">Phase Lunaire (Fraction)</span><span class="value" id="lunar-phase-perc">N/A</span></div>
+            <div class="data-item"><span class="label">Lever / Coucher Lune</span><span class="value" id="moon-times">N/D (Non impl.)</span></div>
         </div>
-
+        
         <div class="section">
-            <h3>🎚️ Capteurs & Météo</h3>
+            <h3>🎚️ Capteurs & Météo (Simulés/À Implémenter)</h3>
             <div class="data-item"><span class="label">Température Air</span><span class="value" id="temp-air">N/A</span></div>
             <div class="data-item"><span class="label">Pression Atmosphérique</span><span class="value" id="pressure">N/A</span></div>
             <div class="data-item"><span class="label">Humidité Relative</span><span class="value" id="humidity">N/A</span></div>
             <div class="data-item"><span class="label">Environnement Kalman</span><span class="value" id="env-factor">NORMAL (x1.0)</span></div>
+            <div class="data-item"><span class="label">Niveau à Bulle (Pitch/Roll)</span><span class="value" id="level-pitch-roll">-- ° / -- ° (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Luminosité (Ambient Light)</span><span class="value" id="light-level">N/A lux (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Niveau Sonore (Microphone)</span><span class="value" id="sound-level">N/A dB (Non impl.)</span></div>
+            <div class="data-item"><span class="label">Champ Magnétique</span><span class="value" id="magnetic-field">N/A µT (Non impl.)</span></div>
         </div>
 
     </div>
