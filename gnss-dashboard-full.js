@@ -10,12 +10,12 @@ const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-const C_L = 299792458; // Vitesse de la Lumière (m/s)
-const R_E = 6371000;   // Rayon Terre (m)
-const KMH_MS = 3.6;    // Conversion km/h à m/s
-const C_S = 343;       // Vitesse du Son (m/s, env. 20°C)
-const G_ACC = 9.80665; // Accélération standard de la gravité (m/s²)
-const MC_DAY_MS = 72 * 60 * 1000; // Un jour Minecraft = 72 minutes 
+const C_L = 299792458; 
+const R_E = 6371000;   
+const KMH_MS = 3.6;    
+const C_S = 343;       
+const G_ACC = 9.80665; 
+const MC_DAY_MS = 72 * 60 * 1000; 
 
 const J1970 = 2440588, J2000 = 2451545; 
 const dayMs = 1000 * 60 * 60 * 24;      
@@ -28,7 +28,8 @@ const GPS_OPTS = {
 // PARAMÈTRES AVANCÉS DU FILTRE DE KALMAN
 const Q_NOISE = 0.01;       
 const R_MIN = 0.05, R_MAX = 50.0; 
-const MAX_ACC = 50, MIN_SPD = 0.001, ALT_TH = -50;
+// *** CHANGEMENT ICI : MAX_ACC PASSÉ À 200 ***
+const MAX_ACC = 200, MIN_SPD = 0.001, ALT_TH = -50;
 const NETHER_RATIO = 8; 
 
 // FACTEURS ENVIRONNEMENTAUX POUR LA CORRECTION KALMAN
@@ -143,7 +144,7 @@ function getKalmanR(acc, alt, P_hPa) {
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     
     return R;
-}
+        }
 // =================================================================
 // FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
 // Contient la logique principale de mise à jour, Astro et DOM.
@@ -154,33 +155,46 @@ function getKalmanR(acc, alt, P_hPa) {
 // FONCTIONS ASTRO & TEMPS
 // ===========================================
 
+/** Convertit la date en jours depuis J2000. */
 function toDays(date) { return (date.valueOf() / dayMs - 0.5 + J1970) - J2000; }
+
+/** Calcule l'anomalie solaire moyenne. */
 function solarMeanAnomaly(d) { return D2R * (356.0470 + 0.9856002585 * d); }
+
+/** Calcule la longitude écliptique (incluant correction du centre et périhélie). */
 function eclipticLongitude(M) {
     var C = D2R * (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)), 
         P = D2R * 102.9377;                                                                
     return M + C + P + Math.PI;
 }
 
+/**
+ * Calcule le Temps Solaire Moyen (MST), le Temps Solaire Vrai (TST) et l'Équation du Temps (EOT).
+ * Utilise les formules astronomiques simplifiées basées sur l'heure UTC synchronisée.
+ */
 function getSolarTime(date, lon) {
     if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D' };
 
+    // 1. Position du Soleil (J2000)
     const d = toDays(date);
-    const M = solarMeanAnomaly(d); 
-    const L = eclipticLongitude(M); 
+    const M = solarMeanAnomaly(d); // Anomalie moyenne
+    const L = eclipticLongitude(M); // Longitude écliptique
     
+    // Obliquité et Ascension Droite
     const epsilon = D2R * (23.4393 - 0.000000356 * d); 
     let alpha = Math.atan2(Math.cos(epsilon) * Math.sin(L), Math.cos(L));
     if (alpha < 0) alpha += 2 * Math.PI; 
 
+    // 2. Équation du Temps (EOT)
     const eot_rad = alpha - M - D2R * 102.9377 - Math.PI;
     const eot_min = eot_rad * 4 * R2D; 
 
+    // 3. Temps Solaire Moyen Local (MST)
     const msSinceMidnightUTC = (date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds();
-    
     const mst_offset_ms = lon * dayMs / 360; 
     const mst_ms = (msSinceMidnightUTC + mst_offset_ms + dayMs) % dayMs;
 
+    // 4. Temps Solaire Vrai Local (TST)
     const eot_ms = eot_min * 60000;
     const tst_ms = (mst_ms + eot_ms + dayMs) % dayMs; 
 
@@ -199,6 +213,7 @@ function getSolarTime(date, lon) {
     };
 }
 
+/** Calcule le temps Minecraft basé sur l'heure UTC. */
 function getMinecraftTime(date) {
     if (date === null) return '00:00:00';
     
@@ -227,6 +242,7 @@ function updateAstro(latA, lonA) {
         return;
     }
     
+    // Mise à jour des heures système et Minecraft
     $('local-time').textContent = now.toLocaleTimeString('fr-FR', { timeZone: 'UTC', hour12: false });
     if ($('date-display')) $('date-display').textContent = now.toLocaleDateString();
     
@@ -237,12 +253,16 @@ function updateAstro(latA, lonA) {
         $('time-minecraft').textContent = getMinecraftTime(now);
     }
 
+    // Calculs Astro
     const solarTimes = getSolarTime(now, lonA);
+    
+    // Utilisation de SunCalc pour les positions/événements
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
     const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
     const sunTimes = window.SunCalc ? SunCalc.getTimes(now, latA, lonA) : null;
     const moonTimes = window.SunCalc ? SunCalc.getMoonTimes(now, latA, lonA, true) : null;
 
+    // Mise à jour DOM
     if ($('time-solar-true')) $('time-solar-true').textContent = solarTimes.TST;
     if ($('culmination-lsm')) $('culmination-lsm').textContent = solarTimes.MST;
     if ($('sun-elevation')) $('sun-elevation').textContent = sunPos ? `${(sunPos.altitude * R2D).toFixed(2)} °` : 'N/A';
@@ -267,7 +287,7 @@ function updateAstro(latA, lonA) {
 }
 
 // ===========================================
-// FONCTIONS DE CONTRÔLE GPS & MÉTÉO
+// FONCTIONS DE CONTRÔLE GPS & MÉTÉO 
 // ===========================================
 
 function setGPSMode(mode) {
@@ -295,6 +315,7 @@ function stopGPS(resetButton = true) {
     }
 }
 
+/** Fonction d'arrêt d'urgence : bloque l'exécution et arrête le GPS */
 function emergencyStop() {
     emergencyStopActive = true;
     stopGPS(false);
@@ -305,6 +326,17 @@ function emergencyStop() {
     ['speed-stable', 'speed-3d-inst', 'distance-total-km', 'local-time'].forEach(id => {
         if ($(id)) $(id).textContent = 'ARRÊT D’URGENCE';
     });
+}
+
+/** Fonction de reprise : réactive le système et redémarre le GPS */
+function resumeSystem() {
+    emergencyStopActive = false;
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: INACTIF 🟢";
+        $('emergency-stop-btn').classList.remove('active');
+    }
+    // Redémarre l'acquisition GPS
+    startGPS();
 }
 
 function handleErr(err) {
@@ -358,6 +390,7 @@ function updateDisp(pos) {
 
     if (sTime === null) { sTime = now.getTime(); distMStartOffset = distM; }
     
+    // *** Le filtre acc > MAX_ACC est maintenant 200m, incluant 150m ***
     if (acc > MAX_ACC) { 
         if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; 
         if (lPos === null) lPos = pos; return; 
@@ -391,7 +424,7 @@ function updateDisp(pos) {
     if (sSpdFE > MIN_SPD) { timeMoving += dt; }
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // --- MISE À JOUR DU DOM ---
+    // --- MISE À JOUR DU DOM (GPS/Physique) ---
     if ($('latitude')) $('latitude').textContent = lat.toFixed(6);
     if ($('longitude')) $('longitude').textContent = lon.toFixed(6);
     if ($('altitude-gps')) $('altitude-gps').textContent = alt !== null ? `${alt.toFixed(2)} m` : 'N/A';
@@ -448,16 +481,46 @@ document.addEventListener('DOMContentLoaded', () => {
     // Démarrage de la synchronisation (définie dans part1.js)
     syncH(); 
 
-    // --- ÉVÉNEMENTS ---
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => wID === null ? startGPS() : stopGPS());
-    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => setGPSMode(e.target.value));
-    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => { emergencyStopActive = !emergencyStopActive; if (emergencyStopActive) emergencyStop(); else startGPS(); });
-    if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { netherMode = !netherMode; if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; });
-    if ($('env-select')) $('env-select').addEventListener('change', (e) => { selectedEnvironment = e.target.value; if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`; });
+    // --- ÉVÉNEMENTS CORRIGÉS POUR L'ARRÊT D'URGENCE ---
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
+        if (emergencyStopActive) {
+            alert("Veuillez désactiver l'Arrêt d'urgence avant d'utiliser ce contrôle.");
+            return;
+        }
+        wID === null ? startGPS() : stopGPS();
+    });
+    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
+        if (emergencyStopActive) {
+            alert("Veuillez désactiver l'Arrêt d'urgence.");
+            return;
+        }
+        setGPSMode(e.target.value);
+    });
 
-    if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { distM = 0; distMStartOffset = 0; timeMoving = 0; if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`; if ($('speed-avg-moving')) $('speed-avg-moving').textContent = `0.00000 km/h`; if ($('time-moving')) $('time-moving').textContent = `0.00 s`; });
-    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`; });
-    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { if (confirm("Êtes-vous sûr de vouloir tout réinitialiser?")) { distM = 0; maxSpd = 0; distMStartOffset = 0; kSpd = 0; kUncert = 1000; timeMoving = 0; } });
+    // ** GESTIONNAIRE D'ARRÊT D'URGENCE BASCULANT (TOGGLE) **
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
+        if (emergencyStopActive) {
+            resumeSystem(); // Désactivation
+        } else {
+            emergencyStop(); // Activation
+        }
+    });
+
+    if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        netherMode = !netherMode; 
+        if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; 
+    });
+    if ($('env-select')) $('env-select').addEventListener('change', (e) => { 
+        if (emergencyStopActive) return;
+        selectedEnvironment = e.target.value; 
+        if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`; 
+    });
+    // --- Événements de réinitialisation : Bloqués si Arrêt d'Urgence actif ---
+    if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { if (emergencyStopActive) return; distM = 0; distMStartOffset = 0; timeMoving = 0; if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`; if ($('speed-avg-moving')) $('speed-avg-moving').textContent = `0.00000 km/h`; if ($('time-moving')) $('time-moving').textContent = `0.00 s`; });
+    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { if (emergencyStopActive) return; maxSpd = 0; if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`; });
+    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { if (emergencyStopActive) return; if (confirm("Êtes-vous sûr de vouloir tout réinitialiser?")) { distM = 0; maxSpd = 0; distMStartOffset = 0; kSpd = 0; kUncert = 1000; timeMoving = 0; } });
+
 
     // Démarrage GPS & Intervalle Astro
     startGPS(); 
