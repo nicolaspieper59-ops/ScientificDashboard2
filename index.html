@@ -14,7 +14,7 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
-        /* Styles de base (Gardés pour la concision, le CSS complet est dans la réponse précédente) */
+        /* Styles de base (Minimum nécessaire) */
         body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; transition: background-color 0.5s, color 0.5s; }
         .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
         .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
@@ -28,7 +28,7 @@
         #emergency-stop-btn { background-color: #dc3545; color: white; }
         #emergency-stop-btn.active { background-color: #8b0000; }
         
-        /* Night Mode Styles */
+        /* Styles pour le Mode Nuit */
         body.night-mode { background-color: #1a1a1a; color: #e0e0e0; }
         body.night-mode .section { background-color: #2c2c2c; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
         body.night-mode .data-point span:first-child { color: #aaa; }
@@ -41,8 +41,6 @@
             <h2>⚙️ Contrôles & Système</h2>
             <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">N/A</span></div>
             <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
-            <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
-            <div class="data-point"><span>Heure Minecraft</span><span id="time-minecraft">00:00:00</span></div>
             <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
             <div class="controls-grid">
                 <button id="toggle-gps-btn">▶️ MARCHE GPS</button>
@@ -53,19 +51,14 @@
                 <button id="reset-dist-btn">❌ Distance</button>
                 <button id="reset-max-btn">❌ Vitesse Max</button>
                 <button id="reset-all-btn">⚠️ TOUT RÉINITIALISER</button>
-                <button id="data-capture-btn">💾 Capturer</button>
             </div>
             <hr>
             <h2>🚀 Vitesse & Distance</h2>
             <div class="data-point"><span>Vitesse Stable (EKF)</span><span id="speed-stable">-- km/h</span></div>
             <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
-            <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg">0.00000 km/h</span></div>
             <div class="data-point"><span>Vitesse 3D (Inst.)</span><span id="speed-3d-inst">-- km/h</span></div>
-            <div class="data-point"><span>Vitesse stable</span><span id="speed-ms-mms">-- m/s | -- mm/s</span></div>
-            <div class="data-point"><span>% Vitesse du Son</span><span id="perc-sound">-- %</span></div>
             <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
             <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
-            <div class="data-point"><span>Distance Cosmique</span><span id="distance-cosmic">0.00e+00 s lumière | 0.00e+00 al</span></div>
         </div>
 
         <div class="section">
@@ -75,34 +68,20 @@
             <div class="data-point"><span>Altitude GPS</span><span id="altitude-gps">N/A</span></div>
             <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
             <div class="data-point"><span>Cohérence Kalman (Facteur R)</span><span id="speed-error-perc">N/A</span></div>
-            <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
+            <div class="data-point"><span>Vitesse Verticale</span><span id="vertical-speed">0.00 m/s</span></div>
             <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="is-underground">Non</span></div>
             <div class="data-point"><span>Cap (Heading)</span><span id="heading">-- °</span></div>
             <hr>
-            <div class="data-point"><span>Accélération Totale (Capteur)</span><span id="accel-total">0.000 m/s²</span></div>
-            <div class="data-point"><span>Accélération Longitudinale (Calculée)</span><span id="accel-long">0.000 m/s²</span></div>
-            <div class="data-point"><span>Force G (Longitudinale)</span><span id="g-force">0.00 G</span></div>
-            <div class="data-point"><span>Accélération Centrifuge (Capteur Y)</span><span id="accel-centrifugal">0.000 m/s²</span></div>
-            <div class="data-point"><span>Force G (Centrifuge)</span><span id="g-force-centrifugal">0.00 G</span></div>
-            <div class="data-point"><span>Vitesse Verticale</span><span id="vertical-speed">0.00 m/s</span></div>
-            <div class="data-point"><span>Force de Traînée (Est.)</span><span id="force-trainee">0.0 N</span></div>
-            <div class="data-point"><span>Puissance de Traînée (Est.)</span><span id="puissance-trainee">0.00 kW</span></div>
+            <div class="data-point"><span>Accélération Totale (Est.)</span><span id="accel-total">0.000 m/s²</span></div>
+            <div class="data-point"><span>Force G (Est.)</span><span id="g-force">0.00 G</span></div>
         </div>
         
         <div class="section">
             <h2>☀️ Soleil & Lune (SunCalc)</h2>
-            <div class="data-point"><span>Date</span><span id="date-astro">N/A</span></div>
-            <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
             <div class="data-point"><span>Midi Solaire Local</span><span id="solar-culmination">N/D</span></div>
-            <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="culmination-lsm">N/D</span></div>
-            <div class="data-point"><span>Durée du Jour Solaire</span><span id="solar-day-duration">N/A</span></div>
-            <div class="data-point"><span>Longitude écliptique du Soleil</span><span id="solar-longitude">-- °</span></div>
-            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div>
-            <div class="data-point"><span>EOT Comp. Excentricité</span><span id="eccentricity-comp">N/D</span></div>
-            <div class="data-point"><span>EOT Comp. Obliquité</span><span id="obliquity-comp">N/D</span></div>
+            <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
             <div class="data-point"><span>Phase Lunaire (Fraction)</span><span id="lunar-phase-perc">N/A</span></div>
-            <div class="data-point"><span>Lever / Coucher Lune</span><span id="moon-rise-set">N/D</span></div>
             
             <hr>
             <h2>🗺️ Carte & Cible</h2>
@@ -112,25 +91,21 @@
             <button id="set-target-btn">📍 Définir Cible (Clic Carte)</button>
             
             <hr>
-            <h2>🎚️ Capteurs & Météo (Simulés/À Implémenter)</h2>
-            <div class="data-point"><span>Niveau à Bulle (Pitch/Roll)</span><span id="bubble-level">-- ° / -- °</span></div>
-            <div class="data-point"><span>Luminosité (Ambient Light)</span><span id="luminosity">N/A lux</span></div>
-            <div class="data-point"><span>Niveau Sonore (Microphone)</span><span id="noise-level">N/A dB</span></div>
-            <div class="data-point"><span>Champ Magnétique</span><span id="magnetic-field">N/A µT</span></div>
+            <h2>🎚️ Météo & Capteurs (Simulation)</h2>
             <div class="data-point"><span>Température Air</span><span id="temp-air">N/A</span></div>
             <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure">N/A</span></div>
             <div class="data-point"><span>Humidité Relative</span><span id="humidity">N/A</span></div>
             <div class="data-point"><span>Vitesse du Vent (Est.)</span><span id="wind-speed-est">N/A</span></div>
-            <div class="data-point"><span>Couverture Nuageuse</span><span id="cloud-cover">N/A</span></div>
-            <div class="data-point"><span>Indice UV</span><span id="uv-index">N/A</span></div>
-            <div class="data-point"><span>Point d'Ébullition Eau (Est.)</span><span id="boiling-point-est">N/A</span></div>
         </div>
 
     </div>
 
-<script src="path/to/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+        integrity="sha256-20n6a32d6Q8t/40b+p1E3t57e7f7e9r9f57E5c8f5f5=" 
+        crossorigin=""></script>
 <script src="./suncalc.js"></script>  
+
 <script type="module" src="./gnss-dashboard-full.js"></script> 
 
 </body>
-    </html>                                                                                                           
+        </html>                                                                                                     
