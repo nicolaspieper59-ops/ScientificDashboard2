@@ -17,7 +17,6 @@
         .controls button#emergency-stop-btn { background-color: #d9534f; color: white; }
         .controls button.active { animation: blink 1s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        /* Style spécifique aux éléments qui affichent des valeurs importantes */
         #speed-stable, #speed-3d-inst, #distance-total-km { font-size: 1.2em; color: #ffeb3b; }
     </style>
     
@@ -32,13 +31,15 @@
             <h3>⚙️ Contrôles & Système</h3>
             <div class="data-item"><span class="label">Heure Locale (NTP)</span><span class="value" id="local-time">N/A</span></div>
             <div class="data-item"><span class="label">Temps écoulé (Session)</span><span class="value" id="time-elapsed">0.00 s</span></div>
+            <div class="data-item"><span class="label">Temps de Mouvement</span><span class="value" id="time-moving">0.00 s</span></div>
+            <div class="data-item"><span class="label">Heure Minecraft</span><span class="value" id="time-minecraft">00:00:00</span></div>
             <div class="data-item"><span class="label">Mode Nether (1:8)</span><span class="value" id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
             
             <hr>
             <button id="toggle-gps-btn">▶️ MARCHE GPS</button>
             <select id="freq-select">
-                <option value="HIGH_FREQ">Haute Fréquence</option>
-                <option value="LOW_FREQ" selected>Basse Fréquence</option>
+                <option value="HIGH_FREQ" selected>Haute Fréquence</option>
+                <option value="LOW_FREQ">Basse Fréquence</option>
             </select>
             <button id="emergency-stop-btn">🛑 Arrêt d'urgence: INACTIF 🟢</button>
             <button id="nether-toggle-btn">Nether Mode</button>
@@ -46,18 +47,20 @@
             <button id="reset-dist-btn">❌ Distance</button>
             <button id="reset-max-btn">❌ Vitesse Max</button>
             <button id="reset-all-btn">⚠️ TOUT RÉINITIALISER</button>
-            <button id="capture-btn">💾 Capturer</button> 
+            <div class="data-item"><span class="label">Environnement Kalman</span><select id="env-select"><option value="NORMAL">NORMAL</option><option value="METAL">MÉTAL</option><option value="FOREST">FORÊT</option><option value="CONCRETE">BÉTON</option></select></div>
         </div>
 
         <div class="section">
             <h3>🚀 Vitesse & Distance</h3>
             <div class="data-item"><span class="label">Vitesse Stable (EKF)</span><span class="value" id="speed-stable">-- km/h</span></div>
-            <div class="data-item"><span class="label">Vitesse 3D (Inst.)</span><span class="value" id="speed-3d-inst">-- km/h</span></div>
             <div class="data-item"><span class="label">Vitesse Max (Session)</span><span class="value" id="speed-max">0.00000 km/h</span></div>
-            <div class="data-item"><span class="label">Distance Totale</span><span class="value" id="distance-total-km">0.000 km | 0.00 m</span></div>
+            <div class="data-item"><span class="label">Vitesse Moyenne (Mvt)</span><span class="value" id="speed-avg-moving">0.00000 km/h</span></div>
+            <div class="data-item"><span class="label">Vitesse 3D (Inst.)</span><span class="value" id="speed-3d-inst">-- km/h</span></div>
+            <div class="data-item"><span class="label">Vitesse stable (m/s)</span><span class="value" id="speed-stable-ms">-- m/s</span></div>
+            <div class="data-item"><span class="label">% Vitesse du Son</span><span class="value" id="perc-speed-sound">-- %</span></div>
             <div class="data-item"><span class="label">% Vitesse de la Lumière (c)</span><span class="value" id="perc-speed-c">--%</span></div>
+            <div class="data-item"><span class="label">Distance Totale</span><span class="value" id="distance-total-km">0.000 km | 0.00 m</span></div>
             <div class="data-item"><span class="label">Précision Vitesse (R dyn)</span><span class="value" id="speed-error-perc">-- m²</span></div>
-            <div class="data-item"><span class="label">Vitesse Verticale</span><span class="value" id="vertical-speed">0.00 m/s</span></div>
         </div>
 
         <div class="section">
@@ -66,7 +69,11 @@
             <div class="data-item"><span class="label">Longitude Brute</span><span class="value" id="longitude">N/A</span></div>
             <div class="data-item"><span class="label">Altitude GPS</span><span class="value" id="altitude-gps">N/A</span></div>
             <div class="data-item"><span class="label">Précision GPS (EPE)</span><span class="value" id="gps-precision">N/A</span></div>
+            <div class="data-item"><span class="label">Vitesse Brute (m/s)</span><span class="value" id="speed-raw-ms">N/A</span></div>
             <div class="data-item"><span class="label">Sous-sol (Seuil -50m)</span><span class="value" id="underground-status">Non</span></div> 
+            <div class="data-item"><span class="label">Vitesse Verticale</span><span class="value" id="vertical-speed">0.00 m/s</span></div>
+            <div class="data-item"><span class="label">Accélération Longitudinale (Calculée)</span><span class="value" id="accel-long">0.000 m/s²</span></div>
+            <div class="data-item"><span class="label">Force G (Longitudinale)</span><span class="value" id="force-g-long">0.00 G</span></div>
             <div class="data-item"><span class="label">Cap (Heading)</span><span class="value" id="heading">-- °</span></div>
         </div>
 
@@ -83,11 +90,11 @@
             <div class="data-item"><span class="label">Température Air</span><span class="value" id="temp-air">N/A</span></div>
             <div class="data-item"><span class="label">Pression Atmosphérique</span><span class="value" id="pressure">N/A</span></div>
             <div class="data-item"><span class="label">Humidité Relative</span><span class="value" id="humidity">N/A</span></div>
-            <div class="data-item"><span class="label">Facteur Environnement</span><span class="value" id="env-factor">NORMAL</span></div> 
+            <div class="data-item"><span class="label">Environnement Kalman</span><span class="value" id="env-factor">NORMAL (x1.0)</span></div>
         </div>
 
     </div>
 
     <script src="gnss-dashboard-full.js"></script>
 </body>
-                                       </html>
+    </html>
