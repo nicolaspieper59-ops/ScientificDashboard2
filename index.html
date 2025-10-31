@@ -14,8 +14,8 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
-        /* Styles de base (Minimum nécessaire) */
-        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; transition: background-color 0.5s, color 0.5s; }
+        /* CSS MINIMAL POUR LA STRUCTURE - Vous pouvez le compléter avec vos styles */
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
         .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
         .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .section h2 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; font-size: 1.2em; }
@@ -26,12 +26,6 @@
         button, select { padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
-        #emergency-stop-btn.active { background-color: #8b0000; }
-        
-        /* Styles pour le Mode Nuit */
-        body.night-mode { background-color: #1a1a1a; color: #e0e0e0; }
-        body.night-mode .section { background-color: #2c2c2c; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
-        body.night-mode .data-point span:first-child { color: #aaa; }
     </style>
 </head>
 <body>
@@ -77,25 +71,19 @@
         </div>
         
         <div class="section">
-            <h2>☀️ Soleil & Lune (SunCalc)</h2>
+            <h2>☀️ Astro & Capteurs</h2>
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
-            <div class="data-point"><span>Midi Solaire Local</span><span id="solar-culmination">N/D</span></div>
+            <div class="data-point"><span>Midi Solaire Local</span><span id="culmination-lsm">N/D</span></div>
             <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
             <div class="data-point"><span>Phase Lunaire (Fraction)</span><span id="lunar-phase-perc">N/A</span></div>
             
             <hr>
-            <h2>🗺️ Carte & Cible</h2>
-            <div id="map-container"></div>
-            <div class="data-point"><span>Distance à la Cible</span><span id="distance-cible">N/A</span></div>
-            <div class="data-point"><span>Cap vers la Cible</span><span id="target-heading">-- °</span></div>
-            <button id="set-target-btn">📍 Définir Cible (Clic Carte)</button>
-            
-            <hr>
-            <h2>🎚️ Météo & Capteurs (Simulation)</h2>
+            <h2>🎚️ Météo & Ambiance</h2>
             <div class="data-point"><span>Température Air</span><span id="temp-air">N/A</span></div>
             <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure">N/A</span></div>
             <div class="data-point"><span>Humidité Relative</span><span id="humidity">N/A</span></div>
-            <div class="data-point"><span>Vitesse du Vent (Est.)</span><span id="wind-speed-est">N/A</span></div>
+            <div class="data-point"><span>Niveau Sonore (Microphone)</span><span id="noise-level">N/A dB</span></div>
+            <div class="data-point"><span>Champ Magnétique</span><span id="magnetic-field">N/A µT</span></div>
         </div>
 
     </div>
@@ -105,7 +93,7 @@
         crossorigin=""></script>
 <script src="./suncalc.js"></script>  
 
-<script type="module" src="./gnss-dashboard-full.js"></script> 
+<script type="module" src="./gnss-dashboard-full.js"></script>
 
 </body>
-        </html>                                                                                                     
+                    </html>
