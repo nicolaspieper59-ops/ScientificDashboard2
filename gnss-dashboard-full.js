@@ -170,10 +170,15 @@ function getKalmanR(acc, alt, P_hPa) {
 // FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
 // Contient la logique principale de mise à jour et les écouteurs d'événements.
 // NÉCESSITE gnss-dashboard-part1.js
+// ================================================================
+// =================================================================
+// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
+// Contient la logique principale de mise à jour et les écouteurs d'événements.
+// NÉCESSITE gnss-dashboard-part1.js
 // =================================================================
 
 // ===========================================
-// FONCTIONS ASTRO & TEMPS
+// FONCTIONS ASTRO & TEMPS (CORRIGÉES)
 // ===========================================
 
 function toDays(date) { return (date.valueOf() / dayMs - 0.5 + J1970) - J2000; }
@@ -184,22 +189,41 @@ function eclipticLongitude(M) {
     return M + C + P + Math.PI;
 }
 
+/**
+ * Calcule le Temps Solaire Moyen (MST), le Temps Solaire Vrai (TST) et l'Équation du Temps (EOT).
+ * La logique de calcul EOT/TST a été corrigée.
+ */
 function getSolarTime(date, lon) {
     if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D' };
 
-    // Les calculs sont effectués en UTC (Universal Time Coordinated)
+    // --- 1. Calcul des composantes solaires (J2000) ---
     const d = toDays(date);
-    const M = solarMeanAnomaly(d);
-    const L = eclipticLongitude(M);
+    const M = solarMeanAnomaly(d); // Anomalie moyenne (rad)
+    const L = eclipticLongitude(M); // Longitude écliptique (rad)
+    
+    // Obliquité de l'écliptique (rad)
+    const epsilon = D2R * (23.4393 - 0.000000356 * d); 
 
-    // Équation du temps (EOT) en minutes
-    const eot_min = 4 * R2D * (L - Math.sin(M) * 0.0167 * 2 - M - D2R * 102.9377);
+    // Ascension droite du Soleil (rad)
+    let alpha = Math.atan2(Math.cos(epsilon) * Math.sin(L), Math.cos(L));
+    if (alpha < 0) alpha += 2 * Math.PI; // Assurer 0 <= alpha < 2*PI
 
+    // Équation du Temps (EOT) : Différence entre l'Ascension droite réelle et l'heure solaire moyenne
+    // EOT en minutes, formule: 4 * (apparent solar time - mean solar time)
+    // TST - MST = EOT / 60
+    const eot_rad = alpha - M - D2R * 102.9377 - Math.PI;
+    const eot_min = eot_rad * 4 * R2D; // Conversion en minutes (4 min/degré)
+
+    // --- 2. Calcul des Temps Solaires ---
     const msSinceMidnightUTC = (date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds();
     
+    // Temps Solaire Moyen Local (MST): Temps UTC + correction Longitude locale
     const mst_offset_ms = lon * dayMs / 360; 
     const mst_ms = (msSinceMidnightUTC + mst_offset_ms) % dayMs;
-    const tst_ms = (mst_ms - eot_min * 60000 + dayMs) % dayMs;
+
+    // Temps Solaire Vrai (TST): MST + EOT (corrigé)
+    const eot_ms = eot_min * 60000;
+    const tst_ms = (mst_ms + eot_ms + dayMs) % dayMs; // Ajout de dayMs pour éviter les négatifs
 
     const toTimeString = (ms) => {
         let h = Math.floor(ms / 3600000);
@@ -208,19 +232,19 @@ function getSolarTime(date, lon) {
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
     
-    return { TST: toTimeString(tst_ms), MST: toTimeString(mst_ms), EOT: eot_min.toFixed(2) };
+    return { 
+        TST: toTimeString(tst_ms), 
+        MST: toTimeString(mst_ms), 
+        EOT: eot_min.toFixed(3),
+        ECL_LONG: (L * R2D).toFixed(2)
+    };
 }
 
 function getMinecraftTime(date) {
     if (date === null) return '00:00:00';
     
-    // Temps écoulé depuis minuit UT
-    const msSinceMidnightUTC = date.getUTCHours() * 3600000 + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000 + date.getUTCMilliseconds();
-    
-    // Ratio de temps réel écoulé par rapport à une journée (modifie l'horloge MC)
+    const msSinceMidnightUTC = date.getUTCHours() * 3600000 + date.getUTCMilliseconds() + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000;
     const timeRatio = (msSinceMidnightUTC % dayMs) / dayMs;
-    
-    // Temps Minecraft en ms. Le +MC_DAY_MS assure qu'on reste positif avant le modulo
     const mcTimeMs = (timeRatio * MC_DAY_MS + MC_DAY_MS) % MC_DAY_MS;
 
     const toTimeString = (ms) => {
@@ -262,9 +286,24 @@ function updateAstro(latA, lonA) {
     if ($('sun-elevation')) $('sun-elevation').textContent = sunPos ? `${(sunPos.altitude * R2D).toFixed(2)} °` : 'N/A';
     if ($('lunar-phase-perc')) $('lunar-phase-perc').textContent = moonIllum ? `${(moonIllum.fraction * 100).toFixed(1)} %` : 'N/A';
     if ($('noon-solar')) $('noon-solar').textContent = sunTimes && sunTimes.solarNoon ? sunTimes.solarNoon.toLocaleTimeString() : 'N/D';
-    if ($('eot-min')) $('eot-min').textContent = solarTimes.EOT;
-}
+    if ($('eot-min')) $('eot-min').textContent = solarTimes.EOT + ' min'; // Ajout de l'unité 'min'
+    if ($('ecliptic-long')) $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
 
+    // Ajout de la durée du jour solaire (calculé par SunCalc)
+    if (sunTimes && sunTimes.sunrise && sunTimes.sunset) {
+        const durationMs = sunTimes.sunset.getTime() - sunTimes.sunrise.getTime();
+        const hours = Math.floor(durationMs / 3600000);
+        const minutes = Math.floor((durationMs % 3600000) / 60000);
+        $('day-duration').textContent = `${hours}h ${minutes}m`;
+    } else {
+        $('day-duration').textContent = 'N/A (Polaire/Nuit)';
+    }
+
+    // Phase Lunaire (Lever / Coucher)
+    const moonTimes = window.SunCalc ? SunCalc.getMoonTimes(now, latA, lonA, true) : null;
+    if ($('moon-times')) $('moon-times').textContent = moonTimes ? 
+        `↑ ${moonTimes.rise ? moonTimes.rise.toLocaleTimeString() : 'N/A'} / ↓ ${moonTimes.set ? moonTimes.set.toLocaleTimeString() : 'N/A'}` : 'N/D';
+}
 
 // ===========================================
 // FONCTIONS DE CONTRÔLE GPS (Non modifiées)
@@ -326,7 +365,7 @@ function handleErr(err) {
 }
 
 // ===========================================
-// RÉCUPÉRATION MÉTÉO (Proxy Vercel requis)
+// RÉCUPÉRATION MÉTÉO (Proxy Vercel requis - Non modifiée)
 // ===========================================
 
 async function fetchWeather(latA, lonA) {
@@ -362,7 +401,7 @@ async function fetchWeather(latA, lonA) {
 
 
 // ===========================================
-// FONCTION PRINCIPALE DE MISE À JOUR GPS
+// FONCTION PRINCIPALE DE MISE À JOUR GPS (Non modifiée)
 // ===========================================
 
 function updateDisp(pos) {
@@ -462,7 +501,7 @@ function updateDisp(pos) {
 
 
 // ===========================================
-// INITIALISATION DES ÉVÉNEMENTS DOM
+// INITIALISATION DES ÉVÉNEMENTS DOM (Non modifiée)
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
