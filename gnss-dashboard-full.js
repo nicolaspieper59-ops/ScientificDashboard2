@@ -166,6 +166,16 @@ function getKalmanR(acc, alt, P_hPa) {
 // FONCTIONS ASTRO & TEMPS
 // ===========================================
 
+    // =================================================================
+// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
+// Contient la logique principale de mise à jour et les écouteurs d'événements.
+// NÉCESSITE gnss-dashboard-part1.js
+// =================================================================
+
+// ===========================================
+// FONCTIONS ASTRO & TEMPS
+// ===========================================
+
 function toDays(date) { return (date.valueOf() / dayMs - 0.5 + J1970) - J2000; }
 function solarMeanAnomaly(d) { return D2R * (356.0470 + 0.9856002585 * d); }
 function eclipticLongitude(M) {
@@ -177,6 +187,7 @@ function eclipticLongitude(M) {
 function getSolarTime(date, lon) {
     if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D' };
 
+    // Les calculs sont effectués en UTC (Universal Time Coordinated)
     const d = toDays(date);
     const M = solarMeanAnomaly(d);
     const L = eclipticLongitude(M);
@@ -224,13 +235,14 @@ function getMinecraftTime(date) {
 
 
 function updateAstro(latA, lonA) {
-    const now = getCDate(); 
+    const now = getCDate(); // Utilise le temps UTC atomique compensé
     
     if (now === null) {
         return;
     }
     
-    $('local-time').textContent = now.toLocaleTimeString();
+    // Affichage de l'heure NTP/Serveur (qui est le temps UTC, mais le navigateur l'affiche localement)
+    $('local-time').textContent = now.toLocaleTimeString(); 
     if ($('date-display')) $('date-display').textContent = now.toLocaleDateString();
     
     if (sTime) {
@@ -255,7 +267,7 @@ function updateAstro(latA, lonA) {
 
 
 // ===========================================
-// FONCTIONS DE CONTRÔLE GPS
+// FONCTIONS DE CONTRÔLE GPS (Non modifiées)
 // ===========================================
 
 function setGPSMode(mode) {
@@ -360,7 +372,7 @@ function updateDisp(pos) {
     const alt = pos.coords.altitude, acc = pos.coords.accuracy;
     const spd = pos.coords.speed, cTime = pos.timestamp; 
 
-    const now = getCDate();
+    const now = getCDate(); // Récupère le temps UTC compensé
     if (now === null) { updateAstro(lat, lon); return; } 
 
     if (sTime === null) { sTime = now.getTime(); distMStartOffset = distM; }
