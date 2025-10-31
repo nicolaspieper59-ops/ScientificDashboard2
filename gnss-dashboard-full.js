@@ -5,11 +5,11 @@
 // =================================================================
 
 // --- CLÉS D'API & PROXY VERCEL (À METTRE À JOUR) ---
+// Note: Le proxy Vercel nécessite un déploiement de votre part pour fonctionner
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app"; 
 const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
 
-// ✅ MEILLEURE SOLUTION SYNCHRONISATION UTC ATOMIQUE (WorldTimeAPI)
-// Cette API retourne l'heure au format ISO 8601 en UTC (+00:00).
+// ✅ ENDPOINT SYNCHRONISATION UTC ATOMIQUE (WorldTimeAPI)
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc"; 
 
 // --- CONSTANTES GLOBALES ET INITIALISATION ---
@@ -47,11 +47,11 @@ const DOM_SLOW_UPDATE_MS = 1000;
 // --- VARIABLES D'ÉTAT (ACCESSIBLES GLOBALEMENT) ---
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
 let distM = 0, distMStartOffset = 0, maxSpd = 0;
-let kSpd = 0, kUncert = 1000; // État du filtre de Kalman
-let timeMoving = 0; // Temps cumulé où la vitesse filtrée est > MIN_SPD
+let kSpd = 0, kUncert = 1000; 
+let timeMoving = 0; 
 
-let lServH = null, lLocH = null; // Pour la synchronisation horaire serveur (NTP/Atomique)
-let lastFSpeed = 0; // Dernière vitesse filtrée pour le calcul d'accélération
+let lServH = null, lLocH = null; // Pour la synchronisation horaire serveur (UTC)
+let lastFSpeed = 0; 
 
 let currentGPSMode = 'HIGH_FREQ'; 
 let emergencyStopActive = false;
@@ -84,26 +84,33 @@ const dist3D = (lat1, lon1, alt1 = 0, lat2, lon2, alt2 = 0) => {
 };
 
 // ===========================================
-// SYNCHRONISATION HORAIRE PAR SERVEUR (NTP/Atomique UTC)
+// SYNCHRONISATION HORAIRE PAR SERVEUR (UTC/Atomique)
 // ===========================================
 
 async function syncH() { 
     if ($('local-time')) $('local-time').textContent = 'Synchronisation UTC...';
+    // Enregistre le temps local juste avant l'appel API
+    const localStartPerformance = performance.now();
+
     try {
         const response = await fetch(SERVER_TIME_ENDPOINT, { cache: "no-store", mode: "cors" });
         if (!response.ok) throw new Error(`Server time sync failed: ${response.statusText}`);
         
+        // Enregistre le temps local juste après la réception de la réponse
+        const localEndPerformance = performance.now();
         const serverData = await response.json(); 
         
-        // WorldTimeAPI fournit l'heure UTC en format ISO 8601 (ex: "2025-10-31T10:10:00.000000+00:00").
+        // WorldTimeAPI fournit l'heure UTC en format ISO 8601
         const utcTimeISO = serverData.datetime; 
-        
-        // Date.parse() interprète le string ISO avec le +00:00 comme UTC et retourne le timestamp ms.
         const serverTimestamp = Date.parse(utcTimeISO); 
         
-        lServH = serverTimestamp; 
-        lLocH = performance.now(); 
-        console.log("Synchronisation UTC Atomique (WorldTimeAPI) réussie.");
+        // Compensation simple de la latence RTT (Round Trip Time)
+        const RTT = localEndPerformance - localStartPerformance;
+        const latencyOffset = RTT / 2;
+
+        lServH = serverTimestamp + latencyOffset; // Temps serveur corrigé
+        lLocH = performance.now(); // Temps local de la dernière synchro
+        console.log(`Synchronisation UTC Atomique (WorldTimeAPI) réussie. Latence corrigée: ${latencyOffset.toFixed(1)} ms.`);
 
     } catch (error) {
         // Fallback local (Date.now() est le timestamp UTC basé sur l'horloge locale)
@@ -117,7 +124,7 @@ async function syncH() {
 /** Retourne l'heure synchronisée (précision RTT compensée en UTC). */
 function getCDate() { 
     if (lServH === null || lLocH === null) { return null; }
-    // Ajout du temps écoulé depuis la dernière synchro (compensant l'offset de latence)
+    // Ajout du temps écoulé depuis la dernière synchro
     const offsetSinceSync = performance.now() - lLocH;
     return new Date(lServH + offsetSinceSync); 
 }
@@ -155,22 +162,7 @@ function getKalmanR(acc, alt, P_hPa) {
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     
     return R;
-}
-// =================================================================
-// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
-// Contient la logique principale de mise à jour et les écouteurs d'événements.
-// NÉCESSITE gnss-dashboard-part1.js
-// =================================================================
-
-// ===========================================
-// FONCTIONS ASTRO & TEMPS
-// ===========================================
-
-    // =================================================================
-// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
-// Contient la logique principale de mise à jour et les écouteurs d'événements.
-// NÉCESSITE gnss-dashboard-part1.js
-// ================================================================
+    }
 // =================================================================
 // FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
 // Contient la logique principale de mise à jour et les écouteurs d'événements.
@@ -191,10 +183,10 @@ function eclipticLongitude(M) {
 
 /**
  * Calcule le Temps Solaire Moyen (MST), le Temps Solaire Vrai (TST) et l'Équation du Temps (EOT).
- * La logique de calcul EOT/TST a été corrigée.
+ * La logique de calcul EOT/TST est basée sur les standards astronomiques.
  */
 function getSolarTime(date, lon) {
-    if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D' };
+    if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D' };
 
     // --- 1. Calcul des composantes solaires (J2000) ---
     const d = toDays(date);
@@ -209,8 +201,6 @@ function getSolarTime(date, lon) {
     if (alpha < 0) alpha += 2 * Math.PI; // Assurer 0 <= alpha < 2*PI
 
     // Équation du Temps (EOT) : Différence entre l'Ascension droite réelle et l'heure solaire moyenne
-    // EOT en minutes, formule: 4 * (apparent solar time - mean solar time)
-    // TST - MST = EOT / 60
     const eot_rad = alpha - M - D2R * 102.9377 - Math.PI;
     const eot_min = eot_rad * 4 * R2D; // Conversion en minutes (4 min/degré)
 
@@ -223,7 +213,7 @@ function getSolarTime(date, lon) {
 
     // Temps Solaire Vrai (TST): MST + EOT (corrigé)
     const eot_ms = eot_min * 60000;
-    const tst_ms = (mst_ms + eot_ms + dayMs) % dayMs; // Ajout de dayMs pour éviter les négatifs
+    const tst_ms = (mst_ms + eot_ms + dayMs) % dayMs; 
 
     const toTimeString = (ms) => {
         let h = Math.floor(ms / 3600000);
@@ -262,11 +252,15 @@ function updateAstro(latA, lonA) {
     const now = getCDate(); // Utilise le temps UTC atomique compensé
     
     if (now === null) {
+        // Affichage du statut de synchro si l'heure n'est pas encore disponible
+        if ($('local-time').textContent.includes('Synchronisation') === false) {
+             $('local-time').textContent = 'Synchronisation...';
+        }
         return;
     }
     
-    // Affichage de l'heure NTP/Serveur (qui est le temps UTC, mais le navigateur l'affiche localement)
-    $('local-time').textContent = now.toLocaleTimeString(); 
+    // Affichage de l'heure NTP/Serveur (qui est le temps UTC)
+    $('local-time').textContent = now.toLocaleTimeString('fr-FR', { timeZone: 'UTC', hour12: false });
     if ($('date-display')) $('date-display').textContent = now.toLocaleDateString();
     
     if (sTime) {
@@ -285,11 +279,14 @@ function updateAstro(latA, lonA) {
     if ($('culmination-lsm')) $('culmination-lsm').textContent = solarTimes.MST;
     if ($('sun-elevation')) $('sun-elevation').textContent = sunPos ? `${(sunPos.altitude * R2D).toFixed(2)} °` : 'N/A';
     if ($('lunar-phase-perc')) $('lunar-phase-perc').textContent = moonIllum ? `${(moonIllum.fraction * 100).toFixed(1)} %` : 'N/A';
+    
+    // Pour Midi Solaire Local (solarNoon), affichage de l'heure locale
     if ($('noon-solar')) $('noon-solar').textContent = sunTimes && sunTimes.solarNoon ? sunTimes.solarNoon.toLocaleTimeString() : 'N/D';
-    if ($('eot-min')) $('eot-min').textContent = solarTimes.EOT + ' min'; // Ajout de l'unité 'min'
+    
+    if ($('eot-min')) $('eot-min').textContent = solarTimes.EOT + ' min'; 
     if ($('ecliptic-long')) $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
 
-    // Ajout de la durée du jour solaire (calculé par SunCalc)
+    // Durée du jour solaire (calculé par SunCalc)
     if (sunTimes && sunTimes.sunrise && sunTimes.sunset) {
         const durationMs = sunTimes.sunset.getTime() - sunTimes.sunrise.getTime();
         const hours = Math.floor(durationMs / 3600000);
@@ -306,7 +303,7 @@ function updateAstro(latA, lonA) {
 }
 
 // ===========================================
-// FONCTIONS DE CONTRÔLE GPS (Non modifiées)
+// FONCTIONS DE CONTRÔLE GPS 
 // ===========================================
 
 function setGPSMode(mode) {
@@ -365,7 +362,7 @@ function handleErr(err) {
 }
 
 // ===========================================
-// RÉCUPÉRATION MÉTÉO (Proxy Vercel requis - Non modifiée)
+// RÉCUPÉRATION MÉTÉO (Proxy Vercel requis)
 // ===========================================
 
 async function fetchWeather(latA, lonA) {
@@ -401,7 +398,7 @@ async function fetchWeather(latA, lonA) {
 
 
 // ===========================================
-// FONCTION PRINCIPALE DE MISE À JOUR GPS (Non modifiée)
+// FONCTION PRINCIPALE DE MISE À JOUR GPS 
 // ===========================================
 
 function updateDisp(pos) {
@@ -501,7 +498,7 @@ function updateDisp(pos) {
 
 
 // ===========================================
-// INITIALISATION DES ÉVÉNEMENTS DOM (Non modifiée)
+// INITIALISATION DES ÉVÉNEMENTS DOM 
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -532,9 +529,9 @@ document.addEventListener('DOMContentLoaded', () => {
         envDiv.appendChild(envSelect);
         controlsSection.appendChild(envDiv);
     }
-    // Fin création dynamique
     
-    syncH(); // Tentative de synchronisation horaire (NTP/Atomique)
+    // ** Appel initial pour démarrer la synchronisation **
+    syncH(); 
 
     // --- ÉVÉNEMENTS DE CONTRÔLE ---
     
@@ -574,6 +571,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialisation du DOM pour les mises à jour lentes (Astro/Temps)
     if (domID === null) {
         domID = setInterval(() => {
+            // Passe les coordonnées si elles sont disponibles, sinon null/null
             if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
             else updateAstro(null, null); 
         }, DOM_SLOW_UPDATE_MS); 
