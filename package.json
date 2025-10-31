@@ -1,18 +1,20 @@
 {
-  "name": "gnss-proxy-server",
+  "name": "gnss-weather-proxy",
   "version": "1.0.0",
-  "description": "Serveur proxy sécurisé pour l'API OpenWeatherMap.",
-  "main": "server.js",
+  "description": "Proxy Vercel pour masquer la clé API OpenWeatherMap et gérer les requêtes CORS.",
+  "main": "api/weather.js",
   "scripts": {
-    "start": "OPENWEATHER_API_KEY=$OPENWEATHER_API_KEY node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node api/weather.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "node-fetch": "^2.6.1",
-    "cors": "^2.8.5"
+    "node-fetch": "^2.6.1"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "keywords": [
+    "vercel",
+    "serverless",
+    "proxy",
+    "weather"
+  ],
+  "author": "",
+  "license": "ISC"
 }
