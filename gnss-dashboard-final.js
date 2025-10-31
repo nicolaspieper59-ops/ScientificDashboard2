@@ -263,7 +263,7 @@ function setGPSMode(mode) {
     wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[mode]);
     if ($('gps-status')) $('gps-status').textContent = `EN LIGNE (${mode.replace('_FREQ', '')})`;
     if ($('freq-select')) $('freq-select').value = manualFreqMode ? forcedFreqState : 'AUTO';
-    }
+        }
 // =================================================================
 // FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js (LOGIQUE & DOM)
 // V4.1 : Astro TST/MST, Affichage Physique Corrigé
