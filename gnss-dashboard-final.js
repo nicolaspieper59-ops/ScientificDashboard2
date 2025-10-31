@@ -88,7 +88,7 @@ function adjustPhysicalConstants() {
 
 async function fetchAndUpdateWeather() {
     // 🚨 N'OUBLIEZ PAS DE REMPLACER PAR VOTRE URL RENDER/VERCEL DÉPLOYÉE !
-    const PROXY_BASE_URL = "https://gnss-proxy-service-xxxx.onrender.com"; 
+    const PROXY_BASE_URL = "scientific-dashboard2.vercel.app"; 
 
     if (lat === DEFAULT_LAT || lon === DEFAULT_LON) {
         adjustPhysicalConstants(); 
