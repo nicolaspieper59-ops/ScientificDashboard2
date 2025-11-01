@@ -2,20 +2,184 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>GNSS SpaceTime Dashboard 🚀 (V11.2 Final Hors Ligne)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>GNSS SpaceTime Dashboard 🚀 (V11.3 Final)</title>
     
     <link rel="stylesheet" href="./leaflet.css" crossorigin=""/>
     <link rel="stylesheet" href="./fontawesome.min.css" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="style.css">
+          
+    <style>
+        /* =================================================================
+           BASE & COULEURS
+           ================================================================= */
+        :root {
+            --color-background: #f4f4f4;
+            --color-surface: #ffffff;
+            --color-text-main: #333333;
+            --color-text-secondary: #555555;
+            --color-accent: #007bff;
+            --color-divider: #dddddd;
+            --color-shadow: rgba(0,0,0,0.1);
+        }
+
+        * { box-sizing: border-box; }
+        
+        body { 
+            font-family: 'Arial', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: var(--color-background); 
+            color: var(--color-text-main); 
+            transition: background-color 0.5s, color 0.5s; 
+            line-height: 1.4;
+        }
+        
+        header {
+            background-color: var(--color-accent);
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+            box-shadow: 0 2px 4px var(--color-shadow);
+        }
+        
+        /* =================================================================
+           RÉACTIVITÉ : GRILLE & SECTIONS
+           ================================================================= */
+        
+        .dashboard-container { 
+            display: grid; 
+            /* VALEUR PAR DÉFAUT (Mobile) : 1 Colonne */
+            grid-template-columns: 1fr; 
+            gap: 20px; 
+            padding: 20px; 
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* MEDIA QUERY: Passe à 3 colonnes sur grand écran */
+        @media (min-width: 992px) {
+            .dashboard-container {
+                grid-template-columns: repeat(3, 1fr); /* 3 colonnes sur PC/Tablette */
+            }
+        }
+
+        .section { 
+            background-color: var(--color-surface); 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px var(--color-shadow); 
+        }
+        
+        .section h2, .section h3 { 
+            margin-top: 0; 
+            border-bottom: 2px solid var(--color-divider); 
+            padding-bottom: 10px; 
+            font-size: 1.2em;
+            color: var(--color-accent);
+        }
+        
+        /* =================================================================
+           POINTS DE DONNÉES & INPUTS
+           ================================================================= */
+
+        .data-point { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 8px 0; 
+            border-bottom: 1px dotted var(--color-divider); 
+            font-size: 0.95em;
+            align-items: center;
+        }
+        
+        .data-point span:first-child { 
+            font-weight: normal; 
+            color: var(--color-text-secondary);
+            flex-grow: 1;
+        }
+        .data-point span:last-child { 
+            font-weight: bold; 
+            color: var(--color-text-main);
+            text-align: right;
+            max-width: 50%;
+            flex-shrink: 0;
+        }
+        
+        /* Style pour l'input de masse au gramme près */
+        input[type="number"]#mass-input {
+            width: 60%; 
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-weight: bold;
+            text-align: right; 
+            color: var(--color-text-main);
+            background-color: #f7f7f7;
+            flex-grow: 0;
+        }
+
+        /* Ajustement pour l'alignement du label de masse */
+        .data-point label {
+            flex-grow: 1; 
+            font-size: 0.95em;
+            padding-right: 10px; 
+        }
+
+        /* =================================================================
+           CARTE & AVERTISSEMENT
+           ================================================================= */
+        
+        #map-container {
+            padding: 20px;
+            max-width: 1400px; 
+            margin: 0 auto;
+        }
+
+        #map {
+            height: 400px; /* HAUTEUR SUFFISANTE POUR LA CARTE */
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px var(--color-shadow);
+        }
+        
+        .controls-grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 10px; 
+            margin-top: 10px; 
+        }
+        
+        button, select { 
+            padding: 10px 5px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            font-size: 0.85em;
+        }
+        #toggle-gps-btn { background-color: #28a745; color: white; }
+        #emergency-stop-btn { background-color: #dc3545; color: white; }
+        #emergency-stop-btn.active { background-color: #8b0000; }
+        
+        /* Style de la note d'avertissement pour les données estimées */
+        .warning-note {
+            font-size: 0.8em;
+            color: #8b0000; 
+            background-color: #ffe0e0; 
+            border: 1px solid #ff7f7f;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
     <header>
-        <h1>Tableau de Bord GNSS/IMU (V11.2 Dyn. Véhicule)</h1>
+        <h1>Tableau de Bord GNSS/IMU (V11.3 Dyn. Véhicule)</h1>
     </header>
 
     <div class="dashboard-container">
-        
         <div class="section" id="col-1">
             <h2>⚙️ Contrôles & Système</h2>
             <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">N/A</span></div>
@@ -131,4 +295,4 @@
 <script src="gnss-dashboard-full.js" defer></script>  
 
 </body>
-                                                                                    </html>
+                </html>
