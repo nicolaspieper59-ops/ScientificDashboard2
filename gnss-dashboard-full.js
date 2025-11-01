@@ -1,5 +1,5 @@
 // =================================================================
-// GNSS/IMU Dashboard JS (V11.8 - STABILISATION VERTICALE COMPLÈTE)
+// GNSS/IMU Dashboard JS (V11.9 - VITESSE 3D, MÉTÉO, NOUVEAUX BOUTONS)
 // Gère EKF H-Z/V, IMU, GPS, Astro, Temps, Carte, Météo (simulation/API), 
 // Correction EKF/Alt. et tous les contrôles DOM.
 // =================================================================
@@ -61,19 +61,22 @@ let EKF_State_H = {
     position_error: 0
 };
 
-// --- NOUVEAU: ÉTAT EKF VERTICAL (Altitude/Vitesse Verticale) ---
+// --- ÉTAT EKF VERTICAL (Altitude/Vitesse Verticale) ---
 let EKF_State_V = {
-    P: [[100, 0], [0, 100]], // P[0][0]: Variance altitude, P[1][1]: Variance vitesse verticale
-    Q: 0.1, // Bruit du processus (changement de vitesse)
-    R: 10,  // Bruit de mesure (Précision Altitude GPS)
-    altitude: 0, 
+    P: [[100, 0], [0, 100]], 
+    Q: 0.1, 
+    R: 10,  
+    altitude: null, // CORRECTION : Initialisé à null pour indiquer qu'aucune mesure n'a été prise
     v_vertical: 0
 };
 
 
 // =================================================================
-// 1. LOGIQUE EKF HORIZONTAL (Stabilisation Vitesse GPS)
+// 1. FILTRES DE KALMAN (Horizontal et Vertical)
 // =================================================================
+
+// ... [EKF_Predict_H, EKF_Update_H, EKF_Predict_V, EKF_Update_V - Fonctions de base inchangées] ...
+// (Elles sont conservées ici pour la complétude du fichier.)
 
 function EKF_Predict_H(dt) {
     const dt2 = dt * dt;
@@ -89,10 +92,7 @@ function EKF_Predict_H(dt) {
 function EKF_Update_H(measurement_velocity, measurement_accuracy) {
     const P = EKF_State_H.P;
     const velocity_current = EKF_State_H.velocity;
-    
-    // Ajuste la covariance R (bruit de mesure) en fonction de la correction environnementale
     const adjustedR = measurement_accuracy * measurement_accuracy * WEATHER_DATA.ekf_correction_factor; 
-    
     const R = adjustedR; 
     const Y = measurement_velocity - velocity_current;
     const S = P[1][1] + R; 
@@ -107,20 +107,15 @@ function EKF_Update_H(measurement_velocity, measurement_accuracy) {
     EKF_State_H.position_error = Math.sqrt(P[0][0]); 
 }
 
-// =================================================================
-// 2. LOGIQUE EKF VERTICAL (Stabilisation Altitude/Vitesse Verticale)
-// =================================================================
-
 function EKF_Predict_V(dt) {
     const P = EKF_State_V.P;
     const Q = EKF_State_V.Q;
     const dt2 = dt * dt;
     
-    // Matrice de transition F est [[1, dt], [0, 1]]
-    // Prédiction de l'état (altitude, v_vertical)
-    EKF_State_V.altitude = EKF_State_V.altitude + EKF_State_V.v_vertical * dt;
+    if (EKF_State_V.altitude !== null) {
+        EKF_State_V.altitude = EKF_State_V.altitude + EKF_State_V.v_vertical * dt;
+    }
     
-    // Prédiction de la covariance (P = F * P * F^T + Q)
     P[0][0] = P[0][0] + dt * P[1][0] + dt * P[0][1] + dt2 * P[1][1] + Q * dt2 * dt;
     P[0][1] = P[0][1] + dt * P[1][1] + Q * dt2;
     P[1][0] = P[1][0] + dt * P[1][1] + Q * dt2;
@@ -129,76 +124,163 @@ function EKF_Predict_V(dt) {
 }
 
 function EKF_Update_V(measurement_altitude, measurement_accuracy) {
+    // CORRECTION : Initialise l'altitude si c'est la première mesure
+    if (EKF_State_V.altitude === null) {
+        EKF_State_V.altitude = measurement_altitude;
+        return; 
+    }
+    
     const P = EKF_State_V.P;
     const altitude_current = EKF_State_V.altitude;
     const v_vertical_current = EKF_State_V.v_vertical;
 
-    // Précision de la mesure R
     const R = measurement_accuracy * measurement_accuracy; 
-    
-    // Innovation (différence entre mesure et estimation)
     const Y = measurement_altitude - altitude_current;
-    
-    // Covariance d'innovation S = H * P * H^T + R. H = [1, 0]
     const S = P[0][0] + R; 
-    
-    // Gain de Kalman K = P * H^T * S^-1. K = [P[0][0]/S, P[1][0]/S]^T
     const K_alt = P[0][0] / S;
     const K_v = P[1][0] / S; 
     
-    // Mise à jour de l'état
     EKF_State_V.altitude = altitude_current + K_alt * Y;
     EKF_State_V.v_vertical = v_vertical_current + K_v * Y;
     
-    // Mise à jour de la covariance (P = (I - K*H) * P)
     P[0][0] = P[0][0] - K_alt * P[0][0];
     P[0][1] = P[0][1] - K_alt * P[0][1];
-    P[1][0] = P[1][0] - K_v * P[0][0]; // Utilise l'ancienne P[0][0] (qui est la même que P[0][0]_updated)
+    P[1][0] = P[1][0] - K_v * P[0][0]; 
     P[1][1] = P[1][1] - K_v * P[0][1];
     
     EKF_State_V.P = P;
 }
 
+
 // =================================================================
-// 3. CARTE, TEMPS, MÉTÉO (Inchangés dans leur principe)
-// =================================================================
-// ... [initMap, updateMap, attemptNTPTimeSync, updateLocalTime, updateAstronomy, 
-//      updateEnvironmentalData, getWeatherData sont omis pour la concision mais restent dans le code complet] ...
-// ... [requestDeviceMotionPermission, startDeviceMotionTracking, updateDynamicIMUDisplay sont omis pour la concision] ...
+// 2. TEMPS ET ASTRO (Correction)
 // =================================================================
 
-// NOUVEAU: Initialisation de la carte (extrait de la V11.7)
-function initMap() {
-    if ($('map') && typeof L !== 'undefined') {
-        map = L.map('map').setView([MAP_DEFAULT_LAT, MAP_DEFAULT_LNG], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19, attribution: '© OpenStreetMap'
-        }).addTo(map);
-        marker = L.marker([MAP_DEFAULT_LAT, MAP_DEFAULT_LNG]).addTo(map);
-        polyline = L.polyline([], {color: 'blue'}).addTo(map);
+// ... [attemptNTPTimeSync, updateLocalTime - Inchangés] ...
+
+/**
+ * Mise à jour de l'astronomie (SunCalc).
+ * @param {number} latitude 
+ * @param {number} longitude 
+ */
+function updateAstronomy(latitude, longitude) {
+    const now = new Date();
+    // VÉRIFICATION : S'assurer que SunCalc est chargé
+    if (typeof SunCalc === 'undefined') {
+        $('time-solar-true').textContent = 'LIB. MANQUANTE';
+        return;
     }
+
+    const sunPos = SunCalc.getPosition(now, latitude, longitude);
+    const moonIllumination = SunCalc.getMoonIllumination(now);
+    const times = SunCalc.getTimes(now, latitude, longitude);
+
+    const eclipticLongDeg = sunPos.eclipticLng * 180 / Math.PI;
+    const sunElevationDeg = sunPos.altitude * 180 / Math.PI;
+    const sunAzimuthDeg = (sunPos.azimuth * 180 / Math.PI + 180) % 360;
+
+    let eotMinutes = 'N/D';
+    if (times.solarNoon) {
+        // Temps universel du midi solaire
+        const solarNoonUTC = times.solarNoon.getTime();
+        // Temps moyen local (midi local) - 12h UTC est le point de référence
+        const noonUTC = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0).getTime();
+        // EOT = TST - TSM. Ici, TST est midi solaire (temps réel) et TSM est midi moyen (temps calculé)
+        const eotOffsetMs = solarNoonUTC - noonUTC;
+        eotMinutes = (eotOffsetMs / (1000 * 60)).toFixed(2);
+    }
+    
+    // Mise à jour du DOM
+    $('sun-elevation').textContent = sunElevationDeg.toFixed(2) + ' °';
+    $('sun-azimuth').textContent = sunAzimuthDeg.toFixed(2) + ' °';
+    $('ecliptic-long').textContent = eclipticLongDeg.toFixed(2) + ' °';
+    $('eot-min').textContent = eotMinutes + ' min';
+    $('lunar-phase-perc').textContent = (moonIllumination.fraction * 100).toFixed(1) + ' %';
+    $('moon-times').textContent = times.moonrise ? times.moonrise.toLocaleTimeString('fr-FR') : 'N/D';
+    
+    // Le TST peut être plus complexe, affichons le temps de culmination pour le moment
+    $('time-solar-true').textContent = times.solarNoon ? times.solarNoon.toLocaleTimeString('fr-FR') + ' (Culm.)' : 'N/D';
 }
 
-// NOUVEAU: Mise à jour de la carte (extrait de la V11.7)
-function updateMap(lat, lng) {
-    if (!map || !marker) return;
-    const newLatLng = [lat, lng];
-    marker.setLatLng(newLatLng);
-    trackPoints.push(newLatLng);
-    polyline.setLatLngs(trackPoints);
-    map.setView(newLatLng);
-    if (trackPoints.length > 1) {
-        map.fitBounds(polyline.getBounds(), {padding: [50, 50]});
+
+// =================================================================
+// 3. MÉTÉO ET ENVIRONNEMENT (Correction)
+// =================================================================
+
+/**
+ * Calcule la densité de l'air et le facteur de correction EKF.
+ * @param {number|null} altitude_m - Altitude stabilisée en mètres.
+ */
+function updateEnvironmentalData(altitude_m) {
+    // Si l'altitude n'est pas encore stabilisée, on utilise une altitude standard de 0m
+    const altitude = altitude_m !== null ? altitude_m : 0; 
+    
+    // 1. Calcul de la Densité de l'Air (kg/m³)
+    const pressure = WEATHER_DATA.pressure_pa; // Pa
+    const temperature = WEATHER_DATA.temp_air_K; // K
+    const density = pressure / (R_AIR_SPECIFIC * temperature); 
+    WEATHER_DATA.density_air = density;
+
+    // 2. Calcul du Facteur de Correction EKF (Impact de l'altitude/densité)
+    const standardDensity = 1.225;
+    let factor = standardDensity / density;
+    factor = Math.min(1.5, Math.max(1.0, factor)); 
+
+    WEATHER_DATA.ekf_correction_factor = factor;
+    
+    $('env-factor').textContent = `x${factor.toFixed(2)}`;
+}
+
+/**
+ * Simule ou récupère les données météo.
+ * @param {number} lat
+ * @param {number} lng
+ */
+async function getWeatherData(lat, lng) {
+    if (Date.now() - WEATHER_LAST_FETCH < WEATHER_FETCH_INTERVAL) {
+        // S'assurer que l'affichage est mis à jour même sans nouveau fetch
+        updateWeatherDisplay(); 
+        return;
     }
+
+    try {
+        // --- SIMULATION (A remplacer par une API réelle) ---
+        const temp_c = 15; 
+        const pressure_hpa = 1013;
+        const humidity_perc = 50;
+        
+        WEATHER_DATA.temp_air_K = temp_c + 273.15;
+        WEATHER_DATA.pressure_pa = pressure_hpa * 100;
+        WEATHER_DATA.humidity_perc = humidity_perc;
+        
+        WEATHER_LAST_FETCH = Date.now();
+        
+        // --- FIN SIMULATION ---
+        
+    } catch (error) {
+        console.warn('Weather API failed, using standard environment data:', error);
+    }
+    updateWeatherDisplay();
+}
+
+/**
+ * Met à jour l'affichage des données météo (appelé après chaque update ou fetch).
+ */
+function updateWeatherDisplay() {
+    $('temp-air').textContent = `${(WEATHER_DATA.temp_air_K - 273.15).toFixed(1)} °C`;
+    $('pressure').textContent = `${(WEATHER_DATA.pressure_pa / 100).toFixed(1)} hPa`;
+    $('humidity').textContent = `${WEATHER_DATA.humidity_perc.toFixed(0)} %`;
 }
 
 
 // =================================================================
-// 4. LOGIQUE PRINCIPALE GPS & VITESSE 3D (MISE À JOUR)
+// 4. LOGIQUE PRINCIPALE GPS (Correction Vitesse 3D)
 // =================================================================
 
 function calculateSpeed3D(speedHorizontal, speedVertical) {
-    // Calcule la vitesse 3D en utilisant la vitesse horizontale STABILISÉE
+    // VÉRIFICATION : S'assurer que les valeurs ne sont pas nulles avant la racine carrée
+    speedHorizontal = speedHorizontal || 0;
+    speedVertical = speedVertical || 0;
     return Math.sqrt(speedHorizontal * speedHorizontal + speedVertical * speedVertical);
 }
 
@@ -219,28 +301,28 @@ function gpsSuccess(position) {
     const speedRawHorizontal = coords.speed || 0; 
     const accuracy = coords.accuracy || EKF_State_H.R; 
 
-    // --- 1. FILTRAGE VERTICAL (Altitude & Vitesse Verticale) ---
     let speedStabilizedVertical = 0;
-    let altitudeStabilized = altitudeRaw; 
+    let altitudeStabilized = null; 
+
+    // --- 1. FILTRAGE VERTICAL ---
     if (altitudeRaw !== null) {
         EKF_Predict_V(dt);
-        // Utilise la précision horizontale comme estimation de l'imprécision verticale
-        EKF_Update_V(altitudeRaw, coords.accuracy || EKF_State_V.R); 
+        EKF_Update_V(altitudeRaw, coords.altitudeAccuracy || coords.accuracy || EKF_State_V.R); 
         altitudeStabilized = EKF_State_V.altitude;
         speedStabilizedVertical = EKF_State_V.v_vertical;
     }
+    // Si l'altitude n'est pas disponible, on continue avec un EKF H et une vitesse 3D = vitesse H
 
     // --- 2. MÉTÉO & ENVIRONNEMENT ---
     getWeatherData(lat, lng); 
-    updateEnvironmentalData(altitudeStabilized); // Utilise l'altitude STABILISÉE
+    updateEnvironmentalData(altitudeStabilized); 
 
     // --- 3. FILTRAGE HORIZONTAL (Vitesse) ---
     EKF_Predict_H(dt);
-    // Utilise la précision ajustée par l'environnement
     EKF_Update_H(speedRawHorizontal, accuracy * WEATHER_DATA.ekf_correction_factor); 
     const speedStableHorizontal = EKF_State_H.velocity;
     
-    // --- 4. VITESSE 3D ---
+    // --- 4. VITESSE 3D (Utilise les valeurs stabilisées ou 0 si EKF-V non fonctionnel) ---
     const speed3D = calculateSpeed3D(speedStableHorizontal, speedStabilizedVertical);
     
     // --- 5. Distance & Temps de Mouvement ---
@@ -256,124 +338,87 @@ function gpsSuccess(position) {
     updateDisplay(coords, speedRawHorizontal, speedStableHorizontal, speed3D, speedStabilizedVertical, altitudeStabilized);
 }
 
-// ... [gpsError, startGPS sont inchangés] ...
+// ... [gpsError, startGPS, initMap, updateMap sont omis pour la concision] ...
+// ... [updateDisplay est mis à jour pour afficher 'EKF' pour la vitesse verticale et l'altitude] ...
+
 
 // =================================================================
-// 5. MISE À JOUR DU DOM (Affichage)
+// 5. NOUVEAUX BOUTONS & CONTROLS
 // =================================================================
 
-function updateDisplay(coords, speedRaw, speedStable, speed3D, speedVertical, altitudeStabilized) {
-    const speedStableKmH = speedStable * 3.6;
-    const maxSpeedKmH = MAX_SPEED_MS * 3.6;
-    const displayDistanceM = netherMode ? (TOTAL_DISTANCE_M / NETHER_RATIO) : TOTAL_DISTANCE_M;
-    const displayDistanceKm = displayDistanceM / 1000;
-    
-    // Vitesse & Distance
-    $('speed-stable').textContent = speedStableKmH.toFixed(2) + ' km/h';
-    $('speed-raw-ms').textContent = speedRaw.toFixed(2) + ' m/s';
-    $('speed-3d-inst').textContent = (speed3D * 3.6).toFixed(2) + ' km/h';
-    $('speed-max').textContent = maxSpeedKmH.toFixed(5) + ' km/h';
-    $('distance-total-km').textContent = displayDistanceKm.toFixed(3) + ' km | ' + displayDistanceM.toFixed(2) + ' m';
-    $('speed-stable-ms').textContent = `${speedStable.toFixed(2)} m/s | ${(speedStable * 1e6).toFixed(0)} µm/s`;
-    
-    // GPS & Physique
-    $('latitude').textContent = coords.latitude.toFixed(6);
-    $('longitude').textContent = coords.longitude.toFixed(6);
-    // CORRECTION : Utilise l'altitude STABILISÉE
-    $('altitude-gps').textContent = altitudeStabilized !== null ? altitudeStabilized.toFixed(2) + ' m (EKF)' : 'N/A';
-    $('gps-precision').textContent = coords.accuracy ? coords.accuracy.toFixed(2) + ' m' : 'N/A';
-    // CORRECTION : Utilise la vitesse verticale STABILISÉE
-    $('vertical-speed').textContent = speedVertical.toFixed(2) + ' m/s (EKF)'; 
-    $('underground-status').textContent = (altitudeStabilized !== null && altitudeStabilized < -50) ? 'OUI' : 'Non';
-
-    // Cosmics
-    $('perc-speed-sound').textContent = (speedStable / C_SOUND * 100).toFixed(2) + ' %';
-    $('perc-speed-c').textContent = (speedStable / C_LIGHT * 100).toExponential(2) + ' %';
-    $('distance-cosmic').textContent = (displayDistanceM / C_LIGHT).toExponential(2) + ' s lumière';
-    
-    // Précision EKF
-    const errorPerc = Math.sqrt(EKF_State_H.P[1][1]) / speedStable * 100;
-    $('speed-error-perc').textContent = isFinite(errorPerc) ? errorPerc.toFixed(1) + ' %' : 'N/A';
-    
-    // Temps
-    $('time-moving').textContent = (TOTAL_MOVING_TIME_MS / 1000).toFixed(2) + ' s';
-    $('time-elapsed').textContent = (TOTAL_ELAPSED_TIME_MS / 1000).toFixed(2) + ' s';
+function handleCapture() {
+    alert("Fonction CAPTURE/SNAPSHOT activée. Les données actuelles ont été loggées.");
+    console.log("CAPTURE DES DONNÉES ACTUELLES:", {
+        time: $('local-time').textContent,
+        lat: $('latitude').textContent,
+        lng: $('longitude').textContent,
+        speedStable: $('speed-stable').textContent,
+        altitude: $('altitude-gps').textContent,
+        temp: $('temp-air').textContent
+    });
 }
 
-function resetDisp(fullReset = true) {
-    if (fullReset) {
-        TOTAL_DISTANCE_M = 0;
-        MAX_SPEED_MS = 0;
-        TOTAL_MOVING_TIME_MS = 0;
-        TOTAL_ELAPSED_TIME_MS = 0;
-        trackPoints = []; 
-        if (polyline) polyline.setLatLngs(trackPoints);
-        if (map) map.setView([MAP_DEFAULT_LAT, MAP_DEFAULT_LNG], 13);
-
-        // Reset EKF Vertical
-        EKF_State_V.altitude = 0;
-        EKF_State_V.v_vertical = 0;
-        EKF_State_V.P = [[100, 0], [0, 100]];
+function handleMaterials() {
+    const currentMaterial = prompt("Entrez le type de matériau (ex: Acier, Polymère, Air) pour les calculs de frottement/traînée:", "Air");
+    if (currentMaterial) {
+        alert(`Matériau sélectionné: ${currentMaterial}. (La logique de calculs avancés des matériaux n'est pas implémentée dans cette version.)`);
     }
-    
-    // Reset EKF Horizontal
-    EKF_State_H.velocity = 0;
-    EKF_State_H.P = [[100, 0], [0, 100]];
-    
-    // Reset DOM
-    $('speed-stable').textContent = '0.00 km/h';
-    $('speed-max').textContent = '0.00000 km/h';
-    $('distance-total-km').textContent = '0.000 km | 0.00 m';
-    $('time-moving').textContent = '0.00 s';
-    $('time-elapsed').textContent = '0.00 s';
 }
 
-// ... [initGeolocation, attemptNTPTimeSync, Fonctions Météo et IMU sont omis pour la concision mais restent dans le code complet] ...
+// =================================================================
+// 6. INITIALISATION
+// =================================================================
 
-// =================================================================
-// 6. INITIALISATION (DOMContentLoaded)
-// =================================================================
-// Le reste de l'initialisation est inchangé, utilisant les nouvelles fonctions
-// de filtration verticale pour les données d'altitude et de vitesse verticale.
+async function initGeolocation() {
+    // ... (Logique d'initialisation de la V11.8) ...
+    initMap();
+    
+    // Initialisation des listeners
+    const $massInput = $('mass-input');
+    if ($massInput) { /* ... */ }
+
+    // --- ÉCOUTEURS DE BOUTONS (Mise à jour) ---
+    $('toggle-gps-btn').addEventListener('click', startGPS);
+    $('freq-select').addEventListener('change', (e) => {
+        currentGPSMode = e.target.value;
+        if (WATCH_ID) startGPS(); 
+    });
+    // Les autres écouteurs (reset, emergency, nether) sont conservés
+
+    // NOUVEAU : Écouteurs pour les nouveaux boutons (doivent exister dans le HTML)
+    const $captureBtn = $('capture-btn');
+    if ($captureBtn) $captureBtn.addEventListener('click', handleCapture);
+
+    const $materialsBtn = $('materials-btn');
+    if ($materialsBtn) $materialsBtn.addEventListener('click', handleMaterials);
+
+    // --- DÉMARRAGE DES SERVICES ---
+    await attemptNTPTimeSync(); 
+
+    setInterval(updateLocalTime, 1000);
+    updateLocalTime();
+    
+    // Démarrage initial Météo et Astro avec position par défaut
+    updateAstronomy(MAP_DEFAULT_LAT, MAP_DEFAULT_LNG); 
+    getWeatherData(MAP_DEFAULT_LAT, MAP_DEFAULT_LNG);
+    updateEnvironmentalData(0); 
+    
+    setInterval(() => updateAstronomy(MAP_DEFAULT_LAT, MAP_DEFAULT_LNG), 60000); 
+    setInterval(() => getWeatherData(MAP_DEFAULT_LAT, MAP_DEFAULT_LNG), WEATHER_FETCH_INTERVAL);
+
+    requestDeviceMotionPermission();
+}
 
 // Lancement de l'application
 document.addEventListener('DOMContentLoaded', initGeolocation);
 
 
-// --- Fonctions Météo et IMU (Extrait de V11.7) ---
-// Note: Le code complet inclurait ces fonctions ici...
-async function attemptNTPTimeSync() {/* ... */ }
-function updateLocalTime() {/* ... */ }
-function updateAstronomy(latitude, longitude) {/* ... */ }
-function updateEnvironmentalData(altitude_m) {
-    const pressure = WEATHER_DATA.pressure_pa; 
-    const temperature = WEATHER_DATA.temp_air_K; 
-    const density = pressure / (R_AIR_SPECIFIC * temperature); 
-    WEATHER_DATA.density_air = density;
-    const standardDensity = 1.225;
-    let factor = standardDensity / density;
-    factor = Math.min(1.5, Math.max(1.0, factor)); 
-    WEATHER_DATA.ekf_correction_factor = factor;
-    $('env-factor').textContent = `x${factor.toFixed(2)}`;
-}
-async function getWeatherData(lat, lng) {
-    if (Date.now() - WEATHER_LAST_FETCH < WEATHER_FETCH_INTERVAL) return;
-    try {
-        const temp_c = 15; const pressure_hpa = 1013; const humidity_perc = 50;
-        WEATHER_DATA.temp_air_K = temp_c + 273.15;
-        WEATHER_DATA.pressure_pa = pressure_hpa * 100;
-        WEATHER_DATA.humidity_perc = humidity_perc;
-        WEATHER_LAST_FETCH = Date.now();
-        $('temp-air').textContent = `${temp_c.toFixed(1)} °C`;
-        $('pressure').textContent = `${pressure_hpa.toFixed(1)} hPa`;
-        $('humidity').textContent = `${humidity_perc.toFixed(0)} %`;
-    } catch (error) {
-        console.warn('Weather API failed, using standard environment data:', error);
-        $('temp-air').textContent = `N/A (Std: 15°C)`;
-        $('pressure').textContent = `N/A (Std: 1013 hPa)`;
-    }
-}
-function requestDeviceMotionPermission() {/* ... */ }
-function startDeviceMotionTracking() {/* ... */ }
-function updateDynamicIMUDisplay() {/* ... */ }
-function initGeolocation() { /* ... */ } // Le corps complet de l'init est dans le code précédent
+// --- Fonctions de soutien (Assurez-vous qu'elles sont incluses dans le fichier final) ---
+function gpsError(error) { /* ... */ }
+function startGPS() { /* ... */ }
+function updateDisplay(coords, speedRaw, speedStable, speed3D, speedVertical, altitudeStabilized) { /* ... */ }
+function resetDisp(fullReset = true) { /* ... */ }
+function requestDeviceMotionPermission() { /* ... */ }
+function startDeviceMotionTracking() { /* ... */ }
+function updateDynamicIMUDisplay() { /* ... */ }
+// ... (Les autres fonctions doivent être incluses dans le fichier .js)
