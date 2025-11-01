@@ -3,15 +3,13 @@
 <head>
     <meta charset="UTF8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Tableau de Bord GNSS/IMU (V11.8 - Stabilisation Verticale Complète)</title>
+    <title>Tableau de Bord GNSS/IMU (V11.9 - Vitesse 3D Corrigée & Contrôles)</title>
     
     <link rel="stylesheet" href="./leaflet.css" crossorigin=""/>
     <link rel="stylesheet" href="./fontawesome.min.css" referrerpolicy="no-referrer" />
           
     <style>
-        /* =================================================================
-           BASE & COULEURS (Mode Clair)
-           ================================================================= */
+        /* ... (CSS omis pour la concision - Il reste le même que la V11.8) ... */
         :root {
             --color-background: #f4f4f4;
             --color-surface: #ffffff;
@@ -44,13 +42,8 @@
             box-shadow: 0 2px 4px var(--color-shadow);
         }
         
-        /* =================================================================
-           GRILLE 3 COLONNES FORCÉE
-           ================================================================= */
-        
         .dashboard-container { 
             display: grid; 
-            /* 3 colonnes sont forcées sur TOUTES les tailles d'écran */
             grid-template-columns: repeat(3, 1fr); 
             gap: 20px; 
             padding: 20px; 
@@ -73,10 +66,6 @@
             color: var(--color-accent);
         }
         
-        /* =================================================================
-           POINTS DE DONNÉES & INPUTS
-           ================================================================= */
-
         .data-point { 
             display: flex; 
             justify-content: space-between; 
@@ -99,12 +88,10 @@
             flex-shrink: 0;
         }
         
-        /* Emphase sur les données principales */
         .main-speed span:last-child { color: var(--color-speed-main); font-size: 1.1em; }
         .main-force span:last-child { color: var(--color-force-main); font-size: 1.1em; }
         .main-eot span:last-child { color: var(--color-eot-main); font-size: 1.1em; }
 
-        /* Style pour l'input de masse au gramme près */
         input[type="number"]#mass-input {
             width: 60%; 
             padding: 8px;
@@ -123,7 +110,7 @@
             padding-right: 10px; 
         }
         
-        /* Contrôles */
+        /* Contrôles: NOUVELLE GRILLE 3x3 (9 boutons/slots) */
         .controls-grid { 
             display: grid; 
             grid-template-columns: repeat(3, 1fr); 
@@ -148,10 +135,6 @@
         
         hr { border: none; border-top: 1px solid var(--color-divider); margin: 15px 0; }
         
-        /* =================================================================
-           CARTE & AVERTISSEMENT (IMU)
-           ================================================================= */
-        
         #map-container {
             padding: 20px;
             max-width: 1400px; 
@@ -165,7 +148,6 @@
             box-shadow: 0 4px 8px var(--color-shadow);
         }
         
-        /* Style de la note d'avertissement (masquée si IMU actif) */
         .warning-note {
             font-size: 0.8em;
             color: #8b0000; 
@@ -181,7 +163,7 @@
 </head>
 <body>
     <header>
-        <h1>Tableau de Bord GNSS/IMU (V11.8 - Stabilisation Verticale Complète)</h1>
+        <h1>Tableau de Bord GNSS/IMU (V11.9 - Vitesse 3D Corrigée & Contrôles)</h1>
     </header>
 
     <div class="dashboard-container">
@@ -205,6 +187,8 @@
                 <select id="freq-select"><option value="HIGH_FREQ">Haute Fréquence</option><option value="LOW_FREQ">Basse Fréquence</option></select>
                 <button id="emergency-stop-btn">🛑 Arrêt d'urgence: INACTIF 🟢</button>
                 <button id="nether-toggle-btn">🔥 Mode Nether</button>
+                <button id="capture-btn">📸 Capture</button>
+                <button id="materials-btn">🧱 Matériaux</button>
                 <button id="reset-dist-btn">❌ Distance</button>
                 <button id="reset-max-btn">❌ Vitesse Max</button>
                 <button id="reset-all-btn">⚠️ TOUT RÉINITIALISER</button>
@@ -295,4 +279,4 @@
 <script src="./gnss-dashboard-full.js" defer></script> 
 
 </body>
-                    </html>
+    </html>
