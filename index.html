@@ -1,284 +1,198 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Tableau de Bord GNSS/IMU (V11.9 - Vitesse 3D Corrigée & Contrôles)</title>
-    
-    <link rel="stylesheet" href="./leaflet.css" crossorigin=""/>
-    <link rel="stylesheet" href="./fontawesome.min.css" referrerpolicy="no-referrer" />
-          
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tableau de Bord GNSS/IMU (V12.0 - EKF, Astro TST & IMU)</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="leaflet.css" />
     <style>
-        /* ... (CSS omis pour la concision - Il reste le même que la V11.8) ... */
-        :root {
-            --color-background: #f4f4f4;
-            --color-surface: #ffffff;
-            --color-text-main: #333333;
-            --color-text-secondary: #555555;
-            --color-accent: #007bff;
-            --color-divider: #dddddd;
-            --color-shadow: rgba(0,0,0,0.1);
-            --color-speed-main: #28a745; 
-            --color-force-main: #ffc107; 
-            --color-eot-main: #17a2b8; 
-        }
-
-        * { box-sizing: border-box; }
-        
-        body { 
-            font-family: 'Arial', sans-serif; 
-            margin: 0; 
-            padding: 0; 
-            background-color: var(--color-background); 
-            color: var(--color-text-main); 
-            line-height: 1.4;
-        }
-        
-        header {
-            background-color: var(--color-accent);
-            color: white;
-            padding: 15px 20px;
-            text-align: center;
-            box-shadow: 0 2px 4px var(--color-shadow);
-        }
-        
-        .dashboard-container { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
-            gap: 20px; 
-            padding: 20px; 
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .section { 
-            background-color: var(--color-surface); 
-            padding: 15px; 
-            border-radius: 8px; 
-            box-shadow: 0 4px 8px var(--color-shadow); 
-        }
-        
-        .section h2, .section h3 { 
-            margin-top: 0; 
-            border-bottom: 2px solid var(--color-divider); 
-            padding-bottom: 10px; 
-            font-size: 1.2em;
-            color: var(--color-accent);
-        }
-        
-        .data-point { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 8px 0; 
-            border-bottom: 1px dotted var(--color-divider); 
-            font-size: 0.95em;
-            align-items: center;
-        }
-        
-        .data-point span:first-child { 
-            font-weight: normal; 
-            color: var(--color-text-secondary);
-            flex-grow: 1;
-        }
-        .data-point span:last-child { 
-            font-weight: bold; 
-            color: var(--color-text-main);
-            text-align: right;
-            max-width: 50%;
-            flex-shrink: 0;
-        }
-        
-        .main-speed span:last-child { color: var(--color-speed-main); font-size: 1.1em; }
-        .main-force span:last-child { color: var(--color-force-main); font-size: 1.1em; }
-        .main-eot span:last-child { color: var(--color-eot-main); font-size: 1.1em; }
-
-        input[type="number"]#mass-input {
-            width: 60%; 
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-weight: bold;
-            text-align: right; 
-            color: var(--color-text-main);
-            background-color: #f7f7f7;
-            flex-grow: 0;
-        }
-
-        .data-point label {
-            flex-grow: 1; 
-            font-size: 0.95em;
-            padding-right: 10px; 
-        }
-        
-        /* Contrôles: NOUVELLE GRILLE 3x3 (9 boutons/slots) */
-        .controls-grid { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
-            gap: 10px; 
-            margin-top: 15px; 
-        }
-        button, select { 
-            padding: 10px 5px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            font-size: 0.85em;
-        }
-        #toggle-gps-btn { background-color: #28a745; color: white; }
-        #emergency-stop-btn { background-color: #dc3545; color: white; }
-        #emergency-stop-btn.active { background-color: #8b0000; }
-        .controls-grid button:not(#toggle-gps-btn):not(#emergency-stop-btn) { 
-            background-color: #f0f0f0; 
-            color: var(--color-text-main); 
-        }
-        
-        hr { border: none; border-top: 1px solid var(--color-divider); margin: 15px 0; }
-        
-        #map-container {
-            padding: 20px;
-            max-width: 1400px; 
-            margin: 0 auto;
-        }
-
-        #map {
-            height: 400px; 
-            width: 100%;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px var(--color-shadow);
-        }
-        
-        .warning-note {
-            font-size: 0.8em;
-            color: #8b0000; 
-            background-color: #ffe0e0; 
-            border: 1px solid #ff7f7f;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 5px;
-            margin-bottom: 15px;
-            font-weight: bold;
-        }
+        /* Styles CSS pour la structure rapide, à externaliser dans style.css */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a1a2e; color: #e9e9f2; margin: 0; padding: 20px; }
+        .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1400px; margin: 0 auto; }
+        .data-block { background-color: #1f4068; border-radius: 8px; padding: 15px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4); }
+        h2 { color: #8d93ab; border-bottom: 2px solid #2e5984; padding-bottom: 5px; margin-top: 0; font-size: 1.2em; }
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.95em; }
+        .label { color: #b8c2cc; }
+        .value { font-weight: bold; color: #ffffff; }
+        .data-block.full-width { grid-column: 1 / -1; }
+        #map { height: 300px; border-radius: 8px; margin-top: 10px; background-color: #24294d; }
+        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        .controls button, .controls select { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #toggle-gps-btn { background-color: #4CAF50; color: white; }
+        #emergency-stop-btn { background-color: #f44336; color: white; }
+        #emergency-stop-btn.active { background-color: #cc0000; animation: pulse 1s infinite alternate; }
+        @keyframes pulse { from { box-shadow: 0 0 5px #f44336; } to { box-shadow: 0 0 20px #f44336; } }
+        /* Style pour les inputs */
+        .controls-input { display: flex; align-items: center; gap: 5px; background-color: #2e5984; border-radius: 5px; padding: 5px; }
+        .controls-input label { margin-right: 5px; color: #b8c2cc; }
+        .controls-input input { border: none; padding: 4px; border-radius: 3px; width: 60px; text-align: right; background-color: #1f4068; color: white; }
     </style>
 </head>
 <body>
+
     <header>
-        <h1>Tableau de Bord GNSS/IMU (V11.9 - Vitesse 3D Corrigée & Contrôles)</h1>
+        <h1>Tableau de Bord GNSS/IMU (V12.0 - Vitesse 3D, Astro TST)</h1>
     </header>
 
     <div class="dashboard-container">
-        <div class="section" id="col-1">
-            <h2>⚙️ Contrôles & Système</h2>
-            <div class="data-point"><span>Heure UTC (Synchro)</span><span id="local-time">N/A</span></div>
-            <div class="data-point"><span>Date Locale</span><span id="date-display">N/A</span></div> 
-            <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
-            <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
-            <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
-            
-            <hr>
-            
-            <div class="data-point">
-                <label for="mass-input">Masse (kg)</label>
-                <input type="number" id="mass-input" value="70.000" min="0.001" step="0.001" placeholder="Ex: 70.123">
-            </div>
 
-            <div class="controls-grid">
+        <div class="data-block">
+            <h2>⚙️ Contrôles & Système</h2>
+            <div class="controls">
                 <button id="toggle-gps-btn">▶️ MARCHE GPS</button>
-                <select id="freq-select"><option value="HIGH_FREQ">Haute Fréquence</option><option value="LOW_FREQ">Basse Fréquence</option></select>
+                <select id="freq-select">
+                    <option value="HIGH_FREQ">Haute Fréquence</option>
+                    <option value="LOW_FREQ">Basse Fréquence</option>
+                </select>
                 <button id="emergency-stop-btn">🛑 Arrêt d'urgence: INACTIF 🟢</button>
                 <button id="nether-toggle-btn">🔥 Mode Nether</button>
                 <button id="capture-btn">📸 Capture</button>
-                <button id="materials-btn">🧱 Matériaux</button>
-                <button id="reset-dist-btn">❌ Distance</button>
-                <button id="reset-max-btn">❌ Vitesse Max</button>
-                <button id="reset-all-btn">⚠️ TOUT RÉINITIALISER</button>
             </div>
-            
-            <hr>
-            
-            <h2>🚀 Vitesse & Distance</h2>
-            <div class="data-point main-speed"><span>Vitesse Stable (EKF Horiz)</span><span id="speed-stable">-- km/h</span></div>
-            <div class="data-point"><span>Précision EKF (R dyn.)</span><span id="speed-error-perc">N/A</span></div> 
-            <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
-            <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00000 km/h</span></div>
-            <div class="data-point"><span>Vitesse 3D (EKF)</span><span id="speed-3d-inst">-- km/h</span></div>
-            <div class="data-point"><span>Vitesse stable</span><span id="speed-stable-ms">-- m/s | -- µm/s</span></div> 
-            <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">-- %</span></div> 
-            <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
-            <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
-            <div class="data-point"><span>Distance Cosmique</span><span id="distance-cosmic">0.00e+00 s lumière</span></div>
+            <div class="data-row"><span class="label">Heure UTC (Synchro)</span><span class="value" id="local-time">Synchronisation...</span></div>
+            <div class="data-row"><span class="label">Date Locale</span><span class="value" id="date-display">N/A</span></div>
+            <div class="data-row"><span class="label">Temps écoulé (Session)</span><span class="value" id="time-elapsed">0.00 s</span></div>
+            <div class="data-row"><span class="label">Temps de Mouvement</span><span class="value" id="time-moving">0.00 s</span></div>
+            <div class="data-row"><span class="label">Heure Minecraft</span><span class="value" id="time-minecraft">00:00:00</span></div>
+            <div class="data-row"><span class="label">Mode Nether (1:8)</span><span class="value" id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
+
+            <hr style="border-top: 1px solid #2e5984; margin: 10px 0;">
+            <div class="controls" style="justify-content: space-around;">
+                <button id="reset-dist-btn" style="background-color: #e67e22;">❌ Distance & Temps</button>
+                <button id="reset-max-btn" style="background-color: #9b59b6;">❌ Vitesse Max</button>
+                <button id="reset-all-btn" style="background-color: #c0392b;">⚠️ TOUT RÉINITIALISER</button>
+            </div>
         </div>
 
-        <div class="section" id="col-2">
-            <h2>🛰️ Vue brute GPS & Physique</h2>
-            <div class="data-point"><span>Latitude</span><span id="latitude">N/A</span></div>
-            <div class="data-point"><span>Longitude</span><span id="longitude">N/A</span></div>
-            <div class="data-point"><span>Altitude (MSL - EKF)</span><span id="altitude-gps">N/A</span></div>
-            <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
-            <div class="data-point"><span>Vitesse Verticale (EKF)</span><span id="vertical-speed">0.00 m/s</span></div>
-            <div class="data-point"><span>Vitesse Brute Horiz. (m/s)</span><span id="speed-raw-ms">N/A</span></div>
-            <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div>
-            
-            <hr>
-            
-            <h3>Dynamique du Véhicule (Masse: <span id="current-mass">70.000</span> kg)</h3>
-            
-            <p class="warning-note">⚠️ **ATTENTION:** Si les capteurs IMU (DeviceMotion) ne démarrent pas, ces valeurs resteront à 0 ou estimées.</p>
-            
-            <div class="data-point"><span>Accélération Longitudinale (IMU)</span><span id="accel-long">0.000 m/s²</span></div>
-            <div class="data-point"><span>Accélération Latérale (IMU)</span><span id="accel-lat">0.000 m/s²</span></div>
-            <div class="data-point main-force"><span>Force Centrifuge (Dérivée IMU)</span><span id="force-centrifugal">0.00 N</span></div>
-            <div class="data-point"><span>Force Centrifuge (en G)</span><span id="force-centrifugal-g">0.00 G</span></div>
+        <div class="data-block">
+            <h2>🚀 Vitesse & Distance</h2>
+            <div class="data-row"><span class="label">Vitesse Stable (EKF 3D)</span><span class="value" id="speed-stable">NaN km/h</span></div>
+            <div class="data-row"><span class="label">Vitesse Stable (m/s | mm/s)</span><span class="value" id="speed-stable-ms">NaN m/s | NaN mm/s</span></div>
+            <div class="data-row"><span class="label">Précision EKF (R dyn.)</span><span class="value" id="speed-error-perc">N/A</span></div>
+            <div class="data-row"><span class="label">Vitesse Max (Session)</span><span class="value" id="speed-max">0.00000 km/h</span></div>
+            <div class="data-row"><span class="label">Vitesse Moyenne (Mvt)</span><span class="value" id="speed-avg-moving">0.00000 km/h</span></div>
+            <hr style="border-top: 1px solid #2e5984; margin: 10px 0;">
+            <div class="data-row"><span class="label">Distance Totale</span><span class="value" id="distance-total-km">NaN km | NaN m</span></div>
+            <div class="data-row"><span class="label">Distance Cosmique</span><span class="value" id="distance-cosmic">NaN s lumière | NaN al</span></div>
+            <hr style="border-top: 1px solid #2e5984; margin: 10px 0;">
+            <div class="data-row"><span class="label">Vitesse 3D (Brut)</span><span class="value" id="speed-3d-inst">NaN km/h</span></div>
+            <div class="data-row"><span class="label">% Vitesse du Son</span><span class="value" id="perc-speed-sound">NaN %</span></div>
+            <div class="data-row"><span class="label">% Vitesse de la Lumière (c)</span><span class="value" id="perc-speed-c">NaN%</span></div>
+        </div>
 
-            <hr>
-            
+        <div class="data-block">
+            <h2>🛰️ Vue brute GPS & Météo</h2>
+            <div class="data-row"><span class="label">Latitude</span><span class="value" id="latitude">N/A</span></div>
+            <div class="data-row"><span class="label">Longitude</span><span class="value" id="longitude">N/A</span></div>
+            <div class="data-row"><span class="label">Altitude (MSL - EKF)</span><span class="value" id="altitude-gps">NaN m (EKF)</span></div>
+            <div class="data-row"><span class="label">Vitesse Verticale (EKF)</span><span class="value" id="vertical-speed">NaN m/s (EKF)</span></div>
+            <div class="data-row"><span class="label">Précision GPS (EPE)</span><span class="value" id="gps-precision">N/A</span></div>
+            <div class="data-row"><span class="label">Sous-sol (Seuil -50m)</span><span class="value" id="underground-status">Non</span></div>
+            <hr style="border-top: 1px solid #2e5984; margin: 10px 0;">
             <h2>🎚️ Météo & Capteurs</h2>
-            <div class="data-point">
-    <span id="env-factor">NORMAL (x1.0)</span> 
+            <div class="data-row"><span class="label">Facteur Kalman Environnement</span>
+                 <span class="value" id="env-factor">NORMAL</span>
             </div>
-            <div class="data-point"><span>Température Air</span><span id="temp-air">N/A</span></div>
-            <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure">N/A</span></div>
-            <div class="data-point"><span>Humidité Relative</span><span id="humidity">N/A</span></div>
+            <div class="data-row"><span class="label">Température Air</span><span class="value" id="temp-air">N/A</span></div>
+            <div class="data-row"><span class="label">Pression Atmosphérique</span><span class="value" id="pressure">N/A</span></div>
+            <div class="data-row"><span class="label">Humidité Relative</span><span class="value" id="humidity">N/A</span></div>
         </div>
         
-        <div class="section" id="col-3">
+        <div class="data-block">
+            <h2>⚙️ Dynamique du Véhicule (Masse: <span id="mass-display">70.000</span> kg)</h2>
+            <div class="controls-input">
+                <label for="mass-input">Masse (kg)</label>
+                <input type="number" id="mass-input" value="70.000" step="0.001">
+            </div>
+            <p style="font-size: 0.8em; color: #ffcc00;">⚠️ Si capteurs IMU (DeviceMotion) non démarrés, valeurs brutes.</p>
+            
+            <div class="data-row"><span class="label">Accélération Longitudinale (IMU)</span><span class="value" id="accel-long-imu">NaN m/s²</span></div>
+            <div class="data-row"><span class="label">Accélération Latérale (IMU)</span><span class="value" id="accel-lateral-imu">NaN m/s²</span></div>
+            <div class="data-row"><span class="label">Force Latérale (Centrifuge - N)</span><span class="value" id="force-centrifugal-n">0.00 N</span></div>
+            <div class="data-row"><span class="label">Force Latérale (en G)</span><span class="value" id="force-g-lateral">0.00 G</span></div>
+
+            <hr style="border-top: 1px solid #2e5984; margin: 10px 0;">
             <h2>☀️ Soleil (Éphémérides SunCalc)</h2>
-            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
-            <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="culmination-lsm">N/D</span></div>
-            
-            <hr>
-            
-            <div class="data-point main-eot"><span>Équation du Temps (Total EOT)</span><span id="eot-min">N/D min</span></div> 
-            <div class="data-point"><span>Composante Eccentricité</span><span id="eot-ecc-comp">-- min</span></div>
-            <div class="data-point"><span>Composante Obliquité</span><span id="eot-obliq-comp">-- min</span></div>
-            
-            <hr>
-            
-            <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
-            <div class="data-point"><span>Azimut Solaire</span><span id="sun-azimuth">-- °</span></div>
-            <div class="data-point"><span>Durée du Jour Solaire</span><span id="day-duration">N/A</span></div> 
-            <div class="data-point"><span>Longitude écliptique</span><span id="ecliptic-long">-- °</span></div> 
-            
-            <hr>
-            
+            <div class="data-row"><span class="label">Heure Solaire Vraie (TST)</span><span class="value" id="time-solar-true">N/A</span></div>
+            <div class="data-row"><span class="label">Temps Solaire Moyen Local (LSM)</span><span class="value" id="culmination-lsm">N/A</span></div>
+            <div class="data-row"><span class="label">Lever / Coucher Soleil (TST)</span><span class="value" id="sun-times-tst">N/A</span></div>
+            <div class="data-row"><span class="label">Élévation du Soleil</span><span class="value" id="sun-elevation">N/A</span></div>
+            <div class="data-row"><span class="label">Azimut Solaire</span><span class="value" id="sun-azimuth">N/A</span></div>
+            <div class="data-row"><span class="label">Durée du Jour Solaire</span><span class="value" id="day-duration">N/A</span></div>
+            <div class="data-row"><span class="label">Équation du Temps (EOT)</span><span class="value" id="eot-min">N/A</span></div>
+            <div class="data-row"><span class="label">Longitude écliptique</span><span class="value" id="ecliptic-long">N/A</span></div>
+        </div>
+
+        <div class="data-block">
             <h2>🌙 Lune (SunCalc)</h2>
-            <div class="data-point"><span>Phase Lunaire (Fraction)</span><span id="lunar-phase-perc">N/A</span></div>
-            <div class="data-point"><span>Élévation Lunaire</span><span id="moon-elevation">-- °</span></div>
-            <div class="data-point"><span>Azimut Lunaire</span><span id="moon-azimuth">-- °</span></div>
-            <div class="data-point"><span>Lever / Coucher Lune</span><span id="moon-times">N/D</span></div> 
+            <div class="data-row"><span class="label">Phase Lunaire (Fraction)</span><span class="value" id="lunar-phase-perc">N/A</span></div>
+            <div class="data-row"><span class="label">Lever / Coucher Lune (TST)</span><span class="value" id="moon-culmination-tst">N/A</span></div>
+            <div class="data-row"><span class="label">Élévation Lunaire</span><span class="value" id="moon-elevation">N/A</span></div>
+            <div class="data-row"><span class="label">Azimut Lunaire</span><span class="value" id="moon-azimuth">N/A</span></div>
+            
+            <hr style="border-top: 1px solid #2e5984; margin: 10px 0;">
+            <h2>🗺️ Carte GNSS (Leaflet)</h2>
+            <div id="map">Initialisation de la carte...</div>
+        </div>
+        
+        <div class="data-block">
+            <h2>⚡️ Stats Instantanées</h2>
+            <div class="data-row"><span class="label">Vitesse Horiz. (m/s)</span><span class="value" id="speed-raw-ms">NaN m/s (3D Brut)</span></div>
+            <div class="data-row"><span class="label">Accélération Longitudinale (EKF)</span><span class="value" id="accel-long">NaN m/s²</span></div>
+            <div class="data-row"><span class="label">Force Longitudinale (en G)</span><span class="value" id="force-g-long">0.00 G</span></div>
         </div>
 
     </div>
+    
+    <script src="leaflet.js"></script>
+    <script src="suncalc.js"></script>
+    
+    <script src="gnss-dashboard-part1.js"></script>
+    <script src="gnss-dashboard-part2.js"></script>
+    
+    <script>
+        let map, marker, polyline;
+        let mapInitialized = false;
 
-    <div id="map-container">
-        <div id="map">
-            <p>Initialisation de la carte...</p>
-        </div>
-    </div>
+        function initMap() {
+            if (mapInitialized) return;
+            try {
+                map = L.map('map').setView([48.8566, 2.3522], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
 
-<script src="./leaflet.js"></script>
-<script src="./suncalc.js"></script>
-<script src="./gnss-dashboard-full.js" defer></script> 
+                marker = L.marker([48.8566, 2.3522]).addTo(map);
+                polyline = L.polyline([], {color: 'red'}).addTo(map);
+                mapInitialized = true;
+                console.log("Carte Leaflet initialisée.");
+                
+                // Fonction pour mettre à jour la carte (appelée dans updateDisp)
+                window.updateMap = (lat, lon) => {
+                    const latlng = [lat, lon];
+                    marker.setLatLng(latlng);
+                    polyline.addLatLng(latlng);
+                    map.setView(latlng, map.getZoom() > 10 ? map.getZoom() : 13);
+                };
+            } catch (e) {
+                console.error("Erreur lors de l'initialisation de la carte Leaflet:", e);
+                document.getElementById('map').textContent = "Erreur de chargement de la carte.";
+            }
+        }
+    </script>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
+                        console.log('Service Worker enregistré. Scope:', registration.scope);
+                    })
+                    .catch(err => {
+                        console.error('Échec de l’enregistrement du Service Worker:', err);
+                    });
+            });
+        }
+    </script>
 </body>
-    </html>
+                </html>
