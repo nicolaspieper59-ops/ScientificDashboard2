@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Tableau de Bord GNSS/IMU (V11.6 - Synchro Hybride)</title>
+    <title>Tableau de Bord GNSS/IMU (V11.8 - Stabilisation Verticale Complète)</title>
     
     <link rel="stylesheet" href="./leaflet.css" crossorigin=""/>
     <link rel="stylesheet" href="./fontawesome.min.css" referrerpolicy="no-referrer" />
@@ -45,12 +45,12 @@
         }
         
         /* =================================================================
-           CORRECTION : GRILLE 3 COLONNES FORCÉE (Pas de réactivité)
+           GRILLE 3 COLONNES FORCÉE
            ================================================================= */
         
         .dashboard-container { 
             display: grid; 
-            /* MODIFICATION : 3 colonnes sont forcées sur TOUTES les tailles d'écran */
+            /* 3 colonnes sont forcées sur TOUTES les tailles d'écran */
             grid-template-columns: repeat(3, 1fr); 
             gap: 20px; 
             padding: 20px; 
@@ -74,7 +74,7 @@
         }
         
         /* =================================================================
-           POINTS DE DONNÉES & INPUTS (Masse au gramme)
+           POINTS DE DONNÉES & INPUTS
            ================================================================= */
 
         .data-point { 
@@ -181,7 +181,7 @@
 </head>
 <body>
     <header>
-        <h1>Tableau de Bord GNSS/IMU (V11.6 - Synchro Hybride)</h1>
+        <h1>Tableau de Bord GNSS/IMU (V11.8 - Stabilisation Verticale Complète)</h1>
     </header>
 
     <div class="dashboard-container">
@@ -213,11 +213,11 @@
             <hr>
             
             <h2>🚀 Vitesse & Distance</h2>
-            <div class="data-point main-speed"><span>Vitesse Stable (EKF)</span><span id="speed-stable">-- km/h</span></div>
+            <div class="data-point main-speed"><span>Vitesse Stable (EKF Horiz)</span><span id="speed-stable">-- km/h</span></div>
             <div class="data-point"><span>Précision EKF (R dyn.)</span><span id="speed-error-perc">N/A</span></div> 
             <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
             <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00000 km/h</span></div>
-            <div class="data-point"><span>Vitesse 3D (Inst.)</span><span id="speed-3d-inst">-- km/h</span></div>
+            <div class="data-point"><span>Vitesse 3D (EKF)</span><span id="speed-3d-inst">-- km/h</span></div>
             <div class="data-point"><span>Vitesse stable</span><span id="speed-stable-ms">-- m/s | -- µm/s</span></div> 
             <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">-- %</span></div> 
             <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
@@ -229,10 +229,10 @@
             <h2>🛰️ Vue brute GPS & Physique</h2>
             <div class="data-point"><span>Latitude</span><span id="latitude">N/A</span></div>
             <div class="data-point"><span>Longitude</span><span id="longitude">N/A</span></div>
-            <div class="data-point"><span>Altitude (MSL)</span><span id="altitude-gps">N/A</span></div>
+            <div class="data-point"><span>Altitude (MSL - EKF)</span><span id="altitude-gps">N/A</span></div>
             <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
-            <div class="data-point"><span>Vitesse Verticale</span><span id="vertical-speed">0.00 m/s</span></div>
-            <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
+            <div class="data-point"><span>Vitesse Verticale (EKF)</span><span id="vertical-speed">0.00 m/s</span></div>
+            <div class="data-point"><span>Vitesse Brute Horiz. (m/s)</span><span id="speed-raw-ms">N/A</span></div>
             <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div>
             
             <hr>
@@ -248,7 +248,7 @@
 
             <hr>
             
-            <h2>🎚️ Météo & Capteurs (Non Implémentés)</h2>
+            <h2>🎚️ Météo & Capteurs</h2>
             <div class="data-point"><span>Facteur Kalman Environnement</span><span id="env-factor">NORMAL (x1.0)</span></div>
             <div class="data-point"><span>Température Air</span><span id="temp-air">N/A</span></div>
             <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure">N/A</span></div>
@@ -295,4 +295,4 @@
 <script src="./gnss-dashboard-full.js" defer></script> 
 
 </body>
-    </html>
+                    </html>
