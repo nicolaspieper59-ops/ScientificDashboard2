@@ -3,27 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>GNSS SpaceTime Dashboard 🚀 (V11.1 Final)</title>
+    <title>GNSS SpaceTime Dashboard 🚀 (V11.2 Final Hors Ligne)</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
-          crossorigin=""/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
-          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+h/lVj7T1/qA=" 
-          crossorigin="anonymous" referrerpolicy="no-referrer" />
-          
+    <link rel="stylesheet" href="./leaflet.css" crossorigin=""/>
+    <link rel="stylesheet" href="./fontawesome.min.css" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
-        <h1>Tableau de Bord GNSS/IMU (V11.1 Dyn. Véhicule)</h1>
+        <h1>Tableau de Bord GNSS/IMU (V11.2 Dyn. Véhicule)</h1>
     </header>
-
-    <div id="map-container">
-        <div id="map">
-            <p>Initialisation de la carte...</p>
-        </div>
-    </div>
 
     <div class="dashboard-container">
         
@@ -38,13 +27,8 @@
             <hr>
             
             <div class="data-point">
-                <span>Masse Appareil/Véhicule</span>
-                <select id="mass-select">
-                    <option value="70">70 kg (Défaut/Pers.)</option>
-                    <option value="1500">1500 kg (Voiture)</option>
-                    <option value="5000">5000 kg (Camionnette)</option>
-                    <option value="15000">15000 kg (Camion)</option>
-                </select>
+                <label for="mass-input">Masse (kg)</label>
+                <input type="number" id="mass-input" value="70.000" min="0.001" step="0.001" placeholder="Ex: 70.123">
             </div>
 
             <div class="controls-grid">
@@ -84,10 +68,13 @@
             
             <hr>
             
-            <h3>Dynamique du Véhicule (Masse: <span id="current-mass">70</span> kg)</h3>
-            <div class="data-point"><span>Accélération Longitudinale</span><span id="accel-long">0.000 m/s²</span></div>
-            <div class="data-point"><span>Accélération Latérale (Centrifuge Est.)</span><span id="accel-lat">0.000 m/s²</span></div>
-            <div class="data-point main-force"><span>Force Centrifuge (Estimée)</span><span id="force-centrifugal">0.00 N</span></div>
+            <h3>Dynamique du Véhicule (Masse: <span id="current-mass">70.000</span> kg)</h3>
+            
+            <p class="warning-note">⚠️ **ATTENTION:** L'accélération latérale et la Force Centrifuge sont actuellement **CALCULÉES/ESTIMÉES** par GPS/EKF. Pour une mesure réelle, un capteur IMU (accéléromètre) dédié est nécessaire. **Ces valeurs sont purement indicatives.**</p>
+            
+            <div class="data-point"><span>Accélération Longitudinale (EKF)</span><span id="accel-long">0.000 m/s²</span></div>
+            <div class="data-point"><span>Accélération Latérale (Calculée)</span><span id="accel-lat">0.000 m/s²</span></div>
+            <div class="data-point main-force"><span>Force Centrifuge (Calculée)</span><span id="force-centrifugal">0.00 N</span></div>
             <div class="data-point"><span>Force Centrifuge (en G)</span><span id="force-centrifugal-g">0.00 G</span></div>
 
             <hr>
@@ -105,7 +92,7 @@
         </div>
         
         <div class="section" id="col-3">
-            <h2>☀️ Soleil (Éphéméride)</h2>
+            <h2>☀️ Soleil (Éphéméride Standard)</h2>
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
             <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="culmination-lsm">N/D</span></div>
             
@@ -133,11 +120,15 @@
 
     </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20n6cT8HNY9uL-ZnGg3TfQZ+6QEDH58VbT1gJcO5u5V0="
-        crossorigin=""></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
-<script src="gnss-dashboard-full.js" defer></script>
+    <div id="map-container">
+        <div id="map">
+            <p>Initialisation de la carte...</p>
+        </div>
+    </div>
+
+<script src="./leaflet.js"></script>
+<script src="./suncalc.js"></script>
+<script src="gnss-dashboard-full.js" defer></script>  
 
 </body>
-    </html>
+                                                                                    </html>
