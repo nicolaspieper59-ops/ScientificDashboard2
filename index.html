@@ -3,10 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>GNSS Dashboard (V11.1 - Fusion/Astro Précis)</title>
+    <title>GNSS SpaceTime Dashboard 🚀 (V11.1 Map)</title>
     
     <link rel="stylesheet" href="style.css">
     
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
+          crossorigin=""/>
+          
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
+          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+          
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20n6cT8HNY9uL-ZnGg3TfQZ+6QEDH58VbT1gJcO5u5V0="
+            crossorigin=""></script>
+            
     <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
     
     <script src="gnss-dashboard-full.js" defer></script>
@@ -14,7 +26,7 @@
 <body>
 
     <header>
-        <h1>Tableau de Bord GNSS/IMU (V11.1)</h1>
+        <h1>Tableau de Bord GNSS/IMU (V11.1 Map)</h1>
         <div class="status-bar">
             <div class="status-item">Heure UTC (NTP): <span id="local-time">--:--:--</span></div>
             <div class="status-item">Date: <span id="date-display">N/A</span></div>
@@ -22,6 +34,13 @@
     </header>
 
     <main class="dashboard-grid">
+
+        <section class="widget map-container full-width-desktop">
+            <h3>🗺️ Position Actuelle</h3>
+            <div id="map" style="height: 350px;">
+                <p>Initialisation de la carte...</p>
+            </div>
+        </section>
 
         <section class="widget controls">
             <h3>Contrôles Système</h3>
@@ -229,4 +248,4 @@
     </main>
 
 </body>
-                                                                   </html>
+                    </html>
