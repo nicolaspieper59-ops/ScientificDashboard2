@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>GNSS SpaceTime Dashboard 🚀 (V11.3 Final)</title>
+    <title>Tableau de Bord GNSS/IMU (V11.4 Final Hors Ligne)</title>
     
     <link rel="stylesheet" href="./leaflet.css" crossorigin=""/>
     <link rel="stylesheet" href="./fontawesome.min.css" referrerpolicy="no-referrer" />
@@ -20,6 +20,9 @@
             --color-accent: #007bff;
             --color-divider: #dddddd;
             --color-shadow: rgba(0,0,0,0.1);
+            --color-speed-main: #28a745; /* Vert pour Vitesse Stable */
+            --color-force-main: #ffc107; /* Jaune pour Force Centrifuge */
+            --color-eot-main: #17a2b8; /* Bleu-Cyan pour EOT */
         }
 
         * { box-sizing: border-box; }
@@ -104,6 +107,20 @@
             flex-shrink: 0;
         }
         
+        /* Emphase sur les données principales */
+        .main-speed span:last-child {
+            color: var(--color-speed-main);
+            font-size: 1.1em;
+        }
+        .main-force span:last-child {
+            color: var(--color-force-main);
+            font-size: 1.1em;
+        }
+        .main-eot span:last-child {
+            color: var(--color-eot-main);
+            font-size: 1.1em;
+        }
+
         /* Style pour l'input de masse au gramme près */
         input[type="number"]#mass-input {
             width: 60%; 
@@ -123,31 +140,14 @@
             font-size: 0.95em;
             padding-right: 10px; 
         }
-
-        /* =================================================================
-           CARTE & AVERTISSEMENT
-           ================================================================= */
         
-        #map-container {
-            padding: 20px;
-            max-width: 1400px; 
-            margin: 0 auto;
-        }
-
-        #map {
-            height: 400px; /* HAUTEUR SUFFISANTE POUR LA CARTE */
-            width: 100%;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px var(--color-shadow);
-        }
-        
+        /* Contrôles */
         .controls-grid { 
             display: grid; 
             grid-template-columns: repeat(3, 1fr); 
             gap: 10px; 
-            margin-top: 10px; 
+            margin-top: 15px; 
         }
-        
         button, select { 
             padding: 10px 5px; 
             border: none; 
@@ -159,8 +159,31 @@
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
         #emergency-stop-btn.active { background-color: #8b0000; }
+        .controls-grid button:not(#toggle-gps-btn):not(#emergency-stop-btn) { 
+            background-color: #f0f0f0; 
+            color: var(--color-text-main); 
+        }
         
-        /* Style de la note d'avertissement pour les données estimées */
+        hr { border: none; border-top: 1px solid var(--color-divider); margin: 15px 0; }
+        
+        /* =================================================================
+           CARTE & AVERTISSEMENT
+           ================================================================= */
+        
+        #map-container {
+            padding: 20px;
+            max-width: 1400px; 
+            margin: 0 auto;
+        }
+
+        #map {
+            height: 400px; 
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px var(--color-shadow);
+        }
+        
+        /* Style de la note d'avertissement (pour la masquer si IMU actif) */
         .warning-note {
             font-size: 0.8em;
             color: #8b0000; 
@@ -176,14 +199,14 @@
 </head>
 <body>
     <header>
-        <h1>Tableau de Bord GNSS/IMU (V11.3 Dyn. Véhicule)</h1>
+        <h1>Tableau de Bord GNSS/IMU (V11.4 Dyn. Véhicule)</h1>
     </header>
 
     <div class="dashboard-container">
         <div class="section" id="col-1">
             <h2>⚙️ Contrôles & Système</h2>
-            <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">N/A</span></div>
-            <div class="data-point"><span>Date</span><span id="date-display">N/A</span></div> 
+            <div class="data-point"><span>Heure UTC (Dernière Synchro)</span><span id="local-time">N/A</span></div>
+            <div class="data-point"><span>Date Locale</span><span id="date-display">N/A</span></div> 
             <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
             <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
             <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
@@ -236,9 +259,9 @@
             
             <p class="warning-note">⚠️ **ATTENTION:** L'accélération latérale et la Force Centrifuge sont actuellement **CALCULÉES/ESTIMÉES** par GPS/EKF. Pour une mesure réelle, un capteur IMU (accéléromètre) dédié est nécessaire. **Ces valeurs sont purement indicatives.**</p>
             
-            <div class="data-point"><span>Accélération Longitudinale (EKF)</span><span id="accel-long">0.000 m/s²</span></div>
-            <div class="data-point"><span>Accélération Latérale (Calculée)</span><span id="accel-lat">0.000 m/s²</span></div>
-            <div class="data-point main-force"><span>Force Centrifuge (Calculée)</span><span id="force-centrifugal">0.00 N</span></div>
+            <div class="data-point"><span>Accélération Longitudinale (EKF/IMU)</span><span id="accel-long">0.000 m/s²</span></div>
+            <div class="data-point"><span>Accélération Latérale (IMU)</span><span id="accel-lat">0.000 m/s²</span></div>
+            <div class="data-point main-force"><span>Force Centrifuge (Dérivée IMU)</span><span id="force-centrifugal">0.00 N</span></div>
             <div class="data-point"><span>Force Centrifuge (en G)</span><span id="force-centrifugal-g">0.00 G</span></div>
 
             <hr>
@@ -292,7 +315,7 @@
 
 <script src="./leaflet.js"></script>
 <script src="./suncalc.js"></script>
-<script src="gnss-dashboard-full.js" defer></script>  
+<script src="gnss-dashboard-full.js" defer></script> 
 
 </body>
-                </html>
+        </html>
