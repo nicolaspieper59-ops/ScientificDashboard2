@@ -1,20 +1,31 @@
 /* =================================================================
-   FICHIER CSS : style.css (V11.1 - Light Mode 3-Colonnes)
-   Base sur le style fourni par l'utilisateur.
+   BASE : Couleurs, Polices, RàZ
    ================================================================= */
 
-/* --- 1. GÉNÉRAL ET TYPOGRAPHIE --- */
 :root {
-    --color-background: #f4f4f4; /* Fond principal clair */
-    --color-widget-bg: #ffffff; /* Fond des widgets blanc */
-    --color-text-main: #333; /* Texte sombre */
-    --color-label: #555; /* Étiquettes de données */
-    --color-highlight: #28a745; /* Vert (Actif/Vitesse) */
-    --color-danger: #dc3545; /* Rouge (Danger) */
-    --color-astro: #007bff; /* Bleu (Astro) */
-    --color-border: #ddd; /* Bordures subtiles */
+    /* Couleurs du Mode Clair (Défaut) */
+    --color-background: #f4f4f4;
+    --color-surface: #ffffff;
+    --color-text-main: #333333;
+    --color-text-secondary: #555555;
+    --color-accent: #007bff;
+    --color-divider: #dddddd;
     --color-shadow: rgba(0,0,0,0.1);
+    --color-speed-main: #28a745; /* Vert pour Vitesse Stable */
+    --color-force-main: #ffc107; /* Jaune pour Force Centrifuge */
+    --color-eot-main: #17a2b8; /* Bleu-Cyan pour EOT */
 }
+
+/* Styles pour le mode sombre (Si implémenté en JS)
+body.night-mode {
+    --color-background: #1a1a1a;
+    --color-surface: #2c2c2c;
+    --color-text-main: #e0e0e0;
+    --color-text-secondary: #aaaaaa;
+    --color-divider: #444444;
+    --color-shadow: rgba(0,0,0,0.4);
+}
+*/
 
 * {
     box-sizing: border-box;
@@ -26,61 +37,59 @@ body {
     padding: 0;
     background-color: var(--color-background);
     color: var(--color-text-main);
-    line-height: 1.6;
+    transition: background-color 0.5s, color 0.5s;
+    line-height: 1.4;
 }
 
-/* --- 2. EN-TÊTE (HEADER) --- */
 header {
-    background-color: var(--color-widget-bg);
+    background-color: var(--color-accent);
+    color: white;
     padding: 15px 20px;
-    box-shadow: 0 2px 4px var(--color-shadow);
     text-align: center;
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: 0 2px 4px var(--color-shadow);
+    margin-bottom: 0; /* Pas d'espace entre le header et la carte */
 }
 
-header h1 {
-    margin: 0;
-    font-size: 1.8em;
-    color: var(--color-text-main);
-}
+/* =================================================================
+   LAYOUT : GRILLE & SECTIONS
+   ================================================================= */
 
-/* --- 3. CARTE --- */
+/* Conteneur de la Carte (Pleine Largeur) */
 #map-container {
     padding: 20px;
-    max-width: 1400px;
+    max-width: 1400px; /* Limite de largeur alignée avec la grille */
     margin: 0 auto;
 }
 
 #map {
-    height: 400px;
+    height: 400px; /* HAUTEUR SUFFISANTE POUR LA CARTE */
     width: 100%;
     border-radius: 8px;
     box-shadow: 0 4px 8px var(--color-shadow);
+    background-color: #eee; /* Fond visible pendant le chargement */
 }
 
-
-/* --- 4. GRILLE DE TABLEAU DE BORD (MAIN) --- */
+/* Grille principale du Tableau de bord */
 .dashboard-container {
     display: grid;
     gap: 20px;
-    padding: 0 20px 20px 20px;
+    padding: 20px;
     max-width: 1400px;
     margin: 0 auto;
     
-    /* Configuration par défaut (Mobile First) */
-    grid-template-columns: 1fr;
+    /* Par défaut (Mobile) : 1 Colonne */
+    grid-template-columns: 1fr; 
 }
 
-/* Configuration pour PC (Tablet/Desktop) */
+/* Media Query : Passe à 3 colonnes sur grand écran (> 992px) */
 @media (min-width: 992px) {
     .dashboard-container {
-        grid-template-columns: repeat(3, 1fr); /* 3 Colonnes Fixes */
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 
-/* --- 5. STYLE DES WIDGETS (SECTIONS) --- */
 .section {
-    background-color: var(--color-widget-bg);
+    background-color: var(--color-surface);
     padding: 15px;
     border-radius: 8px;
     box-shadow: 0 4px 8px var(--color-shadow);
@@ -88,98 +97,122 @@ header h1 {
 
 .section h2, .section h3 {
     margin-top: 0;
-    border-bottom: 2px solid var(--color-border);
+    border-bottom: 2px solid var(--color-divider);
     padding-bottom: 10px;
     font-size: 1.2em;
-    color: var(--color-text-main);
+    color: var(--color-accent);
 }
 
-hr {
-    border: 0;
-    border-top: 1px solid var(--color-border);
-    margin: 15px 0;
-}
+/* =================================================================
+   POINTS DE DONNÉES & TYPOGRAPHIE
+   ================================================================= */
 
-/* --- 6. POINTS DE DONNÉES --- */
 .data-point {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 5px 0;
-    border-bottom: 1px dotted #eee;
-    font-size: 1em;
+    padding: 8px 0;
+    border-bottom: 1px dotted var(--color-divider);
+    font-size: 0.95em;
+    align-items: center; /* Aligner verticalement */
 }
 
-.data-point:last-child {
-    border-bottom: none;
+.data-point span:first-child {
+    font-weight: normal;
+    color: var(--color-text-secondary);
+    flex-grow: 1;
 }
 
-.data-point span:first-child { 
-    font-weight: bold; 
-    color: var(--color-label); 
-    font-size: 0.9em;
-}
-
-/* Mise en évidence des données importantes */
-.data-point.main-speed span:last-child {
-    font-size: 1.5em;
+.data-point span:last-child {
     font-weight: bold;
-    color: var(--color-highlight);
+    color: var(--color-text-main);
+    text-align: right;
+    max-width: 50%;
+    flex-shrink: 0;
 }
 
-/* Équation du Temps */
-.data-point.main-eot span:last-child {
+/* Emphase sur les données principales */
+.main-speed span:last-child {
+    color: var(--color-speed-main);
+    font-size: 1.1em;
+}
+.main-force span:last-child {
+    color: var(--color-force-main);
+    font-size: 1.1em;
+}
+.main-eot span:last-child {
+    color: var(--color-eot-main);
+    font-size: 1.1em;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid var(--color-divider);
+    margin: 15px 0;
+}
+
+/* =================================================================
+   CONTRÔLES & INPUTS
+   ================================================================= */
+
+.controls-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+}
+
+button, select {
+    padding: 10px 5px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
     font-weight: bold;
-    color: var(--color-astro);
+    font-size: 0.85em;
+    transition: background-color 0.2s;
 }
 
-/* Force Centrifuge */
-.data-point.main-force span:last-child {
+#toggle-gps-btn { background-color: #28a745; color: white; }
+#emergency-stop-btn { background-color: #dc3545; color: white; }
+#emergency-stop-btn.active { background-color: #8b0000; }
+#reset-all-btn { background-color: #ffc107; color: var(--color-text-main); }
+/* Style des autres boutons pour l'uniformité */
+.controls-grid button:not(#toggle-gps-btn):not(#emergency-stop-btn):not(#reset-all-btn) { 
+    background-color: #f0f0f0; 
+    color: var(--color-text-main); 
+}
+
+/* Style pour l'input de masse au gramme près */
+input[type="number"]#mass-input {
+    width: 60%; 
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
     font-weight: bold;
-    color: var(--color-danger);
-}
-
-/* --- 7. CONTRÔLES (BUTTONS & SELECTS) --- */
-.controls-grid { 
-    display: grid; 
-    grid-template-columns: repeat(2, 1fr); /* 2 colonnes pour plus d'espace */
-    gap: 10px; 
-    margin-top: 10px; 
-}
-
-/* Ajustement pour le sélecteur de masse dans la colonne 1 */
-#col-1 .data-point select {
-    max-width: 55%;
+    text-align: right; 
+    color: var(--color-text-main);
+    background-color: #f7f7f7;
     flex-grow: 0;
 }
 
-button, select { 
-    padding: 10px; 
-    border: none; 
-    border-radius: 5px; 
-    cursor: pointer; 
+/* Ajustement pour l'alignement du label de masse */
+#col-1 .data-point label {
+    flex-grow: 1; 
+    font-size: 0.95em;
+    padding-right: 10px; 
+}
+
+/* =================================================================
+   NOTE D'AVERTISSEMENT (Forces estimées)
+   ================================================================= */
+
+.warning-note {
+    font-size: 0.8em;
+    color: #8b0000; /* Rouge foncé */
+    background-color: #ffe0e0; /* Fond rouge très clair */
+    border: 1px solid #ff7f7f;
+    padding: 10px;
+    border-radius: 6px;
+    margin-top: 5px;
+    margin-bottom: 15px;
     font-weight: bold;
-    font-size: 0.9em;
-    width: 100%;
-}
-
-select {
-    background-color: #eee;
-    color: var(--color-text-main);
-    border: 1px solid #ccc;
-}
-
-#toggle-gps-btn { 
-    background-color: var(--color-highlight); 
-    color: white; 
-    grid-column: 1 / -1; /* Prend toute la largeur au-dessus des autres boutons */
-}
-
-#emergency-stop-btn { 
-    background-color: var(--color-danger); 
-    color: white; 
-    grid-column: 1 / -1; 
-}
-#emergency-stop-btn.active { 
-    background-color: #8b0000; 
-}
+   }
