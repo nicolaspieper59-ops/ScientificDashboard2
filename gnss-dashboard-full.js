@@ -1,6 +1,6 @@
 // =================================================================
-// FICHIER JS : gnss-dashboard-full.js (FINAL & UNIFIÉ)
-// Moteur GPS, EKF, Astro, Rendu et API Météo
+// FICHIER JS : gnss-dashboard-part1.js (Moteur GPS & EKF)
+// Logique de base et fonctions de contrôle direct
 // =================================================================
 
 // --- CONSTANTES GLOBALES ---
@@ -57,7 +57,7 @@ function getCorrectedDate() {
 
 
 // =================================================================
-// 1. MOTEUR GPS & EKF & IMU (Logique de part1.js)
+// 1. MOTEUR GPS & EKF & IMU
 // =================================================================
 
 function startGPS() {
@@ -176,13 +176,93 @@ function startIMU() {
     handleIMU(null); 
 }
 
+// =================================================================
+// 4. FONCTIONS DE CONTRÔLE DÉPORTÉES
+// =================================================================
+
+function resetDistance() {
+    window.distTotal = 0;
+    window.timeMoving = 0;
+    console.log("Distance et temps de mouvement réinitialisés.");
+}
+
+function resetSpeedMax() {
+    window.speedMax = 0;
+    console.log("Vitesse maximale réinitialisée.");
+}
+
+function resetAll() {
+    stopGPS();
+    resetDistance();
+    resetSpeedMax();
+    window.EKFState = [0, 0, 0, 0];
+    window.EKFPCov = [[10, 0, 0, 0], [0, 10, 0, 0], [0, 0, 10, 0], [0, 0, 0, 10]];
+    window.startTime = Date.now();
+    $('emergency-stop-btn').textContent = '🛑 Arrêt d\'urgence: INACTIF 🚨';
+    $('emergency-stop-btn').style.backgroundColor = '#dc3545';
+    console.log("Tableau de bord complètement réinitialisé.");
+}
+
+function emergencyStop() {
+    if (window.isGPSRunning) {
+        stopGPS();
+        $('emergency-stop-btn').textContent = '🛑 ARRÊT D\'URGENCE ACTIF ⛔';
+        $('emergency-stop-btn').style.backgroundColor = 'black';
+        alert("Arrêt d'urgence déclenché ! GPS désactivé.");
+    } else {
+        $('emergency-stop-btn').textContent = '🛑 Arrêt d\'urgence: INACTIF 🚨';
+        $('emergency-stop-btn').style.backgroundColor = '#dc3545';
+        startGPS();
+    }
+}
+
+function toggleNetherMode() {
+    window.isNetherMode = !window.isNetherMode;
+    const btn = $('nether-toggle-btn');
+    const display = $('mode-nether');
+    if (window.isNetherMode) {
+        btn.textContent = 'Mode Normal';
+        display.textContent = 'ACTIF (1:8)';
+        btn.style.backgroundColor = '#ff6600';
+    } else {
+        btn.textContent = 'Nether Mode';
+        display.textContent = 'DÉSACTIVÉ (1:1)';
+        btn.style.backgroundColor = '#5bc0de';
+    }
+}
+
+function updateKalmanParameters() {
+    const overrideInput = $('gps-accuracy-override');
+    const envSelect = $('environment-select');
+
+    // 1. Gestion de la Précision GPS forcée
+    const overrideValue = parseFloat(overrideInput.value);
+    window.kalmanR = overrideValue > 0 ? overrideValue : EKFR; 
+    
+    // 2. Gestion du Facteur d'Environnement
+    const factorMap = {
+        'NORMAL': 1.0,
+        'FOREST': 1.5,
+        'CONCRETE': 3.0,
+        'METAL': 2.5
+    };
+    window.environmentFactor = factorMap[envSelect.value] || 1.0;
+    console.log(`EKF mis à jour: R_base=${window.kalmanR}, Facteur Env=${window.environmentFactor}`);
+    
+    // Mise à jour visuelle (EKF R_Effective)
+    if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = `${(window.kalmanR * window.environmentFactor).toFixed(2)} m`;
+}// =================================================================
+// FICHIER JS : gnss-dashboard-part2.js (Astro, Map, Météo & Boucle)
+// =================================================================
+
+// Les fonctions et constantes de base sont supposées être définies dans gnss-dashboard-part1.js
 
 // =================================================================
-// 2. LOGIQUE ASTRO, TST & MAP (Logique de part2.js)
+// 2. LOGIQUE ASTRO, TST & MAP
 // =================================================================
 
 function getSolarTime(date, lon) {
-    // Calculs TST/EOT (inchangé)
+    // Calculs TST/EOT (répétition complète pour s'assurer que la fonction est définie)
     const J = window.SunCalc.getJDay(date); 
     const M = (357.5291 + 0.98560028 * J) * D2R; 
     const L = (280.4665 + 0.98564736 * J) * D2R; 
@@ -233,7 +313,7 @@ function drawSolarClock(sunPos) {
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Illumination et Couleurs dynamiques (inchangé)
+    // Illumination et Couleurs dynamiques
     const elevation = sunPos.altitude; 
     const dayFactor = Math.min(1, Math.max(0, (elevation / D2R + 6) / 40)); 
     const skyColorR = Math.round(30 + 170 * dayFactor);
@@ -350,8 +430,6 @@ async function fetchWeatherData(lat, lon) {
             if ($('temp-air')) $('temp-air').textContent = `${data.main.temp.toFixed(1)} °C`;
             if ($('pressure')) $('pressure').textContent = `${data.main.pressure} hPa`;
             if ($('humidity')) $('humidity').textContent = `${data.main.humidity} %`;
-            // Note: Les autres champs Météo et Chimie nécessiteraient des données spécifiques de l'API.
-            // S'ils ne sont pas fournis, ils restent à N/A (mis à jour dans la fonction suivante).
         } else {
              throw new Error('Données météo non valides reçues.');
         }
@@ -375,14 +453,23 @@ function updateAllExternalData() {
     if ($('kinetic-energy')) $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
     if ($('mechanical-power')) $('mechanical-power').textContent = `0.00 W`;
     
-    // Reste des champs externes (Météo/Chimie/SVT) sont par défaut mis à N/A
+    // Reste des champs externes
     [
         'dew-point', 'visibility', 'uv-index', 'wind-direction', 'precipitation-rate', 
         'temp-feels-like', 'magnetic-field', 'air-flow', 'o2-level', 'co2-level', 
         'air-density', 'ozone-conc', 'ph-level', 'solar-radiation', 'noise-level', 
         'wind-speed-ms', 'soil-type', 'ndvi-index', 'lsm', 'noon-solar', 'day-duration'
     ].forEach(id => {
-        if ($(id) && $(id).textContent.includes('N/A') === false && $(id).textContent.includes('0') === false && $(id).textContent.includes('°C') === false) $(id).textContent = `N/A`;
+        const elem = $(id);
+        if (elem && 
+            !elem.textContent.includes('°C') && 
+            !elem.textContent.includes('% vol') && 
+            !elem.textContent.includes('N/A') && 
+            !elem.textContent.includes('--') &&
+            !elem.textContent.includes('0.00')
+        ) {
+            elem.textContent = `N/A`;
+        }
     });
 }
 
@@ -397,164 +484,8 @@ function syncTimeWithServer() {
     const time_str = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
     
     if ($('local-time')) $('local-time').textContent = `${time_str} (${now.toLocaleTimeString('en-US', {timeZoneName: 'short', hour12: false}).split(' ')[1]})`;
-}
-
-// Les fonctions toggleNetherMode, updateKalmanParameters, resetDistance, 
-// resetSpeedMax, resetAll, emergencyStop, toggleNightMode, captureData 
-// sont conservées de part1.js et ne nécessitent pas de modification ici.
-// ... (Ces fonctions sont considérées incluses) ...
-
-let domID = null; 
-
-function startMainLoop() {
-    if (domID === null) {
-        domID = setInterval(() => {
-            const currentLat = window.lPos ? window.lPos.coords.latitude : 43.296482; 
-            const currentLon = window.lPos ? window.lPos.coords.longitude : 5.36978;
-            
-            updateAstro(currentLat, currentLon); 
-            
-            if(window.isGPSRunning) updateMap(); 
-
-            // SYNCHRO NTP : toutes les 5 minutes (300000ms)
-            if (Date.now() % 300000 < window.currentFreqMS) { 
-                syncTimeWithServer(); 
-            }
-            // Mise à jour des données externes (Météo, Physique, etc.) toutes les 10 secondes
-            if (Date.now() % 10000 < window.currentFreqMS) { 
-                updateAllExternalData(); 
-            }
-        }, window.currentFreqMS);
-    }
-}
-
-function setFrequency() {
-    const freqSelect = $('freq-select');
-    if (!freqSelect) return;
-    
-    const isHigh = freqSelect.value === 'HIGH_FREQ';
-    const newFreqMS = isHigh ? 200 : 1000;
-    
-    if (newFreqMS !== window.currentFreqMS) {
-        window.currentFreqMS = newFreqMS;
-        if (domID !== null) {
-            clearInterval(domID);
-            domID = null;
-        }
-        startMainLoop();
-    }
-}
-
-function initializeControlListeners() {
-    // Boutons de contrôle (Définis dans l'HTML)
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGPS);
-    // ... (Autres listeners de boutons à ajouter) ...
-    if ($('freq-select')) $('freq-select').addEventListener('change', setFrequency);
-    // ...
-    // EKF/Kalman listeners sont nécessaires
-    // ...
-    // updateKalmanParameters(); // Nécessite la définition des fonctions de part1.js
-}
-
-// --- INITIALISATION GLOBALE (ENTRY POINT) ---
-
-document.addEventListener('DOMContentLoaded', () => {
-    
-    if (!window.SunCalc) {
-        console.error("Erreur: suncalc.js n'est pas chargé. Vérifiez le lien <script>.");
-        return;
-    }
-    
-    initMap(); 
-    initSolarClock(); 
-    initializeControlLis
-    // ... (Code précédent jusqu'à syncTimeWithServer()...)
-
-function syncTimeWithServer() {
-    window.serverTimeOffset = 0; 
-    const now = getCorrectedDate();
-    const time_str = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-    
-    if ($('local-time')) $('local-time').textContent = `${time_str} (${now.toLocaleTimeString('en-US', {timeZoneName: 'short', hour12: false}).split(' ')[1]})`;
     if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
     if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
-}
-
-// =================================================================
-// FONCTIONS DE CONTRÔLE (Ancienne logique de part1.js)
-// =================================================================
-
-function resetDistance() {
-    window.distTotal = 0;
-    window.timeMoving = 0;
-    console.log("Distance et temps de mouvement réinitialisés.");
-}
-
-function resetSpeedMax() {
-    window.speedMax = 0;
-    console.log("Vitesse maximale réinitialisée.");
-}
-
-function resetAll() {
-    stopGPS();
-    resetDistance();
-    resetSpeedMax();
-    window.EKFState = [0, 0, 0, 0];
-    window.EKFPCov = [[10, 0, 0, 0], [0, 10, 0, 0], [0, 0, 10, 0], [0, 0, 0, 10]];
-    window.startTime = Date.now();
-    $('emergency-stop-btn').textContent = '🛑 Arrêt d\'urgence: INACTIF 🚨';
-    $('emergency-stop-btn').style.backgroundColor = '#dc3545';
-    console.log("Tableau de bord complètement réinitialisé.");
-}
-
-function emergencyStop() {
-    if (window.isGPSRunning) {
-        stopGPS();
-        $('emergency-stop-btn').textContent = '🛑 ARRÊT D\'URGENCE ACTIF ⛔';
-        $('emergency-stop-btn').style.backgroundColor = 'black';
-        alert("Arrêt d'urgence déclenché ! GPS désactivé.");
-    } else {
-        $('emergency-stop-btn').textContent = '🛑 Arrêt d\'urgence: INACTIF 🚨';
-        $('emergency-stop-btn').style.backgroundColor = '#dc3545';
-        startGPS();
-    }
-}
-
-function toggleNetherMode() {
-    window.isNetherMode = !window.isNetherMode;
-    const btn = $('nether-toggle-btn');
-    const display = $('mode-nether');
-    if (window.isNetherMode) {
-        btn.textContent = 'Mode Normal';
-        display.textContent = 'ACTIF (1:8)';
-        btn.style.backgroundColor = '#ff6600';
-    } else {
-        btn.textContent = 'Nether Mode';
-        display.textContent = 'DÉSACTIVÉ (1:1)';
-        btn.style.backgroundColor = '#5bc0de';
-    }
-}
-
-function updateKalmanParameters() {
-    const overrideInput = $('gps-accuracy-override');
-    const envSelect = $('environment-select');
-
-    // 1. Gestion de la Précision GPS forcée
-    const overrideValue = parseFloat(overrideInput.value);
-    window.kalmanR = overrideValue > 0 ? overrideValue : EKFR; 
-    
-    // 2. Gestion du Facteur d'Environnement
-    const factorMap = {
-        'NORMAL': 1.0,
-        'FOREST': 1.5,
-        'CONCRETE': 3.0,
-        'METAL': 2.5
-    };
-    window.environmentFactor = factorMap[envSelect.value] || 1.0;
-    console.log(`EKF mis à jour: R_base=${window.kalmanR}, Facteur Env=${window.environmentFactor}`);
-    
-    // Mise à jour visuelle (EKF R_Effective)
-    if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = `${(window.kalmanR * window.environmentFactor).toFixed(2)} m`;
 }
 
 function updateDOMTimers() {
@@ -576,10 +507,6 @@ function updateDOMTimers() {
     if ($('distance-cosmic')) $('distance-cosmic').textContent = `${cosmic_seconds.toExponential(2)} s lumière | ${(cosmic_seconds / (60*60*24*365.25)).toExponential(2)} al`;
 }
 
-// =================================================================
-// 5. BOUCLE PRINCIPALE ET INITIALISATION
-// =================================================================
-
 let domID = null; 
 
 function startMainLoop() {
@@ -588,7 +515,7 @@ function startMainLoop() {
             const currentLat = window.lPos ? window.lPos.coords.latitude : 43.296482; 
             const currentLon = window.lPos ? window.lPos.coords.longitude : 5.36978;
             
-            updateDOMTimers(); // Mise à jour des chronomètres et compteurs
+            updateDOMTimers(); 
             updateAstro(currentLat, currentLon); 
             
             if(window.isGPSRunning) updateMap(); 
@@ -623,6 +550,7 @@ function setFrequency() {
 }
 
 function initializeControlListeners() {
+    // Les fonctions de contrôle sont définies dans gnss-dashboard-part1.js
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGPS);
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', emergencyStop);
     if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', toggleNetherMode);
@@ -641,23 +569,31 @@ function initializeControlListeners() {
     updateKalmanParameters(); 
 }
 
+
 // --- INITIALISATION GLOBALE (ENTRY POINT) ---
 
 document.addEventListener('DOMContentLoaded', () => {
     
+    // Vérification de la dépendance SunCalc
     if (!window.SunCalc) {
-        console.error("Erreur: suncalc.js n'est pas chargé. Vérifiez le lien <script>.");
-        // Continue l'initialisation sans la partie Astro si possible
+        console.warn("Avertissement: suncalc.js n'est pas chargé. Les fonctions astronomiques seront limitées.");
     }
     
+    // Initialisation du Rendu (Carte, Horloge)
     initMap(); 
     initSolarClock(); 
+    
+    // Initialisation des Contrôles et Écouteurs
     initializeControlListeners();
     
+    // Démarrage des Capteurs (GPS, IMU)
     startGPS(); 
     startIMU(); 
+    
+    // Initialisation des Données (Heure NTP, Météo)
     syncTimeWithServer(); 
     updateAllExternalData(); 
     
+    // Démarrage de la Boucle de Mise à Jour (Render Loop)
     startMainLoop(); 
 });
