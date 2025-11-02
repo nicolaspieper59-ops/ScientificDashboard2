@@ -8,13 +8,12 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
           integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
           crossorigin=""/>
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
           integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
-        /* Styles adaptés aux captures d'écran */
+        /* Styles adaptés */
         body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
         .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
         .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
@@ -22,7 +21,7 @@
         .data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
         .data-point span:first-child { font-weight: bold; color: #555; }
         
-        /* Contrôles et boutons */
+        /* Contrôles */
         .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
         .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
         .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
@@ -31,10 +30,8 @@
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
         
-        /* Conteneur pour la carte */
+        /* Conteneur pour la carte et l'horloge */
         #map-container { height: 400px; width: 100%; border-radius: 8px; margin-top: 15px; }
-
-        /* Styles de la montre TST/Astro */
         #minecraft-clock-container { 
             display: flex; 
             justify-content: center; 
@@ -61,7 +58,8 @@
             <div class="data-point"><span>Date Locale</span><span id="date-display">N/A</span></div> 
             <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
             <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
-            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
+            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> 
+            <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>Masse (kg)</span><span id="mass-display">70.000 kg</span></div>
             
             <hr>
@@ -119,13 +117,22 @@
             
             <hr>
             
-            <h2>💥 Dynamique du Véhicule</h2>
+            <h2>💥 Dynamique du Véhicule & Forces</h2>
             <div class="data-point"><span>Accel. Longitudinale (EKF)</span><span id="accel-long">0.000 m/s²</span></div>
             <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div> 
             <div class="data-point"><span>Vitesse Verticale (Raw)</span><span id="vertical-speed">0.00 m/s</span></div>
             <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s²</span></div>
             <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div>
 
+            <hr>
+
+            <h2>⚛️ Champs & Énergie (Physique)</h2>
+            <div class="data-point"><span>Énergie Cinétique (J)</span><span id="kinetic-energy">0.00 J</span></div>
+            <div class="data-point"><span>Puissance Mécanique (W)</span><span id="mechanical-power">0.00 W</span></div>
+            <div class="data-point"><span>Champ Magnétique (μT)</span><span id="magnetic-field">N/A</span></div>
+            <div class="data-point"><span>Débit Atmosphérique (m³/s)</span><span id="air-flow">N/A</span></div>
+            <div class="data-point"><span>Force de Coriolis (N)</span><span id="coriolis-force">0.00 N</span></div>
+            
             <hr>
             
             <h2>🌡️ Météo & Capteurs</h2>
@@ -159,16 +166,29 @@
             <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
             
             <hr>
-            
-            <h2>🌕 Phase Lunaire</h2>
-            <div class="data-point"><span>Phase Lunaire (Fraction)</span><span id="lunar-phase-perc">N/A</span></div>
-            <div class="data-point"><span>Lever / Coucher Lune</span><span id="moon-times">N/D</span></div>
+
+            <h2>🧪 Chimie & Composition</h2>
+            <div class="data-point"><span>Taux d'Oxygène (O₂)</span><span id="o2-level">20.9 % vol</span></div>
+            <div class="data-point"><span>Taux de CO₂ (ppm)</span><span id="co2-level">N/A</span></div>
+            <div class="data-point"><span>Densité de l'Air (kg/m³)</span><span id="air-density">N/A</span></div>
+            <div class="data-point"><span>Concentration Ozone (DU)</span><span id="ozone-conc">N/A</span></div>
+            <div class="data-point"><span>Potentiel Hydrogène (pH)</span><span id="ph-level">N/A</span></div>
+
+            <hr>
+
+            <h2>🌱 SVT & Environnement</h2>
+            <div class="data-point"><span>Radiation Solaire (W/m²)</span><span id="solar-radiation">N/A</span></div>
+            <div class="data-point"><span>Niveau Sonore (dB)</span><span id="noise-level">N/A</span></div>
+            <div class="data-point"><span>Vitesse du Vent (m/s)</span><span id="wind-speed-ms">N/A</span></div>
+            <div class="data-point"><span>Type de Sol (Capteur/API)</span><span id="soil-type">N/A</span></div>
+            <div class="data-point"><span>Biomasse NDVI (API Sat.)</span><span id="ndvi-index">N/A</span></div>
         </div>
 
     </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
-<script src="gnss-dashboard-full.js"></script>
+<script src="gnss-dashboard-part1.js"></script>
+<script src="gnss-dashboard-part2.js"></script>
 
 </body>
     </html>
