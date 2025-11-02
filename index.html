@@ -14,6 +14,7 @@
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 
     <style>
+        /* Styles de base pour un affichage moderne et lisible */
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f7f6;
@@ -21,10 +22,10 @@
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: auto;
             display: grid;
-            grid-template-columns: 1fr 2fr;
+            grid-template-columns: 1fr 1fr 1fr; /* 3 colonnes pour une meilleure organisation */
             gap: 20px;
         }
         .panel {
@@ -33,9 +34,9 @@
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
-        h2 {
+        h2, h3 {
             border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
+            padding-bottom: 5px;
             margin-top: 0;
             color: #333;
         }
@@ -43,6 +44,7 @@
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 15px;
+            margin-bottom: 15px;
         }
         .data-item {
             background-color: #e9ecef;
@@ -60,7 +62,7 @@
             color: #007bff;
         }
         #map {
-            height: 300px;
+            height: 350px;
             border-radius: 4px;
         }
         #mc-clock-canvas {
@@ -72,6 +74,7 @@
         .button-group button {
             padding: 10px 15px;
             margin-right: 10px;
+            margin-bottom: 10px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -87,7 +90,10 @@
             margin-left: 10px;
             padding: 2px 5px;
             border-radius: 3px;
+            display: inline-block;
         }
+        /* Style pour les IDs non implémentés dans le JS pour le moment (à des fins de structure UI) */
+        .not-implemented { color: #888; font-style: italic; } 
     </style>
 </head>
 <body>
@@ -95,15 +101,13 @@
 <div class="container">
     
     <div class="panel">
-        <h2>Horloge TST & Astres</h2>
-        
-        <canvas id="mc-clock-canvas" width="300" height="300"></canvas>
+        <h2>🛠️ Contrôles & Système</h2>
         
         <div class="data-grid">
             <div class="data-item">
-                <strong>Heure GMT/UTC</strong>
-                <span id="local-time" class="value">--:--:--</span>
-                <span id="time-status" class="value">Synchro: N/A</span>
+                <strong>Heure Locale (NTP)</strong>
+                <span id="local-time" class="value">--:--:-- (GMT/UTC)</span>
+                <span id="time-status">Synchro: N/A</span>
             </div>
             <div class="data-item">
                 <strong>Date Locale</strong>
@@ -111,47 +115,106 @@
             </div>
             
             <div class="data-item">
-                <strong>Temps Solaire Vrai (TST)</strong>
-                <span id="tst" class="value">--:--:--</span>
+                <strong>Temps écoulé (Session)</strong>
+                <span id="time-elapsed" class="value">00:00:00</span>
             </div>
             <div class="data-item">
-                <strong>Équation du Temps (EOT)</strong>
-                <span id="eot" class="value">--:--</span>
+                <strong>Temps de Mouvement</strong>
+                <span id="time-moving" class="value">00:00:00</span>
             </div>
             
             <div class="data-item">
-                <strong>Azimut Solaire (Nord=0)</strong>
-                <span id="sun-azimuth" class="value">---°</span>
+                <strong>Heure Solaire Vraie (TST)</strong>
+                <span id="tst" class="value">--:--:--</span>
             </div>
             <div class="data-item">
-                <strong>Élévation Solaire</strong>
-                <span id="sun-elevation" class="value">---°</span>
+                <strong>Mode Nether (1:8)</strong>
+                <span id="nether-mode" class="value not-implemented">DÉSACTIVÉ (1:1)</span>
+            </div>
+        </div>
+        
+        <h3>Contrôles</h3>
+        <div class="button-group">
+            <button id="pause-gps-btn" class="not-implemented">⏸️ PAUSE GPS</button>
+            <button id="high-freq-btn" class="not-implemented">Haute Fréquence</button>
+            <button id="emergency-stop-btn" style="background-color: #dc3545;" class="not-implemented">🛑 Arrêt d'urgence: INACTIF 🚨</button>
+            <button id="night-mode-btn" class="not-implemented">🌓 Mode Nuit</button>
+            <button id="nether-mode-toggle-btn" class="not-implemented">Nether Mode</button>
+            
+            <button id="reset-dist-btn">🔄 Distance</button>
+            <button id="reset-speed-btn">🔄 Vitesse Max</button>
+            <button id="reset-all-btn" style="background-color: #007bff;">✨ TOUT RÉINITIALISER</button>
+            <button id="capture-btn" class="not-implemented">📋 Capturer</button>
+        </div>
+        
+        <h3 style="margin-top: 20px;">⭐ Soleil & Lune (SunCalc)</h3>
+        <div class="data-grid">
+            <div class="data-item">
+                <strong>Élévation du Soleil</strong>
+                <span id="sun-elevation" class="value">--- °</span>
+            </div>
+            <div class="data-item">
+                <strong>Azimut Solaire (Nord=0)</strong>
+                <span id="sun-azimuth" class="value">--- °</span>
+            </div>
+            <div class="data-item">
+                <strong>Équation du Temps (EOT)</strong>
+                <span id="eot" class="value">--:-- min</span>
+            </div>
+            <div class="data-item">
+                <strong>Temps Solaire Moyen Local (LSM)</strong>
+                <span id="lsm" class="value not-implemented">N/D</span>
             </div>
         </div>
     </div>
 
     <div class="panel">
-        <h2>Données GNSS & Physique</h2>
+        <h2>Cadran Solaire Vrai (TST)</h2>
+        <canvas id="mc-clock-canvas" width="300" height="300"></canvas>
         
+        <h3 style="margin-top: 20px;">🗺️ Carte GNSS</h3>
+        <div id="map">Initialisation de la carte...</div>
+        
+        <h3 style="margin-top: 20px;">🌡️ Météo & Capteurs (Simulés)</h3>
         <div class="data-grid">
             <div class="data-item">
-                <strong>Statut GPS</strong>
-                <span id="gps-status" class="value">Démarrage...</span>
+                <strong>Température Air</strong>
+                <span id="temperature" class="value">N/A (°C)</span>
             </div>
             <div class="data-item">
-                <strong>Coordonnées (Lat, Lon)</strong>
-                <span id="coords" class="value">---, ---</span>
+                <strong>Pression Atmosphérique</strong>
+                <span id="pressure" class="value">N/A (hPa)</span>
             </div>
-
             <div class="data-item">
-                <strong>Vitesse Instantanée (filtrée)</strong>
+                <strong>Humidité Relative</strong>
+                <span id="humidity" class="value not-implemented">N/A (API)</span>
+            </div>
+            <div class="data-item">
+                <strong>Taux de CO₂ (ppm)</strong>
+                <span id="co2-rate" class="value not-implemented">N/A (Capteur/API)</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="panel">
+        <h2>🚀 Vitesse & Distance</h2>
+        <div class="data-grid">
+            <div class="data-item">
+                <strong>Vitesse Stable (EKF)</strong>
+                <span id="vitesse-stable" class="value">0.00 km/h</span>
+            </div>
+            <div class="data-item">
+                <strong>Vitesse 3D (Inst.)</strong>
                 <span id="instant-speed" class="value">0.0 km/h</span>
             </div>
             <div class="data-item">
-                <strong>Vitesse Maximale</strong>
+                <strong>Vitesse stable (m/s)</strong>
+                <span id="vitesse-stable-ms" class="value">0.00 m/s | 0 mm/s</span>
+            </div>
+            <div class="data-item">
+                <strong>Vitesse Max (Session)</strong>
                 <span id="speed-max" class="value">0.0 km/h</span>
             </div>
-
             <div class="data-item">
                 <strong>Distance Totale</strong>
                 <span id="distance-total" class="value">0.00 km</span>
@@ -160,39 +223,50 @@
                 <strong>Distance en Mouvement</strong>
                 <span id="distance-moving" class="value">0.00 km</span>
             </div>
-
+        </div>
+        
+        <h3 style="margin-top: 20px;">🛰️ Vue brute GPS & Physique</h3>
+        <div class="data-grid">
             <div class="data-item">
-                <strong>Temps Écoulé Total</strong>
-                <span id="time-elapsed" class="value">00:00:00</span>
+                <strong>Latitude Brute</strong>
+                <span id="coords" class="value">---</span>
             </div>
             <div class="data-item">
-                <strong>Temps en Mouvement</strong>
-                <span id="time-moving" class="value">00:00:00</span>
-            </div>
-            
+                <strong>Longitude Brute</strong>
+                <span id="coords-lon" class="value">---</span> </div>
             <div class="data-item">
-                <strong>Température Air (Simulé)</strong>
-                <span id="temperature" class="value">--°C</span>
+                <strong>Altitude GPS</strong>
+                <span id="altitude" class="value not-implemented">N/A m</span>
             </div>
             <div class="data-item">
-                <strong>Pression Atm. (Simulé)</strong>
-                <span id="pressure" class="value">---- hPa</span>
+                <strong>Précision GPS (EPE)</strong>
+                <span id="accuracy" class="value not-implemented">N/A m</span>
             </div>
         </div>
         
-        <h3 style="margin-top: 20px;">Localisation sur Carte</h3>
-        <div id="map"></div>
-        
-        <h3 style="margin-top: 20px;">Contrôles</h3>
-        <div class="button-group">
-            <button id="reset-dist-btn">Réinit. Distance</button>
-            <button id="reset-speed-btn">Réinit. Vitesse Max</button>
-            <button id="reset-all-btn" style="background-color: #dc3545;">Réinit. Tout</button>
+        <h3 style="margin-top: 20px;">💥 Dynamique du Véhicule & Forces</h3>
+        <div class="data-grid">
+            <div class="data-item">
+                <strong>Masse (kg)</strong>
+                <span id="mass" class="value not-implemented">70.00 kg</span>
+            </div>
+            <div class="data-item">
+                <strong>Force G (Longitudinale)</strong>
+                <span id="force-g-long" class="value not-implemented">0.00 G</span>
+            </div>
+            <div class="data-item">
+                <strong>Énergie Cinétique (J)</strong>
+                <span id="kinetic-energy" class="value not-implemented">0.00 J</span>
+            </div>
+            <div class="data-item">
+                <strong>Force de Coriolis (N)</strong>
+                <span id="coriolis-force" class="value not-implemented">0.00 N</span>
+            </div>
         </div>
+        
     </div>
 </div>
 
 <script src="gnss-dashboard-full.js"></script>
-
 </body>
-                    </html>
+    </html>
