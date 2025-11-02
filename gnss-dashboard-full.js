@@ -259,7 +259,6 @@ function updateKalmanParameters() {
     // Mise à jour visuelle (EKF R_Effective)
     if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = `${(window.kalmanR * window.environmentFactor).toFixed(2)} m`;
 }
-
 // =================================================================
 // FICHIER JS : gnss-dashboard-full.js (PARTIE 2/2)
 // Astro, Map, Météo & Boucle Principale
@@ -470,7 +469,6 @@ function updateAllExternalData() {
     if ($('mass-display')) $('mass-display').textContent = `${window.mass.toFixed(3)} kg`;
 
     // Tentative de réinitialisation/mise à jour d'autres champs
-// La fin de la fonction updateAllExternalData() (où vous vous êtes arrêté)
     [
         'dew-point', 'visibility', 'uv-index', 'precipitation-rate', 
         'magnetic-field', 'air-flow', 'co2-level', 
