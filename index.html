@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GNSS SpaceTime Dashboard •0‹4</title>
     
-    <link rel="stylesheet" href="style.css"> 
-    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
           integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
           crossorigin=""/>
@@ -15,6 +13,191 @@
           integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
+    <style>
+        /* =================================================================
+        // Styles du GNSS SpaceTime Dashboard (Ancien style.css)
+        // ================================================================= */
+
+        /* --- Général --- */
+        body { 
+            font-family: 'Arial', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f4f4f4; 
+            color: #333; 
+        }
+
+        /* --- Disposition du Dashboard --- */
+        .dashboard-container { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 20px; 
+            padding: 20px; 
+            max-width: 1400px; /* Limite la largeur pour une meilleure lisibilité */
+            margin: 0 auto;
+        }
+
+        .section { 
+            background-color: #fff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .section h2 { 
+            margin-top: 0; 
+            border-bottom: 2px solid #ddd; 
+            padding-bottom: 10px; 
+            font-size: 1.3em; 
+            color: #007bff; /* Couleur d'accentuation */
+        }
+
+        /* --- Points de Données --- */
+        .data-point { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 8px 0; 
+            border-bottom: 1px dotted #eee; 
+            font-size: 0.95em;
+        }
+
+        .data-point:last-child {
+            border-bottom: none;
+        }
+
+        .data-point span:first-child { 
+            font-weight: 500; /* Plus de gras */
+            color: #555; 
+        }
+
+        /* --- Commandes et Boutons --- */
+        .controls-grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 10px; 
+            margin-top: 15px; 
+        }
+
+        .control-input-full { 
+            grid-column: 1 / -1; 
+            margin-top: 10px; 
+        }
+
+        .control-input-full label { 
+            display: block; 
+            font-size: 0.9em; 
+            margin-bottom: 5px; 
+            font-weight: bold;
+        }
+
+        .control-input-full input, 
+        .control-input-full select { 
+            width: 98%; 
+            padding: 8px; 
+            border-radius: 4px; 
+            border: 1px solid #ccc; 
+            box-sizing: border-box;
+        }
+
+        button, select { 
+            padding: 10px 5px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            filter: brightness(1.1);
+        }
+
+        #toggle-gps-btn { 
+            background-color: #28a745; 
+            color: white; 
+        }
+
+        #emergency-stop-btn { 
+            background-color: #dc3545; 
+            color: white; 
+        }
+
+        #reset-all-btn {
+            background-color: #ffc107;
+            color: #333;
+        }
+
+        /* --- Carte et Astrologie --- */
+        #map-container { 
+            height: 400px; 
+            width: 100%; 
+            border-radius: 8px; 
+            margin-top: 15px; 
+            background-color: #eee;
+        }
+
+        #minecraft-clock-container { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            flex-direction: column;
+            padding-top: 10px;
+        }
+
+        #minecraft-clock {
+            width: 120px; /* Ajusté pour correspondre au style du screenshot */
+            height: 120px;
+            position: relative;
+            border: 3px solid #ccc;
+            border-radius: 50%;
+            overflow: hidden;
+        }
+
+        .clock-display { 
+            font-size: 0.9em; 
+            color: #777; 
+            margin-top: 5px; 
+            font-style: italic;
+        }
+
+        /* --- Barre de séparation --- */
+        hr {
+            border: 0;
+            height: 1px;
+            background-color: #f0f0f0;
+            margin: 15px 0;
+        }
+
+        /* --- Responsive Design --- */
+        @media (max-width: 1024px) {
+            .dashboard-container {
+                grid-template-columns: repeat(2, 1fr); 
+            }
+            .controls-grid {
+                grid-template-columns: repeat(2, 1fr); 
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-container {
+                grid-template-columns: 1fr; 
+                padding: 10px;
+            }
+            .controls-grid {
+                grid-template-columns: 1fr; 
+            }
+            #map-container {
+                height: 300px;
+            }
+        }
+    </style>
+
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
 <body>
@@ -165,4 +348,4 @@
 <script src="gnss-dashboard-full.js"></script>
 
 </body>
-    </html>
+                                                                                                                  </html>
