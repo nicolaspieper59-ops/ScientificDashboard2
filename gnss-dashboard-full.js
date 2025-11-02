@@ -1,6 +1,6 @@
 // =================================================================
-// FICHIER FINAL : gnss-dashboard-full.js
-// Contient toutes les constantes, la logique, le Kalman et l'Astro corrigé.
+// FICHIER 1/2 : gnss-dashboard-part1.js (Core & Kalman)
+// Contient constantes, variables d'état, UTC/NTP et Kalman.
 // =================================================================
 
 // --- CLÉS D'API & PROXY VERCEL ---
@@ -66,8 +66,48 @@ let selectedEnvironment = 'NORMAL';
 
 let lastP_hPa = null, lastT_K = null, lastH_perc = null; 
 
-// --- REFERENCES DOM ---
+// --- REFERENCES DOM & GPS ---
 const $ = id => document.getElementById(id);
+
+const setGPSMode = (mode) => {
+    currentGPSMode = mode;
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID);
+        wID = navigator.geolocation.watchPosition(updateDisp, gpsError, GPS_OPTS[currentGPSMode]);
+    }
+}
+const gpsError = (error) => { console.error(`Erreur GPS (${error.code}): ${error.message}`); }
+const startGPS = () => {
+    if (wID === null && !emergencyStopActive) {
+        wID = navigator.geolocation.watchPosition(updateDisp, gpsError, GPS_OPTS[currentGPSMode]);
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '⏸️ PAUSE GPS';
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').classList.add('active');
+        console.log("GPS Démarré.");
+    }
+}
+const stopGPS = () => {
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID);
+        wID = null;
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '▶️ MARCHE GPS';
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').classList.remove('active');
+        console.log("GPS Arrêté.");
+    }
+}
+const emergencyStop = () => {
+    emergencyStopActive = true;
+    stopGPS(); 
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').textContent = '🛑 Arrêt d\'urgence: ACTIF 🔴';
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').classList.add('active');
+    console.warn("Arrêt d'urgence ACTIVÉ.");
+}
+const resumeSystem = () => {
+    emergencyStopActive = false;
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').textContent = '🛑 Arrêt d\'urgence: INACTIF 🟢';
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').classList.remove('active');
+    console.log("Arrêt d'urgence DÉSACTIVÉ. Reprise du système possible.");
+}
+
 
 // ===========================================
 // FONCTIONS GÉO & UTILS
@@ -104,7 +144,7 @@ async function syncH() {
 
         lServH = serverTimestamp + latencyOffset; 
         lLocH = performance.now(); 
-        console.log(`Synchronisation UTC Atomique réussie. Latence corrigée: ${latencyOffset.toFixed(1)} ms.`);
+        // console.log(`Synchronisation UTC Atomique réussie.`);
 
     } catch (error) {
         console.warn("Échec de la synchronisation. Utilisation de l'horloge locale.", error);
@@ -166,12 +206,13 @@ function getKalmanR(acc, alt, P_hPa) {
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     return R;
 }
-
 // =================================================================
-// LOGIQUE PRINCIPALE & ASTRO
+// FICHIER 2/2 : gnss-dashboard-part2.js (Astro, Main Loop & Init DOM)
+// Dépend de gnss-dashboard-part1.js
 // =================================================================
 
-/** Initialisation de Leaflet Map (Nécessite le CDN dans le HTML) */
+// --- MAP & ASTRO LOGIC (Dépend de Leaflet et SunCalc) ---
+
 let lMap = null; 
 let lMarker = null;
 
@@ -193,7 +234,7 @@ function updateMap(latA, lonA) {
         const newLatLng = new L.LatLng(latA, lonA);
         lMarker.setLatLng(newLatLng);
         // Optionnel: centrer la carte autour du marqueur
-        // lMap.setView(newLatLng);
+        // lMap.setView(newLatLng); 
     }
 }
 
@@ -287,7 +328,7 @@ function updateAstro(latA, lonA) {
         $('time-minecraft').textContent = getMinecraftTime(now);
     }
     
-    // Mise à jour des valeurs astronomiques (avec les IDs du HTML recommandé)
+    // Mise à jour des valeurs astronomiques
     if ($('time-solar-true')) $('time-solar-true').textContent = solarTimes.TST;
     if ($('culmination-lsm')) $('culmination-lsm').textContent = solarTimes.MST;
     if ($('sun-elevation')) $('sun-elevation').textContent = sunPos ? `${(sunPos.altitude * R2D).toFixed(2)} °` : 'N/A';
@@ -325,7 +366,10 @@ function fetchWeather(latA, lonA) {
         return; 
     }
 
-    // ... (Logique API Météo - non modifiée)
+    // NOTE: L'implémentation de l'appel réel à l'API Météo via PROXY_WEATHER_ENDPOINT
+    // n'est pas incluse ici pour des raisons de concision. 
+    // Le code doit faire un fetch(PROXY_WEATHER_ENDPOINT?lat=...&lon=...)
+    // et mettre à jour lastP_hPa, lastT_K, lastH_perc.
 }
 
 function updateDisp(pos) {
@@ -346,8 +390,6 @@ function updateDisp(pos) {
         if (lPos === null) lPos = pos; return; 
     }
     
-    // ... (Calculs de Kalman et de vitesse 3D - non modifiés)
-
     let spdH = spd ?? 0;
     let spdV = 0; 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
@@ -404,7 +446,6 @@ function updateDisp(pos) {
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
     // --- MISE À JOUR DU DOM (GPS/Physique) ---
-    // (Utilise les IDs du HTML recommandé)
     if ($('latitude')) $('latitude').textContent = lat.toFixed(6);
     if ($('longitude')) $('longitude').textContent = lon.toFixed(6);
     if ($('altitude-gps')) $('altitude-gps').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A';
@@ -439,15 +480,16 @@ function updateDisp(pos) {
     lPos.kAlt_old = kAlt_new; 
 }
 
+
 // ===========================================
-// INITIALISATION DES ÉVÉNEMENTS DOM
+// INITIALISATION DES ÉVÉNEMENTS DOM (DOMContentLoaded)
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
     
-    // Initialisation du sélecteur d'environnement (LOGIQUE AMÉLIORÉE)
+    // Initialisation du sélecteur d'environnement 
     const envSelect = document.createElement('select');
     envSelect.id = 'env-select';
     Object.keys(ENVIRONMENT_FACTORS).forEach(env => {
@@ -457,9 +499,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     envSelect.value = selectedEnvironment;
     
-    const envControlContainer = $('env-control-container'); // Nouvel ID HTML
+    const envControlContainer = $('env-control-container'); 
     if (envControlContainer) {
-        // Ajoute le sélecteur dans son conteneur dédié
         envControlContainer.appendChild(envSelect);
     }
     
@@ -470,51 +511,31 @@ document.addEventListener('DOMContentLoaded', () => {
     syncH(); 
 
     // Installation des listeners de contrôle
-    
-    // ===========================================
-    // INSTALLATION DES LISTENERS DE CONTRÔLE
-    // ===========================================
-
-    // Listener de contrôle GPS (MARCHE/PAUSE)
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
-        if (emergencyStopActive) { 
-            alert("Veuillez désactiver l'Arrêt d'urgence avant d'utiliser ce contrôle."); 
-            return; 
-        }
+        if (emergencyStopActive) { alert("Veuillez désactiver l'Arrêt d'urgence avant d'utiliser ce contrôle."); return; }
         wID === null ? startGPS() : stopGPS();
     });
-    
-    // Listener de sélection de fréquence GPS
     if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
-        if (emergencyStopActive) { 
-            alert("Veuillez désactiver l'Arrêt d'urgence."); 
-            return; 
-        }
+        if (emergencyStopActive) { alert("Veuillez désactiver l'Arrêt d'urgence."); return; }
         setGPSMode(e.target.value);
     });
 
-    // Listener d'Arrêt d'urgence (Toggle ON/OFF)
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
         emergencyStopActive ? resumeSystem() : emergencyStop(); 
     });
 
-    // Listener de bascule du mode Nether
     if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         netherMode = !netherMode; 
         if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; 
     });
     
-    // Listener de sélection d'environnement (Facteur Kalman R)
     if ($('env-select')) $('env-select').addEventListener('change', (e) => { 
         if (emergencyStopActive) return;
         selectedEnvironment = e.target.value; 
-        // Mise à jour de l'affichage du facteur actif
-        const envFactorDisplay = $('env-factor-display');
         if (envFactorDisplay) envFactorDisplay.textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`; 
     });
     
-    // Listeners de réinitialisation des données
     if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         distM = 0; distMStartOffset = 0; timeMoving = 0; 
@@ -534,9 +555,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (confirm("Êtes-vous sûr de vouloir tout réinitialiser?")) { 
             distM = 0; maxSpd = 0; distMStartOffset = 0; 
             kSpd = 0; kUncert = 1000; timeMoving = 0; 
-            // La mise à jour de l'affichage se fera au prochain tick GPS/slow-update
         } 
     });
+
 
     // La boucle d'intervalle pour la mise à jour DOM lente (Astro, Météo)
     if (domID === null) {
@@ -547,5 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lPos) updateMap(currentLat, currentLon); 
         }, DOM_SLOW_UPDATE_MS); 
     }
-    
-    startGPS();
+
+    // Démarrage du GPS (Dernière action dans DOMContentLoaded)
+    startGPS(); 
+});
