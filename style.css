@@ -1,1 +1,219 @@
- 
+/* =================================================================
+// FICHIER CSS : style.css
+// Styles du GNSS SpaceTime Dashboard
+// ================================================================= */
+
+/* --- Général --- */
+body { 
+    font-family: 'Arial', sans-serif; 
+    margin: 0; 
+    padding: 0; 
+    background-color: #f4f4f4; 
+    color: #333; 
+    transition: background-color 0.3s, color 0.3s;
+}
+
+/* --- Disposition du Dashboard --- */
+.dashboard-container { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 20px; 
+    padding: 20px; 
+    max-width: 1400px; /* Limite la largeur pour une meilleure lisibilité */
+    margin: 0 auto;
+}
+
+.section { 
+    background-color: #fff; 
+    padding: 15px; 
+    border-radius: 8px; 
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.section:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.section h2 { 
+    margin-top: 0; 
+    border-bottom: 2px solid #ddd; 
+    padding-bottom: 10px; 
+    font-size: 1.3em; 
+    color: #007bff; /* Couleur d'accentuation */
+}
+
+/* --- Points de Données --- */
+.data-point { 
+    display: flex; 
+    justify-content: space-between; 
+    padding: 8px 0; /* Augmenté pour l'espacement */
+    border-bottom: 1px dotted #eee; 
+    font-size: 0.95em;
+}
+
+.data-point:last-child {
+    border-bottom: none;
+}
+
+.data-point span:first-child { 
+    font-weight: 500; /* Plus de gras */
+    color: #555; 
+}
+
+/* --- Commandes et Boutons --- */
+.controls-grid { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 10px; 
+    margin-top: 15px; 
+}
+
+.control-input-full { 
+    grid-column: 1 / -1; 
+    margin-top: 10px; 
+}
+
+.control-input-full label { 
+    display: block; 
+    font-size: 0.9em; 
+    margin-bottom: 5px; 
+    font-weight: bold;
+}
+
+.control-input-full input, 
+.control-input-full select { 
+    width: 98%; 
+    padding: 8px; 
+    border-radius: 4px; 
+    border: 1px solid #ccc; 
+    box-sizing: border-box;
+}
+
+button, select { 
+    padding: 10px 5px; 
+    border: none; 
+    border-radius: 5px; 
+    cursor: pointer; 
+    font-weight: bold; 
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    filter: brightness(1.1);
+}
+
+#toggle-gps-btn { 
+    background-color: #28a745; 
+    color: white; 
+}
+
+#emergency-stop-btn { 
+    background-color: #dc3545; 
+    color: white; 
+}
+
+#reset-all-btn {
+    background-color: #ffc107;
+    color: #333;
+}
+
+/* --- Carte et Astrologie --- */
+#map-container { 
+    height: 400px; 
+    width: 100%; 
+    border-radius: 8px; 
+    margin-top: 15px; 
+    background-color: #eee;
+}
+
+#minecraft-clock-container { 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    flex-direction: column;
+    padding-top: 10px;
+}
+
+#minecraft-clock {
+    width: 120px; /* Taille augmentée pour la lisibilité */
+    height: 120px;
+    position: relative;
+    border: 3px solid #ccc;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.clock-display { 
+    font-size: 0.9em; 
+    color: #777; 
+    margin-top: 5px; 
+    font-style: italic;
+}
+
+/* --- Barre de séparation --- */
+hr {
+    border: 0;
+    height: 1px;
+    background-color: #f0f0f0;
+    margin: 15px 0;
+}
+
+/* --- STYLES MODE NUIT --- */
+body.night-mode {
+    background-color: #1a1a2e; /* Bleu nuit foncé */
+    color: #f0f0f0; /* Texte clair */
+}
+body.night-mode .section {
+    background-color: #2c2c54; /* Sections plus sombres */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+}
+body.night-mode .section h2 {
+    border-bottom: 2px solid #4f4f7a;
+    color: #ffffff;
+}
+body.night-mode .data-point span:first-child { 
+    color: #cccccc; 
+}
+body.night-mode .data-point span:last-child {
+    color: #f0f0f0;
+}
+body.night-mode .data-point {
+    border-bottom: 1px dotted #4f4f7a;
+}
+body.night-mode button, 
+body.night-mode select, 
+body.night-mode input[type="number"] {
+     border: 1px solid #4f4f7a;
+     background-color: #3d3d6e;
+     color: #ffffff;
+}
+/* Assurez-vous que les boutons spécifiques conservent leurs couleurs */
+body.night-mode #toggle-gps-btn { background-color: #28a745; color: white; }
+body.night-mode #emergency-stop-btn { background-color: #dc3545; color: white; }
+body.night-mode #reset-all-btn { background-color: #ffc107; color: #333; }
+
+
+/* --- Responsive Design (Mise en page adaptable) --- */
+@media (max-width: 1024px) {
+    .dashboard-container {
+        grid-template-columns: repeat(2, 1fr); /* 2 colonnes sur tablettes */
+    }
+    .controls-grid {
+        grid-template-columns: repeat(2, 1fr); /* 2 colonnes pour les contrôles */
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-container {
+        grid-template-columns: 1fr; /* 1 colonne sur mobiles */
+        padding: 10px;
+    }
+    .controls-grid {
+        grid-template-columns: 1fr; /* 1 colonne pour les contrôles */
+    }
+    #map-container {
+        height: 300px;
+    }
+}
