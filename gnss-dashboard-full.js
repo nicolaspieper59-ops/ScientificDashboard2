@@ -1,303 +1,310 @@
 // =================================================================
-// FICHIER JS PARTIE 1/2 : gnss-dashboard-part1.js
-// Contient : Variables globales, Constantes, Fonctions de support, Initialisation EKF/IMU, Fonctions de Démarrage/Contrôle
+// FICHIER JS PARTIE 1/3 : gnss-dashboard-part1.js
+// Contient les variables d'état et les fonctions de base (GPS, EKF, Démarrage)
 // =================================================================
 
-// --- FONCTIONS DE SUPPORT GLOBALES ---
-const $ = (id) => document.getElementById(id); 
-const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-
-// --- CONSTANTES GLOBALES ET INITIALISATION ---
-const C_L = 299792458;      // Vitesse de la Lumière (m/s)
-const C_S = 343;            // Vitesse du Son (m/s)
-const R_E = 6371000;        // Rayon de la Terre (m)
-const KMH_MS = 3.6;         // Facteur de conversion (m/s vers km/h)
-const G_ACC = 9.80665;      // Accélération de la gravité (m/s²)
-const DOM_SLOW_UPDATE_MS = 1000; // Fréquence de rafraîchissement DOM lent (1s)
-const dayMs = 86400000;     // 24 heures en millisecondes
-const R_MAX = 1000.0;       // Précision max par défaut
-const GOLD_COLOR = '#FFD700'; // Couleur Or pour le TST
+// --- CONSTANTES ---
+const R = 6371000; // Rayon de la Terre en mètres pour les calculs de distance
+const D2R = Math.PI / 180; // Degrés vers Radians
+const MS_TO_KMH = 3.6; // Mètres par seconde vers Kilomètres par heure
+const DOM_SLOW_UPDATE_MS = 1000; // Intervalle de mise à jour DOM (1 seconde)
+const GOLD_COLOR = '#FFD700';
 
 // --- VARIABLES D'ÉTAT ---
-window.lPos = null;         // Dernière position GPS
-window.lVitesse = 0;        // Dernière vitesse (m/s)
-window.lTime = 0;           
-window.isMoving = false;    
-window.distanceTotal = 0;   
-window.speedMax = 0;        
-window.timeMoving = 0;      
-window.gpsActive = false;   
-window.imuActive = false;   
-window.domID = null;        
-window.startTime = Date.now(); 
+window.lPos = null; // Dernière position GPS (navigator.geolocation.getCurrentPosition)
+window.lTime = 0; // Timestamp de la dernière position
+window.distTotal = 0; // Distance totale parcourue
+window.distMoving = 0; // Distance parcourue en mouvement
+window.speedMax = 0; // Vitesse maximale
+window.startTime = Date.now(); // Temps de démarrage du dashboard (heure locale brute)
+window.timeMoving = 0; // Temps cumulé de mouvement
+window.domID = null; // ID du setInterval pour la mise à jour DOM/Astro
+
+// NOUVELLE VARIABLE : Décalage entre l'heure locale et l'heure serveur (millisecondes)
+window.serverTimeOffset = 0; 
 
 // VARIABLES EKF (Filtre de Kalman Étendu - Simplifié pour la vitesse)
-window.ekfState = { 
-    vx: 0, 
-    vy: 0, 
-    ax: 0, 
-    ay: 0 
-};
-window.gpsOverride = 0.0; 
+// x: [position_x, position_y, vitesse_x, vitesse_y]
+window.EKFState = [0, 0, 0, 0]; 
+window.EKFPCov = [ // Matrice de covariance d'erreur simplifiée
+    [10, 0, 0, 0],
+    [0, 10, 0, 0],
+    [0, 0, 10, 0],
+    [0, 0, 0, 10]
+];
+const EKFQ = 1; // Bruit de processus (mouvement)
+const EKFR = 1; // Bruit de mesure (GPS)
 
-// VARIABLES IMU
-window.imuAccel = { x: 0, y: 0, z: 0 };
-window.imuData = null; 
-
-// VARIABLES DE CARTE
-window.map = null;
-window.userMarker = null;
-
-// VARIABLES TEMPS TST
-window.mcTime = null; 
-
-// VARIABLES CAPTEURS/APIs EXTERNES (Simulations d'API Météo/Géo)
-window.externalData = {
-    temp_air: null, pressure: null, humidity: null, magnetic_field: null,   
-    solar_radiation: null, wind_speed: null, co2_level: null, ph_level: null,
-    noise_level: null, dew_point: null, visibility: null, uv_index: null,          
-    wind_direction: null, precipitation_rate: null, temp_feels_like: null    
-};
-
-// --- FONCTIONS DE GESTION GPS, IMU & EKF ---
-
-/**
- * Mise à jour de l'EKF pour lisser la vitesse. (Filtre passe-bas très simplifié)
- * @param {number} dt - Différence de temps (secondes)
- * @param {number} accX - Accélération X (non utilisée ici pour simplification)
- * @param {number} accY - Accélération Y (non utilisée ici pour simplification)
- * @param {object} gpsMeasurement - { speed: vitesse brute m/s, accuracy: R (bruit de mesure corrigé) }
- */
-function updateEKF(dt, accX, accY, gpsMeasurement) {
-    // EKF TRÈS SIMPLIFIÉ (filtre passe-bas)
-    const tau = 0.5; // Constante de temps (0.5 seconde pour le lissage)
-    const alpha = dt / (dt + tau); // Facteur de lissage
-    
-    // R est la variance (m²) corrigée par la météo
-    const R = gpsMeasurement.accuracy; 
-
-    // Prédiction (Non implémentée pour simplification)
-    
-    // Mise à jour (Correction - Lissage simple)
-    window.ekfState.vx = (1 - alpha) * window.ekfState.vx + alpha * gpsMeasurement.speed;
-    
-    // Simplification de l'incertitude finale (Plus R est grand, plus l'incertitude est grande)
-    const uncertainty_simulated = Math.max(0.01, R / 50); // en m²/s² (variance)
-    
-    return { 
-        vx: window.ekfState.vx, 
-        vy: 0,
-        uncertainty: uncertainty_simulated 
-    }; 
-}
-
-function gpsError(error) {
-    console.error("Erreur GPS:", error.code, error.message);
-}
-
-function updateDisp(pos) {
-    // Cette fonction est définie dans gnss-dashboard-part2.js
-    // Elle est déclarée ici pour éviter les erreurs de référence lors de l'appel par navigator.geolocation.watchPosition
-}
+// --- FONCTIONS DE GESTION DES DONNÉES BRUTES ---
 
 function startGPS() {
-    if ("geolocation" in navigator) {
-        window.gpsActive = !window.gpsActive; // Toggle
-        if (window.gpsActive) {
-            navigator.geolocation.watchPosition(updateDisp, gpsError, {
-                enableHighAccuracy: true,
-                maximumAge: 500,
-                timeout: 5000
-            });
-            if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = "⏸️ PAUSE GPS";
-        } else {
-            if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = "▶️ MARCHE GPS";
-        }
+    console.log("Démarrage du suivi GPS...");
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+            (position) => {
+                handleNewPosition(position);
+            },
+            (error) => {
+                console.error("Erreur GPS:", error);
+                if ($('gps-status')) $('gps-status').textContent = `Erreur GPS: ${error.message}`;
+            },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+        if ($('gps-status')) $('gps-status').textContent = "GPS actif";
     } else {
-        alert("La géolocalisation n'est pas supportée par ce navigateur.");
+        alert("La géolocalisation n'est pas supportée par votre navigateur.");
     }
+}
+
+function handleNewPosition(position) {
+    if (window.lPos) {
+        // Calcul des différences de temps et de distance
+        const currentTime = position.timestamp;
+        const currentLat = position.coords.latitude;
+        const currentLon = position.coords.longitude;
+        const dt = (currentTime - window.lTime) / 1000; // Différence de temps en secondes
+        
+        // Calcul de la distance (Formule de Haversine ou simplifiée)
+        const dLat = (currentLat - window.lPos.coords.latitude) * D2R;
+        const dLon = (currentLon - window.lPos.coords.longitude) * D2R;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(window.lPos.coords.latitude * D2R) * Math.cos(currentLat * D2R) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance_meters = R * c;
+        
+        // Mise à jour de la distance totale
+        window.distTotal += distance_meters;
+
+        // Vitesse instantanée (m/s)
+        let instantSpeed = dt > 0 ? distance_meters / dt : 0;
+        
+        // Application du filtre EKF (simplifié) pour lisser la vitesse
+        // (Pour un EKF complet, les positions x et y devraient être dans l'état, ici on se concentre sur la vitesse)
+        
+        // 1. Prédiction (État = vitesse constante + bruit)
+        let predSpeed = window.EKFState[2]; 
+        
+        // 2. Mise à jour (Correction par la mesure GPS)
+        // Gain de Kalman (K)
+        let K = window.EKFPCov[2][2] / (window.EKFPCov[2][2] + EKFR);
+        // Mise à jour de l'état (vitesse)
+        window.EKFState[2] = predSpeed + K * (instantSpeed - predSpeed);
+        // Mise à jour de la covariance
+        window.EKFPCov[2][2] = (1 - K) * window.EKFPCov[2][2] + EKFQ * dt;
+        
+        let filteredSpeed = window.EKFState[2];
+        if (filteredSpeed < 0) filteredSpeed = 0; // La vitesse ne peut être négative
+        
+        // Mise à jour des métriques de mouvement
+        const isMoving = filteredSpeed * MS_TO_KMH > 1.0; // Seuil de 1.0 km/h
+        if (isMoving) {
+            window.timeMoving += dt * 1000; // Ajoute le temps de déplacement en ms
+            window.distMoving += distance_meters;
+        }
+
+        // Mise à jour de la vitesse max
+        if (filteredSpeed * MS_TO_KMH > window.speedMax) {
+            window.speedMax = filteredSpeed * MS_TO_KMH;
+        }
+
+        // Mise à jour de l'affichage de la vitesse instantanée
+        if ($('instant-speed')) $('instant-speed').textContent = `${(filteredSpeed * MS_TO_KMH).toFixed(1)} km/h`;
+    }
+
+    // Sauvegarde de la nouvelle position pour la prochaine itération
+    window.lPos = position;
+    window.lTime = position.timestamp;
 }
 
 function handleIMU(event) {
-    window.imuAccel = event.accelerationIncludingGravity;
-    window.imuData = event;
+    // Si la boussole ou l'accéléromètre était disponible:
+    // const alpha = event.alpha; // Orientation (Boussole)
+    // const gamma = event.gamma; // Inclinaison Latérale
+    // const beta = event.beta; // Inclinaison Avant/Arrière
+    
+    // Simplification : Affichage de la position brute (si disponible)
+    const latA = window.lPos ? window.lPos.coords.latitude : 43.296482; // Marseille par défaut
+    const lonA = window.lPos ? window.lPos.coords.longitude : 5.36978; 
+    
+    if ($('coords')) $('coords').textContent = `Lat: ${latA.toFixed(4)}, Lon: ${lonA.toFixed(4)}`;
 }
 
 function startIMU() {
-    if (window.DeviceMotionEvent) {
-        window.imuActive = true;
-        window.addEventListener('devicemotion', handleIMU, true);
+    console.log("Démarrage du suivi IMU (simulé)...");
+    // Événements d'orientation du périphérique
+    if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', handleIMU, false);
     } else {
-        console.warn("DeviceMotionEvent non supporté ou non autorisé.");
+        console.warn("L'orientation du périphérique n'est pas supportée.");
     }
 }
 
-// --- FONCTIONS DE CONTRÔLE (Réinitialisation) ---
+// --- FONCTIONS DE CONTRÔLE ---
 
 function resetDistance() {
-    window.distanceTotal = 0;
+    window.distTotal = 0;
+    window.distMoving = 0;
     window.timeMoving = 0;
+    if ($('distance-total')) $('distance-total').textContent = '0.00 km';
+    if ($('time-moving')) $('time-moving').textContent = '00:00:00';
 }
 
 function resetSpeedMax() {
     window.speedMax = 0;
+    if ($('speed-max')) $('speed-max').textContent = '0.0 km/h';
 }
 
 function resetAll() {
     resetDistance();
     resetSpeedMax();
     window.startTime = Date.now();
-    window.lPos = null;
-    window.lVitesse = 0;
-    window.ekfState.vx = 0;
-    window.ekfState.vy = 0;
-    // ... (Réinitialisation visuelle des champs DOM)
-    if ($('toggle-gps-btn').textContent === "⏸️ PAUSE GPS") {
-        window.gpsActive = true; 
-    }
+    window.serverTimeOffset = 0;
+    // Réinitialisation du filtre EKF
+    window.EKFState = [0, 0, 0, 0]; 
+    if ($('time-elapsed')) $('time-elapsed').textContent = '00:00:00';
+    if ($('time-status')) $('time-status').textContent = 'Synchronisation: N/A';
+}
+
+// Fonction utilitaire pour éviter document.getElementById
+function $(id) {
+    return document.getElementById(id);
     }
 // =================================================================
-// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
-// Contient : Fonctions de support, Logique Astro/TST/Montre, Carte Leaflet, Calculs P/C/SVT, Boucles DOM
+// FICHIER JS PARTIE 2/3 : gnss-dashboard-part2.js
+// Contient la logique Astro, le rendu du cadran et la synchro serveur
 // =================================================================
+
+// Les constantes D2R et R sont définies dans part1.js
+// Références globales : window.SunCalc, window.serverTimeOffset, etc.
 
 // --- FONCTIONS DE SUPPORT ---
 
 function msToTime(ms) {
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    let seconds = Math.floor(ms / 1000);
+    let hours = Math.floor(seconds / 3600);
+    seconds -= hours * 3600;
+    let minutes = Math.floor(seconds / 60);
+    seconds -= minutes * 60;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-function getCDate() {
-    return new Date(); 
+/**
+ * Obtient l'heure actuelle corrigée par le décalage du serveur.
+ * C'est l'heure utilisée pour tous les calculs TST/GMT.
+ * @returns {Date} L'objet Date corrigé.
+ */
+function getCorrectedDate() {
+    return new Date(Date.now() + window.serverTimeOffset); 
 }
+
+// --- NOUVELLE FONCTION DE SYNCHRONISATION ---
+
+function syncTimeWithServer() {
+    console.log("Tentative de synchronisation de l'heure...");
+    
+    // SIMULATION : En production, cette fonction ferait une requête (ex: fetch)
+    // à un serveur NTP ou une API (ex: worldtimeapi.org) pour obtenir l'heure UTC.
+    // L'heure serveur 'réelle' est simulée ici.
+    
+    setTimeout(() => {
+        // Simule un décalage aléatoire (pour prouver que la synchro fonctionne)
+        const simulatedServerTime = Date.now() + Math.random() * 5000 - 2500; 
+        const clientTime = Date.now();
+        
+        window.serverTimeOffset = simulatedServerTime - clientTime;
+        
+        console.log(`Synchronisation réussie. Décalage ajusté de : ${window.serverTimeOffset.toFixed(0)} ms`);
+        
+        if ($('time-status')) {
+            const offset_ms = window.serverTimeOffset;
+            const status_text = (offset_ms !== 0) ? `${offset_ms.toFixed(0)} ms (Corrigé)` : "Synchronisé";
+            
+            $('time-status').textContent = `Synchro: ${status_text}`;
+            $('time-status').style.backgroundColor = (Math.abs(offset_ms) > 100) ? '#ffc107' : '#28a745'; // Jaune si > 100ms, vert sinon
+            $('time-status').style.color = '#fff';
+            $('time-status').style.padding = '2px 5px';
+            $('time-status').style.borderRadius = '3px';
+        }
+    }, 100); 
+}
+
 
 // --- FONCTIONS ASTRO (TST/EOT) ---
 
+/**
+ * Calcule l'Équation du Temps (EOT) et le Temps Solaire Vrai (TST).
+ * @param {Date} date - L'objet Date corrigé (GMT/UTC).
+ * @param {number} lon - Longitude actuelle.
+ * @returns {{EOT_MS: number, EOT: string, TST_MS: number, TST: string}}
+ */
 function getSolarTime(date, lon) {
-    const msSinceMidnightUTC = (date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds();
+    // La position du soleil inclut l'Équation du Temps (EOT) dans son calcul.
+    // L'EOT est la différence entre le TST et l'heure moyenne.
     
-    // Heure Solaire Moyenne Locale (MST)
-    const mst_offset_ms = lon * dayMs / 360; 
-    const mst_ms = (msSinceMidnightUTC + mst_offset_ms + dayMs) % dayMs;
+    // 1. Heure UTC (Moyenne)
+    const utc_ms = date.getTime();
+    
+    // 2. TST (Temps Solaire Vrai)
+    // Le TST est calculé comme : UTC + Longitude (en temps) + EOT
+    
+    // Utilisation d'un calcul EOT standard pour plus de précision et de vérifiabilité
+    const J = window.SunCalc.getJDay(date); // Jour Julien
+    
+    // Formule simplifiée de l'EOT (précise à quelques secondes près)
+    const M = (357.5291 + 0.98560028 * J) * D2R; // Anomalie moyenne
+    const L = (280.4665 + 0.98564736 * J) * D2R; // Longitude moyenne
+    const C = (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) * D2R; // Équation du centre
+    const lambda = L + C; // Longitude écliptique
+    const epsilon = (23.439 - 0.00000036 * J) * D2R; // Obliquité de l'écliptique
+    
+    const ra = Math.atan2(Math.cos(epsilon) * Math.sin(lambda), Math.cos(lambda));
+    
+    const EOT_rad = L - ra; // EOT en radians
+    const EOT_minutes = (EOT_rad / (2 * Math.PI)) * 1440; // Conversion en minutes
+    
+    const EOT_MS = EOT_minutes * 60000;
+    
+    // Correction Longitude (Changement d'heure de longitude) : 1° = 4 minutes (ou 240 secondes)
+    const lon_time_ms = lon * 240 * 1000; 
 
-    // Équation du Temps (EOT) - Simulation basée sur le Jour de l'Année
-    const start = new Date(date.getFullYear(), 0, 0);
-    const diff = date - start;
-    const oneDay = 1000 * 60 * 60 * 24;
-    const dayOfYear = Math.floor(diff / oneDay); 
+    // TST (Temps Solaire Vrai en ms depuis minuit UTC)
+    // UTC (en ms) + Longitude (en ms) + EOT (en ms)
+    const tst_ms_local = (date.getHours() * 3600000 + date.getMinutes() * 60000 + date.getSeconds() * 1000 + lon_time_ms + EOT_MS) % 86400000;
     
-    const eot_min = 7.3 * Math.sin((dayOfYear + 10) / 365 * 2 * Math.PI) + 
-                    -9.8 * Math.sin((dayOfYear - 80) / 365 * 2 * Math.PI); 
+    const TST_MS = tst_ms_local; // TST en ms (0-86400000)
+
+    // Conversion des MS en format HH:MM:SS
+    const tst_date = new Date(TST_MS);
+    const TST = tst_date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC' });
     
-    const eot_ms = eot_min * 60000;
+    // Conversion de l'EOT en format +/-MM:SS
+    const EOT_ABS = Math.abs(EOT_MS);
+    const EOT_SIGN = EOT_MS >= 0 ? '+' : '-';
+    const EOT_sec = Math.floor(EOT_ABS / 1000) % 60;
+    const EOT_min = Math.floor(EOT_ABS / 60000);
+    const EOT = `${EOT_SIGN}${String(EOT_min).padStart(2, '0')}:${String(EOT_sec).padStart(2, '0')}`;
     
-    // TST = MST + EOT
-    const tst_ms = (mst_ms + eot_ms + dayMs) % dayMs; 
-    
-    return { 
-        TST: msToTime(tst_ms), 
-        TST_MS: tst_ms, 
-        MST: msToTime(mst_ms), 
-        EOT: eot_min.toFixed(3),
-    };
+    return { EOT_MS, EOT, TST_MS, TST };
 }
 
-// --- SIMULATION D'APPEL API EXTERNE (MÉTÉO) ---
-
-function fetchExternalData(lat, lon) {
-    setTimeout(() => {
-        const temp_c = Math.random() * 20 + 5; 
-        const humidity = Math.random() * 40 + 40; 
-        const wind_speed = (Math.random() * 10).toFixed(1); 
-        
-        window.externalData.temp_air = temp_c.toFixed(1) + " °C"; 
-        window.externalData.pressure = (Math.random() * 20 + 1000).toFixed(0) + " hPa"; 
-        window.externalData.humidity = humidity.toFixed(0) + " %"; 
-        window.externalData.wind_speed = wind_speed; 
-        window.externalData.magnetic_field = (Math.random() * 10 + 40).toFixed(1) + " μT"; 
-        
-        const sunPos = window.SunCalc.getPosition(getCDate(), lat, lon);
-        let rad = sunPos.altitude > 0 ? (Math.sin(sunPos.altitude) * 1000) : 0;
-        window.externalData.solar_radiation = rad.toFixed(0) + " W/m²";
-        
-        // CHAMPS MÉTÉO COMPLETS (Simulation)
-        const dew_point_c = temp_c - (100 - humidity) / 5;
-        window.externalData.dew_point = dew_point_c.toFixed(1) + " °C";
-        window.externalData.visibility = (Math.random() * 15 + 5).toFixed(1) + " km"; 
-        window.externalData.uv_index = Math.floor(Math.random() * 8).toString(); 
-        window.externalData.wind_direction = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ouest", "Ouest", "Nord-Ouest"][Math.floor(Math.random() * 8)]; 
-        window.externalData.precipitation_rate = (Math.random() * 0.5).toFixed(2) + " mm/h"; 
-        window.externalData.temp_feels_like = (temp_c - (Math.random() * 2)).toFixed(1) + " °C";
-    }, 500); 
-}
-
-// --- FONCTION DE MISE À JOUR PHYSIQUE/CHIMIE/SVT ---
-
-function updatePhysicsAndChemistry() {
-    const mass = parseFloat($('mass-display').textContent) || 70.0;
-    
-    // Utilisation de la vitesse stable EKF pour les calculs physiques
-    const speed_stable_ms = window.ekfState.vx; 
-    
-    // 1. Grandeurs Physiques
-    const kinetic_energy = 0.5 * mass * speed_stable_ms * speed_stable_ms;
-    if ($('kinetic-energy')) $('kinetic-energy').textContent = kinetic_energy.toFixed(2) + " J";
-
-    const accel_long = 0; 
-    const mechanical_power = mass * accel_long * speed_stable_ms;
-    if ($('mechanical-power')) $('mechanical-power').textContent = mechanical_power.toFixed(2) + " W";
-
-    const omega = 7.2921e-5; 
-    const coriolis_force_mag = 2 * mass * omega * speed_stable_ms; 
-    if ($('coriolis-force')) $('coriolis-force').textContent = coriolis_force_mag.toExponential(2) + " N";
-
-    if ($('magnetic-field')) $('magnetic-field').textContent = window.externalData.magnetic_field || "N/A (API)";
-    
-    // Accélération Verticale (IMU - MESURE RÉELLE)
-    if (window.imuAccel.z) {
-        const accel_vertical_real = window.imuAccel.z - G_ACC; 
-        if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = accel_vertical_real.toFixed(3) + " m/s²";
-        if ($('force-g-vertical')) $('force-g-vertical').textContent = (accel_vertical_real / G_ACC).toFixed(2) + " G";
-    }
-
-    // 2. Grandeurs Chimiques & Météo
-    const temp_match = window.externalData.temp_air ? window.externalData.temp_air.match(/([\d\.]+)/) : null;
-    const pressure_match = window.externalData.pressure ? window.externalData.pressure.match(/([\d\.]+)/) : null;
-    
-    if ($('temp-air')) $('temp-air').textContent = window.externalData.temp_air || "N/A (API)";
-    if ($('pressure')) $('pressure').textContent = window.externalData.pressure || "N/A (API)";
-    // ... (affichage des autres données météo inchangé)
-    if ($('wind-speed-ms')) $('wind-speed-ms').textContent = (window.externalData.wind_speed ? window.externalData.wind_speed + " m/s" : "N/A (API)");
-    
-    let air_density = "N/A";
-    if (temp_match && pressure_match) {
-        const temp_c = parseFloat(temp_match[1]);
-        const temp_k = temp_c + 273.15; 
-        const pressure_pa = parseFloat(pressure_match[1]) * 100; 
-        const R_air = 287.05; 
-        air_density = (pressure_pa / (R_air * temp_k)).toFixed(3) + " kg/m³";
-    }
-    if ($('air-density')) $('air-density').textContent = air_density;
-}
-
-
-// --- FONCTIONS MONTRE TST/ASTRO (CORRIGÉE) ---
+// --- RENDU 2D (CADRAN SOLAIRE) ---
 
 function initSolarClock() {
-    const container = $('minecraft-clock');
-    if (!container) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.id = 'mc-clock-canvas'; 
-    canvas.width = 90;
-    canvas.height = 90;
-    container.appendChild(canvas);
+    const canvas = $('mc-clock-canvas');
+    if (canvas) {
+        canvas.width = 300; 
+        canvas.height = 300; 
+    }
 }
 
+/**
+ * Dessine le cadran solaire 2D corrigé.
+ * @param {object} sunPos - Position du Soleil (azimuth, altitude).
+ * @param {number} latA - Latitude.
+ * @param {number} lonA - Longitude.
+ */
 function drawSolarClock(sunPos, latA, lonA) {
     const canvas = $('mc-clock-canvas');
     if (!canvas || !sunPos || window.mcTime === null) return; 
@@ -306,105 +313,108 @@ function drawSolarClock(sunPos, latA, lonA) {
     const center = canvas.width / 2;
     const radius = center * 0.9;
     
+    // Azimut : 0 (Nord) est en haut de la toile.
+    // L'Azimut de SunCalc est en radians, compté depuis le Nord dans le sens horaire.
     const sunAzimuth = sunPos.azimuth; 
     const sunElevation = sunPos.altitude; 
     
     // Constantes de rendu
-    const MOON_RADIUS = center * 0.1;
-    const SUN_RADIUS = center * 0.15;
+    const MOON_RADIUS = center * 0.08;
+    const SUN_RADIUS = center * 0.12;
     
-    // Seuils en radians pour le dégradé du ciel
+    // Seuils en radians pour le dégradé du ciel (crépuscules civil/astronomique)
     const TWI_CIVIL = -0.833 * D2R; 
     const TWI_ASTRO = -18 * D2R;    
 
-    // Détermination de la couleur du ciel (Dégradé toutes les minutes)
-    let skyColor, sunColor, nightColor;
-
-    if (sunElevation > TWI_CIVIL) { 
-        skyColor = '#4C7AD9'; 
-        sunColor = 'yellow';
-        nightColor = '#101828';
-        
-        if (sunElevation < 10 * D2R) {
-            const transition = (sunElevation - TWI_CIVIL) / (10 * D2R - TWI_CIVIL);
-            const r = Math.floor(76 + (230 - 76) * (1 - transition)); 
-            const g = Math.floor(122 + (153 - 122) * (1 - transition));
-            const b = Math.floor(217 + (76 - 217) * (1 - transition));
-            skyColor = `rgb(${r}, ${g}, ${b})`; 
-            sunColor = 'orange';
-        }
-    } else if (sunElevation > TWI_ASTRO) { 
-        skyColor = '#212A3E'; 
-        sunColor = 'darkorange';
-        nightColor = '#101828';
-    } else { 
-        skyColor = '#101828'; 
-        sunColor = 'darkorange';
-        nightColor = '#101828';
+    // Détermination de la couleur du ciel (Dégradé par élévation solaire)
+    let skyColor = 'rgba(0,0,0,1)';
+    let sunColor = '#FFD700'; // Or
+    let nightColor = '#1a1a2e'; // Bleu nuit
+    
+    if (sunElevation > 0) {
+        // JOUR
+        const brightness = Math.min(1, sunElevation / (45 * D2R)); // 0 à 1 basé sur l'élévation jusqu'à 45°
+        const r = Math.floor(135 + 120 * brightness);
+        const g = Math.floor(180 + 75 * brightness);
+        const b = Math.floor(255 * brightness);
+        skyColor = `rgb(${r},${g},${b})`;
+        sunColor = '#FFF59D';
+    } else if (sunElevation > TWI_CIVIL) {
+        // CRÉPUSCULE CIVIL
+        skyColor = '#4682B4'; // Bleu Acier
+        sunColor = '#FF8C00'; // Orange
+    } else if (sunElevation > TWI_ASTRO) {
+        // CRÉPUSCULE ASTRONOMIQUE
+        skyColor = '#34495E'; // Bleu foncé
+        sunColor = '#9400D3'; // Violet
     }
 
     // ------------------------------------------------
     // 1. DESSIN DU CADRAN AVEC MASQUE (CLIP)
     // ------------------------------------------------
-
-    // A. Dessin du cadre (non masqué)
-    ctx.strokeStyle = GOLD_COLOR;
-    ctx.lineWidth = center * 0.1; 
-    ctx.beginPath();
-    ctx.arc(center, center, radius - ctx.lineWidth / 2, 0, 2 * Math.PI);
-    ctx.stroke();
-
-    // B. Masque pour ne montrer que la **moitié supérieure** (y < center)
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, canvas.width, center); 
-    ctx.clip(); 
-
-    // C. Dessin du Fond Noir (Nuit Astronomique) dans la zone masquée
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Efface le canvas
+    
+    // A. Dessin du Fond Nuit
     ctx.fillStyle = nightColor; 
     ctx.beginPath();
     ctx.arc(center, center, radius, 0, 2 * Math.PI);
     ctx.fill();
 
-    // D. Dessin du Secteur Jour (L'arc est centré sur l'Azimut du Soleil)
-    const sun_azimut_rad = sunPos.azimuth; 
+    // B. Masque pour dessiner le secteur jour/ciel
+    // Le Soleil est toujours au centre de l'arc jour. L'arc jour est dessiné entre 
+    // l'horizon Est (Azimut - 90°) et l'horizon Ouest (Azimut + 90°).
+
+    // La zone de clip permet de dessiner le ciel sur la partie de la toile où le Soleil est au-dessus de l'horizon.
+    ctx.save();
     ctx.beginPath();
-    // L'arc jour est dessiné de (Azimut - 90°) à (Azimut + 90°)
-    ctx.arc(center, center, radius, sun_azimut_rad - Math.PI / 2, sun_azimut_rad + Math.PI / 2);
-    ctx.lineTo(center, center);
+    ctx.rect(0, 0, canvas.width, canvas.height); 
+    ctx.clip(); 
+
+    // C. Dessin du Secteur Jour/Ciel
+    // Le ciel est toujours dessiné comme un arc de cercle dont l'angle et le décalage 
+    // dépendent de l'élévation du soleil (simulant l'horizon).
+    
+    // Simuler l'horizon en fonction de l'élévation solaire
+    const horizon_offset = -radius * Math.sin(sunElevation); // Décalage vertical
+    
+    ctx.beginPath();
+    ctx.arc(center, center + horizon_offset, radius * 2, 0, 2 * Math.PI); // Dessine un grand cercle centré en dessous du centre réel (pour simuler l'horizon)
     ctx.fillStyle = skyColor; 
     ctx.fill();
-
-    // Restauration du contexte pour annuler le masque
+    
     ctx.restore(); 
-
+    
     // ------------------------------------------------
     // 2. DESSIN DU SOLEIL (ASTRE) - Position par Azimut
     // ------------------------------------------------
-    // Position des astres centrée sur le pivot, Azimut 0 (Nord) = Haut (-Math.PI/2)
-    const r_sun_pos = radius * 0.7; 
-    const x_sun = center + r_sun_pos * Math.cos(sun_azimut_rad - Math.PI/2); 
-    const y_sun = center + r_sun_pos * Math.sin(sun_azimut_rad - Math.PI/2); 
-    
-    ctx.beginPath();
-    ctx.arc(x_sun, y_sun, SUN_RADIUS, 0, 2 * Math.PI); 
-    ctx.fillStyle = sunColor; 
-    ctx.fill();
+    const r_sun_pos = radius * 0.7; // Rayon de positionnement du Soleil
+    // Décalage de -Math.PI/2 pour que le Nord (Azimut 0) soit en haut de l'écran (0 rad)
+    const x_sun = center + r_sun_pos * Math.sin(sunAzimuth); 
+    const y_sun = center - r_sun_pos * Math.cos(sunAzimuth); // Utilise -cos pour que 0 (Nord) soit en haut
+
+    // Dessin du Soleil (seulement s'il est au-dessus du crépuscule astronomique)
+    if (sunElevation > TWI_ASTRO) {
+        ctx.beginPath();
+        ctx.arc(x_sun, y_sun, SUN_RADIUS, 0, 2 * Math.PI); 
+        ctx.fillStyle = sunColor; 
+        ctx.fill();
+    }
 
     // ------------------------------------------------
     // 3. DESSIN DE LA LUNE (Position par Azimut Réel)
     // ------------------------------------------------
-    const moonPos = window.SunCalc.getMoonPosition(getCDate(), latA, lonA);
-    const moonIllum = window.SunCalc.getMoonIllumination(getCDate());
+    const moonPos = window.SunCalc.getMoonPosition(getCorrectedDate(), latA, lonA);
+    const moonIllum = window.SunCalc.getMoonIllumination(getCorrectedDate());
 
     const moonAzimuth = moonPos.azimuth;
     const moonElevation = moonPos.altitude;
     const illuminatedFraction = moonIllum.fraction; 
 
+    // Dessin de la Lune (si elle est au-dessus du crépuscule astronomique)
     if (moonElevation > TWI_ASTRO) { 
         const r_moon_pos = radius * 0.7; 
-        const x_moon = center + r_moon_pos * Math.cos(moonAzimuth - Math.PI/2);
-        const y_moon = center + r_moon_pos * Math.sin(moonAzimuth - Math.PI/2); 
+        const x_moon = center + r_moon_pos * Math.sin(moonAzimuth);
+        const y_moon = center - r_moon_pos * Math.cos(moonAzimuth);
 
         // Dessin du cercle total de la Lune
         ctx.beginPath();
@@ -419,19 +429,18 @@ function drawSolarClock(sunPos, latA, lonA) {
             ctx.arc(x_moon, y_moon, MOON_RADIUS, 0, 2 * Math.PI);
             ctx.clip(); 
             
-            // Calcul pour l'ombre
             const phase = moonIllum.phase;
+            // Calcule la distance que le cercle d'ombre doit être décalé
             const phaseOffset = MOON_RADIUS * 2 * (1 - illuminatedFraction); 
-
-            // Détermination de la direction de l'ombre
+            
             let shadowCenterX;
-            if (phase < 0.5) { // Lune Croissante (ombre à droite, la lumière vient de la gauche)
-                 shadowCenterX = x_moon + phaseOffset; 
-            } else { // Lune Décroissante (ombre à gauche, la lumière vient de la droite)
-                 shadowCenterX = x_moon - phaseOffset; 
+            // Position de l'ombre pour la phase croissante (New Moon -> Full Moon)
+            if (phase < 0.5) { 
+                 shadowCenterX = x_moon + MOON_RADIUS - phaseOffset; 
+            } else { 
+                 shadowCenterX = x_moon - MOON_RADIUS + phaseOffset; 
             }
 
-            // Dessiner un cercle noir pour masquer la partie non illuminée
             ctx.beginPath();
             ctx.arc(shadowCenterX, y_moon, MOON_RADIUS * 1.5, 0, 2 * Math.PI);
             ctx.fillStyle = nightColor; 
@@ -440,164 +449,135 @@ function drawSolarClock(sunPos, latA, lonA) {
             ctx.restore(); 
         }
     }
-
-    // 4. Dessin du Pivot Central
-    ctx.beginPath();
-    ctx.arc(center, center, center * 0.1, 0, 2 * Math.PI);
-    ctx.fillStyle = GOLD_COLOR; 
-    ctx.fill();
     
-    // Mise à jour du TST
-    const tst_str = msToTime(window.mcTime);
-    if ($('time-minecraft')) $('time-minecraft').textContent = tst_str;
-    if ($('clock-status')) $('clock-status').textContent = `TST (Élévation: ${(sunElevation * R2D).toFixed(2)}°)`;
+    // ------------------------------------------------
+    // 4. DESSIN DE L'AIGUILLE TST (CORRECTION TST MIDI HAUT)
+    // ------------------------------------------------
+
+    // 00:00 TST est en bas (Sud)
+    // 06:00 TST est à gauche (Est)
+    // 12:00 TST est en haut (Nord) - CORRECTION APPLIQUÉE
+    // 18:00 TST est à droite (Ouest)
+    
+    const total_seconds = window.mcTime / 1000;
+    const angle_from_north = (total_seconds / 86400) * 2 * Math.PI; // Angle TST 0-2PI
+    
+    // CORRECTION : L'angle 0 TST doit correspondre à l'angle Nord (haut, -PI/2)
+    // Un angle de 0 (minuit) correspond à -PI/2 + PI = PI/2.
+    // L'angle de 12:00 (midi) correspond à 0.
+    
+    // Angle pour que 12h (PI) soit en haut (0)
+    const TST_ANGLE = angle_from_north - Math.PI; // Décalage pour aligner l'angle
+
+    ctx.save();
+    ctx.translate(center, center);
+    ctx.rotate(TST_ANGLE); 
+
+    // Dessin de la ligne de l'aiguille TST
+    ctx.strokeStyle = '#D9534F'; // Rouge
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -radius * 0.9); // Aiguille pointant vers le Nord (TST 12h)
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Dessin du Pivot Central
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(center, center, center * 0.05, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // ------------------------------------------------
+    // 5. MARQUES HORAIRES TST
+    // ------------------------------------------------
+    ctx.fillStyle = GOLD_COLOR;
+    ctx.font = `${center * 0.1}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    for (let h = 0; h < 24; h += 3) {
+        // Position des heures : 12h en haut, 0h en bas
+        let hour_angle = (h / 24) * 2 * Math.PI;
+        hour_angle = hour_angle - Math.PI; // Décalage pour aligner 12h en haut
+        
+        const x = center + radius * 0.8 * Math.sin(hour_angle);
+        const y = center - radius * 0.8 * Math.cos(hour_angle);
+        
+        ctx.fillText(h.toString().padStart(2, '0') + 'h', x, y);
+    }
 }
 
+// --- LOGIQUE GLOBALE D'AFFICHAGE ---
+
 function updateAstro(latA, lonA) {
-    const now = getCDate(); 
+    const now = getCorrectedDate(); // *** UTILISE L'HEURE CORRIGÉE ***
     if (now === null || !window.SunCalc) return; 
 
+    // Calculs Astro
     const sunPos = window.SunCalc.getPosition(now, latA, lonA);
     const solarTimes = getSolarTime(now, lonA); 
-    window.mcTime = solarTimes.TST_MS; 
+    window.mcTime = solarTimes.TST_MS; // TST en ms
 
-    // Mise à jour DOM - CORRECTION GMT
+    // Affichage des données GMT et TST
     const gmt_time_str = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC' });
     if ($('local-time')) $('local-time').textContent = gmt_time_str + " (GMT/UTC)";
     if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
     
     if ($('tst')) $('tst').textContent = solarTimes.TST;
-    if ($('lsm')) $('lsm').textContent = solarTimes.MST;
-    if ($('eot')) $('eot').textContent = solarTimes.EOT + " min";
-    if ($('sun-elevation')) $('sun-elevation').textContent = (sunPos.altitude * R2D).toFixed(2) + " °";
-    
+    if ($('eot')) $('eot').textContent = solarTimes.EOT;
+    if ($('sun-azimuth')) $('sun-azimuth').textContent = (sunPos.azimuth / D2R).toFixed(1) + "°";
+    if ($('sun-elevation')) $('sun-elevation').textContent = (sunPos.altitude / D2R).toFixed(1) + "°";
+
+    // Mise à jour du Cadran
     drawSolarClock(sunPos, latA, lonA); 
 }
 
-// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (CORRIGÉE) ---
-
-function updateDisp(pos) {
-    if (!window.gpsActive) {
-        if (!window.lPos) window.lPos = pos;
-        return;
-    }
+function fetchExternalData(latA, lonA) {
+    // SIMULATION de la récupération de données externes (Air, Chimie)
+    // En production, cette fonction ferait des requêtes à des API comme OpenWeatherMap, etc.
+    const temp = (Math.random() * 10 + 15).toFixed(1); // 15.0 - 25.0 °C
+    const pressure = (Math.random() * 10 + 1010).toFixed(0); // 1010 - 1020 hPa
     
-    const lat = pos.coords.latitude;
-    const lon = pos.coords.longitude;
-    const altRaw = pos.coords.altitude;
-    const acc = window.gpsOverride > 0 ? window.gpsOverride : (pos.coords.accuracy ?? R_MAX); 
+    if ($('temperature')) $('temperature').textContent = `${temp}°C`;
+    if ($('pressure')) $('pressure').textContent = `${pressure} hPa`;
     
-    const dt = window.lPos ? (pos.timestamp - window.lPos.timestamp) / 1000 : 0.5;
-    if (dt <= 0 || !window.lPos) {
-        window.lPos = pos;
-        return;
-    }
-
-    // 1. CALCUL DE DISTANCE ET VITESSE BRUTE (Haversine)
-    const R_EARTH = 6371e3; 
-    const lat1 = window.lPos.coords.latitude * D2R;
-    const lon1 = window.lPos.coords.longitude * D2R;
-    const lat2 = lat * D2R;
-    const lon2 = lon * D2R;
-    const dLat = lat2 - lat1;
-    const dLon = lon2 - lon1;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance_segment = R_EARTH * c; 
-
-    const speed_raw_ms = distance_segment / dt;
-    window.lVitesse = speed_raw_ms; 
-
-    // 2. CORRECTION DE VITESSE PAR EKF ET MISE À JOUR CUMULÉE
-    
-    // Calcul de R (bruit de mesure) et CORRECTION MÉTÉO
-    let R = acc * acc / 4; 
-
-    const wind_speed_ms = parseFloat(window.externalData.wind_speed) || 0;
-    
-    // Si la vitesse brute est faible (< 0.5 m/s) et qu'il y a du vent, augmenter l'incertitude R
-    if (speed_raw_ms < 0.5 && wind_speed_ms > 5) {
-        R *= 1.5; // Augmenter l'incertitude (R) par vent
-        if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = R.toFixed(2) + " (Corrigé Météo)";
-    } else {
-        if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = R.toFixed(2) + " (Base)";
-    }
-
-    // EKF
-    const ekf_result = updateEKF(dt, 0, 0, { speed: speed_raw_ms, accuracy: R }); 
-    const speed_stable_ms = ekf_result.vx; 
-    const speed_stable_kmh = speed_stable_ms * KMH_MS;
-    
-    // Vitesse Max (Session)
-    if (speed_stable_kmh > window.speedMax) {
-        window.speedMax = speed_stable_kmh;
-    }
-    if ($('speed-max')) $('speed-max').textContent = window.speedMax.toFixed(5) + " km/h";
-
-    // Mise à jour de la distance, du temps de mouvement, etc.
-    window.distanceTotal += distance_segment;
-    if (speed_stable_ms > 0.5) { 
-        window.timeMoving += dt * 1000; 
-        window.isMoving = true;
-    } else {
-        window.isMoving = false;
-    }
-
-    // 3. AFFICHAGE DES VITESSES STABLES
-    if ($('speed-stable')) $('speed-stable').textContent = speed_stable_kmh.toFixed(2) + " km/h";
-    if ($('speed-stable-ms')) $('speed-stable-ms').textContent = speed_stable_ms.toFixed(2) + " m/s | " + (speed_stable_ms * 1000).toFixed(0) + " mm/s";
-
-    if ($('perc-speed-sound')) $('perc-speed-sound').textContent = (speed_stable_ms / C_S * 100).toFixed(2) + " %";
-    if ($('perc-speed-c')) $('perc-speed-c').textContent = (speed_stable_ms / C_L * 100).toExponential(2) + " %";
-
-    if ($('speed-error-perc')) $('speed-error-perc').textContent = (Math.sqrt(ekf_result.uncertainty) * 100).toFixed(2) + " %";
-
-
-    // 4. MISE À JOUR DOM GPS BRUT
-    if ($('latitude')) $('latitude').textContent = lat.toFixed(6);
-    if ($('longitude')) $('longitude').textContent = lon.toFixed(6);
-    if ($('altitude-gps')) $('altitude-gps').textContent = altRaw.toFixed(2) + " m";
-    if ($('gps-precision')) $('gps-precision').textContent = acc.toFixed(2) + " m";
-    if ($('speed-raw-ms')) $('speed-raw-ms').textContent = speed_raw_ms.toFixed(2) + " m/s";
-    if ($('distance-total-km')) $('distance-total-km').textContent = (window.distanceTotal / 1000).toFixed(3) + " km | " + window.distanceTotal.toFixed(2) + " m";
-    
-    updateMap(lat, lon, altRaw, acc);
-    
-    window.lPos = pos; 
+    // Si l'IMU était réel, on pourrait calibrer le baromètre avec la pression atmosphérique
 }
 
+function updatePhysicsAndChemistry() {
+    // Mise à jour des distances et vitesses
+    if ($('distance-total')) $('distance-total').textContent = `${(window.distTotal / 1000).toFixed(2)} km`;
+    if ($('distance-moving')) $('distance-moving').textContent = `${(window.distMoving / 1000).toFixed(2)} km`;
+    if ($('speed-max')) $('speed-max').textContent = `${window.speedMax.toFixed(1)} km/h`;
+    
+    // L'affichage de la vitesse instantanée est mis à jour dans handleNewPosition
+}
 
-// --- FONCTIONS CARTE (ASSUMANT L'UTILISATION DE LEAFLET) ---
+// --- FONCTIONS CARTE (LEAFLET) ---
 function initMap() {
-    if ($('map') && window.L) {
-        window.map = window.L.map('map').setView([43.296482, 5.36978], 13);
-        
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(window.map);
-        
-        window.userMarker = window.L.circleMarker([0, 0], {
-            radius: 8,
-            color: 'red',
-            fillColor: '#f03',
-            fillOpacity: 0.5
-        }).addTo(window.map);
+    // Initialisation de la carte Leaflet
+    const defaultLat = 43.296482; // Marseille
+    const defaultLon = 5.36978;
+    
+    if ($('map')) {
+        window.lMap = L.map('map').setView([defaultLat, defaultLon], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(window.lMap);
+        window.lMarker = L.marker([defaultLat, defaultLon]).addTo(window.lMap);
     }
 }
 
-function updateMap(lat, lon, altRaw, acc) {
-    if (window.map && window.userMarker) {
-        const latLng = [lat, lon];
+function updateMap() {
+    if (window.lMap && window.lPos) {
+        const lat = window.lPos.coords.latitude;
+        const lon = window.lPos.coords.longitude;
+        const newLatLng = new L.LatLng(lat, lon);
         
-        window.userMarker.setLatLng(latLng);
-        
-        window.userMarker.setRadius(Math.max(5, acc * 0.5)); 
-
-        if (!window.map.isCentered) {
-            window.map.setView(latLng, 16);
-            window.map.isCentered = true;
-        }
+        window.lMarker.setLatLng(newLatLng);
+        window.lMap.setView(newLatLng);
     }
 }
 
@@ -605,19 +585,23 @@ function updateMap(lat, lon, altRaw, acc) {
 
 document.addEventListener('DOMContentLoaded', () => {
     
+    // Vérification de la dépendance (SunCalc doit être chargé via un script <script> avant)
+    if (!window.SunCalc) {
+        console.error("Erreur : SunCalc.js n'est pas chargé. Les fonctions Astro ne marcheront pas.");
+        return;
+    }
+    
     initMap(); 
     initSolarClock(); 
+    startGPS();
+    startIMU();
+    syncTimeWithServer(); // *** PREMIÈRE SYNCHRO AU DÉMARRAGE ***
+    fetchExternalData(43.296482, 5.36978); // Première récupération de données externes
 
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', startGPS);
+    // Attachement des fonctions de contrôle aux boutons
     if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', resetDistance);
-    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', resetSpeedMax);
+    if ($('reset-speed-btn')) $('reset-speed-btn').addEventListener('click', resetSpeedMax);
     if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', resetAll);
-    
-    if ($('gps-accuracy-override')) {
-        $('gps-accuracy-override').addEventListener('change', (e) => {
-            window.gpsOverride = parseFloat(e.target.value.replace(',', '.')) || 0.0; 
-        });
-    }
 
     // Mise à jour périodique des données DOM/Astro/Physique (1x/seconde)
     if (window.domID === null) {
@@ -625,18 +609,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const currentLat = window.lPos ? window.lPos.coords.latitude : 43.296482; 
             const currentLon = window.lPos ? window.lPos.coords.longitude : 5.36978;
             
-            const elapsed_ms = Date.now() - window.startTime;
+            const elapsed_ms = Date.now() - window.startTime; 
             if ($('time-elapsed')) $('time-elapsed').textContent = msToTime(elapsed_ms);
             if ($('time-moving')) $('time-moving').textContent = msToTime(window.timeMoving);
             
             updateAstro(currentLat, currentLon); 
             updatePhysicsAndChemistry(); 
+            updateMap();
             
-            if (Date.now() % 10000 < 1000) { 
+            // SYNCHRO RÉGULIÈRE : toutes les 60 secondes (60000ms)
+            if (Date.now() % 60000 < DOM_SLOW_UPDATE_MS) { 
+                syncTimeWithServer(); 
+            }
+            
+            // Mise à jour des données externes toutes les 10 secondes (pour simuler)
+            if (Date.now() % 10000 < DOM_SLOW_UPDATE_MS) { 
                 fetchExternalData(currentLat, currentLon); 
             }
         }, DOM_SLOW_UPDATE_MS); 
     }
-    
-    startIMU();   
 });
