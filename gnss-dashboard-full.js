@@ -236,10 +236,10 @@ function initializeControlListeners() {
     if ($('gps-accuracy-override')) $('gps-accuracy-override').addEventListener('input', updateKalmanParameters);
 
     updateKalmanParameters(); // Initialiser les paramètres EKF
-    }
+}
 // =================================================================
-// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js (FINAL)
-// Astro, Rendu, Météo (N/A) et Logique de Synchro (Vérifié 2025-11-02)
+// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js (FINAL - Corrigé)
+// Astro (TST Dynamique), Rendu, Météo (N/A) et Logique de Synchro
 // =================================================================
 
 // Les constantes et $(id) sont définies dans part1.js
@@ -258,42 +258,55 @@ function msToTime(ms) {
 }
 
 function getCorrectedDate() {
+    // Utilise l'heure locale, car l'offset NTP est fixé à 0 (pas de simulation)
     return new Date(Date.now() + window.serverTimeOffset); 
 }
 
 // --- FONCTION DE SYNCHRONISATION DU TEMPS NTP ---
 
 function syncTimeWithServer() {
+    console.log("Synchronisation NTP (Client Time)...");
+    
     window.serverTimeOffset = 0; // Utilise l'heure client (pas de simulation NTP)
         
     if ($('local-time')) {
         const now = getCorrectedDate();
         const gmt_time_str = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC' });
         
+        // Affichage de l'heure UTC et du statut (Synchro: Client Time)
         $('local-time').innerHTML = `${gmt_time_str} UTC (<span style="color: #6c757d; font-weight: normal; font-size: 0.8em;">Synchro: Client Time</span>)`;
     }
 }
 
+
 // --- FONCTIONS ASTRO (TST/EOT) ---
 
 function getSolarTime(date, lon) {
-    // ... (Logique TST/EOT/SunCalc conservée)
+    // RAPPEL: D2R (Degrés vers Radians) est défini dans part1.js
     const J = window.SunCalc.getJDay(date); 
     const M = (357.5291 + 0.98560028 * J) * D2R; 
     const L = (280.4665 + 0.98564736 * J) * D2R; 
     const C = (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) * D2R; 
     const lambda = L + C; 
     const epsilon = (23.439 - 0.00000036 * J) * D2R; 
+    
     const ra = Math.atan2(Math.cos(epsilon) * Math.sin(lambda), Math.cos(lambda));
+    
     const EOT_rad = L - ra; 
     const EOT_minutes = (EOT_rad / (2 * Math.PI)) * 1440; 
+    
     const EOT_MS = EOT_minutes * 60000;
+    
     const lon_time_ms = lon * 240 * 1000; 
+
     const date_ms_since_midnight = date.getUTCHours() * 3600000 + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000;
     const tst_ms_local = (date_ms_since_midnight + lon_time_ms + EOT_MS) % 86400000;
+    
     const TST_MS = tst_ms_local; 
+
     const tst_date = new Date(TST_MS);
     const TST = tst_date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC' });
+    
     const EOT_ABS = Math.abs(EOT_MS);
     const EOT_SIGN = EOT_MS >= 0 ? '+' : '-';
     const EOT_sec = Math.floor(EOT_ABS / 1000) % 60;
@@ -303,9 +316,128 @@ function getSolarTime(date, lon) {
     return { EOT_MS, EOT, TST_MS, TST };
 }
 
+// --- FONCTIONS RENDU 2D (CADRAN TST DYNAMIQUE) ---
+
+function initSolarClock() {
+    const container = $('minecraft-clock');
+    if (container) {
+        const canvas = document.createElement('canvas');
+        canvas.id = 'mc-clock-canvas';
+        canvas.width = 300; 
+        canvas.height = 300; 
+        canvas.style.width = '100%'; 
+        canvas.style.height = '100%';
+        container.appendChild(canvas);
+    }
+}
+
+function drawSolarClock(sunPos) {
+    const canvas = $('mc-clock-canvas');
+    if (!canvas || !sunPos || window.mcTime === null) return; 
+    
+    const ctx = canvas.getContext('2d');
+    const center = canvas.width / 2;
+    const radius = center * 0.9;
+    
+    // --- 1. Calcul de l'illumination et de l'environnement ---
+    const elevation = sunPos.altitude; // en radians
+    const D2R = Math.PI / 180; 
+
+    // Luminosité du jour (0.0 au milieu de la nuit à 1.0 au zénith)
+    // Civils Twilight (~-6 degrés) est le début/fin de l'éclairage.
+    const dayFactor = Math.min(1, Math.max(0, (elevation / D2R + 6) / 40)); 
+    
+    // Couleur du Ciel (de nuit au bleu vif)
+    const skyColorR = Math.round(30 + 170 * dayFactor);
+    const skyColorG = Math.round(50 + 150 * dayFactor);
+    const skyColorB = Math.round(100 + 155 * dayFactor);
+    const skyColor = `rgb(${skyColorR}, ${skyColorG}, ${skyColorB})`;
+
+    // Couleur du Sol/Mer (Plus foncé la nuit)
+    let groundColor;
+    
+    // Simulation du sol: Couleur Mer/Plaine (Basé sur la latitude de Marseille par défaut)
+    const waterColorR = Math.round(20 + 40 * dayFactor);
+    const waterColorG = Math.round(40 + 70 * dayFactor);
+    const waterColorB = Math.round(60 + 90 * dayFactor);
+    groundColor = `rgb(${waterColorR}, ${waterColorG}, ${waterColorB})`;
+
+
+    // --- 2. Rendu de l'environnement (Cadran) ---
+
+    // Moitié supérieure : Ciel (Adapté à l'éclairage solaire)
+    ctx.beginPath();
+    ctx.arc(center, center, radius, -Math.PI, 0); 
+    ctx.lineTo(center + radius, center);
+    ctx.fillStyle = skyColor;
+    ctx.fill();
+    
+    // Moitié inférieure : Sol/Mer (Adapté à l'éclairage solaire)
+    ctx.beginPath();
+    ctx.arc(center, center, radius, 0, Math.PI); 
+    ctx.lineTo(center - radius, center);
+    ctx.fillStyle = groundColor;
+    ctx.fill();
+
+    // Ligne d'horizon
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(center - radius, center);
+    ctx.lineTo(center + radius, center);
+    ctx.stroke();
+
+    // --- 3. Simulation Météo/Lumière ---
+    // Représente une légère brume ou couverture nuageuse (météo réelle ferait effet ici)
+    const cloudOpacity = 0.1; 
+    if (cloudOpacity > 0) {
+        ctx.fillStyle = `rgba(180, 180, 180, ${cloudOpacity * (1 - dayFactor * 0.5)})`;
+        ctx.beginPath();
+        ctx.arc(center, center, radius, -Math.PI, Math.PI);
+        ctx.fill();
+    }
+
+
+    // --- 4. Rendu de l'AIGUILLE TST ---
+    const total_seconds = window.mcTime / 1000;
+    const angle_from_north = (total_seconds / 86400) * 2 * Math.PI;
+    const TST_ANGLE = angle_from_north - Math.PI; 
+
+    ctx.save();
+    ctx.translate(center, center);
+    ctx.rotate(TST_ANGLE); 
+
+    ctx.strokeStyle = '#D9534F'; 
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -radius * 0.9); 
+    ctx.stroke();
+
+    ctx.restore();
+
+    // --- 5. Affichage VITESSE INSTANTANÉE (Centre) ---
+    const rawSpeed = window.lPos && window.lPos.coords.speed !== null ? window.lPos.coords.speed : window.EKFState[2];
+    const speedKmh = (rawSpeed * MS_TO_KMH).toFixed(1);
+    
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + dayFactor * 0.1})`; 
+    ctx.fillRect(center - 55, center - 30, 110, 60);
+    
+    ctx.fillStyle = '#007bff'; 
+    ctx.font = `${center * 0.25}px Arial bold`; 
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(rawSpeed * MS_TO_KMH > 0.01 ? speedKmh : '--', center, center - 5); 
+    
+    ctx.font = `${center * 0.08}px Arial`; 
+    ctx.fillStyle = '#555'; 
+    ctx.fillText("km/h", center, center + 20); 
+}
+
 // --- FONCTIONS MÉTÉO ET DONNÉES EXTERNES (N/A) ---
 
 function fetchExternalData() {
+    // Tous les champs Météo, Chimie, Capteurs sont mis à N/A (absence d'API)
     [
         'temp-air', 'pressure', 'humidity', 'dew-point', 'visibility', 
         'uv-index', 'wind-direction', 'precipitation-rate', 'temp-feels-like',
@@ -326,6 +458,7 @@ function fetchExternalData() {
 
 
 // --- FONCTIONS CARTE/RENDU/UPDATE ---
+// (initMap, updateMap, updateAstro, updatePhysicsAndChemistry, drawSolarClock sont inchangées ici)
 
 function initMap() {
     const defaultLat = 43.296482; 
@@ -361,10 +494,14 @@ function updateAstro(latA, lonA) {
     window.mcTime = solarTimes.TST_MS; 
 
     // Mise à jour de l'affichage
+    if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
     if ($('tst')) $('tst').textContent = solarTimes.TST;
+    if ($('eot')) $('eot').textContent = solarTimes.EOT;
+    if ($('sun-elevation')) $('sun-elevation').textContent = (sunPos.altitude / D2R).toFixed(2) + " °";
     if ($('time-minecraft')) $('time-minecraft').textContent = solarTimes.TST;
-    // ... (Autres mises à jour Astro/Date)
-    
+    if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
+    if ($('clock-status')) $('clock-status').textContent = `TST (Élévation: ${ (sunPos.altitude / D2R).toFixed(2) }°)`;
+
     drawSolarClock(sunPos); 
 }
 
@@ -379,19 +516,20 @@ function updatePhysicsAndChemistry() {
     if ($('time-elapsed')) $('time-elapsed').textContent = `${elapsed_s.toFixed(2)} s`;
     if ($('time-moving')) $('time-moving').textContent = msToTime(window.timeMoving);
     
-    // Convertir distance en secondes lumière et années lumière
-    const speedOfLight = 299792458; // m/s
+    // Conversion cosmique
+    const speedOfLight = 299792458; 
     const cosmic_s_light = window.distTotal / speedOfLight;
-    const cosmic_al = cosmic_s_light / (3600 * 24 * 365.25); // conversion de secondes lumière en années lumière
+    const cosmic_al = cosmic_s_light / (3600 * 24 * 365.25); 
     
     if ($('distance-cosmic')) {
         $('distance-cosmic').textContent = `${cosmic_s_light.toExponential(2)} s lumière | ${cosmic_al.toExponential(2)} al`;
     }
 }
 
+
 // --- CONTRÔLES DU FLUX ---
 
-let domID = null; // Variable pour l'intervalle (déclarée globalement dans part1.js, mais utilisée ici)
+let domID = null; // Variable pour l'intervalle 
 
 function startMainLoop() {
     if (domID === null) {
@@ -401,11 +539,13 @@ function startMainLoop() {
             
             updateAstro(currentLat, currentLon); 
             updatePhysicsAndChemistry(); 
-            if(window.isGPSRunning) updateMap(); // N'update la carte que si le GPS est actif
+            if(window.isGPSRunning) updateMap(); 
 
-            if (Date.now() % 60000 < window.currentFreqMS) { 
+            // SYNCHRO NTP : toutes les 5 minutes (300000ms) - CORRECTION APPORTÉE
+            if (Date.now() % 300000 < window.currentFreqMS) { 
                 syncTimeWithServer(); 
             }
+            // Mise à jour des données externes (N/A ou Calculables) toutes les 10 secondes
             if (Date.now() % 10000 < window.currentFreqMS) { 
                 fetchExternalData(); 
             }
@@ -478,9 +618,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
     initSolarClock(); 
-    initializeControlListeners(); // Ajouté pour les boutons dans part1.js
+    initializeControlListeners(); // Défini dans part1.js
     
-    startGPS(); // Démarrage par défaut du GPS
+    startGPS(); 
     startIMU(); 
     syncTimeWithServer(); 
     fetchExternalData(); 
@@ -491,6 +631,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', toggleNightMode);
     if ($('data-capture-btn')) $('data-capture-btn').addEventListener('click', captureData);
 
-    // Démarrage de la boucle de rafraîchissement
+    // Démarrage de la boucle de rafraîchissement (utilise la fréquence par défaut: 200ms)
     startMainLoop(); 
 });
