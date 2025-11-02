@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER JS PARTIE 1/2 : gnss-dashboard-part1.js
-// Contient constantes, variables d'état, UTC/NTP, Kalman, Astro, Map et INS Core.
+// Contient constantes, variables d'état, UTC/NTP, Kalman, et Utils.
 // =================================================================
 
 // --- CLÉS D'API & PROXY VERCEL ---
@@ -35,20 +35,18 @@ const NETHER_RATIO = 8;
 const MAX_PLAUSIBLE_ACCEL = 20.0; 
 
 // PARAMÈTRES POUR LE FILTRE DE KALMAN D'ALTITUDE
-const Q_ALT_NOISE = 0.1; 
-const R_ALT_MIN = 0.1;  
-
-// PARAMÈTRES INS (ACCÉLÉROMÈTRE)
-const ACCEL_NOISE = 0.05; // Bruit du capteur d'accélération
-const K_ACCEL_ALPHA = 0.3; // Facteur de lissage pour l'accélération (filtre passe-bas)
+const Q_ALT_NOISE = 0.1; // Bruit de processus de l'altitude
+const R_ALT_MIN = 0.1;  // Erreur de mesure minimale de l'altitude
 
 // PARAMÈTRES DE LISSAGE HYBRIDE (DAMPENING)
 const ACC_DAMPEN_LOW = 5.0; 
 const ACC_DAMPEN_HIGH = 50.0; 
 
 // --- CORRECTION EMPIRIQUE DE VITESSE (CALIBRATION) ---
-// 1.0 = Aucune correction. Utiliser > 1.0 si vitesse sous-estimée, < 1.0 si surestimée.
+// ⭐️ FACTEUR GLOBAL : Vitesse 3D Stable et Distance.
 const EMPIRICAL_CORR_FACTOR = 1.0; 
+// ⭐️ FACTEUR VERTICAL : Vitesse verticale.
+const EMPIRICAL_CORR_FACTOR_V = 1.0; 
 
 // FACTEURS ENVIRONNEMENTAUX POUR LA CORRECTION KALMAN
 const ENVIRONMENT_FACTORS = {
@@ -59,32 +57,23 @@ const ENVIRONMENT_FACTORS = {
 };
 const DOM_SLOW_UPDATE_MS = 1000; 
 
-// --- VARIABLES D'ÉTAT ---
+// --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null, domID = null, lPos = null, lat = null, lon = null, sTime = null;
 let distM = 0, distMStartOffset = 0, maxSpd = 0;
-let kSpd = 0, kUncert = 1000; 
+let kSpd = 0, kUncert = 1000; // Vitesse et incertitude du Kalman (3D)
 let timeMoving = 0; 
-let lServH = null, lLocH = null; 
-let lastFSpeed = 0; 
-let kAlt = null;      
-let kAltUncert = 10;  
+let lServH = null, lLocH = null; // Temps synchronisé
+let lastFSpeed = 0; // Dernière vitesse filtrée (pour accélération)
+let kAlt = null;      // Altitude filtrée par Kalman
+let kAltUncert = 10;  // Incertitude de l'altitude
 
 let currentGPSMode = 'HIGH_FREQ'; 
 let emergencyStopActive = false;
 let netherMode = false;
 let selectedEnvironment = 'NORMAL'; 
 
+// Pression mise à null dans la partie 2 pour la neutralisation
 let lastP_hPa = null, lastT_K = null, lastH_perc = null; 
-
-// --- VARIABLES INS ---
-let kAccel = 0; // Accélération inertielle filtrée (m/s²)
-let lastAccelTime = null;
-
-// --- MAP VARIABLES ---
-let map = null;
-let marker = null;
-let accuracyCircle = null;
-
 
 // --- REFERENCES DOM ---
 const $ = id => document.getElementById(id);
@@ -102,7 +91,7 @@ const dist = (lat1, lon1, lat2, lon2) => {
 };
 
 // ===========================================
-// SYNCHRONISATION HORAIRE
+// SYNCHRONISATION HORAIRE PAR SERVEUR (UTC/Atomique)
 // ===========================================
 
 async function syncH() { 
@@ -127,6 +116,8 @@ async function syncH() {
         if ($('local-time')) $('local-time').textContent = 'N/A (SYNCHRO ÉCHOUÉE)';
     }
 }
+
+/** Retourne l'heure synchronisée (précision RTT compensée en UTC). */
 function getCDate() { 
     if (lServH === null || lLocH === null) { return null; }
     const offsetSinceSync = performance.now() - lLocH;
@@ -134,17 +125,14 @@ function getCDate() {
 }
 
 // ===========================================
-// FILTRE DE KALMAN & FUSION INS
+// FILTRE DE KALMAN & FACTEUR R
 // ===========================================
 
-/** Applique le filtre de Kalman à la vitesse 3D (Fusion INS/GNSS). */
-function kFilter(nSpd, dt, R_dyn, accel_inertial) {
+/** Applique le filtre de Kalman à la vitesse 3D. */
+function kFilter(nSpd, dt, R_dyn) {
     if (dt === 0 || dt > 5) return kSpd; 
-    let pSpd = kSpd + accel_inertial * dt; 
-    const R_accel = ACCEL_NOISE; 
-    const Q = Q_NOISE * dt + R_accel * dt; 
-    let pUnc = kUncert + Q; 
-    const R = R_dyn ?? R_MAX; 
+    const R = R_dyn ?? R_MAX, Q = Q_NOISE * dt; 
+    let pSpd = kSpd, pUnc = kUncert + Q; 
     let K = pUnc / (pUnc + R); 
     kSpd = pSpd + K * (nSpd - pSpd); 
     kUncert = (1 - K) * pUnc; 
@@ -169,10 +157,13 @@ function getKalmanR(acc, alt, P_hPa) {
     let R = acc ** 2; 
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT;
+    
+    // Si P_hPa est null (comportement par défaut/neutralisé), cette section est ignorée.
     if (P_hPa !== null) {
         const pressureFactor = 1.0 + (1013.25 - P_hPa) / 1013.25 * 0.1;
         R *= Math.max(1.0, pressureFactor);
     }
+    
     R *= envFactor;
     if (alt < ALT_TH) { R *= 2.0; } 
     R = Math.max(R_MIN, Math.min(R_MAX, R));
@@ -180,7 +171,7 @@ function getKalmanR(acc, alt, P_hPa) {
 }
 
 // ===========================================
-// FONCTIONS ASTRO & TEMPS 
+// FONCTIONS ASTRO (Dépendent du Temps de Part 1)
 // ===========================================
 
 function toDays(date) { return (date.valueOf() / dayMs - 0.5 + J1970) - J2000; }
@@ -229,7 +220,17 @@ function getMinecraftTime(date) {
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
     return toTimeString(mcTimeMs);
-}
+        }
+// =================================================================
+// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
+// Contient les fonctions d'affichage, la boucle GPS et les événements DOM.
+// Nécessite la PARTIE 1 (gnss-dashboard-part1.js) pour les constantes et l'état.
+// =================================================================
+
+// ===========================================
+// FONCTIONS ASTRO & AFFICHAGE
+// ===========================================
+
 function updateAstro(latA, lonA) {
     const now = getCDate(); 
     if (now === null) {
@@ -238,10 +239,14 @@ function updateAstro(latA, lonA) {
         }
         return;
     }
+    
+    // Ces fonctions dépendent de la librairie SunCalc (chargée dans index.html)
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
     const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
     const sunTimes = window.SunCalc ? SunCalc.getTimes(now, latA, lonA) : null;
+    const moonTimes = window.SunCalc ? SunCalc.getMoonTimes(now, latA, lonA, true) : null;
     const solarTimes = getSolarTime(now, lonA);
+
     $('local-time').textContent = now.toLocaleTimeString('fr-FR', { timeZone: 'UTC', hour12: false });
     if ($('date-display')) $('date-display').textContent = now.toLocaleDateString();
     if (sTime) {
@@ -250,12 +255,15 @@ function updateAstro(latA, lonA) {
         $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
         $('time-minecraft').textContent = getMinecraftTime(now);
     }
-    if ($('tst')) $('tst').textContent = solarTimes.TST;
-    if ($('lsm')) $('lsm').textContent = solarTimes.MST;
+    
+    if ($('time-solar-true')) $('time-solar-true').textContent = solarTimes.TST;
+    if ($('culmination-lsm')) $('culmination-lsm').textContent = solarTimes.MST;
     if ($('sun-elevation')) $('sun-elevation').textContent = sunPos ? `${(sunPos.altitude * R2D).toFixed(2)} °` : 'N/A';
+    if ($('lunar-phase-perc')) $('lunar-phase-perc').textContent = moonIllum ? `${(moonIllum.fraction * 100).toFixed(1)} %` : 'N/A';
     if ($('noon-solar')) $('noon-solar').textContent = sunTimes && sunTimes.solarNoon ? sunTimes.solarNoon.toLocaleTimeString() : 'N/D';
-    if ($('eot')) $('eot').textContent = solarTimes.EOT + ' min'; 
+    if ($('eot-min')) $('eot-min').textContent = solarTimes.EOT + ' min'; 
     if ($('ecliptic-long')) $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
+
     if ($('day-duration') && sunTimes && sunTimes.sunrise && sunTimes.sunset) {
         const durationMs = sunTimes.sunset.getTime() - sunTimes.sunrise.getTime();
         const hours = Math.floor(durationMs / 3600000);
@@ -264,81 +272,10 @@ function updateAstro(latA, lonA) {
     } else if ($('day-duration')) {
         $('day-duration').textContent = 'N/A (Polaire/Nuit)';
     }
+
+    if ($('moon-times')) $('moon-times').textContent = moonTimes ? 
+        `↑ ${moonTimes.rise ? moonTimes.rise.toLocaleTimeString() : 'N/A'} / ↓ ${moonTimes.set ? moonTimes.set.toLocaleTimeString() : 'N/A'}` : 'N/D';
 }
-
-// ===========================================
-// FONCTIONS CARTE (LEAFLET)
-// ===========================================
-
-function mapInit(latA = 43.3, lonA = 5.4) { 
-    if (map === null && document.getElementById('map-container')) {
-        map = L.map('map-container').setView([latA, lonA], 14);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-        marker = L.marker([latA, lonA]).addTo(map)
-            .bindPopup("Dernière Position").openPopup();
-        accuracyCircle = L.circle([latA, lonA], 0).addTo(map);
-    }
-}
-function updateMap(latA, lonA, acc) {
-    if (map && marker) {
-        const newLatLng = new L.LatLng(latA, lonA);
-        marker.setLatLng(newLatLng);
-        if (accuracyCircle) {
-             accuracyCircle.setLatLng(newLatLng).setRadius(acc).redraw();
-        }
-        if (map.getZoom() > 10) {
-            map.setView(newLatLng, map.getZoom());
-        }
-    }
-}
-
-// ===========================================
-// GESTIONNAIRES CAPTEURS INERTIELS (INS)
-// ===========================================
-
-/** Gère les événements d'accélération (pour la fusion INS). */
-function handleDeviceMotion(event) {
-    const ax = event.accelerationIncludingGravity.x ?? 0;
-    const ay = event.accelerationIncludingGravity.y ?? 0;
-    const az = event.accelerationIncludingGravity.z ?? 0;
-    const rawAccel = Math.sqrt(ax * ax + ay * ay + az * az) - G_ACC; 
-    const accel_move = Math.max(0, rawAccel); 
-    
-    kAccel = kAccel * (1 - K_ACCEL_ALPHA) + accel_move * K_ACCEL_ALPHA;
-    lastAccelTime = performance.now();
-    
-    if ($('accel-inertial')) $('accel-inertial').textContent = `${kAccel.toFixed(3)} m/s²`;
-}
-
-/** Demande l'accès et démarre les écouteurs de capteurs inertiels. */
-function startInertialSensors() {
-    if (window.DeviceMotionEvent) {
-        if (typeof DeviceMotionEvent.requestPermission === 'function') {
-            DeviceMotionEvent.requestPermission().then(permissionState => {
-                if (permissionState === 'granted') {
-                    window.addEventListener('devicemotion', handleDeviceMotion);
-                    console.log("Accès aux capteurs inertiels accordé.");
-                } else {
-                    console.warn("Accès aux capteurs inertiels refusé.");
-                }
-            }).catch(console.error);
-        } else {
-            window.addEventListener('devicemotion', handleDeviceMotion);
-            console.log("Capteurs inertiels démarrés.");
-        }
-    } else {
-        console.warn("API DeviceMotionEvent non supportée. Fusion INS désactivée.");
-        if ($('accel-inertial')) $('accel-inertial').textContent = 'N/A (API non supportée)';
-    }
-    }
-// =================================================================
-// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
-// Contient les fonctions de contrôle GPS, l'API Météo et la boucle principale (updateDisp).
-// =================================================================
-
-// Les variables et fonctions core sont définies dans gnss-dashboard-part1.js
 
 // ===========================================
 // FONCTIONS DE CONTRÔLE GPS & MÉTÉO
@@ -369,7 +306,6 @@ function stopGPS(resetButton = true) {
     }
 }
 
-/** Fonction d'arrêt d'urgence : bloque l'exécution et arrête le GPS */
 function emergencyStop() {
     emergencyStopActive = true;
     stopGPS(false);
@@ -382,7 +318,6 @@ function emergencyStop() {
     });
 }
 
-/** Fonction de reprise : réactive le système et redémarre le GPS */
 function resumeSystem() {
     emergencyStopActive = false;
     if ($('emergency-stop-btn')) {
@@ -398,42 +333,32 @@ function handleErr(err) {
     emergencyStop(); 
 }
 
+/** Récupère la météo (mais neutralise la pression pour le Kalman R). */
 async function fetchWeather(latA, lonA) {
-    lastP_hPa = null; lastT_K = null; lastH_perc = null; 
-    if (!latA || !lonA) { return; }
+    // ⚠️ NEUTRALISATION DE LA PRESSION: lastP_hPa est forcé à null ici.
+    lastP_hPa = null; 
+    lastT_K = null; lastH_perc = null; 
+    
+    if (!latA || !lonA || PROXY_BASE_URL.includes('scientific-dashboard2')) {
+        if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`;
+        return; 
+    }
+
     try {
         const response = await fetch(`${PROXY_WEATHER_ENDPOINT}?lat=${latA}&lon=${lonA}`);
         const data = await response.json();
         
         if (data.main) {
-            lastP_hPa = data.main.pressure; 
-            lastT_K = data.main.temp + 273.15; // Température en Kelvin
+            // lastP_hPa = data.main.pressure; // L'assignation est volontairement retirée
+            lastT_K = data.main.temp + 273.15; 
             lastH_perc = data.main.humidity / 100; 
         }
 
         if ($('temp-air')) $('temp-air').textContent = lastT_K ? `${(lastT_K - 273.15).toFixed(1)} °C` : 'N/A';
-        if ($('pressure')) $('pressure').textContent = lastP_hPa ? `${lastP_hPa.toFixed(1)} hPa` : 'N/A';
+        // Affichage de la pression neutre
+        if ($('pressure')) $('pressure').textContent = 'N/A (Ignoré pour Kalman)'; 
         if ($('humidity')) $('humidity').textContent = lastH_perc ? `${(lastH_perc * 100).toFixed(0)} %` : 'N/A';
-        
-        // Calcul du Point de Rosée (Dew Point)
-        if (lastT_K !== null && lastH_perc !== null) {
-            const T_c = lastT_K - 273.15;
-            const RH = lastH_perc;
-            const a = 17.27, b = 237.7;
-            const alpha = a * T_c / (b + T_c) + Math.log(RH);
-            const dewPoint_c = b * alpha / (a - alpha);
-            if ($('dew-point')) $('dew-point').textContent = `${dewPoint_c.toFixed(1)} °C`;
-        } else {
-             if ($('dew-point')) $('dew-point').textContent = 'N/A';
-        }
-        
-        if (data.wind && $('wind-direction')) {
-             $('wind-direction').textContent = data.wind.deg ? `${data.wind.deg}°` : 'N/A'; 
-        }
-        
-        if (data.wind && $('wind-speed-ms')) {
-             $('wind-speed-ms').textContent = data.wind.speed ? `${data.wind.speed.toFixed(2)} m/s` : 'N/A'; 
-        }
+        if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`;
 
     } catch (error) {
         console.error("Échec de la récupération des données météo:", error);
@@ -467,7 +392,7 @@ function updateDisp(pos) {
     let spdV = 0; 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
-    // 1. FILTRAGE DE L'ALTITUDE (via Kalman)
+    // 1. FILTRAGE DE L'ALTITUDE
     const kAlt_new = kFilterAltitude(alt, acc, dt);
     
     // 2. CALCUL DE LA VITESSE VERTICALE FILTRÉE
@@ -476,8 +401,11 @@ function updateDisp(pos) {
     } else if (alt !== null) {
         spdV = 0; 
     }
+
+    // ⭐️ CORRECTION VERTICALE
+    spdV *= EMPIRICAL_CORR_FACTOR_V;
     
-    // 3. CALCUL DE LA VITESSE HORIZONTALE BRUTE
+    // 3. CALCUL DE LA VITESSE HORIZONTALE BRUTE (méthode Haversine)
     if (lPos && dt > 0.05) { 
         const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
         spdH = dH / dt; 
@@ -485,7 +413,7 @@ function updateDisp(pos) {
         spdH = spd;
     }
     
-    // 4. LOGIQUE HYBRIDE D'AMORTISSEMENT 3D
+    // 4. LOGIQUE D'AMORTISSEMENT 3D
     let dampen_factor = 1.0;
     if (acc > ACC_DAMPEN_LOW) {
         const acc_range = ACC_DAMPEN_HIGH - ACC_DAMPEN_LOW;
@@ -495,13 +423,13 @@ function updateDisp(pos) {
         spdV *= dampen_factor; 
     }
     
+    // Vitesse 3D utilisant le spdV corrigé et potentiellement amorti
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
 
-    // 5. CORRECTION ANTI-SPIKE DE VITESSE (BRUTE)
+    // 5. CORRECTION ANTI-SPIKE DE VITESSE (limite d'accélération)
     if (lPos && lPos.speedMS_3D !== undefined && dt > MIN_DT) {
         const lastRawSpd = lPos.speedMS_3D;
         const accelSpike = Math.abs(spd3D - lastRawSpd) / dt;
-        
         if (accelSpike > MAX_PLAUSIBLE_ACCEL) {
             const maxPlausibleChange = MAX_PLAUSIBLE_ACCEL * dt;
             if (spd3D > lastRawSpd) {
@@ -512,15 +440,15 @@ function updateDisp(pos) {
         }
     }
 
-    // 6. FILTRE DE KALMAN FINAL (Stabilité temporelle) - AVEC PRÉDICTION INS (kAccel)
+    // 6. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
     const R_dyn = getKalmanR(acc, alt, lastP_hPa); 
-    const fSpd = kFilter(spd3D, dt, R_dyn, kAccel); 
+    const fSpd = kFilter(spd3D, dt, R_dyn);
     
-    // NOUVEAU: Application du facteur de correction empirique (Calibration)
+    // ⭐️ CORRECTION GLOBALE (3D/Distance)
     let sSpdFE = fSpd * EMPIRICAL_CORR_FACTOR;
-    if (sSpdFE < MIN_SPD) sSpdFE = 0;
+    sSpdFE = sSpdFE < MIN_SPD ? 0 : sSpdFE;
     
-    // Calculs d'accélération et distance
+    // Calculs finaux
     let accel_long = 0;
     if (dt > 0.05) {
         accel_long = (sSpdFE - lastFSpeed) / dt;
@@ -531,7 +459,7 @@ function updateDisp(pos) {
     if (sSpdFE > MIN_SPD) { timeMoving += dt; }
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // --- MISE À JOUR DU DOM (GPS/Physique) ---
+    // --- MISE À JOUR DU DOM ---
     if ($('latitude')) $('latitude').textContent = lat.toFixed(6);
     if ($('longitude')) $('longitude').textContent = lon.toFixed(6);
     if ($('altitude-gps')) $('altitude-gps').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A';
@@ -552,10 +480,7 @@ function updateDisp(pos) {
     if ($('perc-speed-sound')) $('perc-speed-sound').textContent = `${(spd3D / C_S * 100).toFixed(2)} %`;
     if ($('perc-speed-c')) $('perc-speed-c').textContent = `${(spd3D / C_L * 100).toExponential(2)}%`;
     if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)";
-
-    // --- MISE À JOUR DE LA CARTE ---
-    updateMap(lat, lon, acc); 
-
+    
     if (Date.now() - (updateDisp.lastWeatherFetch ?? 0) > 60000) {
         fetchWeather(lat, lon); 
         updateDisp.lastWeatherFetch = Date.now();
@@ -575,28 +500,27 @@ function updateDisp(pos) {
 
 document.addEventListener('DOMContentLoaded', () => {
     
+    // Création/Mise en place du sélecteur d'environnement
     const envSelect = document.createElement('select');
-    envSelect.id = 'environment-select'; 
+    envSelect.id = 'env-select';
     Object.keys(ENVIRONMENT_FACTORS).forEach(env => {
         const opt = document.createElement('option');
-        opt.value = env; opt.textContent = `${env.toUpperCase()} (x${ENVIRONMENT_FACTORS[env].R_MULT})`;
+        opt.value = env; opt.textContent = env.toUpperCase();
         envSelect.appendChild(opt);
     });
     envSelect.value = selectedEnvironment;
     
-    const envContainer = document.querySelector('.control-input-full label[for="environment-select"]').parentNode;
-    if (envContainer) {
-        const existingSelect = envContainer.querySelector('#environment-select');
-        if (existingSelect) {
-            existingSelect.remove();
-        }
-        envContainer.appendChild(envSelect);
+    const envFactorElement = $('env-factor');
+    if (envFactorElement) {
+        const parent = envFactorElement.parentNode;
+        parent.innerHTML = '<span class="label">Facteur Kalman Environnement</span>';
+        parent.appendChild(envSelect);
+        if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`;
     }
     
-    mapInit(); 
     syncH(); 
-    startInertialSensors(); 
 
+    // Écouteurs d'événements
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
         if (emergencyStopActive) {
             alert("Veuillez désactiver l'Arrêt d'urgence avant d'utiliser ce contrôle.");
@@ -625,10 +549,12 @@ document.addEventListener('DOMContentLoaded', () => {
         netherMode = !netherMode; 
         if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; 
     });
-    if ($('environment-select')) $('environment-select').addEventListener('change', (e) => { 
+    if ($('env-select')) $('env-select').addEventListener('change', (e) => { 
         if (emergencyStopActive) return;
         selectedEnvironment = e.target.value; 
+        if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`; 
     });
+
     if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { if (emergencyStopActive) return; distM = 0; distMStartOffset = 0; timeMoving = 0; if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`; if ($('speed-avg-moving')) $('speed-avg-moving').textContent = `0.00000 km/h`; if ($('time-moving')) $('time-moving').textContent = `0.00 s`; });
     if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { if (emergencyStopActive) return; maxSpd = 0; if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`; });
     if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { if (emergencyStopActive) return; if (confirm("Êtes-vous sûr de vouloir tout réinitialiser?")) { distM = 0; maxSpd = 0; distMStartOffset = 0; kSpd = 0; kUncert = 1000; timeMoving = 0; } });
