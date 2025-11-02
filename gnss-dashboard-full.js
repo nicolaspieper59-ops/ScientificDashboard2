@@ -259,6 +259,7 @@ function updateKalmanParameters() {
     // Mise à jour visuelle (EKF R_Effective)
     if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = `${(window.kalmanR * window.environmentFactor).toFixed(2)} m`;
 }
+
 // =================================================================
 // FICHIER JS : gnss-dashboard-full.js (PARTIE 2/2)
 // Astro, Map, Météo & Boucle Principale
@@ -268,9 +269,17 @@ function updateKalmanParameters() {
 // 3. LOGIQUE ASTRO, TST & MAP
 // =================================================================
 
+// NOUVELLE FONCTION CRITIQUE : Calcul du Jour Julien (requis pour EOT/TST)
+function getJDay(date) {
+    // Calcul du Jour Julien (J2000 epoch)
+    const MS_PER_DAY = 86400000;
+    const J2000_OFFSET_DAYS = 10957.5; // J2000 (2451545.0) - JD at Unix Epoch (2440587.5)
+    return (date.getTime() / MS_PER_DAY) - J2000_OFFSET_DAYS;
+}
+
 function getSolarTime(date, lon) {
-    // Calculs TST/EOT (répétition complète pour s'assurer que la fonction est définie)
-    const J = window.SunCalc.getJDay(date); 
+    // Utilisation de la fonction getJDay locale
+    const J = getJDay(date); 
     const M = (357.5291 + 0.98560028 * J) * D2R; 
     const L = (280.4665 + 0.98564736 * J) * D2R; 
     const C = (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) * D2R; 
@@ -457,7 +466,11 @@ function updateAllExternalData() {
     if ($('kinetic-energy')) $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
     if ($('mechanical-power')) $('mechanical-power').textContent = `0.00 W`;
     
+    // Mise à jour du champ mass-display (correction de la valeur codée en dur)
+    if ($('mass-display')) $('mass-display').textContent = `${window.mass.toFixed(3)} kg`;
+
     // Tentative de réinitialisation/mise à jour d'autres champs
+// La fin de la fonction updateAllExternalData() (où vous vous êtes arrêté)
     [
         'dew-point', 'visibility', 'uv-index', 'precipitation-rate', 
         'magnetic-field', 'air-flow', 'co2-level', 
