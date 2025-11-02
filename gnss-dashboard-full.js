@@ -141,6 +141,14 @@ function handleNewPosition(position) {
         if ($('vertical-speed')) $('vertical-speed').textContent = `${window.verticalSpeed.toFixed(2)} m/s`;
         if ($('speed-max')) $('speed-max').textContent = `${window.speedMax.toFixed(5)} km/h`;
         
+        // --- CORRECTION : Vitesse 3D (Inst.) ---
+        // Utilise la vitesse brute de l'API GPS (si disponible) ou le calcul delta
+        let rawSpeed = position.coords.speed !== null ? position.coords.speed * scale : instantSpeed;
+        if (rawSpeed < 0) rawSpeed = 0;
+        if ($('speed-3d-inst')) {
+             $('speed-3d-inst').textContent = (rawSpeed * MS_TO_KMH > 0.01) ? `${(rawSpeed * MS_TO_KMH).toFixed(1)} km/h` : `-- km/h`;
+        }
+        
         // Affichage des données GPS brutes
         if ($('latitude')) $('latitude').textContent = position.coords.latitude.toFixed(6);
         if ($('longitude')) $('longitude').textContent = position.coords.longitude.toFixed(6);
@@ -227,7 +235,7 @@ function toggleNetherMode() {
     } else {
         btn.textContent = 'Nether Mode';
         display.textContent = 'DÉSACTIVÉ (1:1)';
-        btn.style.backgroundColor = '#5bc0de';
+        btn.style.backgroundColor = '#5bc0de'; // Couleur par défaut (à adapter si besoin)
     }
 }
 
@@ -251,7 +259,8 @@ function updateKalmanParameters() {
     
     // Mise à jour visuelle (EKF R_Effective)
     if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = `${(window.kalmanR * window.environmentFactor).toFixed(2)} m`;
-}// =================================================================
+}
+// =================================================================
 // FICHIER JS : gnss-dashboard-part2.js (Astro, Map, Météo & Boucle)
 // =================================================================
 
@@ -293,10 +302,13 @@ function getSolarTime(date, lon) {
 function initSolarClock() {
     const container = $('minecraft-clock');
     if (container) {
+        // Vider le conteneur s'il contient déjà un canvas (pour les recharges à chaud)
+        container.innerHTML = ''; 
         const canvas = document.createElement('canvas');
         canvas.id = 'mc-clock-canvas';
-        canvas.width = 180; 
+        canvas.width = 180; // Correspond au 90x90px * 2 pour HiDPI
         canvas.height = 180; 
+        // Le CSS (via .dashboard-container) gère la taille d'affichage de #minecraft-clock
         canvas.style.width = '100%'; 
         canvas.style.height = '100%';
         container.appendChild(canvas);
@@ -390,7 +402,7 @@ function initMap() {
     
     if ($('map-container')) {
         if (window.lMap) window.lMap.remove(); 
-        // L.map et L.tileLayer sont disponibles via leaflet.js (lien local dans l'HTML)
+        // L.map et L.tileLayer sont disponibles via leaflet.js (lien CDN dans l'HTML)
         window.lMap = L.map('map-container').setView([defaultLat, defaultLon], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
@@ -416,27 +428,33 @@ function updateMap() {
 // =================================================================
 
 async function fetchWeatherData(lat, lon) {
-    const url = `api/weather.js?lat=${lat}&lon=${lon}`;
+    // CORRECTION : Appel à l'API locale /api/weather.js (si elle existe)
+    // Si vous n'avez pas de serveur, remplacez-le par un appel à une API publique (ex: OpenWeatherMap)
+    
+    // Pour l'instant, nous appelons un script local qui est supposé être un serveur
+    const url = `api/weather.js?lat=${lat}&lon=${lon}`; 
     
     try {
         const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw new Error(`Erreur HTTP! status: ${response.status}`);
         }
         const data = await response.json();
         
-        // Supposons que l'API retourne des données formatées pour l'affichage:
+        // Mise à jour des champs Météo
         if (data && data.main) {
             if ($('temp-air')) $('temp-air').textContent = `${data.main.temp.toFixed(1)} °C`;
             if ($('pressure')) $('pressure').textContent = `${data.main.pressure} hPa`;
             if ($('humidity')) $('humidity').textContent = `${data.main.humidity} %`;
+            // ... (Ajouter d'autres champs si l'API les fournit)
         } else {
              throw new Error('Données météo non valides reçues.');
         }
 
     } catch (error) {
         console.error("Erreur lors de la récupération des données météo:", error);
-        if ($('temp-air')) $('temp-air').textContent = `API ERROR`;
+        // Si l'API échoue, on affiche N/A
+        if ($('temp-air')) $('temp-air').textContent = `N/A (Erreur API)`;
     }
 }
 
@@ -444,7 +462,7 @@ function updateAllExternalData() {
     const currentLat = window.lPos ? window.lPos.coords.latitude : 43.296482; 
     const currentLon = window.lPos ? window.lPos.coords.longitude : 5.36978;
 
-    // Appel à l'API Météo (simulée via le script local api/weather.js)
+    // Appel à l'API Météo (si elle existe)
     fetchWeatherData(currentLat, currentLon); 
 
     // Mise à jour des champs basés sur des calculs internes (Physique)
@@ -453,7 +471,7 @@ function updateAllExternalData() {
     if ($('kinetic-energy')) $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
     if ($('mechanical-power')) $('mechanical-power').textContent = `0.00 W`;
     
-    // Reste des champs externes
+    // Réinitialisation des champs N/A (si non mis à jour par l'API)
     [
         'dew-point', 'visibility', 'uv-index', 'wind-direction', 'precipitation-rate', 
         'temp-feels-like', 'magnetic-field', 'air-flow', 'o2-level', 'co2-level', 
@@ -461,6 +479,7 @@ function updateAllExternalData() {
         'wind-speed-ms', 'soil-type', 'ndvi-index', 'lsm', 'noon-solar', 'day-duration'
     ].forEach(id => {
         const elem = $(id);
+        // Ne réinitialise pas si c'est déjà N/A ou si c'est un champ calculé
         if (elem && 
             !elem.textContent.includes('°C') && 
             !elem.textContent.includes('% vol') && 
@@ -549,6 +568,28 @@ function setFrequency() {
     }
 }
 
+function toggleNightMode() {
+    // Cette fonction nécessite que 'style.css' soit chargé, 
+    // ou que les styles 'night-mode' soient dans le <style> du HTML.
+    document.body.classList.toggle('night-mode');
+    const isNight = document.body.classList.contains('night-mode');
+    if ($('toggle-mode-btn')) {
+        $('toggle-mode-btn').textContent = isNight ? '☀️ Mode Jour' : '🌓 Mode Nuit';
+    }
+}
+
+function captureData() {
+    alert("Données capturées dans la console (Simulation de sauvegarde)...");
+    console.log("--- CAPTURE DE DONNÉES (INSTANTANÉE) ---");
+    console.table({
+        'Temps (UTC)': getCorrectedDate().toUTCString(),
+        'Latitude': window.lPos ? window.lPos.coords.latitude.toFixed(6) : 'N/A',
+        'Vitesse Stable (m/s)': window.EKFState[2].toFixed(2),
+        'Distance Totale (km)': (window.distTotal / 1000).toFixed(3),
+        'EKF R Efficace': window.kalmanR * window.environmentFactor
+    });
+}
+
 function initializeControlListeners() {
     // Les fonctions de contrôle sont définies dans gnss-dashboard-part1.js
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGPS);
@@ -565,6 +606,10 @@ function initializeControlListeners() {
     if ($('gps-accuracy-override')) $('gps-accuracy-override').addEventListener('change', updateKalmanParameters);
     if ($('environment-select')) $('environment-select').addEventListener('change', updateKalmanParameters);
 
+    // Mode Nuit et Capture
+    if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', toggleNightMode);
+    if ($('data-capture-btn')) $('data-capture-btn').addEventListener('click', captureData);
+
     // Initialisation des valeurs d'affichage et des paramètres Kalman au démarrage
     updateKalmanParameters(); 
 }
@@ -574,7 +619,7 @@ function initializeControlListeners() {
 
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Vérification de la dépendance SunCalc
+    // Vérification de la dépendance SunCalc (chargée depuis le CDN)
     if (!window.SunCalc) {
         console.warn("Avertissement: suncalc.js n'est pas chargé. Les fonctions astronomiques seront limitées.");
     }
