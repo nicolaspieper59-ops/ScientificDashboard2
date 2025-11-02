@@ -27,7 +27,7 @@ body {
     padding: 15px; 
     border-radius: 8px; 
     box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
-    transition: transform 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .section:hover {
@@ -159,7 +159,7 @@ hr {
     margin: 15px 0;
 }
 
-/* --- Responsive Design (Optionnel) --- */
+/* --- Responsive Design --- */
 @media (max-width: 1024px) {
     .dashboard-container {
         grid-template-columns: repeat(2, 1fr); /* 2 colonnes sur tablettes */
@@ -180,4 +180,4 @@ hr {
     #map-container {
         height: 300px;
     }
- }
+}
