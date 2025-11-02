@@ -38,25 +38,25 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // 4. Construction de l'URL OpenWeatherMap (units=metric pour Celsius)
-        const weatherUrl = `${OPENWEATHER_BASE_URL}?lat=${lat}&lon=${lon}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=fr`;
+        // 4. Construction de l'URL finale (avec unités métriques et langue française)
+        const finalUrl = `${OPENWEATHER_BASE_URL}?lat=${lat}&lon=${lon}&units=metric&lang=fr&appid=${OPENWEATHER_API_KEY}`;
 
-        // 5. Appel à l'API externe
-        const response = await fetch(weatherUrl);
-        const data = await response.json();
+        // 5. Appel à l'API OpenWeatherMap
+        const apiResponse = await fetch(finalUrl);
+        const data = await apiResponse.json();
 
-        if (!response.ok) {
-            // Renvoyer l'erreur de l'API OpenWeatherMap
-            console.error('Erreur API Météo:', data);
-            res.status(response.status).json({ error: data.message || 'Erreur lors de la récupération des données météo.' });
+        if (!apiResponse.ok) {
+            // Gérer les erreurs de l'API externe (ex: clé API invalide, ville non trouvée)
+            const errorMsg = data.message || `Erreur de l'API externe avec code ${apiResponse.status}`;
+            res.status(apiResponse.status).json({ error: errorMsg });
             return;
         }
 
-        // 6. Succès : Retourner les données reçues directement au client JS
+        // 6. Succès : renvoyer les données au client (votre tableau de bord)
         res.status(200).json(data);
 
     } catch (error) {
-        console.error('Erreur de serveur interne du proxy:', error);
-        res.status(500).json({ error: 'Erreur interne du serveur proxy.' });
+        console.error("Erreur serveur lors de l'appel à OpenWeatherMap:", error);
+        res.status(500).json({ error: 'Erreur interne du serveur proxy.', details: error.message });
     }
 };
