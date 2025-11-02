@@ -5,13 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GNSS SpaceTime Dashboard 🚀</title>
     
-    <link rel="manifest" href="manifest.json">
-
-    <link rel="stylesheet" href="leaflet.css" />
-    <link rel="stylesheet" href="fontawesome.min.css" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
+          crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
+          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
           
-    <script src="suncalc.js"></script>
+    <style>
+        /* Styles adaptés */
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
+        .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
+        .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .section h2 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; font-size: 1.2em; }
+        .data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
+        .data-point span:first-child { font-weight: bold; color: #555; }
+        
+        /* Contrôles */
+        .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
+        .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
+        .control-input-full input, .control-input-full select { width: 98%; padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
+        button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #toggle-gps-btn { background-color: #28a745; color: white; }
+        #emergency-stop-btn { background-color: #dc3545; color: white; }
+        
+        /* Conteneur pour la carte et l'horloge */
+        #map-container { height: 400px; width: 100%; border-radius: 8px; margin-top: 15px; }
+        #minecraft-clock-container { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            flex-direction: column;
+            padding-top: 10px;
+        }
+        #minecraft-clock {
+            width: 90px;
+            height: 90px;
+            position: relative;
+        }
+        .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
+    </style>
+    <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
 <body>
 
@@ -157,20 +192,8 @@
 
     </div>
 
-<script src="leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
 <script src="gnss-dashboard-full.js"></script>
 
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').then(registration => {
-                console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            }, function(err) {
-                console.log('ServiceWorker registration failed: ', err);
-            });
-        });
-    }
-</script>
-
 </body>
-                                                                    </html>
+    </html>
