@@ -1,4 +1,4 @@
-/ =================================================================
+
 // FICHIER JS PARTIE 1 : gnss-dashboard-part1.js
 // Contient les constantes, les variables d'état et les fonctions de base (Kalman, Math).
 // Doit être chargé en premier.
