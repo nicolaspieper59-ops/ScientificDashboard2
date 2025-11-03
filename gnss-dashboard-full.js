@@ -107,7 +107,7 @@ function kFilter(z, dt, R_dyn) {
     return kSpd;
 }
 
-/** Calcule le bruit de mesure dynamique R (MODIFIÉ: Intègre IMU linéaire) */
+/** Calcule le bruit de mesure dynamique R (Intègre IMU linéaire) */
 function getKalmanR(acc, alt, pressure, linearAccelMag) { 
     let R_raw = acc * acc; 
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment] || ENVIRONMENT_FACTORS.NORMAL;
@@ -120,15 +120,13 @@ function getKalmanR(acc, alt, pressure, linearAccelMag) {
     
     // 2. Correction par l'Accélération Linéaire (IMU)
     if (linearAccelMag > 0.5) { 
-        // Augmente R pour rendre le filtre plus réactif aux mouvements physiques (IMU)
-        // en réduisant la confiance dans le GPS brut pendant l'accélération/décélération.
         noiseMultiplier += Math.pow(linearAccelMag, 1.5) * 0.5; 
     }
     
     return R_raw * noiseMultiplier;
 }
 
-/** Filtre de Kalman 1D pour l'Altitude (MODIFIÉ: Utilise u_accel IMU) */
+/** Filtre de Kalman 1D pour l'Altitude (Utilise u_accel IMU) */
 function kFilterAltitude(z, acc, dt, u_accel = 0) { 
     if (z === null) return kAlt; 
 
@@ -291,7 +289,6 @@ async function updateWeather(latA, lonA) {
         lastP_hPa = pressurehPa; 
 
         const dewPointC = calculateDewPoint(tempC, humidity);
-        // Wind Chill simplifié (pour T < 10°C et V > 1.3 m/s)
         const windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
         const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
         const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
@@ -316,7 +313,7 @@ async function updateWeather(latA, lonA) {
 // FONCTIONS CAPTEURS INERTIELS (IMU)
 // ===========================================
 
-/** Gère les données de l'accéléromètre via DeviceMotionEvent. (MODIFIÉ) */
+/** Gère les données de l'accéléromètre via DeviceMotionEvent. */
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
     const acc = event.accelerationIncludingGravity;
@@ -336,7 +333,6 @@ function handleDeviceMotion(event) {
         G_STATIC_REF.z = kAccel.z;
         accel_vertical_lin = 0.0; 
     } else {
-        // Soustraction de la composante gravitationnelle estimée pour obtenir l'accélération linéaire
         linear_x = kAccel.x - G_STATIC_REF.x;
         linear_y = kAccel.y - G_STATIC_REF.y;
         linear_z = kAccel.z - G_STATIC_REF.z;
@@ -434,7 +430,7 @@ function handleErr(err) {
 
 
 // ===========================================
-// FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique) (MODIFIÉ)
+// FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique)
 // ===========================================
 
 function updateDisp(pos) {
@@ -486,7 +482,7 @@ function updateDisp(pos) {
     // 4. VITESSE 3D
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
 
-    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable) - Utilise l'IMU linéaire
+    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable) - Utilise l'IMU linéaire pour R_dyn
     const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa, latestLinearAccelMagnitude); 
     const fSpd = kFilter(spd3D, dt, R_dyn); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
@@ -562,10 +558,12 @@ function updateDisp(pos) {
 
 
 // ===========================================
-// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES
+// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES (TOUS LES BOUTONS)
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    
+    // Initialisation et gestionnaire du Facteur Kalman Environnement
     if ($('environment-select')) {
         $('environment-select').value = selectedEnvironment;
         $('environment-select').addEventListener('change', (e) => { 
@@ -573,52 +571,57 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedEnvironment = e.target.value; 
         });
     }
+
+    // Gestionnaire de la Précision GPS forcée
+    if ($('gps-accuracy-override')) {
+        $('gps-accuracy-override').addEventListener('change', (e) => {
+            // Pas de logique complexe nécessaire, la valeur est lue dans updateDisp.
+        });
+    }
     
     syncH(); 
 
+    // Démarrage/Arrêt GPS
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
         if (emergencyStopActive) return;
         wID === null ? startGPS() : stopGPS();
     });
+    
+    // Sélecteur de Fréquence GPS
     if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
         if (emergencyStopActive) return;
         setGPSMode(e.target.value);
     });
+    
+    // Arrêt d'Urgence
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
         emergencyStopActive ? resumeSystem() : emergencyStop(); 
     });
+    
+    // Mode Nether
     if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         netherMode = !netherMode; 
         if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; 
     });
-    if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { if (emergencyStopActive) return; distM = 0; timeMoving = 0; });
-    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { if (emergencyStopActive) return; maxSpd = 0; });
+
+    // Boutons de Réinitialisation
+    if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        distM = 0; timeMoving = 0; 
+        if ($('distance-total-km')) $('distance-total-km').textContent = "0.000 km | 0.00 m";
+    });
+    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        maxSpd = 0; 
+        if ($('speed-max')) $('speed-max').textContent = "0.00000 km/h";
+    });
     if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
-        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser?")) { 
+        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
             distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; timeMoving = 0; lastFSpeed = 0;
-            if (tracePolyline) tracePolyline.setLatLngs([]); 
+            if (tracePolyline) tracePolyline.setLatLngs([]); // Efface la trace sur la carte
         } 
     });
-
-
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', handleDeviceMotion, true);
-        console.log("Capteur DeviceMotion (IMU) activé.");
-    } else {
-        console.warn("DeviceMotion n'est pas supporté ou activé sur cet appareil/navigateur.");
-    } 
-
-    startGPS(); 
-
-    // Intervalle lent pour les mises à jour Astro (1s)
-    if (domID === null) {
-        domID = setInterval(() => {
-            if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
-            else updateAstro(null, null); 
-        }, DOM_SLOW_UPDATE_MS); 
-    }
     
-    // Intervalle pour la mise à jour Météo (30s)
-    
+    // Le bouton 'Capturer' ('data-capt
