@@ -51,6 +51,8 @@ const ACCEL_FILTER_ALPHA = 0.8;
 const ACCEL_MOVEMENT_THRESHOLD = 0.5; 
 let kAccel = { x: 0, y: 0, z: 0 };
 let G_STATIC_REF = { x: 0, y: 0, z: 0 };
+let latestVerticalAccelIMU = 0; // Accélération verticale pour filtre altitude
+let latestLinearAccelMagnitude = 0; // Magnitude de l'accélération pour bruit EKF
 
 // --- VARIABLES GLOBALES (État du système) ---
 let wID = null;
@@ -64,18 +66,18 @@ let timeMoving = 0;
 let maxSpd = 0;
 let lastFSpeed = 0;
 let currentGPSMode = 'HIGH_FREQ';
-let lPos = null; // Dernière position
+let lPos = null; 
 let emergencyStopActive = false;
 let netherMode = false;
 let selectedEnvironment = 'NORMAL';
-let lServH = 0; // Heure serveur
-let lLocH = 0; // Temps performance local
+let lServH = 0; 
+let lLocH = 0; 
 let domID = null; 
 let weatherID = null; 
 let lastP_hPa = 1013.25; 
 
 // --- CONSTANTES API MÉTÉO ---
-const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // <-- N'OUBLIEZ PAS DE REMPLACER VOTRE CLÉ
+const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // <-- REMPLACEZ CECI PAR VOTRE CLÉ API OPENWEATHERMAP
 const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather";
 
 
@@ -105,25 +107,33 @@ function kFilter(z, dt, R_dyn) {
     return kSpd;
 }
 
-/** Calcule le bruit de mesure dynamique R basé sur la précision GPS et l'environnement */
-function getKalmanR(acc, alt, pressure) {
+/** Calcule le bruit de mesure dynamique R (MODIFIÉ: Intègre IMU linéaire) */
+function getKalmanR(acc, alt, pressure, linearAccelMag) { 
     let R_raw = acc * acc; 
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment] || ENVIRONMENT_FACTORS.NORMAL;
     
+    // 1. Base Noise + Correction d'Altitude
     let noiseMultiplier = envFactor;
     if (alt !== null && alt < 0) {
         noiseMultiplier += Math.abs(alt / 100); 
     }
     
+    // 2. Correction par l'Accélération Linéaire (IMU)
+    if (linearAccelMag > 0.5) { 
+        // Augmente R pour rendre le filtre plus réactif aux mouvements physiques (IMU)
+        // en réduisant la confiance dans le GPS brut pendant l'accélération/décélération.
+        noiseMultiplier += Math.pow(linearAccelMag, 1.5) * 0.5; 
+    }
+    
     return R_raw * noiseMultiplier;
 }
 
-/** Filtre de Kalman 1D pour l'Altitude */
-function kFilterAltitude(z, acc, dt) {
+/** Filtre de Kalman 1D pour l'Altitude (MODIFIÉ: Utilise u_accel IMU) */
+function kFilterAltitude(z, acc, dt, u_accel = 0) { 
     if (z === null) return kAlt; 
 
-    // 1. Prediction
-    const predAlt = kAlt;
+    // 1. Prediction (avec Accélération IMU comme entrée de contrôle)
+    const predAlt = kAlt + (0.5 * u_accel * dt * dt); 
     let predAltUncert = kAltUncert + Q_ALT_NOISE * dt;
 
     // 2. Mesure (R_alt est basé sur la précision brute du GPS)
@@ -161,7 +171,6 @@ function getCDate() {
 
 /** Synchronisation horaire par serveur (UTC/Atomique) */
 async function syncH() { 
-    // [Logique de synchronisation NTP/WorldTimeAPI]
     if ($('local-time')) $('local-time').textContent = 'Synchronisation UTC...';
     const localStartPerformance = performance.now(); 
     try {
@@ -195,7 +204,6 @@ function eclipticLongitude(M) {
 
 /** Calcule le Temps Solaire Vrai (TST) normalisé. */
 function getSolarTime(date, lon) {
-    // [Logique de calcul TST]
     if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D' };
     const d = toDays(date);
     const M = solarMeanAnomaly(d); 
@@ -232,7 +240,6 @@ function getSolarTime(date, lon) {
 
 /** Met à jour les valeurs Astro et TST sur le DOM */
 function updateAstro(latA, lonA) {
-    // [Logique de mise à jour DOM pour l'Astro]
     const now = getCDate(); 
     if (now === null) return;
     
@@ -262,7 +269,6 @@ function updateAstro(latA, lonA) {
 
 /** Récupère et met à jour les données météo via OpenWeatherMap. */
 async function updateWeather(latA, lonA) {
-    // [Logique de l'API Météo]
     if (!OWM_API_KEY || OWM_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
         $('temp-air').textContent = 'API CLÉ MANQUANTE';
         return;
@@ -285,6 +291,7 @@ async function updateWeather(latA, lonA) {
         lastP_hPa = pressurehPa; 
 
         const dewPointC = calculateDewPoint(tempC, humidity);
+        // Wind Chill simplifié (pour T < 10°C et V > 1.3 m/s)
         const windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
         const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
         const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
@@ -309,9 +316,8 @@ async function updateWeather(latA, lonA) {
 // FONCTIONS CAPTEURS INERTIELS (IMU)
 // ===========================================
 
-/** Gère les données de l'accéléromètre via DeviceMotionEvent. */
+/** Gère les données de l'accéléromètre via DeviceMotionEvent. (MODIFIÉ) */
 function handleDeviceMotion(event) {
-    // [Logique de l'IMU]
     if (emergencyStopActive) return;
     const acc = event.accelerationIncludingGravity;
     if (acc.x === null) return; 
@@ -322,6 +328,7 @@ function handleDeviceMotion(event) {
 
     const kAccel_mag = Math.sqrt(kAccel.x ** 2 + kAccel.y ** 2 + kAccel.z ** 2);
     let accel_vertical_lin = 0.0;
+    let linear_x = 0.0, linear_y = 0.0, linear_z = 0.0;
 
     if (Math.abs(kAccel_mag - G_ACC) < ACCEL_MOVEMENT_THRESHOLD) {
         G_STATIC_REF.x = kAccel.x;
@@ -329,9 +336,15 @@ function handleDeviceMotion(event) {
         G_STATIC_REF.z = kAccel.z;
         accel_vertical_lin = 0.0; 
     } else {
-        const linear_z = kAccel.z - G_STATIC_REF.z;
+        // Soustraction de la composante gravitationnelle estimée pour obtenir l'accélération linéaire
+        linear_x = kAccel.x - G_STATIC_REF.x;
+        linear_y = kAccel.y - G_STATIC_REF.y;
+        linear_z = kAccel.z - G_STATIC_REF.z;
         accel_vertical_lin = linear_z;
     }
+
+    latestVerticalAccelIMU = accel_vertical_lin; 
+    latestLinearAccelMagnitude = Math.sqrt(linear_x ** 2 + linear_y ** 2 + linear_z ** 2); 
     
     if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${accel_vertical_lin.toFixed(3)} m/s²`;
     if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(accel_vertical_lin / G_ACC).toFixed(2)} G`;
@@ -343,7 +356,6 @@ function handleDeviceMotion(event) {
 
 /** Initialise la carte Leaflet. */
 function initMap(latA, lonA) {
-    // [Logique d'initialisation de la carte]
     if (map) return;
     try {
         map = L.map('map-container').setView([latA, lonA], 15);
@@ -363,7 +375,6 @@ function initMap(latA, lonA) {
 
 /** Met à jour la carte. */
 function updateMap(latA, lonA) {
-    // [Logique de mise à jour de la carte]
     if (!map || !marker || !tracePolyline) { initMap(latA, lonA); return; }
     
     const newLatLng = [latA, lonA];
@@ -423,11 +434,10 @@ function handleErr(err) {
 
 
 // ===========================================
-// FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique)
+// FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique) (MODIFIÉ)
 // ===========================================
 
 function updateDisp(pos) {
-    // [Logique principale de traitement des données (Vitesse 3D, Incertitude Verticale, Coriolis)]
     if (emergencyStopActive) return;
     lat = pos.coords.latitude; lon = pos.coords.longitude;
     const alt = pos.coords.altitude, acc = pos.coords.accuracy;
@@ -450,10 +460,10 @@ function updateDisp(pos) {
     let spdH = spd_raw_gps ?? 0; 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
-    // 1. FILTRAGE DE L'ALTITUDE (via Kalman)
-    const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt);
+    // 1. FILTRAGE DE L'ALTITUDE (via Kalman) - Utilise l'IMU verticale
+    const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt, latestVerticalAccelIMU); 
     
-    // 2. VITESSE VERTICALE FILTRÉE ET INCERTITUDE (Propagation d'erreur)
+    // 2. VITESSE VERTICALE FILTRÉE ET INCERTITUDE 
     let spdV = 0; 
     let verticalSpeedUncert = 0;
 
@@ -475,13 +485,13 @@ function updateDisp(pos) {
 
     // 4. VITESSE 3D
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
-    
-    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
-    const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa); 
+
+    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable) - Utilise l'IMU linéaire
+    const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa, latestLinearAccelMagnitude); 
     const fSpd = kFilter(spd3D, dt, R_dyn); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
-    // Calculs d'accélération et distance
+    // Calculs Physiques
     let accel_long = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
     lastFSpeed = sSpdFE;
     distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
@@ -489,30 +499,38 @@ function updateDisp(pos) {
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     const avgSpdMoving = timeMoving > 0 ? (distM / timeMoving) : 0;
     
-    // CALCUL DE LA FORCE DE CORIOLIS
     const coriolusForce = 2 * MASS * sSpdFE * W_EARTH * Math.sin(lat * D2R);
-    
-    // CALCULS DE PHYSIQUE
     const kineticEnergy = 0.5 * MASS * sSpdFE ** 2;
     const mechanicalPower = accel_long * MASS * sSpdFE; 
+    
+    // CALCUL DE LA DENSITÉ DE L'AIR
+    let airDensity = "N/A";
+    const tempElement = $('temp-air').textContent;
+    const tempCMatch = tempElement.match(/(-?[\d.]+)\s*°C/);
+    
+    if (tempCMatch) {
+        const tempC = parseFloat(tempCMatch[1]);
+        const tempK = tempC + 273.15; 
+        const pressurePa = lastP_hPa * 100; 
+        const R_specific = 287.058; 
+
+        if (!isNaN(tempK) && tempK > 0 && pressurePa > 0) {
+            airDensity = (pressurePa / (R_specific * tempK)).toFixed(3);
+        }
+    }
+
 
     // --- MISE À JOUR DU DOM (GPS/Physique) ---
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
-    $('speed-3d-inst').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`;
-    $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
-    $('vertical-speed-uncert').textContent = `${verticalSpeedUncert.toFixed(2)} m/s`; 
-    $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
-    $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G`;
-    $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`;
-    
-    // [Autres mises à jour DOM...]
     $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1000).toFixed(0)} mm/s`; 
+    $('speed-3d-inst').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
     $('speed-avg-moving').textContent = `${(avgSpdMoving * KMH_MS).toFixed(5)} km/h`;
     $('perc-speed-c').textContent = `${(spd3D / C_L * 100).toExponential(2)}%`;
     $('perc-speed-sound').textContent = `${(spd3D / SPEED_SOUND * 100).toFixed(2)} %`;
     $('distance-total-km').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
     $('distance-cosmic').textContent = `${(distM / C_L).toExponential(2)} s lumière | ${(distM / C_L / (3600*24*365.25)).toExponential(2)} al`;
+    
     $('latitude').textContent = lat.toFixed(6);
     $('longitude').textContent = lon.toFixed(6);
     $('altitude-gps').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A';
@@ -520,9 +538,18 @@ function updateDisp(pos) {
     $('gps-accuracy-effective').textContent = `${effectiveAcc.toFixed(2)} m`;
     $('speed-raw-ms').textContent = spd_raw_gps !== null ? `${spd_raw_gps.toFixed(2)} m/s` : 'N/A';
     $('underground-status').textContent = (kAlt_new !== null && kAlt_new < ALT_TH) ? 'Oui' : 'Non';
+    
+    $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
+    $('vertical-speed-uncert').textContent = `${verticalSpeedUncert.toFixed(2)} m/s`; 
+    $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
+    $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G`;
     $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; 
+    
     $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
     $('mechanical-power').textContent = `${mechanicalPower.toFixed(2)} W`;
+    $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`;
+    
+    $('air-density').textContent = airDensity + (airDensity !== "N/A" ? ' kg/m³' : '');
     
     updateMap(lat, lon);
     
@@ -539,7 +566,6 @@ function updateDisp(pos) {
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // [Initialisation des contrôles et des écouteurs d'événements]
     if ($('environment-select')) {
         $('environment-select').value = selectedEnvironment;
         $('environment-select').addEventListener('change', (e) => { 
@@ -595,9 +621,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Intervalle pour la mise à jour Météo (30s)
-    if (weatherID === null) {
-        weatherID = setInterval(() => {
-            if (lPos) updateWeather(lPos.coords.latitude, lPos.coords.longitude);
-        }, WEATHER_UPDATE_MS); 
-    }
-});
+    
