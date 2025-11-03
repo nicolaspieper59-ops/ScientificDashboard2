@@ -1,4 +1,4 @@
-// =================================================================
+/ =================================================================
 // FICHIER JS PARTIE 1 : gnss-dashboard-part1.js
 // Contient les constantes, les variables d'état et les fonctions de base (Kalman, Math).
 // Doit être chargé en premier.
@@ -108,10 +108,9 @@ function getKalmanR(acc, alt, P_hPa) {
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     return R;
     }
-// =========
+// ========
 // =================================================================
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (MISE À JOUR)
-// Contient la logique principale, les API (Astro/IMU/Météo) et les mises à jour DOM.
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (MISE À JOUR VITESSE VERTICALE)
 // =================================================================
 
 // --- CONSTANTES GLOBALES AJOUTÉES ---
@@ -120,7 +119,6 @@ const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 
 // ===========================================
 // INITIALISATION DES SERVICES ET DE LA CARTE
-// (Fonctions initMap, updateMap inchangées, voir partie 1)
 // ===========================================
 
 /** Initialise la carte Leaflet. */
@@ -210,7 +208,6 @@ function handleDeviceMotion(event) {
 
 // ===========================================
 // FONCTIONS ASTRO & TEMPS 
-// (Fonctions toDays, solarMeanAnomaly, eclipticLongitude, getSolarTime, updateAstro inchangées)
 // ===========================================
 
 /** Convertit la date en jours depuis J2000. */
@@ -287,7 +284,6 @@ function updateAstro(latA, lonA) {
 
 // ===========================================
 // FONCTIONS DE CONTRÔLE GPS 
-// (fonctions setGPSMode, startGPS, stopGPS, emergencyStop, resumeSystem, handleErr inchangées)
 // ===========================================
 
 function setGPSMode(mode) {
@@ -365,28 +361,43 @@ function updateDisp(pos) {
     if (accOverride > 0) { effectiveAcc = accOverride; }
 
     let spdH = spd_raw_gps ?? 0; 
-    let spdV = 0; 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
+    // 1. FILTRAGE DE L'ALTITUDE (via Kalman)
     const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt);
     
+    // 2. VITESSE VERTICALE FILTRÉE ET INCERTITUDE (PROPAGATION D'ERREUR)
+    let spdV = 0; 
+    let verticalSpeedUncert = 0;
+
     if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { 
         spdV = (kAlt_new - lPos.kAlt_old) / dt; 
+        
+        // Propagation d'erreur de la vitesse verticale:
+        // Sigma_V = sqrt(Sigma_Alt_new^2 + Sigma_Alt_old^2) / dt
+        // Utilisation de l'incertitude du Kalman (kAltUncert) comme proxy pour Sigma_Alt
+        const kAltUncert_old = lPos.kAltUncert_old !== undefined ? lPos.kAltUncert_old : kAltUncert;
+        verticalSpeedUncert = Math.sqrt(kAltUncert ** 2 + kAltUncert_old ** 2) / dt;
+        verticalSpeedUncert = Math.min(20, verticalSpeedUncert); // Limitation pour éviter des valeurs extrêmes
     } else if (alt !== null) { 
         spdV = 0; 
     }
     
+    // 3. VITESSE HORIZONTALE CALCULÉE
     if (lPos && dt > 0.05) { 
         const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
         spdH = dH / dt; 
     } 
 
+    // 4. VITESSE 3D
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
     
+    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
     const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa); 
     const fSpd = kFilter(spd3D, dt, R_dyn); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
+    // Calculs d'accélération et distance
     let accel_long = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
     lastFSpeed = sSpdFE;
     distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
@@ -394,11 +405,10 @@ function updateDisp(pos) {
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     const avgSpdMoving = timeMoving > 0 ? (distM / timeMoving) : 0;
     
-    // --- CALCUL DE LA FORCE DE CORIOLIS (NOUVEAU) ---
-    // Fc = 2 * m * v * w_e * sin(phi)
+    // CALCUL DE LA FORCE DE CORIOLIS
     const coriolusForce = 2 * MASS * sSpdFE * W_EARTH * Math.sin(lat * D2R);
     
-    // --- CALCULS DE PHYSIQUE ---
+    // CALCULS DE PHYSIQUE
     const kineticEnergy = 0.5 * MASS * sSpdFE ** 2;
     const mechanicalPower = accel_long * MASS * sSpdFE; 
 
@@ -426,6 +436,7 @@ function updateDisp(pos) {
     
     // Dynamique (Accel)
     $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
+    $('vertical-speed-uncert').textContent = `${verticalSpeedUncert.toFixed(2)} m/s`; // MIS A JOUR
     $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
     $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G`;
     $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; 
@@ -433,19 +444,20 @@ function updateDisp(pos) {
     // Physique
     $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
     $('mechanical-power').textContent = `${mechanicalPower.toFixed(2)} W`;
-    $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`; // NOUVEAU
+    $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`;
     
     // --- Mise à jour de la carte ---
     updateMap(lat, lon);
     
+    // SAUVEGARDE DES VALEURS POUR LA PROCHAINE ITÉRATION
     lPos = pos; 
     lPos.timestamp = cTimePos; 
     lPos.kAlt_old = kAlt_new; 
+    lPos.kAltUncert_old = kAltUncert; // SAUVEGARDE DE L'INCERTITUDE D'ALTITUDE POUR LE CALCUL VERTICAL SUIVANT
 }
 
 // ===========================================
 // INITIALISATION DES ÉVÉNEMENTS DOM 
-// (Bloc inchangé)
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
