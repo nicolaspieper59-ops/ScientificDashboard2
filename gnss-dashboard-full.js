@@ -561,6 +561,11 @@ function updateDisp(pos) {
 // INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES (TOUS LES BOUTONS)
 // ===========================================
 
+    
+// ===========================================
+// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES (TOUS LES BOUTONS)
+// ===========================================
+
 document.addEventListener('DOMContentLoaded', () => {
     
     // Initialisation et gestionnaire du Facteur Kalman Environnement
@@ -624,4 +629,39 @@ document.addEventListener('DOMContentLoaded', () => {
         } 
     });
     
-    // Le bouton 'Capturer' ('data-capt
+    // Bouton 'Capturer' (Logique de démonstration)
+    if ($('data-capture-btn')) $('data-capture-btn').addEventListener('click', () => {
+        alert("Données actuelles capturées (logique de sauvegarde à implémenter)!");
+    });
+    
+    // Gestionnaire du Mode Nuit (toggle-mode-btn)
+    if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        $('toggle-mode-btn').textContent = isDarkMode ? "☀️ Mode Jour" : "🌗 Mode Nuit";
+    });
+
+
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', handleDeviceMotion, true);
+    } else {
+        console.warn("DeviceMotion n'est pas supporté ou activé sur cet appareil/navigateur.");
+    } 
+
+    startGPS(); 
+
+    // Intervalle lent pour les mises à jour Astro (1s)
+    if (domID === null) {
+        domID = setInterval(() => {
+            if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
+            else updateAstro(null, null); 
+        }, DOM_SLOW_UPDATE_MS); 
+    }
+    
+    // Intervalle pour la mise à jour Météo (30s)
+    if (weatherID === null) {
+        weatherID = setInterval(() => {
+            if (lPos) updateWeather(lPos.coords.latitude, lPos.coords.longitude);
+        }, WEATHER_UPDATE_MS); 
+    }
+});
