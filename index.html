@@ -30,6 +30,11 @@
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
         
+        /* Styles pour la qualité */
+        .quality-green { color: #28a745; font-weight: bold; }
+        .quality-orange { color: #ffc107; font-weight: bold; }
+        .quality-red { color: #dc3545; font-weight: bold; }
+        
         /* Conteneur pour la carte et l'horloge */
         #map-container { height: 400px; width: 100%; border-radius: 8px; margin-top: 15px; }
         #minecraft-clock-container { 
@@ -45,8 +50,17 @@
             position: relative;
         }
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
+        
+        /* Conteneur pour le graphique */
+        #chart-container { 
+            height: 250px; 
+            width: 100%; 
+            margin-top: 15px; 
+            position: relative;
+        }
     </style>
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -58,6 +72,7 @@
             <div class="data-point"><span>Date Locale</span><span id="date-display">N/A</span></div> 
             <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
             <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
+            <div class="data-point"><span>Niveau de Batterie</span><span id="battery-level">N/A</span></div>
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> 
             <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>Masse (kg)</span><span id="mass-display">70.000 kg</span></div>
@@ -98,21 +113,30 @@
             <div class="data-point"><span>Précision Effective (R)</span><span id="gps-accuracy-effective">N/A</span></div>
             <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
             <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00000 km/h</span></div> 
-            <div class="data-point"><span>Vitesse 3D (Inst.)</span><span id="speed-3d-inst">-- km/h</span></div>
+            <div class="data-point"><span>Vitesse 3D (Inst. Lissé)</span><span id="speed-3d-inst">-- km/h</span></div>
+            <div class="data-point"><span>Azimut / Direction</span><span id="azimut-display">N/A</span></div>
             <div class="data-point"><span>Vitesse stable (m/s)</span><span id="speed-stable-ms">-- m/s | -- mm/s</span></div> 
             <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">-- %</span></div> 
             <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
+            <div class="data-point"><span>Facteur de Lorentz ($\gamma$)</span><span id="lorentz-factor">1.0000e+00</span></div>
             <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
             <div class="data-point"><span>Distance Cosmique</span><span id="distance-cosmic">0.00e+00 s lumière | 0.00e+00 al</span></div>
+            
+            <hr>
+            <h2>📈 Graphique Temps-Vitesse</h2>
+            <div id="chart-container">
+                <canvas id="speed-chart"></canvas>
+            </div>
         </div>
 
         <div class="section">
             <h2>🗺️ Vue brute GPS & Physique</h2>
             <div class="data-point"><span>Latitude Brute</span><span id="latitude">N/A</span></div>
             <div class="data-point"><span>Longitude Brute</span><span id="longitude">N/A</span></div>
-            <div class="data-point"><span>Altitude GPS</span><span id="altitude-gps">N/A</span></div>
+            <div class="data-point"><span>Altitude GPS (Ellips.)</span><span id="altitude-gps">N/A</span></div>
+            <div class="data-point"><span>Altitude NMM (MSL Corrigée)</span><span id="altitude-msl">N/A</span></div>
             <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
-            <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
+            <div class="data-point"><span>Vitesse Brute (m/s - Lissé)</span><span id="speed-raw-ms">N/A</span></div>
             <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div> 
             
             <hr>
@@ -130,6 +154,7 @@
             <h2>✨ Champs & Énergie (Physique)</h2>
             <div class="data-point"><span>Énergie Cinétique (J)</span><span id="kinetic-energy">0.00 J</span></div>
             <div class="data-point"><span>Puissance Mécanique (W)</span><span id="mechanical-power">0.00 W</span></div>
+            <div class="data-point"><span>Pression Dynamique ($q$)</span><span id="dynamic-pressure">0.00 Pa</span></div>
             <div class="data-point"><span>Champ Magnétique (µT)</span><span id="magnetic-field">N/A</span></div>
             <div class="data-point"><span>Débit Atmosphérique (m³/s)</span><span id="air-flow">N/A</span></div>
             <div class="data-point"><span>Force de Coriolis (N)</span><span id="coriolis-force">0.00 N</span></div>
@@ -195,6 +220,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
 <script src="gnss-dashboard-full.js"></script>
+<script src="leaflet.js"></script>
 
 </body>
-                                        </html>
+                </html>
