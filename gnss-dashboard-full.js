@@ -14,7 +14,6 @@ const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const C_L = 299792458; // Vitesse de la lumière (m/s)
 const R_E = 6371000;   // Rayon terrestre moyen (m)
 const KMH_MS = 3.6;    // Conversion m/s vers km/h
-const C_S = 343;       // Vitesse du son dans l'air (m/s)
 const G_ACC = 9.80665; // Gravité standard (m/s²)
 const MC_DAY_MS = 72 * 60 * 1000; // Durée d'un jour Minecraft en ms
 const J1970 = 2440588, J2000 = 2451545; 
@@ -30,11 +29,8 @@ const Q_NOISE = 0.01;
 const R_MIN = 0.05, R_MAX = 50.0; 
 const MAX_ACC = 200, MIN_SPD = 0.05, ALT_TH = -50; 
 const NETHER_RATIO = 8; 
-const MAX_PLAUSIBLE_ACCEL = 20.0; 
 const Q_ALT_NOISE = 0.1; 
 const R_ALT_MIN = 0.1;  
-const ACC_DAMPEN_LOW = 5.0; 
-const ACC_DAMPEN_HIGH = 50.0; 
 const ENVIRONMENT_FACTORS = {
     'NORMAL': { R_MULT: 1.0 }, 'METAL': { R_MULT: 2.5 },      
     'FOREST': { R_MULT: 1.5 }, 'CONCRETE': { R_MULT: 3.0 },   
@@ -54,13 +50,12 @@ let currentGPSMode = 'HIGH_FREQ';
 let emergencyStopActive = false;
 let netherMode = false;
 let selectedEnvironment = 'NORMAL'; 
-let lastP_hPa = null, lastT_K = null, lastH_perc = null; 
-let map = null, marker = null, tracePolyline = null; // Ajout des variables pour la carte Leaflet
+let lastP_hPa = null; 
+let map = null, marker = null, tracePolyline = null; 
 
 // --- VARIABLES POUR CAPTEURS INERTIELS (ACCÉLÉROMÈTRE) ---
 let kAccel = { x: 0, y: 0, z: 0 }; 
 const ACCEL_FILTER_ALPHA = 0.8; 
-let spdH_raw_current = 0; 
 let G_STATIC_REF = { x: 0, y: 0, z: G_ACC }; // Référence de la gravité statique
 const ACCEL_MOVEMENT_THRESHOLD = 0.3; // Seuil pour détecter un mouvement linéaire réel (m/s²)
 
@@ -112,7 +107,7 @@ function getKalmanR(acc, alt, P_hPa) {
     if (alt < ALT_TH) { R *= 2.0; } 
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     return R;
-}
+    }
 // =================================================================
 // FICHIER JS PARTIE 2 : gnss-dashboard-part2.js
 // Contient la logique principale, les API (Astro/IMU/Météo) et les mises à jour DOM.
@@ -127,6 +122,7 @@ function getKalmanR(acc, alt, P_hPa) {
 function initMap(latA, lonA) {
     if (map) return;
     try {
+        // La librairie L doit être disponible ici grâce au chargement dans le HTML
         map = L.map('map-container').setView([latA, lonA], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
@@ -224,7 +220,7 @@ function handleDeviceMotion(event) {
 }
 
 // ===========================================
-// FONCTIONS ASTRO & TEMPS (CORRIGÉES TST/EOT/LONGITUDE)
+// FONCTIONS ASTRO & TEMPS 
 // ===========================================
 
 /** Convertit la date en jours depuis J2000. */
@@ -398,9 +394,8 @@ function handleErr(err) {
 }
 
 async function fetchWeather(latA, lonA) {
-    // Si une API météo était configurée, le code irait ici.
-    // Pour l'instant, on met à jour le facteur d'environnement pour montrer qu'on est prêt.
-    lastP_hPa = null; lastT_K = null; lastH_perc = null; 
+    // Si une API météo était configurée, le code irait ici. (Placeholder)
+    lastP_hPa = null; // Réinitialisation du placeholder
     if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`;
 }
 
@@ -429,7 +424,7 @@ function updateDisp(pos) {
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
     // 1. FILTRAGE DE L'ALTITUDE (via Kalman)
-    const kAlt_new = kAltFilterAltitude(alt, acc, dt);
+    const kAlt_new = kFilterAltitude(alt, acc, dt);
     // 2. CALCUL DE LA VITESSE VERTICALE FILTRÉE
     if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { spdV = (kAlt_new - lPos.kAlt_old) / dt; } else if (alt !== null) { spdV = 0; }
     // 3. VITESSE HORIZONTALE BRUTE
