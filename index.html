@@ -13,14 +13,13 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
-        /* Styles de base pour la mise en page */
+        /* Styles de base pour la mise en page (Maintenu Disque Jour/Nuit) */
         body { 
             font-family: 'Arial', sans-serif; 
             margin: 0; 
             padding: 0; 
-            background-color: #f4f4f4; /* Couleur par défaut (Jour) */
+            background-color: #f4f4f4; 
             color: #333; 
-            /* Transition lente pour simuler le cycle Jour/Nuit TST (Disque Minecraft) */
             transition: background-color 2s ease-in-out, color 0.3s; 
         }
         .dashboard-container { 
@@ -40,7 +39,7 @@
         /* Styles de la carte */
         #map-container { height: 400px; border-radius: 4px; margin-bottom: 20px; }
 
-        /* Dark Mode: Les sections conservent une couleur sombre constante */
+        /* Dark Mode */
         body.dark-mode { color: #f4f4f4; }
         body.dark-mode .section { background-color: #2c2c2c; box-shadow: 0 4px 6px rgba(255,255,255,0.1); }
         body.dark-mode h2 { color: #00bfff; border-bottom-color: #444; }
@@ -72,7 +71,8 @@
                     <option value="FOREST">EKF: Forêt/Urban</option>
                     <option value="CONCRETE">EKF: Béton (Tunnels)</option>
                     <option value="METAL">EKF: Acier (Vaisseau)</option>
-                </select>
+                    <option value="AIRCRAFT">✈️ EKF: Avion (G-Freeze)</option> 
+                    <option value="TRAIN">🚆 EKF: Train (Vibrations)</option> <option value="MARINE">🚢 EKF: Bateau (Vagues/Roulis)</option> </select>
 
                 <button id="nether-toggle-btn">Toggle Mode: <span id="mode-nether">DÉSACTIVÉ (1:1)</span></button>
             </div>
@@ -88,6 +88,7 @@
             <h2>📍 Coordonnées et Précision</h2>
             <div id="map-container"></div>
             
+            <div class="data-point"><span>Statut Mode Souterrain</span><span id="subterranean-status-display">🔴 INACTIF (GPS+EKF)</span></div>
             <div class="data-point"><span>Latitude</span><span id="latitude">N/A</span></div>
             <div class="data-point"><span>Longitude</span><span id="longitude">N/A</span></div>
             <div class="data-point"><span>Altitude (GPS Brute)</span><span id="altitude-gps">N/A</span></div>
@@ -114,13 +115,15 @@
             <hr>
 
             <h2>📈 Forces et Énergie</h2>
-            <div class="data-point"><span>Accélération 3D (Magnitude Linéaire)</span><span id="accel-3d-mag">N/A</span></div> <div class="data-point"><span>Force G 3D (Magnitude Linéaire)</span><span id="force-g-3d-mag">N/A</span></div> <div class="data-point"><span>Accélération Long. (m/s²)</span><span id="accel-long">N/A</span></div>
+            <div class="data-point"><span>Accélération 3D (Magnitude Linéaire)</span><span id="accel-3d-mag">N/A</span></div>
+            <div class="data-point"><span>Force G 3D (Magnitude Linéaire)</span><span id="force-g-3d-mag">N/A</span></div>
+            <div class="data-point"><span>Accélération Long. (m/s²)</span><span id="accel-long">N/A</span></div>
             <div class="data-point"><span>Force G Longitudinale (G)</span><span id="force-g-long">N/A</span></div>
             <div class="data-point"><span>Accélération Vert. IMU (m/s²)</span><span id="accel-vertical-imu">N/A</span></div>
             <div class="data-point"><span>Force G Verticale IMU (G)</span><span id="force-g-vertical">N/A</span></div>
             <div class="data-point"><span>Énergie Cinétique (J)</span><span id="kinetic-energy">N/A</span></div>
             <div class="data-point"><span>Puissance Mécanique (W)</span><span id="mechanical-power">N/A</span></div>
-            <div class="data-point"><span>Force de Coriolis (N)</span><span id="coriolis-force">N/A</span></div>
+            <div class="data-point"><span>Force de Coriolis (N)</span><span id="coriolis-force">N/A</span></div> 
             <div class="data-point"><span>Pression Dynamique (Pa)</span><span id="dynamic-pressure">N/A</span></div> 
 
             <hr>
@@ -175,4 +178,4 @@
 
     <script src="gnss-dashboard-full.js"></script>
 </body>
-                </html>
+    </html>
