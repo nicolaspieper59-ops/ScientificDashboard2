@@ -272,3 +272,722 @@ function getSolarTime(date, lon) {
     };
     return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
 }
+// =================================================================
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
+// Dépend de gnss-dashboard-part1.js
+// =================================================================
+
+// Les variables globales et fonctions utilitaires sont définies dans part1.js
+
+// ===========================================
+// FONCTIONS ASTRO & TEMPS
+// ===========================================
+
+/** Met à jour les valeurs Astro, TST et l'Horloge Dynamique sur le DOM */
+function updateAstro(latA, lonA) {
+    const now = getCDate(); 
+    if (now === null || latA === 0 || lonA === 0) return;
+    
+    // SunCalc fournit les positions et illuminations (influence l'élévation, non la TST pour la rotation)
+    const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
+    const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
+    
+    // getSolarTime calcule TST en intégrant l'Équation du Temps (EOT)
+    const solarTimes = getSolarTime(now, lonA);
+    const elevation_deg = sunPos ? (sunPos.altitude * R2D) : 0;
+    
+    $('local-time').textContent = now.toLocaleTimeString('fr-FR', { timeZone: 'UTC', hour12: false });
+    $('date-display').textContent = now.toLocaleDateString();
+    if (sTime) {
+        const timeElapsed = (now.getTime() - sTime) / 1000;
+        $('time-elapsed').textContent = `${timeElapsed.toFixed(2)} s`;
+        $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
+    }
+    
+    // --- LOGIQUE DE LA CLOCK ET DU CIEL DYNAMIQUE ---
+    const TST_hour = solarTimes.TST_MS / 3600000; // Heure TST de 0 à 24
+    const clockContainer = $('minecraft-clock');
+    
+    if (clockContainer) {
+        
+        // 1. Positionnement des icônes Soleil et Lune
+        // Angle TST corrigé : 12h (Midi Solaire) = 0° (Haut/Culmination).
+        const TST_normalized = TST_hour % 24; 
+        const TST_angle_deg_raw = (TST_normalized - 12) * 15; // 15 degrés par heure
+        const TST_angle_deg = (TST_angle_deg_raw + 360) % 360; 
+        
+        // SUN
+        let sunEl = clockContainer.querySelector('.sun-element');
+        if (!sunEl) { sunEl = document.createElement('div'); sunEl.className = 'sun-element'; clockContainer.appendChild(sunEl); }
+        sunEl.style.transform = `rotate(${TST_angle_deg}deg) translateY(-45px)`; 
+        sunEl.textContent = '☀️'; 
+
+        // MOON (Opposé au Soleil, +12h TST)
+        let moonEl = clockContainer.querySelector('.moon-element');
+        if (!moonEl) { moonEl = document.createElement('div'); moonEl.className = 'moon-element'; clockContainer.appendChild(moonEl); }
+        
+        const moon_TST_angle_deg = (TST_angle_deg + 180) % 360; // Décalage de 12 heures
+        moonEl.style.transform = `rotate(${moon_TST_angle_deg}deg) translateY(-45px)`; 
+        
+        // --- GESTION DE LA PHASE DE LA LUNE (Visuel par Emoji) ---
+        if (moonIllum && moonEl) {
+            const phase = moonIllum.phase;
+            const phaseEmoji = phase < 0.03 || phase > 0.97 ? '🌑' : 
+                               phase < 0.22 ? '🌒' :
+                               phase < 0.28 ? '🌓' :
+                               phase < 0.47 ? '🌔' :
+                               phase < 0.53 ? '🌕' :
+                               phase < 0.72 ? '🌖' :
+                               phase < 0.78 ? '🌗' : '🌘';
+            
+            moonEl.textContent = phaseEmoji;
+        }
+
+        // 2. Couleur du ciel dynamique (basée sur l'élévation du Soleil)
+        let sky_color = '#3f51b5'; // Nuit (Bleu foncé)
+        let opacity = 1; 
+        
+        if (elevation_deg > 10) { 
+             sky_color = '#87ceeb'; // Jour (Bleu ciel)
+             opacity = 0;
+        } else if (elevation_deg > -6) { 
+             sky_color = '#ff9800'; // Crépuscule/Aube (Orange/Ambre)
+             opacity = 0.5;
+        } else if (elevation_deg > -18) { 
+             sky_color = '#00008b'; // Crépuscule nautique/astronomique (Bleu nuit)
+             opacity = 0.8;
+        }
+
+        // Mise à jour du style du pseudo-élément ::before
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #minecraft-clock::before { 
+                background-color: ${sky_color} !important; 
+                opacity: ${opacity};
+            }
+        `;
+        let oldStyle = clockContainer.querySelector('style');
+        if (oldStyle) { clockContainer.removeChild(oldStyle); }
+        clockContainer.appendChild(style);
+
+    }
+    
+    // 3. Mise à jour des valeurs du DOM
+    $('time-minecraft').textContent = solarTimes.TST; 
+    $('tst').textContent = solarTimes.TST;
+    $('lsm').textContent = solarTimes.MST;
+    $('sun-elevation').textContent = sunPos ? `${elevation_deg.toFixed(2)} °` : 'N/A';
+    $('eot').textContent = solarTimes.EOT + ' min'; 
+    $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
+    $('moon-phase-display').textContent = moonIllum ? getMoonPhaseName(moonIllum.phase) : 'N/A';
+    
+    // Correction de l'affichage de la durée du jour (SunCalc)
+    if (window.SunCalc) {
+        const times = SunCalc.getTimes(now, latA, lonA);
+        if (times.sunrise && times.sunset) {
+            const durationMs = times.sunset.getTime() - times.sunrise.getTime();
+            const hours = Math.floor(durationMs / 3600000);
+            const minutes = Math.floor((durationMs % 3600000) / 60000);
+            $('day-duration').textContent = `${hours}h ${minutes}m`;
+        } else {
+            $('day-duration').textContent = 'N/A';
+        }
+    }
+}
+
+// ===========================================
+// FONCTIONS API MÉTÉO
+// ===========================================
+
+async function updateWeather(latA, lonA) {
+    if (!OWM_API_KEY || OWM_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
+        $('temp-air').textContent = 'API CLÉ MANQUANTE';
+        return;
+    }
+    
+    if ($('temp-air')) $('temp-air').textContent = 'Chargement...';
+
+    try {
+        const url = `${OWM_API_URL}?lat=${latA.toFixed(4)}&lon=${lonA.toFixed(4)}&units=metric&appid=${OWM_API_KEY}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Weather API failed: ${response.statusText}`);
+        const data = await response.json();
+        
+        const tempC = data.main.temp;
+        const pressurehPa = data.main.pressure;
+        const humidity = data.main.humidity;
+        const windSpeedMs = data.wind.speed; 
+        const windDeg = data.wind.deg;
+        
+        lastP_hPa = pressurehPa; 
+
+        const dewPointC = calculateDewPoint(tempC, humidity);
+        // Formule Wind Chill simplifiée (valable < 10°C)
+        let windChillC = tempC;
+        if (tempC < 10) { 
+             windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
+        }
+
+        const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
+        const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
+
+        $('temp-air').textContent = `${tempC.toFixed(1)} °C`;
+        $('pressure').textContent = `${pressurehPa.toFixed(0)} hPa | ${(pressurehPa * 0.75006).toFixed(1)} mmHg`;
+        $('humidity').textContent = `${humidity.toFixed(0)} %`;
+        $('dew-point').textContent = `${dewPointC.toFixed(1)} °C`;
+        $('wind-speed-ms').textContent = `${windSpeedMs.toFixed(2)} m/s | ${(windSpeedMs * 3.6).toFixed(1)} km/h`;
+        $('wind-direction').textContent = `${windDirection} (${windDeg} °)`;
+        $('temp-feels-like').textContent = `${windChillC.toFixed(1)} °C`;
+        $('visibility').textContent = data.visibility ? `${(data.visibility / 1000).toFixed(1)} km` : 'N/A (API)';
+        
+        // Ajout des données manquantes
+        $('uv-index').textContent = data.uvi ? data.uvi.toFixed(1) : 'N/A (API)';
+        $('precipitation-rate').textContent = data.rain && data.rain['1h'] ? `${data.rain['1h']} mm/h` : (data.snow && data.snow['1h'] ? `${data.snow['1h']} mm/h (neige)` : '0 mm/h');
+        
+    } catch (error) {
+        console.error("Erreur lors de la récupération des données météo:", error);
+        $('temp-air').textContent = 'API ERREUR';
+    }
+}
+
+
+// ===========================================
+// FONCTIONS CAPTEURS INERTIELS (IMU)
+// ===========================================
+
+function handleDeviceMotion(event) {
+    if (emergencyStopActive) return;
+    const acc = event.accelerationIncludingGravity;
+    if (acc.x === null) return; 
+
+    // Filtrage passe-bas des accélérations pour la stabilité
+    kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc.x;
+    kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc.y;
+    kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc.z; 
+
+    const kAccel_mag = Math.sqrt(kAccel.x ** 2 + kAccel.y ** 2 + kAccel.z ** 2);
+    let accel_vertical_lin = 0.0;
+    let linear_x = 0.0, linear_y = 0.0, linear_z = 0.0;
+
+    // Détection de la posture statique pour référencer la gravité
+    if (Math.abs(kAccel_mag - G_ACC) < ACCEL_MOVEMENT_THRESHOLD) {
+        G_STATIC_REF.x = kAccel.x;
+        G_STATIC_REF.y = kAccel.y;
+        G_STATIC_REF.z = kAccel.z;
+        accel_vertical_lin = 0.0; 
+    } else {
+        // Accélération linéaire (Accélération Totale - Gravité Estimée)
+        linear_x = kAccel.x - G_STATIC_REF.x;
+        linear_y = kAccel.y - G_STATIC_REF.y;
+        linear_z = kAccel.z - G_STATIC_REF.z;
+        accel_vertical_lin = linear_z; // Accélération verticale pour l'altitude EKF
+    }
+
+    latestVerticalAccelIMU = accel_vertical_lin; 
+    // Magnitude de l'accélération linéaire pour le contrôle EKF de la vitesse 3D
+    latestLinearAccelMagnitude = Math.sqrt(linear_x ** 2 + linear_y ** 2 + linear_z ** 2); 
+    
+    if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${accel_vertical_lin.toFixed(3)} m/s²`;
+    if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(accel_vertical_lin / G_ACC).toFixed(2)} G`;
+}
+
+// ===========================================
+// FONCTIONS CARTE ET CONTRÔLE GPS
+// ===========================================
+
+/** Initialise la carte Leaflet. */
+function initMap(latA, lonA) {
+    if (map) return;
+    try {
+        map = L.map('map-container').setView([latA, lonA], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        marker = L.marker([latA, lonA]).addTo(map);
+        tracePolyline = L.polyline([], { color: 'red' }).addTo(map);
+        console.log("Carte Leaflet initialisée.");
+    } catch (e) {
+        console.error("Échec de l'initialisation de la carte Leaflet:", e);
+        if ($('map-container')) $('map-container').textContent = 'Erreur d\'initialisation de la carte.';
+    }
+}
+
+/** Met à jour la carte. */
+function updateMap(latA, lonA) {
+    if (!map || !marker || !tracePolyline) { initMap(latA, lonA); return; }
+    
+    const newLatLng = [latA, lonA];
+    marker.setLatLng(newLatLng);
+    tracePolyline.addLatLng(newLatLng);
+    map.setView(newLatLng);
+}
+
+function setGPSMode(mode) {
+    if (wID !== null) navigator.geolocation.clearWatch(wID);
+    currentGPSMode = mode;
+    wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[mode]);
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `⏸️ PAUSE GPS`;
+    if ($('freq-select')) $('freq-select').value = mode; 
+}
+
+function startGPS() {
+    if (wID === null) {
+        if ($('freq-select')) $('freq-select').value = currentGPSMode; 
+        setGPSMode(currentGPSMode);
+        sTime = null; 
+    }
+}
+
+function stopGPS(resetButton = true) {
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID);
+        wID = null;
+    }
+    if (resetButton) {
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `▶️ MARCHE GPS`;
+    }
+}
+
+function emergencyStop() {
+    emergencyStopActive = true;
+    stopGPS(false);
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: ACTIF 🔴";
+        $('emergency-stop-btn').classList.add('active');
+    }
+}
+
+function resumeSystem() {
+    emergencyStopActive = false;
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: INACTIF 🟢";
+        $('emergency-stop-btn').classList.remove('active');
+    }
+    startGPS();
+}
+
+function handleErr(err) {
+    console.error(`Erreur GNSS (${err.code}): ${err.message}`);
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `❌ ERREUR GPS`;
+}
+
+
+// ===========================================
+// FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique)
+// ===========================================
+
+function updateDisp(pos) {
+    if (emergencyStopActive) return;
+    lat = pos.coords.latitude; lon = pos.coords.longitude;
+    const alt = pos.coords.altitude, acc = pos.coords.accuracy;
+    const spd_raw_gps = pos.coords.speed;
+    const cTimePos = pos.timestamp; 
+    const now = getCDate(); 
+    const MASS = 70.0; 
+
+    if (now === null) { updateAstro(lat, lon); return; } 
+    if (sTime === null) { sTime = now.getTime(); }
+    if (acc > MAX_ACC) { 
+        if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; 
+        if (lPos === null) lPos = pos; return; 
+    }
+
+    let effectiveAcc = acc;
+    const accOverride = parseFloat($('gps-accuracy-override').value);
+    if (accOverride > 0) { effectiveAcc = accOverride; }
+
+    let spdH = spd_raw_gps ?? 0; 
+    const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
+
+    // 1. DÉTERMINATION DU FACTEUR D'AMORTISSEMENT IMU (Dampening)
+    let imuDampeningFactor = 1.0; 
+    
+    if (effectiveAcc <= GOOD_ACC_THRESHOLD) {
+        // Très bonne précision (e.g., <= 3m): Réduire l'IMU (Facteur 0.5)
+        imuDampeningFactor = 0.5; 
+    } else if (effectiveAcc >= MAX_ACC) {
+        // Très mauvaise précision (e.g., >= 20m): Pleine confiance à l'IMU (Facteur 1.0)
+        imuDampeningFactor = 1.0; 
+    } else {
+        // Interpolation linéaire entre 0.5 et 1.0
+        const range = MAX_ACC - GOOD_ACC_THRESHOLD;
+        const value = effectiveAcc - GOOD_ACC_THRESHOLD;
+        imuDampeningFactor = 0.5 + 0.5 * (value / range); 
+    }
+
+    // 2. Initialisation des Entrées de Contrôle Amorties
+    
+    // Entrée de contrôle pour le Kalman 3D (Magnitude accélération linéaire amortie)
+    let accel_control_3D = latestLinearAccelMagnitude * imuDampeningFactor;
+    
+    // Entrée de contrôle pour le Kalman Altitude (Accélération verticale amortie)
+    let accel_control_V = latestVerticalAccelIMU * imuDampeningFactor;
+
+    // 3. VITESSE 3D INSTANTANÉE (Calculée avant ZVU pour la condition isStaticByDynamicSpeed)
+    let spdV_raw = 0; 
+    if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { 
+        spdV_raw = (kAlt - lPos.kAlt_old) / dt; 
+    } 
+    let spd3D_raw = Math.sqrt(spdH ** 2 + spdV_raw ** 2);
+
+    // 4. LOGIQUE DE MISE À JOUR ZÉRO-VITESSE DYNAMIQUE (ZVU)
+    const GPS_NOISE_SPEED = effectiveAcc / VEL_NOISE_FACTOR; 
+    const isStaticByIMU = latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD;
+    const isStaticByDynamicSpeed = spd3D_raw < GPS_NOISE_SPEED;
+    
+    const isStatic = isStaticByIMU && isStaticByDynamicSpeed;
+    
+    let isIMUOnlyMode = false; 
+    let spd3D = spd3D_raw;
+
+    if (isStatic) {
+        spd3D = 0.0; // Forcer la vitesse 3D brute à 0 pour l'entrée du Kalman 3D
+        isIMUOnlyMode = true; 
+        
+        // CRITIQUE ZVU: Forcer les entrées de contrôle IMU à ZÉRO pour éviter la dérive sur tous les axes.
+        accel_control_3D = 0.0; 
+        accel_control_V = 0.0; 
+        
+        // CORRECTION CRITIQUE ZVU: Hard reset de l'état EKF 
+        if (kSpd > MIN_SPD) {
+            kSpd = 0.0;
+            kUncert = 0.01; 
+        }
+    }
+    
+    // Détection du Mode Intérieur/Haute Poursuite
+    const HIGH_NOISE_ACC_THRESHOLD = 10.0; 
+    const isHighNoise = effectiveAcc > HIGH_NOISE_ACC_THRESHOLD || selectedEnvironment === 'CONCRETE' || selectedEnvironment === 'METAL';
+    const isInterior = isStatic && isHighNoise;
+
+    // 5. FILTRAGE DE L'ALTITUDE (via Kalman)
+    // Utilisation du contrôle vertical amorti/zéroté (accel_control_V)
+    const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt, accel_control_V); 
+    
+    // 6. VITESSE VERTICALE et HORIZONTALE après filtrage d'altitude
+    let spdV = 0; 
+    if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { 
+        // Vitesse verticale basée sur le changement d'altitude filtrée (plus stable)
+        spdV = (kAlt_new - lPos.kAlt_old) / dt; 
+        if (isStatic) spdV = 0.0; // S'assurer que spdV est zéro si ZVU est ON
+    } 
+    
+    if (lPos && dt > 0.05) { 
+        const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
+        spdH = dH / dt; 
+    } 
+    
+    // 7. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
+    let R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa); 
+    
+    if (isIMUOnlyMode) {
+        R_dyn = R_GPS_DISABLED; 
+    }
+
+    // Appel à kFilter avec l'entrée de contrôle IMU 3D (accel_control_3D)
+    const fSpd = kFilter(spd3D, dt, R_dyn, accel_control_3D); 
+    const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
+
+    // Calculs Physiques
+    let accel_long = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
+    lastFSpeed = sSpdFE;
+    distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
+    if (sSpdFE > MIN_SPD) { timeMoving += dt; }
+    if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
+    const avgSpdMoving = timeMoving > 0 ? (distM / timeMoving) : 0;
+    
+    const coriolusForce = 2 * MASS * sSpdFE * W_EARTH * Math.sin(lat * D2R);
+    const kineticEnergy = 0.5 * MASS * sSpdFE ** 2;
+    const mechanicalPower = accel_long * MASS * sSpdFE; 
+    
+    // CALCUL DE LA DENSITÉ DE L'AIR
+    let airDensity = "N/A";
+    const tempElement = $('temp-air').textContent;
+    const tempCMatch = tempElement.match(/(-?[\d.]+)\s*°C/);
+    
+    if (tempCMatch) {
+        const tempC = parseFloat(tempCMatch[1]);
+        const tempK = tempC + 273.15; 
+        const pressurePa = lastP_hPa * 100; 
+        const R_specific = 287.058; 
+
+        if (!isNaN(tempK) && tempK > 0 && pressurePa > 0) {
+            airDensity = (pressurePa / (R_specific * tempK)).toFixed(3);
+        }
+    }
+
+
+De // --- MISE À JOUR DU DOM (GPS/Physique) ---
+    $('speed-stable').textContent = `${(sSpdFE * KMH_MS).
+                                       } // Fin de la fonction updateDisp (qui contenait le bloc de mise à jour DOM)
+
+
+// ===========================================
+// FONCTIONS API MÉTÉO
+// ===========================================
+
+async function updateWeather(latA, lonA) {
+    if (!OWM_API_KEY || OWM_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
+        $('temp-air').textContent = 'API CLÉ MANQUANTE';
+        return;
+    }
+    
+    if ($('temp-air')) $('temp-air').textContent = 'Chargement...';
+
+    try {
+        const url = `${OWM_API_URL}?lat=${latA.toFixed(4)}&lon=${lonA.toFixed(4)}&units=metric&appid=${OWM_API_KEY}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Weather API failed: ${response.statusText}`);
+        const data = await response.json();
+        
+        const tempC = data.main.temp;
+        const pressurehPa = data.main.pressure;
+        const humidity = data.main.humidity;
+        const windSpeedMs = data.wind.speed; 
+        const windDeg = data.wind.deg;
+        
+        lastP_hPa = pressurehPa; 
+
+        const dewPointC = calculateDewPoint(tempC, humidity);
+        // Formule Wind Chill simplifiée (valable < 10°C)
+        let windChillC = tempC;
+        if (tempC < 10) { 
+             windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
+        }
+
+        const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
+        const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
+
+        $('temp-air').textContent = `${tempC.toFixed(1)} °C`;
+        $('pressure').textContent = `${pressurehPa.toFixed(0)} hPa | ${(pressurehPa * 0.75006).toFixed(1)} mmHg`;
+        $('humidity').textContent = `${humidity.toFixed(0)} %`;
+        $('dew-point').textContent = `${dewPointC.toFixed(1)} °C`;
+        $('wind-speed-ms').textContent = `${windSpeedMs.toFixed(2)} m/s | ${(windSpeedMs * 3.6).toFixed(1)} km/h`;
+        $('wind-direction').textContent = `${windDirection} (${windDeg} °)`;
+        $('temp-feels-like').textContent = `${windChillC.toFixed(1)} °C`;
+        $('visibility').textContent = data.visibility ? `${(data.visibility / 1000).toFixed(1)} km` : 'N/A (API)';
+        
+        // Ajout des données manquantes
+        $('uv-index').textContent = data.uvi ? data.uvi.toFixed(1) : 'N/A (API)';
+        $('precipitation-rate').textContent = data.rain && data.rain['1h'] ? `${data.rain['1h']} mm/h` : (data.snow && data.snow['1h'] ? `${data.snow['1h']} mm/h (neige)` : '0 mm/h');
+        
+    } catch (error) {
+        console.error("Erreur lors de la récupération des données météo:", error);
+        $('temp-air').textContent = 'API ERREUR';
+    }
+}
+
+
+// ===========================================
+// FONCTIONS CAPTEURS INERTIELS (IMU)
+// ===========================================
+
+function handleDeviceMotion(event) {
+    if (emergencyStopActive) return;
+    const acc = event.accelerationIncludingGravity;
+    if (acc.x === null) return; 
+
+    // Filtrage passe-bas des accélérations pour la stabilité
+    kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc.x;
+    kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc.y;
+    kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc.z; 
+
+    const kAccel_mag = Math.sqrt(kAccel.x ** 2 + kAccel.y ** 2 + kAccel.z ** 2);
+    let accel_vertical_lin = 0.0;
+    let linear_x = 0.0, linear_y = 0.0, linear_z = 0.0;
+
+    // Détection de la posture statique pour référencer la gravité
+    if (Math.abs(kAccel_mag - G_ACC) < ACCEL_MOVEMENT_THRESHOLD) {
+        G_STATIC_REF.x = kAccel.x;
+        G_STATIC_REF.y = kAccel.y;
+        G_STATIC_REF.z = kAccel.z;
+        accel_vertical_lin = 0.0; 
+    } else {
+        // Accélération linéaire (Accélération Totale - Gravité Estimée)
+        linear_x = kAccel.x - G_STATIC_REF.x;
+        linear_y = kAccel.y - G_STATIC_REF.y;
+        linear_z = kAccel.z - G_STATIC_REF.z;
+        accel_vertical_lin = linear_z; // Accélération verticale pour l'altitude EKF
+    }
+
+    latestVerticalAccelIMU = accel_vertical_lin; 
+    // Magnitude de l'accélération linéaire pour le contrôle EKF de la vitesse 3D
+    latestLinearAccelMagnitude = Math.sqrt(linear_x ** 2 + linear_y ** 2 + linear_z ** 2); 
+    
+    if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${accel_vertical_lin.toFixed(3)} m/s²`;
+    if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(accel_vertical_lin / G_ACC).toFixed(2)} G`;
+}
+
+// ===========================================
+// FONCTIONS CARTE ET CONTRÔLE GPS
+// ===========================================
+
+/** Initialise la carte Leaflet. */
+function initMap(latA, lonA) {
+    if (map) return;
+    try {
+        map = L.map('map-container').setView([latA, lonA], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        marker = L.marker([latA, lonA]).addTo(map);
+        tracePolyline = L.polyline([], { color: 'red' }).addTo(map);
+        console.log("Carte Leaflet initialisée.");
+    } catch (e) {
+        console.error("Échec de l'initialisation de la carte Leaflet:", e);
+        if ($('map-container')) $('map-container').textContent = 'Erreur d\'initialisation de la carte.';
+    }
+}
+
+/** Met à jour la carte. */
+function updateMap(latA, lonA) {
+    if (!map || !marker || !tracePolyline) { initMap(latA, lonA); return; }
+    
+    const newLatLng = [latA, lonA];
+    marker.setLatLng(newLatLng);
+    tracePolyline.addLatLng(newLatLng);
+    map.setView(newLatLng);
+}
+
+function setGPSMode(mode) {
+    if (wID !== null) navigator.geolocation.clearWatch(wID);
+    currentGPSMode = mode;
+    wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[mode]);
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `⏸️ PAUSE GPS`;
+    if ($('freq-select')) $('freq-select').value = mode; 
+}
+
+function startGPS() {
+    if (wID === null) {
+        if ($('freq-select')) $('freq-select').value = currentGPSMode; 
+        setGPSMode(currentGPSMode);
+        sTime = null; 
+    }
+}
+
+function stopGPS(resetButton = true) {
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID);
+        wID = null;
+    }
+    if (resetButton) {
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `▶️ MARCHE GPS`;
+    }
+}
+
+function emergencyStop() {
+    emergencyStopActive = true;
+    stopGPS(false);
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: ACTIF 🔴";
+        $('emergency-stop-btn').classList.add('active');
+    }
+}
+
+function resumeSystem() {
+    emergencyStopActive = false;
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: INACTIF 🟢";
+        $('emergency-stop-btn').classList.remove('active');
+    }
+    startGPS();
+}
+
+function handleErr(err) {
+    console.error(`Erreur GNSS (${err.code}): ${err.message}`);
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `❌ ERREUR GPS`;
+}
+
+
+// ===========================================
+// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES
+// ===========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    
+    if ($('environment-select')) {
+        $('environment-select').value = selectedEnvironment;
+        $('environment-select').addEventListener('change', (e) => { 
+            if (emergencyStopActive) return;
+            selectedEnvironment = e.target.value; 
+        });
+    }
+
+    // Écouteurs pour les boutons et contrôles
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
+        if (emergencyStopActive) return;
+        wID === null ? startGPS() : stopGPS();
+    });
+    
+    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
+        if (emergencyStopActive) return;
+        setGPSMode(e.target.value);
+    });
+    
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
+        emergencyStopActive ? resumeSystem() : emergencyStop(); 
+    });
+    
+    if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        netherMode = !netherMode; 
+        if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; 
+    });
+
+    if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        distM = 0; timeMoving = 0; 
+        if ($('distance-total-km')) $('distance-total-km').textContent = "0.000 km | 0.00 m";
+    });
+    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        maxSpd = 0; 
+        if ($('speed-max')) $('speed-max').textContent = "0.00000 km/h";
+    });
+    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
+            distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; kAlt = 0; kAltUncert = 1000; timeMoving = 0; lastFSpeed = 0;
+            if (tracePolyline) tracePolyline.setLatLngs([]); 
+        } 
+    });
+    
+    if ($('data-capture-btn')) $('data-capture-btn').addEventListener('click', () => {
+        alert("Données actuelles capturées (logique de sauvegarde à implémenter)!");
+    });
+    
+    if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        $('toggle-mode-btn').textContent = isDarkMode ? "☀️ Mode Jour" : "🌗 Mode Nuit";
+    });
+
+    // Démarrage des capteurs IMU
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', handleDeviceMotion, true);
+    } else {
+        console.warn("DeviceMotion n'est pas supporté ou activé sur cet appareil/navigateur.");
+    } 
+
+    syncH(); // Démarrage de la synchronisation de l'heure
+    startGPS(); // Démarrage initial du GPS
+
+    // Intervalle lent pour les mises à jour Astro (1s) pour le cas sans signal GPS
+    if (domID === null) {
+        domID = setInterval(() => {
+            // Utilise la dernière position connue
+            if (lat !== 0 && lon !== 0) updateAstro(lat, lon); 
+        }, DOM_SLOW_UPDATE_MS); 
+    }
+    
+    // Intervalle pour la mise à jour Météo (30s)
+    if (weatherID === null) {
+        weatherID = setInterval(() => {
+            if (lat !== 0 && lon !== 0) updateWeather(lat, lon);
+        }, WEATHER_UPDATE_MS); 
+    }
+});
