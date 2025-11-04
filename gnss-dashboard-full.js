@@ -51,7 +51,7 @@ const VEL_NOISE_FACTOR = 10; // Utilisé pour seuil dynamique ZVU : acc/VEL_NOIS
 const IMU_NOISE_FLOOR = 0.05; // Bruit électronique typique des accéléromètres (m/s²)
 const ZVU_SAFETY_MARGIN = 0.15; // Marge pour dépasser le bruit réel
 const STATIC_ACCEL_THRESHOLD = IMU_NOISE_FLOOR + ZVU_SAFETY_MARGIN; // CALCULÉ : ~0.2 m/s²
-const LOW_SPEED_THRESHOLD = 1.0; // Seuil de vitesse (m/s) pour amortissement dynamique de R
+const LOW_SPEED_THRESHOLD = 1.0; // 👈 NOUVEAU : Seuil de vitesse (m/s) pour amortissement dynamique de R
 const ACCEL_FILTER_ALPHA = 0.8; 
 const ACCEL_MOVEMENT_THRESHOLD = 0.5; 
 let kAccel = { x: 0, y: 0, z: 0 };
@@ -130,7 +130,7 @@ function getKalmanR(acc, alt, pressure) {
     const kSpd_squared = kSpd * kSpd;
     const speedFactor = 1 / (1 + MASS_PROXY * kSpd_squared); // Réduit R aux hautes vitesses
 
-    // 3. Boost R aux basses vitesses (non-ZVU) pour fluidifier les mouvements lents.
+    // 3. NOUVEAU : Boost R aux basses vitesses (non-ZVU) pour fluidifier les mouvements lents.
     let lowSpeedBoost = 1.0;
     if (kSpd > MIN_SPD && kSpd < LOW_SPEED_THRESHOLD) {
         // Interpolation de 1.0 (à LOW_SPEED_THRESHOLD) à 2.0 (vers 0 m/s)
@@ -271,127 +271,4 @@ function getSolarTime(date, lon) {
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
     return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
-    }
-// =================================================================
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
-// Dépend de gnss-dashboard-part1.js
-// =================================================================
-
-// ... (fonctions précédentes omises)
-
-// ===========================================
-// FONCTIONS ASTRO & TEMPS
-// ===========================================
-
-/** Met à jour les valeurs Astro, TST et l'Horloge Dynamique sur le DOM */
-function updateAstro(latA, lonA) {
-    const now = getCDate(); 
-    if (now === null || latA === 0 || lonA === 0) return;
-    
-    // SunCalc fournit les positions et illuminations (influence l'élévation, non la TST pour la rotation)
-    const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
-    const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
-    
-    // getSolarTime calcule TST en intégrant l'Équation du Temps (EOT)
-    const solarTimes = getSolarTime(now, lonA);
-    const elevation_deg = sunPos ? (sunPos.altitude * R2D) : 0;
-    
-    $('local-time').textContent = now.toLocaleTimeString('fr-FR', { timeZone: 'UTC', hour12: false });
-    $('date-display').textContent = now.toLocaleDateString();
-    if (sTime) {
-        const timeElapsed = (now.getTime() - sTime) / 1000;
-        $('time-elapsed').textContent = `${timeElapsed.toFixed(2)} s`;
-        $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
-    }
-    
-    // --- LOGIQUE DE LA CLOCK ET DU CIEL DYNAMIQUE ---
-    const TST_hour = solarTimes.TST_MS / 3600000; // Heure TST de 0 à 24
-    const clockContainer = $('minecraft-clock');
-    
-    if (clockContainer) {
-        
-        // 1. Positionnement des icônes Soleil et Lune
-        // Angle TST corrigé : 12h (Midi Solaire) = 0° (Haut/Culmination).
-        const TST_normalized = TST_hour % 24; 
-        const TST_angle_deg_raw = (TST_normalized - 12) * 15; // 15 degrés par heure
-        const TST_angle_deg = (TST_angle_deg_raw + 360) % 360; 
-        
-        // SUN
-        let sunEl = clockContainer.querySelector('.sun-element');
-        if (!sunEl) { sunEl = document.createElement('div'); sunEl.className = 'sun-element'; clockContainer.appendChild(sunEl); }
-        sunEl.style.transform = `rotate(${TST_angle_deg}deg) translateY(-45px)`; 
-        sunEl.textContent = '☀️'; 
-
-        // MOON (Opposé au Soleil, +12h TST)
-        let moonEl = clockContainer.querySelector('.moon-element');
-        if (!moonEl) { moonEl = document.createElement('div'); moonEl.className = 'moon-element'; clockContainer.appendChild(moonEl); }
-        
-        const moon_TST_angle_deg = (TST_angle_deg + 180) % 360; // Décalage de 12 heures
-        moonEl.style.transform = `rotate(${moon_TST_angle_deg}deg) translateY(-45px)`; 
-        
-        // --- GESTION DE LA PHASE DE LA LUNE (Visuel par Emoji) ---
-        if (moonIllum && moonEl) {
-            const phase = moonIllum.phase;
-            const phaseEmoji = phase < 0.03 || phase > 0.97 ? '🌑' : 
-                               phase < 0.22 ? '🌒' :
-                               phase < 0.28 ? '🌓' :
-                               phase < 0.47 ? '🌔' :
-                               phase < 0.53 ? '🌕' :
-                               phase < 0.72 ? '🌖' :
-                               phase < 0.78 ? '🌗' : '🌘';
-            
-            moonEl.textContent = phaseEmoji;
-        }
-
-        // 2. Couleur du ciel dynamique (basée sur l'élévation du Soleil)
-        let sky_color = '#3f51b5'; // Nuit (Bleu foncé)
-        let opacity = 1; 
-        
-        if (elevation_deg > 10) { 
-             sky_color = '#87ceeb'; // Jour (Bleu ciel)
-             opacity = 0;
-        } else if (elevation_deg > -6) { 
-             sky_color = '#ff9800'; // Crépuscule/Aube (Orange/Ambre)
-             opacity = 0.5;
-        } else if (elevation_deg > -18) { 
-             sky_color = '#00008b'; // Crépuscule nautique/astronomique (Bleu nuit)
-             opacity = 0.8;
-        }
-
-        // Mise à jour du style du pseudo-élément ::before
-        const style = document.createElement('style');
-        style.innerHTML = `
-            #minecraft-clock::before { 
-                background-color: ${sky_color} !important; 
-                opacity: ${opacity};
-            }
-        `;
-        let oldStyle = clockContainer.querySelector('style');
-        if (oldStyle) { clockContainer.removeChild(oldStyle); }
-        clockContainer.appendChild(style);
-
-    }
-    
-    // 3. Mise à jour des valeurs du DOM
-    $('time-minecraft').textContent = solarTimes.TST; 
-    $('tst').textContent = solarTimes.TST;
-    $('lsm').textContent = solarTimes.MST;
-    $('sun-elevation').textContent = sunPos ? `${elevation_deg.toFixed(2)} °` : 'N/A';
-    $('eot').textContent = solarTimes.EOT + ' min'; 
-    $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
-    
-    // Correction de l'affichage de la durée du jour (SunCalc)
-    if (window.SunCalc) {
-        const times = SunCalc.getTimes(now, latA, lonA);
-        if (times.sunrise && times.sunset) {
-            const durationMs = times.sunset.getTime() - times.sunrise.getTime();
-            const hours = Math.floor(durationMs / 3600000);
-            const minutes = Math.floor((durationMs % 3600000) / 60000);
-            $('day-duration').textContent = `${hours}h ${minutes}m`;
-        } else {
-            $('day-duration').textContent = 'N/A';
-        }
-    }
 }
-
-// ... (Reste des fonctions (updateWeather, handleDeviceMotion, updateDisp, etc.) et de l'initialisation du document, comme dans la version précédente.)
