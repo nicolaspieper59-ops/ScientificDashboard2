@@ -38,12 +38,77 @@
             align-items: center; 
             flex-direction: column;
             padding-top: 10px;
+            position: relative;
+            overflow: hidden; 
+            border-radius: 8px; 
         }
+        
+        /* Styles de l'Horloge Minecraft/Solaire */
         #minecraft-clock {
             width: 90px;
             height: 90px;
             position: relative;
+            border-radius: 50%;
+            overflow: hidden; 
+            border: 2px solid #555;
+            background-color: #3f51b5; /* Default Night Sky */
         }
+        
+        /* Base dorée pour la moitié inférieure */
+        #minecraft-clock::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50%; 
+            background: linear-gradient(to top, #ffc107, #ffeb3b); /* Gold gradient */
+            z-index: 1;
+        }
+
+        /* Masque du ciel dynamique (changé par JS) */
+        #minecraft-clock::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #3f51b5; 
+            z-index: 2;
+            clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%); /* Top half by default */
+        }
+
+        /* Élément Soleil */
+        .sun-element {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: #ffeb3b; 
+            z-index: 3; 
+            left: 50%;
+            top: 50%;
+            margin-left: -7.5px;
+            margin-top: -7.5px;
+            transform-origin: 0 0; 
+        }
+        
+        /* Élément Lune */
+        .moon-element {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: #f0f0f0; 
+            z-index: 3;
+            left: 50%;
+            top: 50%;
+            margin-left: -7.5px;
+            margin-top: -7.5px;
+            transform-origin: 0 0;
+        }
+        
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
     </style>
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
@@ -85,7 +150,7 @@
                         <option value="NORMAL">Normal (x1.0)</option>
                         <option value="FOREST">Forêt (x1.5)</option>
                         <option value="CONCRETE">Grotte/Tunnel (x3.0)</option>
-                        <option value="METAL">Métal/Bâtiment (x5.0)</option>
+                        <option value="METAL">Métal/Bâtiment (x2.5)</option>
                     </select>
                 </div>
             </div>
@@ -160,6 +225,7 @@
             
             <hr>
 
+            <div class="data-point"><span>Phase de la Lune</span><span id="moon-phase-display">N/A</span></div>
             <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
             <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
             
@@ -185,7 +251,7 @@
             <h2>🌲 SVT & Environnement</h2>
             <div class="data-point"><span>Radiation Solaire (W/m²)</span><span id="solar-radiation">N/A</span></div>
             <div class="data-point"><span>Niveau Sonore (dB)</span><span id="noise-level">N/A (Capteur)</span></div>
-            <div class="data-point"><span>Vitesse du Vent (m/s)</span><span id="wind-speed-ms-svt">N/A</span></div>
+            <div class="data-point"><span>Vitesse du Vent (m/s)</span><span id="wind-speed-ms">N/A</span></div>
             <div class="data-point"><span>Type de Sol (Capteur/API)</span><span id="soil-type">N/A (API Géo/Capteur)</span></div>
             <div class="data-point"><span>Biomasse NDVI (API Sat.)</span><span id="ndvi-index">N/A (API Satellite)</span></div>
         </div>
@@ -193,8 +259,7 @@
     </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
-<script src="gnss-dashboard-full.js"></script>
-<script src="leaflet.js"></script>    
+<script src="gnss-dashboard-full.js"></script> 
 
 </body>
-                </html>
+    </html>
