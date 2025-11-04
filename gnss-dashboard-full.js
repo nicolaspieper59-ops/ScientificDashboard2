@@ -1,5 +1,5 @@
 // =================================================================
-// FICHIER JS FULL : gnss-dashboard-full.js (Constantes & Logique)
+// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes & Kalman)
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -27,16 +27,20 @@ const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 const MIN_DT = 0.05; 
 const MIN_SPD = 0.01; 
 const MAX_ACC = 20; 
+const GOOD_ACC_THRESHOLD = 3.0; // Seuil de précision GPS (m) où l'on réduit le bruit IMU
 const ALT_TH = -50; 
 const GPS_OPTS = {
     HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 },
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 30000, timeout: 60000 }
 };
 
-// Constantes Kalman (Vitesse 3D)
-const Q_NOISE = 0.001; 
+// Constantes Kalman (Vitesse 3D & Altitude)
+const Q_NOISE = 0.001; // Bruit de processus Vitesse
+const Q_ALT_NOISE = 0.0005; // Bruit de processus Altitude
 let kSpd = 0; // Estimation vitesse (m/s)
 let kUncert = 1000; // Incertitude vitesse (m/s)²
+let kAlt = 0; // Estimation altitude (m)
+let kAltUncert = 1000; // Incertitude altitude (m)²
 const ENVIRONMENT_FACTORS = {
     NORMAL: 1.0, FOREST: 1.5, CONCRETE: 3.0, METAL: 2.5
 };
@@ -44,20 +48,15 @@ const ENVIRONMENT_FACTORS = {
 // Constantes ZVU / IMU-Only
 const R_GPS_DISABLED = 100000.0; // R élevé pour désactiver mathématiquement le GPS (Mode IMU-Only)
 const VEL_NOISE_FACTOR = 10; // Utilisé pour seuil dynamique ZVU : acc/VEL_NOISE_FACTOR
-const STATIC_ACCEL_THRESHOLD = 0.5; // Seuil IMU pour ZVU (m/s²)
-
-// Constantes Kalman (Altitude)
-const Q_ALT_NOISE = 0.01; 
-let kAlt = 0; // Estimation altitude (m)
-let kAltUncert = 1000; // Incertitude altitude (m)²
-
-// Constantes IMU (Accéléromètre)
+const IMU_NOISE_FLOOR = 0.05; // 👈 NOUVEAU : Bruit électronique typique des accéléromètres (m/s²)
+const ZVU_SAFETY_MARGIN = 0.15; // 👈 NOUVEAU : Marge pour dépasser le bruit réel
+const STATIC_ACCEL_THRESHOLD = IMU_NOISE_FLOOR + ZVU_SAFETY_MARGIN; // CALCULÉ : ~0.2 m/s²
 const ACCEL_FILTER_ALPHA = 0.8; 
 const ACCEL_MOVEMENT_THRESHOLD = 0.5; 
 let kAccel = { x: 0, y: 0, z: 0 };
 let G_STATIC_REF = { x: 0, y: 0, z: 0 };
 let latestVerticalAccelIMU = 0; // Accélération verticale pour filtre altitude
-let latestLinearAccelMagnitude = 0; // Magnitude de l'accélération pour bruit EKF
+let latestLinearAccelMagnitude = 0; // Magnitude de l'accélération pour contrôle EKF
 
 // --- VARIABLES GLOBALES (État du système) ---
 let wID = null;
@@ -82,8 +81,8 @@ let weatherID = null;
 let lastP_hPa = 1013.25; 
 
 // --- CONSTANTES API MÉTÉO ---
-const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // <-- REMPLACEZ CECI PAR VOTRE CLÉ API OPENWEATHERMAP
-const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather";
+const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // <-- REMPLACEZ CECI
+const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather"; 
 
 
 // ===========================================
@@ -99,13 +98,15 @@ function dist(lat1, lon1, lat2, lon2) {
     return R_E * c;
 }
 
-/** Filtre de Kalman 1D (Vitesse) */
-function kFilter(z, dt, R_dyn) {
-    // 1. Prediction
-    const predSpd = kSpd;
+/** Filtre de Kalman 1D (Vitesse) avec entrée de contrôle Accélération IMU */
+function kFilter(z, dt, R_dyn, u_accel = 0) {
+    // 1. Prediction : Utilisation de l'accélération IMU (u_accel) comme entrée de contrôle
+    const predSpd = kSpd + u_accel * dt; 
+    
+    // Le bruit de processus (Q_NOISE) augmente avec le temps (dt)
     const predUncert = kUncert + Q_NOISE * dt;
-
-    // 2. Mesure
+    
+    // 2. Mesure (Correction par le GPS)
     const K = predUncert / (predUncert + R_dyn);
     kSpd = predSpd + K * (z - predSpd);
     kUncert = (1 - K) * predUncert;
@@ -116,17 +117,15 @@ function kFilter(z, dt, R_dyn) {
 function getKalmanR(acc, alt, pressure) { 
     let R_raw = acc * acc; 
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment] || ENVIRONMENT_FACTORS.NORMAL;
-    const MASS_PROXY = 0.05; // Constante d'ajustement (Sensibilité à la vitesse/Énergie Cinétique)
+    const MASS_PROXY = 0.05; 
 
     // 1. Facteur d'Environnement (Noise Multiplier)
     let noiseMultiplier = envFactor;
     if (alt !== null && alt < 0) {
-        // Pénalité pour les environnements souterrains/en altitude négative
         noiseMultiplier += Math.abs(alt / 100); 
     }
     
     // 2. Facteur de Vitesse/Énergie Cinétique (Réduction du bruit R aux hautes vitesses)
-    // R est réduit lorsque la vitesse kSpd est élevée, car l'EKF est plus stable.
     const kSpd_squared = kSpd * kSpd;
     const speedFactor = 1 / (1 + MASS_PROXY * kSpd_squared);
 
@@ -176,9 +175,9 @@ function getMoonPhaseName(phase) {
     return "Dernier Croissant 🌘";
 }
 
-// =================================================================
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
-// =================================================================
+// ===========================================
+// FONCTIONS ASTRO UTILITAIRES
+// ===========================================
 
 /** Obtient l'heure courante synchronisée (si syncH a réussi) */
 function getCDate() {
@@ -187,10 +186,6 @@ function getCDate() {
     const offset = currentLocTime - lLocH;
     return new Date(lServH + offset);
 }
-
-// ===========================================
-// FONCTIONS ASTRO & TEMPS
-// ===========================================
 
 /** Synchronisation horaire par serveur (UTC/Atomique) */
 async function syncH() { 
@@ -227,7 +222,7 @@ function eclipticLongitude(M) {
 
 /** Calcule le Temps Solaire Vrai (TST) normalisé. */
 function getSolarTime(date, lon) {
-    if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D' };
+    if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D', TST_MS: 0 };
     const d = toDays(date);
     const M = solarMeanAnomaly(d); 
     const L = eclipticLongitude(M); 
@@ -259,15 +254,24 @@ function getSolarTime(date, lon) {
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
     return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
-}
+    }
+// =================================================================
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
+// Dépend de gnss-dashboard-part1.js
+// =================================================================
+
+// Les variables globales et fonctions utilitaires sont définies dans part1.js
+
+// ===========================================
+// FONCTIONS ASTRO & TEMPS
+// ===========================================
 
 /** Met à jour les valeurs Astro, TST et l'Horloge Dynamique sur le DOM */
 function updateAstro(latA, lonA) {
     const now = getCDate(); 
-    if (now === null || latA === null || lonA === null) return;
+    if (now === null || latA === 0 || lonA === 0) return;
     
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
-    const moonPos = window.SunCalc ? SunCalc.getMoonPosition(now, latA, lonA) : null;
     const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
     const solarTimes = getSolarTime(now, lonA);
     const elevation_deg = sunPos ? (sunPos.altitude * R2D) : 0;
@@ -280,31 +284,48 @@ function updateAstro(latA, lonA) {
         $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
     }
     
-    // --- NOUVELLE LOGIQUE DE LA CLOCK ET DU CIEL (TST) ---
+    // --- LOGIQUE DE LA CLOCK ET DU CIEL DYNAMIQUE ---
     const TST_hour = solarTimes.TST_MS / 3600000; // Heure TST de 0 à 24
     const clockContainer = $('minecraft-clock');
     
     if (clockContainer) {
+        
         // 1. Positionnement des icônes Soleil et Lune
-        // L'angle de rotation est basé sur TST pour que MIDI soit en haut (0h = 180° bas, 12h = 0° haut)
-        // L'horloge est inversée pour simuler l'affichage analogique (0h au zénith)
-        const TST_angle_deg = ((TST_hour + 6) % 24) / 24 * 360; 
+        // Angle TST corrigé : 12h (Midi Solaire) = 0° (Haut), 0h (Minuit) = 180° (Bas).
+        const TST_normalized = TST_hour % 24; 
+        const TST_angle_deg_raw = (TST_normalized - 12) * 15;
+        const TST_angle_deg = (TST_angle_deg_raw + 360) % 360; 
         
         // SUN
         let sunEl = clockContainer.querySelector('.sun-element');
         if (!sunEl) { sunEl = document.createElement('div'); sunEl.className = 'sun-element'; clockContainer.appendChild(sunEl); }
-        // On inverse la rotation pour l'icône : angle + 180 degrés, pour le placer correctement sur l'arc de cercle
-        sunEl.style.transform = `rotate(${TST_angle_deg}deg) translateY(-45px) rotate(-${TST_angle_deg}deg) translateX(45px) rotate(${TST_angle_deg}deg)`; 
+        sunEl.style.transform = `rotate(${TST_angle_deg}deg) translateY(-45px)`; 
+        sunEl.textContent = '☀️'; 
 
         // MOON (Opposé au Soleil, +12h TST)
         let moonEl = clockContainer.querySelector('.moon-element');
         if (!moonEl) { moonEl = document.createElement('div'); moonEl.className = 'moon-element'; clockContainer.appendChild(moonEl); }
-        const moon_TST_angle_deg = ((TST_hour + 18) % 24) / 24 * 360; 
-        moonEl.style.transform = `rotate(${moon_TST_angle_deg}deg) translateY(-45px) rotate(-${moon_TST_angle_deg}deg) translateX(45px) rotate(${moon_TST_angle_deg}deg)`; 
         
-        // 2. Couleur du ciel dynamique (basée sur l'élévation pour simuler les saisons/moments)
+        const moon_TST_angle_deg = (TST_angle_deg + 180) % 360; // 12 heures d'écart
+        moonEl.style.transform = `rotate(${moon_TST_angle_deg}deg) translateY(-45px)`; 
+        
+        // --- GESTION DE LA PHASE DE LA LUNE (Visuel par Emoji) ---
+        if (moonIllum && moonEl) {
+            const phase = moonIllum.phase;
+            const phaseEmoji = phase < 0.03 || phase > 0.97 ? '🌑' : 
+                               phase < 0.22 ? '🌒' :
+                               phase < 0.28 ? '🌓' :
+                               phase < 0.47 ? '🌔' :
+                               phase < 0.53 ? '🌕' :
+                               phase < 0.72 ? '🌖' :
+                               phase < 0.78 ? '🌗' : '🌘';
+            
+            moonEl.textContent = phaseEmoji;
+        }
+
+        // 2. Couleur du ciel dynamique (basée sur l'élévation)
         let sky_color = '#3f51b5'; // Nuit (Bleu foncé)
-        let opacity = 1; // Opacité du masque de nuit
+        let opacity = 1; 
         
         if (elevation_deg > 10) { 
              sky_color = '#87ceeb'; // Jour (Bleu ciel)
@@ -317,7 +338,7 @@ function updateAstro(latA, lonA) {
              opacity = 0.8;
         }
 
-        // Mise à jour de la couleur du ciel (via le pseudo-element ::before)
+        // Mise à jour du style du pseudo-élément ::before
         const style = document.createElement('style');
         style.innerHTML = `
             #minecraft-clock::before { 
@@ -343,7 +364,6 @@ function updateAstro(latA, lonA) {
 
 // ===========================================
 // FONCTIONS API MÉTÉO
-// ... (Fonction updateWeather inchangée)
 // ===========================================
 
 async function updateWeather(latA, lonA) {
@@ -391,7 +411,6 @@ async function updateWeather(latA, lonA) {
 
 // ===========================================
 // FONCTIONS CAPTEURS INERTIELS (IMU)
-// ... (Fonction handleDeviceMotion inchangée)
 // ===========================================
 
 function handleDeviceMotion(event) {
@@ -399,6 +418,7 @@ function handleDeviceMotion(event) {
     const acc = event.accelerationIncludingGravity;
     if (acc.x === null) return; 
 
+    // Filtrage passe-bas des accélérations pour la stabilité
     kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc.x;
     kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc.y;
     kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc.z; 
@@ -407,19 +427,22 @@ function handleDeviceMotion(event) {
     let accel_vertical_lin = 0.0;
     let linear_x = 0.0, linear_y = 0.0, linear_z = 0.0;
 
+    // Détection de la posture statique pour référencer la gravité
     if (Math.abs(kAccel_mag - G_ACC) < ACCEL_MOVEMENT_THRESHOLD) {
         G_STATIC_REF.x = kAccel.x;
         G_STATIC_REF.y = kAccel.y;
         G_STATIC_REF.z = kAccel.z;
         accel_vertical_lin = 0.0; 
     } else {
+        // Accélération linéaire (Accélération Totale - Gravité Estimée)
         linear_x = kAccel.x - G_STATIC_REF.x;
         linear_y = kAccel.y - G_STATIC_REF.y;
         linear_z = kAccel.z - G_STATIC_REF.z;
-        accel_vertical_lin = linear_z;
+        accel_vertical_lin = linear_z; // Accélération verticale pour l'altitude EKF
     }
 
     latestVerticalAccelIMU = accel_vertical_lin; 
+    // Magnitude de l'accélération linéaire pour le contrôle EKF de la vitesse 3D
     latestLinearAccelMagnitude = Math.sqrt(linear_x ** 2 + linear_y ** 2 + linear_z ** 2); 
     
     if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${accel_vertical_lin.toFixed(3)} m/s²`;
@@ -428,7 +451,6 @@ function handleDeviceMotion(event) {
 
 // ===========================================
 // FONCTIONS CARTE ET CONTRÔLE GPS
-// ... (Fonctions initMap, updateMap, setGPSMode, startGPS, stopGPS, emergencyStop, resumeSystem, handleErr inchangées)
 // ===========================================
 
 /** Initialise la carte Leaflet. */
@@ -512,7 +534,6 @@ function handleErr(err) {
 
 // ===========================================
 // FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique)
-// Intègre le ZVU Dynamique et le Mode IMU-Only
 // ===========================================
 
 function updateDisp(pos) {
@@ -538,67 +559,94 @@ function updateDisp(pos) {
     let spdH = spd_raw_gps ?? 0; 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
-    // 1. FILTRAGE DE L'ALTITUDE (via Kalman) - Utilise l'IMU verticale
-    const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt, latestVerticalAccelIMU); 
+    // 1. DÉTERMINATION DU FACTEUR D'AMORTISSEMENT IMU (Dampening)
+    let imuDampeningFactor = 1.0; 
     
-    // 2. VITESSE VERTICALE FILTRÉE ET INCERTITUDE 
-    let spdV = 0; 
-    let verticalSpeedUncert = 0;
-
-    if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { 
-        spdV = (kAlt_new - lPos.kAlt_old) / dt; 
-        
-        const kAltUncert_old = lPos.kAltUncert_old !== undefined ? lPos.kAltUncert_old : kAltUncert;
-        verticalSpeedUncert = Math.sqrt(kAltUncert ** 2 + kAltUncert_old ** 2) / dt;
-        verticalSpeedUncert = Math.min(20, verticalSpeedUncert); 
-    } else if (alt !== null) { 
-        spdV = 0; 
+    if (effectiveAcc <= GOOD_ACC_THRESHOLD) {
+        // Très bonne précision (e.g., <= 3m): Réduire l'IMU (Facteur 0.5)
+        imuDampeningFactor = 0.5; 
+    } else if (effectiveAcc >= MAX_ACC) {
+        // Très mauvaise précision (e.g., >= 20m): Pleine confiance à l'IMU (Facteur 1.0)
+        imuDampeningFactor = 1.0; 
+    } else {
+        // Interpolation linéaire entre 0.5 et 1.0
+        const range = MAX_ACC - GOOD_ACC_THRESHOLD;
+        const value = effectiveAcc - GOOD_ACC_THRESHOLD;
+        imuDampeningFactor = 0.5 + 0.5 * (value / range); 
     }
+
+    // 2. Initialisation des Entrées de Contrôle Amorties
     
-    // 3. VITESSE HORIZONTALE CALCULÉE
-    if (lPos && dt > 0.05) { 
-        const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
-        spdH = dH / dt; 
+    // Entrée de contrôle pour le Kalman 3D (Magnitude accélération linéaire amortie)
+    let accel_control_3D = latestLinearAccelMagnitude * imuDampeningFactor;
+    
+    // Entrée de contrôle pour le Kalman Altitude (Accélération verticale amortie)
+    let accel_control_V = latestVerticalAccelIMU * imuDampeningFactor;
+
+    // 3. VITESSE 3D INSTANTANÉE (Calculée avant ZVU pour la condition isStaticByDynamicSpeed)
+    let spdV_raw = 0; 
+    if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { 
+        // NOTE: kAlt (altitude filtrée actuelle) est utilisée ici, ce qui est une approximation avant ZVU.
+        spdV_raw = (kAlt - lPos.kAlt_old) / dt; 
     } 
+    let spd3D_raw = Math.sqrt(spdH ** 2 + spdV_raw ** 2);
 
-    // 4. VITESSE 3D
-    let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
-
-    // LOGIQUE DE MISE À JOUR ZÉRO-VITESSE DYNAMIQUE (ZVU)
+    // 4. LOGIQUE DE MISE À JOUR ZÉRO-VITESSE DYNAMIQUE (ZVU)
     const GPS_NOISE_SPEED = effectiveAcc / VEL_NOISE_FACTOR; 
     const isStaticByIMU = latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD;
-    const isStaticByDynamicSpeed = spd3D < GPS_NOISE_SPEED;
+    const isStaticByDynamicSpeed = spd3D_raw < GPS_NOISE_SPEED;
     
     const isStatic = isStaticByIMU && isStaticByDynamicSpeed;
     
     let isIMUOnlyMode = false; 
+    let spd3D = spd3D_raw;
 
     if (isStatic) {
-        // ZVU : La mesure est forcée à zéro.
-        spd3D = 0.0;
+        spd3D = 0.0; // Forcer la vitesse 3D brute à 0 pour l'entrée du Kalman 3D
         isIMUOnlyMode = true; 
         
-        // CORRECTION CRITIQUE ZVU: Hard reset de l'état EKF (vitesse et incertitude)
+        // CRITIQUE ZVU: Forcer les entrées de contrôle IMU à ZÉRO pour éviter la dérive sur tous les axes.
+        accel_control_3D = 0.0; 
+        accel_control_V = 0.0; 
+        
+        // CORRECTION CRITIQUE ZVU: Hard reset de l'état EKF 
         if (kSpd > MIN_SPD) {
             kSpd = 0.0;
             kUncert = 0.01; 
         }
     }
     
-    // Détection du Mode Intérieur/Haute Poursuite (Pour le statut détaillé)
+    // Détection du Mode Intérieur/Haute Poursuite
     const HIGH_NOISE_ACC_THRESHOLD = 10.0; 
     const isHighNoise = effectiveAcc > HIGH_NOISE_ACC_THRESHOLD || selectedEnvironment === 'CONCRETE' || selectedEnvironment === 'METAL';
     const isInterior = isStatic && isHighNoise;
+
+    // 5. FILTRAGE DE L'ALTITUDE (via Kalman)
+    // Utilisation du contrôle vertical amorti/zéroté (accel_control_V)
+    const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt, accel_control_V); 
     
-    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
-    let R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa); // Utilise la signature corrigée
+    // 6. VITESSE VERTICALE et HORIZONTALE après filtrage d'altitude
+    let spdV = 0; 
+    if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { 
+        // Vitesse verticale basée sur le changement d'altitude filtrée (plus stable)
+        spdV = (kAlt_new - lPos.kAlt_old) / dt; 
+        if (isStatic) spdV = 0.0; // S'assurer que spdV est zéro si ZVU est ON
+    } 
+    
+    if (lPos && dt > 0.05) { 
+        const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
+        spdH = dH / dt; 
+    } 
+    
+    // 7. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
+    let R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa); 
     
     if (isIMUOnlyMode) {
-        // Si en mode ZVU/IMU-Only, on écrase R_dyn avec R_GPS_DISABLED pour ignorer la mesure.
         R_dyn = R_GPS_DISABLED; 
     }
 
-    const fSpd = kFilter(spd3D, dt, R_dyn); 
+    // Appel à kFilter avec l'entrée de contrôle IMU 3D (accel_control_3D)
+    const fSpd = kFilter(spd3D, dt, R_dyn, accel_control_3D); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
     // Calculs Physiques
@@ -659,7 +707,16 @@ function updateDisp(pos) {
     
     $('air-density').textContent = airDensity + (airDensity !== "N/A" ? ' kg/m³' : '');
     
-    // MISE À JOUR DU STATUT DÉTAILLÉ (SOUTERRAIN, INTÉRIEUR, ZVU/IMU-Only)
+    // =================================================================
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
+// Dépend de gnss-dashboard-part1.js
+// =================================================================
+
+// ... (Début des fonctions omis pour la concision - Elles existent dans le fichier part2 complet)
+
+// ... (Fin de la fonction updateDisp, suite après les mises à jour du DOM)
+
+    // MISE À JOUR DU STATUT DÉTAILLÉ 
     const isSubterranean = (kAlt_new !== null && kAlt_new < ALT_TH); 
     let statusText;
     
@@ -696,12 +753,11 @@ function updateDisp(pos) {
 
 
 // ===========================================
-// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES (TOUS LES BOUTONS)
+// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Initialisation et gestionnaire du Facteur Kalman Environnement
     if ($('environment-select')) {
         $('environment-select').value = selectedEnvironment;
         $('environment-select').addEventListener('change', (e) => { 
@@ -710,40 +766,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Gestionnaire de la Précision GPS forcée
-    if ($('gps-accuracy-override')) {
-        $('gps-accuracy-override').addEventListener('change', (e) => {
-            // La valeur est lue dans updateDisp.
-        });
-    }
-    
-    syncH(); 
-
-    // Démarrage/Arrêt GPS
+    // Écouteurs pour les boutons et contrôles
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
         if (emergencyStopActive) return;
         wID === null ? startGPS() : stopGPS();
     });
     
-    // Sélecteur de Fréquence GPS
     if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
         if (emergencyStopActive) return;
         setGPSMode(e.target.value);
     });
     
-    // Arrêt d'Urgence
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
         emergencyStopActive ? resumeSystem() : emergencyStop(); 
     });
     
-    // Mode Nether
     if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         netherMode = !netherMode; 
         if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; 
     });
 
-    // Boutons de Réinitialisation
     if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         distM = 0; timeMoving = 0; 
@@ -758,44 +801,42 @@ document.addEventListener('DOMContentLoaded', () => {
         if (emergencyStopActive) return; 
         if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
             distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; timeMoving = 0; lastFSpeed = 0;
-            if (tracePolyline) tracePolyline.setLatLngs([]); // Efface la trace sur la carte
+            if (tracePolyline) tracePolyline.setLatLngs([]); 
         } 
     });
     
-    // Bouton 'Capturer' (Logique de démonstration)
     if ($('data-capture-btn')) $('data-capture-btn').addEventListener('click', () => {
         alert("Données actuelles capturées (logique de sauvegarde à implémenter)!");
     });
     
-    // Gestionnaire du Mode Nuit (toggle-mode-btn)
     if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
         document.body.classList.toggle('dark-mode');
         const isDarkMode = document.body.classList.contains('dark-mode');
         $('toggle-mode-btn').textContent = isDarkMode ? "☀️ Mode Jour" : "🌗 Mode Nuit";
     });
 
-
+    // Démarrage des capteurs IMU
     if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', handleDeviceMotion, true);
     } else {
         console.warn("DeviceMotion n'est pas supporté ou activé sur cet appareil/navigateur.");
     } 
 
-    startGPS(); 
+    syncH(); // Démarrage de la synchronisation de l'heure
+    startGPS(); // Démarrage initial du GPS
 
-    // Intervalle lent pour les mises à jour Astro (1s)
+    // Intervalle lent pour les mises à jour Astro (1s) pour le cas sans signal GPS
     if (domID === null) {
         domID = setInterval(() => {
-            // updateAstro est appelé dans updateDisp maintenant, mais on le garde ici pour le cas sans signal GPS
-            if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
-            else updateAstro(lat, lon); // Utilise la dernière position connue ou 0,0
+            // Utilise la dernière position connue
+            if (lat !== 0 && lon !== 0) updateAstro(lat, lon); 
         }, DOM_SLOW_UPDATE_MS); 
     }
     
     // Intervalle pour la mise à jour Météo (30s)
     if (weatherID === null) {
         weatherID = setInterval(() => {
-            if (lPos) updateWeather(lPos.coords.latitude, lPos.coords.longitude);
+            if (lat !== 0 && lon !== 0) updateWeather(lat, lon);
         }, WEATHER_UPDATE_MS); 
     }
 });
