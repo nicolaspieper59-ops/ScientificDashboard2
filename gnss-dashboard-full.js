@@ -45,12 +45,13 @@ const ENVIRONMENT_FACTORS = {
     NORMAL: 1.0, FOREST: 1.5, CONCRETE: 3.0, METAL: 2.5
 };
 
-// Constantes ZVU / IMU-Only
+// Constantes ZVU / IMU-Only / Bruit
 const R_GPS_DISABLED = 100000.0; // R élevé pour désactiver mathématiquement le GPS (Mode IMU-Only)
 const VEL_NOISE_FACTOR = 10; // Utilisé pour seuil dynamique ZVU : acc/VEL_NOISE_FACTOR
-const IMU_NOISE_FLOOR = 0.05; // 👈 NOUVEAU : Bruit électronique typique des accéléromètres (m/s²)
-const ZVU_SAFETY_MARGIN = 0.15; // 👈 NOUVEAU : Marge pour dépasser le bruit réel
+const IMU_NOISE_FLOOR = 0.05; // Bruit électronique typique des accéléromètres (m/s²)
+const ZVU_SAFETY_MARGIN = 0.15; // Marge pour dépasser le bruit réel
 const STATIC_ACCEL_THRESHOLD = IMU_NOISE_FLOOR + ZVU_SAFETY_MARGIN; // CALCULÉ : ~0.2 m/s²
+const LOW_SPEED_THRESHOLD = 1.0; // 👈 NOUVEAU : Seuil de vitesse (m/s) pour amortissement dynamique de R
 const ACCEL_FILTER_ALPHA = 0.8; 
 const ACCEL_MOVEMENT_THRESHOLD = 0.5; 
 let kAccel = { x: 0, y: 0, z: 0 };
@@ -127,10 +128,18 @@ function getKalmanR(acc, alt, pressure) {
     
     // 2. Facteur de Vitesse/Énergie Cinétique (Réduction du bruit R aux hautes vitesses)
     const kSpd_squared = kSpd * kSpd;
-    const speedFactor = 1 / (1 + MASS_PROXY * kSpd_squared);
+    const speedFactor = 1 / (1 + MASS_PROXY * kSpd_squared); // Réduit R aux hautes vitesses
 
+    // 3. NOUVEAU : Boost R aux basses vitesses (non-ZVU) pour fluidifier les mouvements lents.
+    let lowSpeedBoost = 1.0;
+    if (kSpd > MIN_SPD && kSpd < LOW_SPEED_THRESHOLD) {
+        // Interpolation de 1.0 (à LOW_SPEED_THRESHOLD) à 2.0 (vers 0 m/s)
+        const speed_ratio = (LOW_SPEED_THRESHOLD - kSpd) / LOW_SPEED_THRESHOLD; 
+        lowSpeedBoost = 1.0 + speed_ratio * 1.0; // Boost R jusqu'à 2x à la vitesse minimale
+    }
+    
     // R final
-    let R_dyn = R_raw * noiseMultiplier * speedFactor;
+    let R_dyn = R_raw * noiseMultiplier * speedFactor * lowSpeedBoost; // Application du boost
     
     // S'assurer que R n'est jamais trop petit
     R_dyn = Math.max(R_dyn, 0.01); 
@@ -254,7 +263,7 @@ function getSolarTime(date, lon) {
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
     return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
-    }
+}
 // =================================================================
 // FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
 // Dépend de gnss-dashboard-part1.js
@@ -359,7 +368,20 @@ function updateAstro(latA, lonA) {
     $('sun-elevation').textContent = sunPos ? `${elevation_deg.toFixed(2)} °` : 'N/A';
     $('eot').textContent = solarTimes.EOT + ' min'; 
     $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
-    $('moon-phase-display').textContent = moonIllum ? getMoonPhaseName(moonIllum.phase) : 'N/A';
+    // NOTE: moon-phase-display n'existe pas dans le DOM mais on met à jour la phase de la Lune
+    
+    // Correction de l'affichage de la durée du jour (nécessite SunCalc.getTimes)
+    if (window.SunCalc) {
+        const times = SunCalc.getTimes(now, latA, lonA);
+        if (times.sunrise && times.sunset) {
+            const durationMs = times.sunset.getTime() - times.sunrise.getTime();
+            const hours = Math.floor(durationMs / 3600000);
+            const minutes = Math.floor((durationMs % 3600000) / 60000);
+            $('day-duration').textContent = `${hours}h ${minutes}m`;
+        } else {
+            $('day-duration').textContent = 'N/A';
+        }
+    }
 }
 
 // ===========================================
@@ -389,7 +411,12 @@ async function updateWeather(latA, lonA) {
         lastP_hPa = pressurehPa; 
 
         const dewPointC = calculateDewPoint(tempC, humidity);
-        const windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
+        // Formule Wind Chill simplifiée (valable < 10°C)
+        let windChillC = tempC;
+        if (tempC < 10) { 
+             windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
+        }
+
         const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
         const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
 
@@ -401,6 +428,10 @@ async function updateWeather(latA, lonA) {
         $('wind-direction').textContent = `${windDirection} (${windDeg} °)`;
         $('temp-feels-like').textContent = `${windChillC.toFixed(1)} °C`;
         $('visibility').textContent = data.visibility ? `${(data.visibility / 1000).toFixed(1)} km` : 'N/A (API)';
+        
+        // Ajout des données manquantes
+        $('uv-index').textContent = data.uvi ? data.uvi.toFixed(1) : 'N/A (API)';
+        $('precipitation-rate').textContent = data.rain && data.rain['1h'] ? `${data.rain['1h']} mm/h` : (data.snow && data.snow['1h'] ? `${data.snow['1h']} mm/h (neige)` : '0 mm/h');
         
     } catch (error) {
         console.error("Erreur lors de la récupération des données météo:", error);
@@ -707,15 +738,6 @@ function updateDisp(pos) {
     
     $('air-density').textContent = airDensity + (airDensity !== "N/A" ? ' kg/m³' : '');
     
-    // =================================================================
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
-// Dépend de gnss-dashboard-part1.js
-// =================================================================
-
-// ... (Début des fonctions omis pour la concision - Elles existent dans le fichier part2 complet)
-
-// ... (Fin de la fonction updateDisp, suite après les mises à jour du DOM)
-
     // MISE À JOUR DU STATUT DÉTAILLÉ 
     const isSubterranean = (kAlt_new !== null && kAlt_new < ALT_TH); 
     let statusText;
