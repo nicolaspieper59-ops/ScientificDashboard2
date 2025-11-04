@@ -82,31 +82,39 @@
         /* Élément Soleil */
         .sun-element {
             position: absolute;
-            width: 15px;
-            height: 15px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            background-color: #ffeb3b; 
+            background-color: transparent; 
             z-index: 3; 
             left: 50%;
             top: 50%;
-            margin-left: -7.5px;
-            margin-top: -7.5px;
-            transform-origin: 0 0; 
+            margin-left: -10px;
+            margin-top: -10px;
+            transform-origin: 50% 50%; /* Centre de l'horloge */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
         }
         
         /* Élément Lune */
         .moon-element {
             position: absolute;
-            width: 15px;
-            height: 15px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            background-color: #f0f0f0; 
+            background-color: transparent; 
             z-index: 3;
             left: 50%;
             top: 50%;
-            margin-left: -7.5px;
-            margin-top: -7.5px;
-            transform-origin: 0 0;
+            margin-left: -10px;
+            margin-top: -10px;
+            transform-origin: 50% 50%; /* Centre de l'horloge */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
         }
         
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
@@ -226,7 +234,6 @@
             <hr>
 
             <div class="data-point"><span>Phase de la Lune</span><span id="moon-phase-display">N/A</span></div>
-            <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
             <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
             
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
@@ -259,7 +266,7 @@
     </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
-<script src="gnss-dashboard-full.js"></script> 
+<script src="gnss-dashboard-full.js"></script>
 
 </body>
     </html>
