@@ -1,6 +1,5 @@
 // =================================================================
-// FICHIER JS COMPLET : gnss-dashboard-full.js
-// (Intègre Astro Millénaire, ZVU Dynamique, Mode Intérieur & IMU-Only)
+// FICHIER JS FULL : gnss-dashboard-full.js (Constantes & Logique)
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -19,15 +18,10 @@ const NETHER_RATIO = 1 / 8;
 // Constantes Temps / Astro
 const dayMs = 86400000;
 const J1970 = 2440588; 
-const J2000 = 2451545.0; // Précision J2000.0
+const J2000 = 2451545; 
 const DOM_SLOW_UPDATE_MS = 1000;
 const WEATHER_UPDATE_MS = 30000; 
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc"; 
-
-// CONSTANTES POUR CALCULS ASTRONOMIQUES À LONG TERME (basées sur Meeus)
-const L_MEAN_COEFF = [280.4664567, 36000.76983, 0.0003032]; // Longitude Solaire Moyenne
-const G_MEAN_COEFF = [357.5291092, 35999.05034, -0.0001537]; // Anomalie Solaire Moyenne
-const E_OBLIQUITY_COEFF = [23.439291, -0.0130042, -0.00000016]; // Obliquité de l'écliptique
 
 // Constantes GPS
 const MIN_DT = 0.05; 
@@ -39,21 +33,18 @@ const GPS_OPTS = {
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 30000, timeout: 60000 }
 };
 
-// NOUVEAU/MIS À JOUR: Constantes pour la Détection Statique Dynamique (ZVU)
-const STATIC_ACCEL_THRESHOLD = 0.05; // m/s² (Seuil d'accélération IMU pour être considéré statique)
-const VEL_NOISE_FACTOR = 5.0; // Facteur pour déterminer le seuil dynamique ZVU (Acc / Factor = Vitesse bruit)
-
 // Constantes Kalman (Vitesse 3D)
 const Q_NOISE = 0.001; 
-const R_GPS_DISABLED = 10000.0; // R très élevé pour forcer le mode IMU-Only lors du ZVU
 let kSpd = 0; // Estimation vitesse (m/s)
 let kUncert = 1000; // Incertitude vitesse (m/s)²
 const ENVIRONMENT_FACTORS = {
-    NORMAL: 1.0, 
-    FOREST: 1.5, 
-    CONCRETE: 3.0, 
-    METAL: 5.0 // Facteur élevé pour les environnements intérieurs/blindés
+    NORMAL: 1.0, FOREST: 1.5, CONCRETE: 3.0, METAL: 2.5
 };
+
+// Constantes ZVU / IMU-Only
+const R_GPS_DISABLED = 100000.0; // R élevé pour désactiver mathématiquement le GPS (Mode IMU-Only)
+const VEL_NOISE_FACTOR = 10; // Utilisé pour seuil dynamique ZVU : acc/VEL_NOISE_FACTOR
+const STATIC_ACCEL_THRESHOLD = 0.5; // Seuil IMU pour ZVU (m/s²)
 
 // Constantes Kalman (Altitude)
 const Q_ALT_NOISE = 0.01; 
@@ -121,23 +112,31 @@ function kFilter(z, dt, R_dyn) {
     return kSpd;
 }
 
-/** Calcule le bruit de mesure dynamique R (Intègre IMU linéaire) */
-function getKalmanR(acc, alt, pressure, linearAccelMag) { 
+/** Calcule le bruit de mesure dynamique R (Intègre la Vitesse EKF/Énergie Cinétique) */
+function getKalmanR(acc, alt, pressure) { 
     let R_raw = acc * acc; 
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment] || ENVIRONMENT_FACTORS.NORMAL;
-    
-    // 1. Base Noise (influence IMU/Environnement sur la précision GPS)
+    const MASS_PROXY = 0.05; // Constante d'ajustement (Sensibilité à la vitesse/Énergie Cinétique)
+
+    // 1. Facteur d'Environnement (Noise Multiplier)
     let noiseMultiplier = envFactor;
     if (alt !== null && alt < 0) {
+        // Pénalité pour les environnements souterrains/en altitude négative
         noiseMultiplier += Math.abs(alt / 100); 
     }
     
-    // 2. Correction par l'Accélération Linéaire (IMU)
-    if (linearAccelMag > 0.5) { 
-        noiseMultiplier += Math.pow(linearAccelMag, 1.5) * 0.5; 
-    }
+    // 2. Facteur de Vitesse/Énergie Cinétique (Réduction du bruit R aux hautes vitesses)
+    // R est réduit lorsque la vitesse kSpd est élevée, car l'EKF est plus stable.
+    const kSpd_squared = kSpd * kSpd;
+    const speedFactor = 1 / (1 + MASS_PROXY * kSpd_squared);
+
+    // R final
+    let R_dyn = R_raw * noiseMultiplier * speedFactor;
     
-    return R_raw * noiseMultiplier;
+    // S'assurer que R n'est jamais trop petit
+    R_dyn = Math.max(R_dyn, 0.01); 
+
+    return R_dyn;
 }
 
 /** Filtre de Kalman 1D pour l'Altitude (Utilise u_accel IMU) */
@@ -165,59 +164,23 @@ function calculateDewPoint(tempC, humidity) {
     return (b * alpha) / (a - alpha);
 }
 
-// FONCTIONS ASTRONOMIQUES À LONG TERME (PRÉCISION MILLÉNAIRE)
-/** Calcule le Jour Julien (JD) pour la date donnée. */
-function dateToJD(date) {
-    return date.getTime() / dayMs + J1970;
+/** Calcule le nom de la phase de la Lune à partir du coefficient de phase (0.0 à 1.0) */
+function getMoonPhaseName(phase) {
+    if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune 🌑";
+    if (phase < 0.22) return "Premier Croissant 🌒";
+    if (phase < 0.28) return "Premier Quartier 🌓";
+    if (phase < 0.47) return "Gibbeuse Croissante 🌔";
+    if (phase < 0.53) return "Pleine Lune 🌕";
+    if (phase < 0.72) return "Gibbeuse Décroissante 🌖";
+    if (phase < 0.78) return "Dernier Quartier 🌗";
+    return "Dernier Croissant 🌘";
 }
-
-/** Calcule le nombre de siècles Juliens (T) écoulés depuis l'équinoxe J2000.0. */
-function jdToCenturies(jd) {
-    return (jd - J2000) / 36525.0; // 36525 jours par siècle Julien
-}
-
-/** Calcule la valeur d'un élément astronomique à long terme en utilisant une série polynomiale. */
-function calculateLongTermElement(T, coeffs) {
-    let value = 0;
-    if (coeffs[0] !== undefined) value += coeffs[0]; 
-    if (coeffs[1] !== undefined) value += coeffs[1] * T;
-    if (coeffs[2] !== undefined) value += coeffs[2] * T * T;
-    return value;
-}
-
-/** Normalise un angle en degrés à l'intervalle [0, 360). */
-function normalizeAngle(angle) {
-    return angle - 360 * Math.floor(angle / 360);
-}
-
-/** Calcule les éléments solaires moyens avec la précision millénaire requise. */
-function getSolarMeanElements(date) {
-    const JD = dateToJD(date);
-    const T = jdToCenturies(JD);
-
-    let L0 = calculateLongTermElement(T, L_MEAN_COEFF);
-    L0 = normalizeAngle(L0) * D2R; // Longitude Solaire Moyenne (rad)
-
-    let M = calculateLongTermElement(T, G_MEAN_COEFF);
-    M = normalizeAngle(M) * D2R; // Anomalie Solaire Moyenne (rad)
-
-    let e_obliquity = calculateLongTermElement(T, E_OBLIQUITY_COEFF);
-    e_obliquity *= D2R; // Obliquité moyenne (rad)
-
-    return { 
-        L0: L0, 
-        M: M,   
-        obliquity: e_obliquity,
-        T: T 
-    };
-}
-
 
 // =================================================================
-// FICHIER JS PARTIE 2 : Logique d'Exécution
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique d'Exécution)
 // =================================================================
 
-/** Obtient l'heure courante synchronisée */
+/** Obtient l'heure courante synchronisée (si syncH a réussi) */
 function getCDate() {
     if (lLocH === 0) return new Date();
     const currentLocTime = performance.now();
@@ -226,7 +189,7 @@ function getCDate() {
 }
 
 // ===========================================
-// FONCTIONS ASTRO & TEMPS (PRÉCISION MILLÉNAIRE)
+// FONCTIONS ASTRO & TEMPS
 // ===========================================
 
 /** Synchronisation horaire par serveur (UTC/Atomique) */
@@ -251,46 +214,40 @@ async function syncH() {
     }
 }
 
-/** Calcule le Temps Solaire Vrai (TST) normalisé. (Mise à jour pour précision millénaire) */
+/** Convertit la date en jours depuis J2000. */
+function toDays(date) { return (date.valueOf() / dayMs - 0.5 + J1970) - J2000; }
+/** Calcule l'anomalie solaire moyenne. */
+function solarMeanAnomaly(d) { return D2R * (356.0470 + 0.9856002585 * d); }
+/** Calcule la longitude écliptique. */
+function eclipticLongitude(M) {
+    var C = D2R * (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)), 
+        P = D2R * 102.9377;                                                                
+    return M + C + P + Math.PI;
+}
+
+/** Calcule le Temps Solaire Vrai (TST) normalisé. */
 function getSolarTime(date, lon) {
     if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D' };
-    
-    const meanElements = getSolarMeanElements(date);
-    const L0 = meanElements.L0;
-    const M = meanElements.M;
-    const epsilon = meanElements.obliquity;
-    const T = meanElements.T; // Siècles Juliens
-
-    // Correction d'orbite elliptique (C) - inclut les termes séculaires (T)
-    const C_deg = (1.9148 - 0.004817 * T * Math.cos(M) - 0.00014 * T * Math.sin(M)) * Math.sin(M)
-                + (0.02 * Math.cos(2 * M) - 0.0001 * Math.sin(2 * M)) * Math.sin(2 * M);
-    
-    // True Longitude de haute précision (radians)
-    const trueLongitude = L0 + C_deg * D2R;
-    
-    // Calcul de l'Ascension Droite (alpha)
-    let alpha = Math.atan2(Math.cos(epsilon) * Math.sin(trueLongitude), Math.cos(trueLongitude));
+    const d = toDays(date);
+    const M = solarMeanAnomaly(d); 
+    const L = eclipticLongitude(M); 
+    const epsilon = D2R * (23.4393 - 0.000000356 * d); 
+    let alpha = Math.atan2(Math.cos(epsilon) * Math.sin(L), Math.cos(L));
     if (alpha < 0) alpha += 2 * Math.PI; 
-
-    // Longitude Solaire Moyenne Vraie
-    const meanLongitude = L0; 
-
-    // Calcul de l'Équation du Temps (EoT) en minutes
+    
+    const meanLongitude = M + D2R * 102.9377 + Math.PI;
     let eot_rad_raw = alpha - meanLongitude; 
     eot_rad_raw = eot_rad_raw % (2 * Math.PI);
     if (eot_rad_raw > Math.PI) { eot_rad_raw -= 2 * Math.PI; } else if (eot_rad_raw < -Math.PI) { eot_rad_raw += 2 * Math.PI; }
     const eot_min = eot_rad_raw * 4 * R2D; 
     
-    let ecl_long_deg = (trueLongitude * R2D) % 360; 
+    let ecl_long_deg = (L * R2D) % 360; 
     const final_ecl_long = ecl_long_deg < 0 ? ecl_long_deg + 360 : ecl_long_deg;
     
-    // Heure Moyenne Solaire (MST) basée sur l'heure UTC et la longitude
     const msSinceMidnightUTC = (date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds();
     const mst_offset_ms = lon * dayMs / 360; 
     const mst_ms_raw = msSinceMidnightUTC + mst_offset_ms;
     const mst_ms = (mst_ms_raw % dayMs + dayMs) % dayMs; 
-    
-    // Temps Solaire Vrai (TST)
     const eot_ms = eot_min * 60000;
     const tst_ms_raw = mst_ms + eot_ms;
     const tst_ms = (tst_ms_raw % dayMs + dayMs) % dayMs; 
@@ -304,13 +261,14 @@ function getSolarTime(date, lon) {
     return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
 }
 
-/** Met à jour les valeurs Astro et TST sur le DOM */
+/** Met à jour les valeurs Astro, TST et l'Horloge Dynamique sur le DOM */
 function updateAstro(latA, lonA) {
     const now = getCDate(); 
-    if (now === null || latA === 0) return;
+    if (now === null || latA === null || lonA === null) return;
     
-    // Note: window.SunCalc doit être chargé via le script SunCalc dans l'HTML.
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
+    const moonPos = window.SunCalc ? SunCalc.getMoonPosition(now, latA, lonA) : null;
+    const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
     const solarTimes = getSolarTime(now, lonA);
     const elevation_deg = sunPos ? (sunPos.altitude * R2D) : 0;
     
@@ -322,15 +280,72 @@ function updateAstro(latA, lonA) {
         $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
     }
     
+    // --- NOUVELLE LOGIQUE DE LA CLOCK ET DU CIEL (TST) ---
+    const TST_hour = solarTimes.TST_MS / 3600000; // Heure TST de 0 à 24
+    const clockContainer = $('minecraft-clock');
+    
+    if (clockContainer) {
+        // 1. Positionnement des icônes Soleil et Lune
+        // L'angle de rotation est basé sur TST pour que MIDI soit en haut (0h = 180° bas, 12h = 0° haut)
+        // L'horloge est inversée pour simuler l'affichage analogique (0h au zénith)
+        const TST_angle_deg = ((TST_hour + 6) % 24) / 24 * 360; 
+        
+        // SUN
+        let sunEl = clockContainer.querySelector('.sun-element');
+        if (!sunEl) { sunEl = document.createElement('div'); sunEl.className = 'sun-element'; clockContainer.appendChild(sunEl); }
+        // On inverse la rotation pour l'icône : angle + 180 degrés, pour le placer correctement sur l'arc de cercle
+        sunEl.style.transform = `rotate(${TST_angle_deg}deg) translateY(-45px) rotate(-${TST_angle_deg}deg) translateX(45px) rotate(${TST_angle_deg}deg)`; 
+
+        // MOON (Opposé au Soleil, +12h TST)
+        let moonEl = clockContainer.querySelector('.moon-element');
+        if (!moonEl) { moonEl = document.createElement('div'); moonEl.className = 'moon-element'; clockContainer.appendChild(moonEl); }
+        const moon_TST_angle_deg = ((TST_hour + 18) % 24) / 24 * 360; 
+        moonEl.style.transform = `rotate(${moon_TST_angle_deg}deg) translateY(-45px) rotate(-${moon_TST_angle_deg}deg) translateX(45px) rotate(${moon_TST_angle_deg}deg)`; 
+        
+        // 2. Couleur du ciel dynamique (basée sur l'élévation pour simuler les saisons/moments)
+        let sky_color = '#3f51b5'; // Nuit (Bleu foncé)
+        let opacity = 1; // Opacité du masque de nuit
+        
+        if (elevation_deg > 10) { 
+             sky_color = '#87ceeb'; // Jour (Bleu ciel)
+             opacity = 0;
+        } else if (elevation_deg > -6) { 
+             sky_color = '#ff9800'; // Crépuscule/Aube (Orange/Ambre)
+             opacity = 0.5;
+        } else if (elevation_deg > -18) { 
+             sky_color = '#00008b'; // Crépuscule nautique/astronomique (Bleu nuit)
+             opacity = 0.8;
+        }
+
+        // Mise à jour de la couleur du ciel (via le pseudo-element ::before)
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #minecraft-clock::before { 
+                background-color: ${sky_color} !important; 
+                opacity: ${opacity};
+            }
+        `;
+        let oldStyle = clockContainer.querySelector('style');
+        if (oldStyle) { clockContainer.removeChild(oldStyle); }
+        clockContainer.appendChild(style);
+
+    }
+    
+    // 3. Mise à jour des valeurs du DOM
     $('time-minecraft').textContent = solarTimes.TST; 
     $('tst').textContent = solarTimes.TST;
     $('lsm').textContent = solarTimes.MST;
     $('sun-elevation').textContent = sunPos ? `${elevation_deg.toFixed(2)} °` : 'N/A';
     $('eot').textContent = solarTimes.EOT + ' min'; 
     $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
+    $('moon-phase-display').textContent = moonIllum ? getMoonPhaseName(moonIllum.phase) : 'N/A';
 }
 
-/** Récupère et met à jour les données météo via OpenWeatherMap. */
+// ===========================================
+// FONCTIONS API MÉTÉO
+// ... (Fonction updateWeather inchangée)
+// ===========================================
+
 async function updateWeather(latA, lonA) {
     if (!OWM_API_KEY || OWM_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
         $('temp-air').textContent = 'API CLÉ MANQUANTE';
@@ -373,7 +388,12 @@ async function updateWeather(latA, lonA) {
     }
 }
 
-/** Gère les données de l'accéléromètre via DeviceMotionEvent. */
+
+// ===========================================
+// FONCTIONS CAPTEURS INERTIELS (IMU)
+// ... (Fonction handleDeviceMotion inchangée)
+// ===========================================
+
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
     const acc = event.accelerationIncludingGravity;
@@ -405,6 +425,11 @@ function handleDeviceMotion(event) {
     if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${accel_vertical_lin.toFixed(3)} m/s²`;
     if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(accel_vertical_lin / G_ACC).toFixed(2)} G`;
 }
+
+// ===========================================
+// FONCTIONS CARTE ET CONTRÔLE GPS
+// ... (Fonctions initMap, updateMap, setGPSMode, startGPS, stopGPS, emergencyStop, resumeSystem, handleErr inchangées)
+// ===========================================
 
 /** Initialise la carte Leaflet. */
 function initMap(latA, lonA) {
@@ -546,33 +571,30 @@ function updateDisp(pos) {
     
     const isStatic = isStaticByIMU && isStaticByDynamicSpeed;
     
-    let isIMUOnlyMode = false; // Indicateur pour l'affichage et la logique R
+    let isIMUOnlyMode = false; 
 
     if (isStatic) {
         // ZVU : La mesure est forcée à zéro.
         spd3D = 0.0;
-        
-        // ACTIVATION DU MODE IMU-ONLY (GPS ignoré par l'EKF)
         isIMUOnlyMode = true; 
+        
+        // CORRECTION CRITIQUE ZVU: Hard reset de l'état EKF (vitesse et incertitude)
+        if (kSpd > MIN_SPD) {
+            kSpd = 0.0;
+            kUncert = 0.01; 
+        }
     }
-
-    // Détection du Mode Intérieur
-    let isInterior = false;
+    
+    // Détection du Mode Intérieur/Haute Poursuite (Pour le statut détaillé)
     const HIGH_NOISE_ACC_THRESHOLD = 10.0; 
     const isHighNoise = effectiveAcc > HIGH_NOISE_ACC_THRESHOLD || selectedEnvironment === 'CONCRETE' || selectedEnvironment === 'METAL';
-
-    if (isStatic && isHighNoise) {
-        isInterior = true;
-    }
-
-
+    const isInterior = isStatic && isHighNoise;
+    
     // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
-    let R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa, latestLinearAccelMagnitude); 
+    let R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa); // Utilise la signature corrigée
     
     if (isIMUOnlyMode) {
-        // Si en mode ZVU/IMU-Only, on écrase R_dyn avec une valeur très haute.
-        // Cela force l'EKF à ignorer la mesure (même si elle est 0) et à se fier 
-        // à la prédiction interne (qui va converger à 0 via l'IMU statique).
+        // Si en mode ZVU/IMU-Only, on écrase R_dyn avec R_GPS_DISABLED pour ignorer la mesure.
         R_dyn = R_GPS_DISABLED; 
     }
 
@@ -655,15 +677,15 @@ function updateDisp(pos) {
              statusText += ` | 🔒 ZVU ON (Seuil Dyn: ${(GPS_NOISE_SPEED_DISPLAY * KMH_MS).toFixed(2)} km/h)`;
              
              if (isIMUOnlyMode) {
-                 statusText = statusText.replace('GPS+EKF', 'IMU-Only/EKF').replace('(GPS Élevé)', '(IMU-Only)');
+                 statusText = statusText.replace('GPS+EKF', 'IMU-Only/EKF');
              }
         }
     }
     
-    // Mise à jour de l'affichage du statut détaillé
     $('underground-status').textContent = isSubterranean ? `Oui (${statusText})` : `Non (${statusText})`;
     
     updateMap(lat, lon);
+    updateAstro(lat, lon);
     
     // SAUVEGARDE DES VALEURS POUR LA PROCHAINE ITÉRATION
     lPos = pos; 
@@ -764,8 +786,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Intervalle lent pour les mises à jour Astro (1s)
     if (domID === null) {
         domID = setInterval(() => {
+            // updateAstro est appelé dans updateDisp maintenant, mais on le garde ici pour le cas sans signal GPS
             if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
-            else updateAstro(null, null); 
+            else updateAstro(lat, lon); // Utilise la dernière position connue ou 0,0
         }, DOM_SLOW_UPDATE_MS); 
     }
     
