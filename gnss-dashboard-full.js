@@ -531,6 +531,10 @@ function updateDisp(pos) {
     }
 
     // Gestion de l'imprécision GPS et initialisation de l'altitude
+    // Partie de updateDisp
+// ...
+
+    // Gestion de l'imprécision GPS et initialisation de l'altitude
     if (acc > MAX_ACC) { 
         if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; 
         if (lPos === null) {
@@ -542,19 +546,10 @@ function updateDisp(pos) {
         }
         updateAstro(lat, lon);
         updateMap(lat, lon);
-        return; // Sortie prématurée si précision trop faible
+        return; // <--- C'est le point de sortie
     }
 
-    let effectiveAcc = acc;
-    const accOverride = parseFloat($('gps-accuracy-override').value);
-    if (accOverride > 0) { effectiveAcc = accOverride; }
-
-    let spdH = spd_raw_gps ?? 0; 
-    const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
-
-    if (lPos && lPos.kAlt_old === undefined) {
-        lPos.kAlt_old = kAlt; 
-    }
+// ...
 
     // Facteur d'amortissement IMU
     let imuDampeningFactor = 1.0; 
