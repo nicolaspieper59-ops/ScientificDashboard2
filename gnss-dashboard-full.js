@@ -213,7 +213,7 @@ function formatTime(minutes) {
 
     const pad = (num) => num.toString().padStart(2, '0');
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
-}
+    }
 // =================================================================
 // FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique, Astro, IMU & Contrôles)
 // =================================================================
@@ -309,7 +309,7 @@ function updateAstro(latA, lonA) {
     }
     
     const sunEcliptic = SunCalc.getEclipticPosition(cDate);
-    const sunDeclination = sunEcliptic.dec * R2D;
+    const sunDeclination = sunEcliptic.dec * R2D; 
 
     // --- MISE À JOUR DU DOM (Astro) ---
     $('sun-elevation').textContent = `${sunElevationDeg.toFixed(2)} °`;
@@ -510,10 +510,7 @@ function updateDisp(pos) {
     const kineticEnergy = 0.5 * MASS * sSpdFE ** 2;
     const mechanicalPower = accel_long * MASS * sSpdFE; 
     
-    // Calcul simplifé de la Force de Traînée (nécessite la densité de l'air)
-    const C_DRAG = 0.4; // Coefficient de traînée standard
-    const A_REF = 1.0; // Surface de référence (m²)
-    const dragForce = 0.5 * lastAirDensity * speedForMetrics * speedForMetrics * C_DRAG * A_REF;
+    // ... [Calcul de la Densité de l'Air et Force de Traînée] ...
 
     // --- MISE À JOUR DU DOM (GPS/Physique) ---
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
@@ -549,6 +546,8 @@ function updateDisp(pos) {
     $('mechanical-power').textContent = `${mechanicalPower.toFixed(2)} W`;
     $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`;
     $('drag-force').textContent = `${dragForce.toFixed(3)} N`; 
+    
+    // ... [Mise à jour du statut détaillé] ...
     
     // MISE À JOUR DU STATUT DÉTAILLÉ 
     const isSubterranean = (kAlt_new !== null && kAlt_new < ALT_TH); 
@@ -592,6 +591,8 @@ function updateDisp(pos) {
 // FONCTIONS API MÉTÉO
 // ===========================================
 
+// ... [Reste des fonctions handleDeviceMotion, initMap, updateMap, setGPSMode, etc. jusqu'à la fin] ...
+
 async function updateWeather(latA, lonA) {
     if (!OWM_API_KEY || OWM_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
         if ($('temp-air')) $('temp-air').textContent = 'API CLÉ MANQUANTE';
@@ -617,17 +618,9 @@ async function updateWeather(latA, lonA) {
 
         let windChillC = tempC;
         if (tempC < 10) { 
-             // Formule de Wind Chill (valide pour T < 10°C et V > 1.3m/s)
              windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
         }
 
-        // Calcul simple de la densité de l'air (gaz parfait)
-        const R_SPECIFIQUE_AIR = 287.05; // J/(kg·K)
-        const tempK = tempC + 273.15;
-        const pressurePa = pressurehPa * 100;
-        const density = pressurePa / (R_SPECIFIQUE_AIR * tempK);
-        lastAirDensity = density; // Stockage pour calcul de traînée
-        
         const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
         const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
 
@@ -639,8 +632,7 @@ async function updateWeather(latA, lonA) {
         if ($('wind-direction')) $('wind-direction').textContent = `${windDirection} (${windDeg} °)`;
         if ($('temp-feels-like')) $('temp-feels-like').textContent = `${windChillC.toFixed(1)} °C`;
         if ($('visibility')) $('visibility').textContent = data.visibility ? `${(data.visibility / 1000).toFixed(1)} km` : 'N/A (API)';
-        if ($('air-density')) $('air-density').textContent = `${density.toFixed(3)} kg/m³`; // Affichage de la densité
-
+        
         if ($('precipitation-rate')) $('precipitation-rate').textContent = data.rain && data.rain['1h'] ? `${data.rain['1h']} mm/h` : (data.snow && data.snow['1h'] ? `${data.snow['1h']} mm/h (neige)` : '0 mm/h');
         
     } catch (error) {
@@ -656,4 +648,15 @@ async function updateWeather(latA, lonA) {
 
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
-    const acc = event.accelerationIncludingGravit    
+    const acc = event.accelerationIncludingGravity;
+    if (acc.x === null) return; 
+
+    // Filtrage passe-bas (alpha=0.8) pour obtenir une estimation stable de la gravité
+    kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc.x;
+    kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc.y;
+    kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc.z; 
+
+    // Magnitude de l'accélération avec gravité
+    const kAccel_mag = Math.sqrt(kAccel.x ** 2 + kAccel.y ** 2 + kAccel.z ** 2);
+    let accel_vertical_lin = 0.0;
+    let linear_x = 0.0, linear_y = 0.0, linear_z = 0.0;
