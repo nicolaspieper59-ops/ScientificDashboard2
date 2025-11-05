@@ -796,6 +796,10 @@ function handleErr(err) {
 // INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES
 // ===========================================
 
+// ===========================================
+// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES
+// ===========================================
+
 document.addEventListener('DOMContentLoaded', () => {
     
     // --- Initialisation des contrôles et de l'état ---
@@ -890,4 +894,4 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lat !== 0 && lon !== 0) updateWeather(lat, lon);
         }, WEATHER_UPDATE_MS); 
     }
-});lors de la récupération des données météo:", e
+});    
