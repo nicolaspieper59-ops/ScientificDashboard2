@@ -204,11 +204,9 @@ function kFilterAltitude(z, gpsAccuracy, dt, u) {
     return kAlt;
 }
 
+// =======
 // =================================================================
-// FIN FICHIER JS PARTIE 1
-// =================================================================
-    
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique Principale & UI)
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (BLOC A : APIs & Capteurs)
 // =================================================================
 
 // ... (Nécessite toutes les constantes et utilitaires du Bloc 1)
@@ -328,7 +326,11 @@ function getSolarTime(date, lon) {
 /** Met à jour les données Astro. (Lever/Coucher de soleil ajoutés) */
 function updateAstro(latA, lonA) {
     const cDate = getCDate(); 
-    if (!cDate || isNaN(latA) || isNaN(lonA) || !window.SunCalc) { return; }
+    if (!cDate || isNaN(latA) || isNaN(lonA) || !window.SunCalc || (latA === 0.0 && lonA === 0.0)) { 
+        if ($('sun-elevation')) $('sun-elevation').textContent = '-- ° (Initialisation)';
+        if ($('tst')) $('tst').textContent = 'N/A';
+        return; 
+    }
 
     const { TST, TST_MS, MST, EOT, ECL_LONG, DECL } = getSolarTime(cDate, lonA); 
 
@@ -442,7 +444,7 @@ function updateMinecraftClock(TST_minutes, elevation, sunDeclination) {
 }
 
 // ===========================================
-// FONCTIONS CAPTEURS INERTIELS (IMU) : CORRIGÉE
+// FONCTIONS CAPTEURS INERTIELS (IMU)
 // ===========================================
 
 function handleDeviceMotion(event) {
@@ -471,7 +473,7 @@ function handleDeviceMotion(event) {
 
     const magnitude_lin = Math.sqrt(linear_x ** 2 + linear_y ** 2 + linear_z ** 2);
 
-    if (magnitude_lin < ACCEL_MOVEMENT_THRESHOLD) { 
+    if (magnitude_lin < STATIC_ACCEL_THRESHOLD) { 
         G_STATIC_REF.x = G_CORR_X;
         G_STATIC_REF.y = G_CORR_Y;
         G_STATIC_REF.z = G_CORR_Z;
@@ -492,8 +494,12 @@ function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
     global_pitch = event.beta * D2R; 
     global_roll = event.gamma * D2R; 
-}
+                            }
+// =================================================================
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (BLOC B : Logique Principale & Contrôles)
+// =================================================================
 
+// ... (Nécessite le BLOC A ci-dessus)
 
 // ===========================================
 // FONCTION PRINCIPALE DE MISE À JOUR (GPS CALLBACK)
@@ -501,6 +507,14 @@ function handleDeviceOrientation(event) {
 
 function updateDisp(pos) {
     if (emergencyStopActive) return;
+    
+    // Vérification de la validité de l'objet pos (Coordonnées)
+    if (!pos || !pos.coords) {
+        console.warn("UpdateDisp: Objet de position invalide.");
+        if ($('gps-precision')) $('gps-precision').textContent = `❌ Position Invalide`;
+        return;
+    }
+
     lat = pos.coords.latitude; lon = pos.coords.longitude;
     const alt = pos.coords.altitude, acc = pos.coords.accuracy;
     const spd_raw_gps = pos.coords.speed;
@@ -510,13 +524,13 @@ function updateDisp(pos) {
 
     if (now === null) { updateAstro(lat, lon); return; } 
     
-    // CORRECTION : Réinitialise timeMoving avec sTime
+    // Réinitialise timeMoving avec sTime
     if (sTime === null) { 
         sTime = now.getTime(); 
         timeMoving = 0.0; 
     }
 
-    // CORRECTION (NaN) : Gestion de l'imprécision GPS et initialisation de l'altitude
+    // Gestion de l'imprécision GPS et initialisation de l'altitude
     if (acc > MAX_ACC) { 
         if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; 
         if (lPos === null) {
@@ -526,7 +540,9 @@ function updateDisp(pos) {
                 lPos.kAlt_old = kAlt;
             }
         }
-        return; 
+        updateAstro(lat, lon);
+        updateMap(lat, lon);
+        return; // Sortie prématurée si précision trop faible
     }
 
     let effectiveAcc = acc;
@@ -639,8 +655,8 @@ function updateDisp(pos) {
     
     $('latitude').textContent = lat.toFixed(6);
     $('longitude').textContent = lon.toFixed(6);
-    $('altitude-gps').textContent = `${kAlt_new.toFixed(2)} m (WGS84)`; // Précise WGS84
-    $('altitude-geoid').textContent = `${kAlt_Geoid.toFixed(2)} m (MSL)`; // NOUVELLE ALTITUDE
+    $('altitude-gps').textContent = `${kAlt_new.toFixed(2)} m (WGS84)`; 
+    $('altitude-geoid').textContent = `${kAlt_Geoid.toFixed(2)} m (MSL)`; 
     $('gps-precision').textContent = `${acc.toFixed(2)} m`;
     $('gps-accuracy-effective').textContent = `${effectiveAcc.toFixed(2)} m`;
     $('speed-raw-ms').textContent = spd_raw_gps !== null ? `${spd_raw_gps.toFixed(2)} m/s` : 'N/A';
@@ -655,11 +671,6 @@ function updateDisp(pos) {
     $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`;
     $('drag-force').textContent = `${dragForce.toFixed(3)} N`; 
     
-        
-    // --- MISE À JOUR DU DOM (Physique - suite) ---
-    // ... (Votre code précédent de mise à jour du DOM se termine ici) ...
-    // Note : La nouvelle variable $('altitude-geoid') est utilisée ici pour la première fois.
-
     // MISE À JOUR DU STATUT DÉTAILLÉ 
     const isSubterranean = (kAlt_new !== null && kAlt_new < ALT_TH); 
     let statusText;
@@ -670,16 +681,13 @@ function updateDisp(pos) {
         if (isInterior) {
             statusText = `🏡 INTÉRIEUR (GPS Élevé) | GPS Acc: ${effectiveAcc.toFixed(0)} m`;
         } else {
-            // Complète la ligne de statut GPS/EKF
             statusText = `🔴 GPS+EKF | GPS Acc: ${effectiveAcc.toFixed(0)} m`; 
         }
         
-        // Ajout de l'information ZVU (Zéro Vitesse) si statique
         if (isStatic) {
              const GPS_NOISE_SPEED_DISPLAY = effectiveAcc / VEL_NOISE_FACTOR; 
              statusText += ` | 🔒 ZVU ON (Seuil Dyn: ${(GPS_NOISE_SPEED_DISPLAY * KMH_MS).toFixed(2)} km/h)`;
              
-             // Si le mode est IMU-Only (ZVU activé), on le reflète dans le statut
              if (isIMUOnlyMode) {
                  statusText = statusText.replace('GPS+EKF', 'IMU-Only/EKF');
              }
@@ -691,7 +699,6 @@ function updateDisp(pos) {
     $('zvu-lock-status').textContent = isZVUActive ? `VERROUILLÉ` : `NON-VERROUILLÉ`;
     $('zvu-lock-time').textContent = `${zvuLockTime.toFixed(1)} s`;
     
-    // Mise à jour de la carte et de l'astronomie
     updateMap(lat, lon);
     updateAstro(lat, lon);
     
@@ -707,20 +714,9 @@ function updateDisp(pos) {
 // FONCTIONS CARTE ET CONTRÔLE GPS
 // ===========================================
 
-// ... (Le reste du fichier, y compris les fonctions initMap, updateMap, 
-// setGPSMode, startGPS, stopGPS, emergencyStop, resumeSystem, 
-// handleErr, et le bloc document.addEventListener('DOMContentLoaded'), doit suivre ici, 
-// tel que dans la dernière version fournie.)
-// ... (Suite de la fonction updateDisp) ... 
-
-
-// ===========================================
-// FONCTIONS CARTE ET CONTRÔLE GPS
-// ===========================================
-
 /** Initialise la carte Leaflet. */
 function initMap(latA, lonA) {
-    if (map) return;
+    if (map || (latA === 0.0 && lonA === 0.0)) return; 
     try {
         map = L.map('map-container').setView([latA, lonA], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -744,7 +740,7 @@ function updateMap(latA, lonA) {
     const newLatLng = [latA, lonA];
     marker.setLatLng(newLatLng);
     tracePolyline.addLatLng(newLatLng);
-    map.setView(newLatLng);
+    // map.setView(newLatLng); // Optionnel: centrer la carte en permanence
 }
 
 function setGPSMode(mode) {
@@ -759,7 +755,7 @@ function startGPS() {
     if (wID === null) {
         if ($('freq-select')) $('freq-select').value = currentGPSMode; 
         setGPSMode(currentGPSMode);
-        sTime = null; // Réinitialise le temps de session (et timeMoving sera réinitialisé dans updateDisp)
+        sTime = null; 
     }
 }
 
@@ -792,6 +788,7 @@ function resumeSystem() {
 function handleErr(err) {
     console.error(`Erreur GNSS (${err.code}): ${err.message}`);
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `❌ ERREUR GPS`;
+    stopGPS(false); 
 }
 
 
@@ -845,7 +842,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
-            distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; kAlt = 0; kAltUncert = 1000; timeMoving = 0; lastFSpeed = 0;
+            distM = 0; maxSpd = 0; 
+            kSpd = 0; kUncert = 1000; kAlt = 0; kAltUncert = 1000; 
+            timeMoving = 0; lastFSpeed = 0;
             if (tracePolyline) tracePolyline.setLatLngs([]); 
         } 
     });
@@ -889,14 +888,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if ($('time-moving')) $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
             }
             
-            if (lat !== 0 && lon !== 0) updateAstro(lat, lon); 
+            if (lat !== 0 || lon !== 0) updateAstro(lat, lon); 
         }, DOM_SLOW_UPDATE_MS); 
     }
     
     // --- Intervalle pour la mise à jour Météo (30s) ---
     if (weatherID === null) {
         weatherID = setInterval(() => {
-            if (lat !== 0 && lon !== 0) updateWeather(lat, lon);
+            if (lat !== 0 || lon !== 0) updateWeather(lat, lon);
         }, WEATHER_UPDATE_MS); 
     }
 }); // Fin de document.addEventListener('DOMContentLoaded')
