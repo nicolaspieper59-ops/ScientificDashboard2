@@ -1,7 +1,3 @@
-// =================================================================
-// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes, Variables & Kalman)
-// =================================================================
-
 const $ = (id) => document.getElementById(id);
 
 // --- CONSTANTES GLOBALES (Physiques, GPS, Temps) ---
@@ -15,7 +11,7 @@ const D2R = Math.PI / 180; // Degrees to Radians
 const W_EARTH = 7.2921E-5; // Vitesse angulaire de la Terre (rad/s)
 const NETHER_RATIO = 1 / 8; 
 
-// Nouvelle Constante Cosmique : Unité Astronomique (UA) en mètres
+// Constante Cosmique : Unité Astronomique (UA) en mètres
 const AU_M = 149597870700;
 
 // Constantes Temps / Astro
@@ -29,7 +25,7 @@ const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 // Constantes GPS
 const MIN_DT = 0.05; 
 const MAX_ACC = 20; 
-const GOOD_ACC_THRESHOLD = 3.0; 
+const GOOD_ACC_THRESHOLD = 6.0; // AUGMENTÉ : Rend l'IMU plus influente même avec un bon GPS
 const ALT_TH = -50; 
 const GPS_OPTS = {
     HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 },
@@ -50,11 +46,11 @@ const ENVIRONMENT_FACTORS = {
 // Constantes ZVU / IMU-Only / Bruit
 const MIN_SPD = 0.00001; 
 const R_GPS_DISABLED = 100000.0; 
-const VEL_NOISE_FACTOR = 4.5; 
-const STATIC_ACCEL_THRESHOLD = 0.05; 
+const VEL_NOISE_FACTOR = 3.0; // DIMINUÉ : Augmente la sensibilité de la ZVU à la vitesse brute
+const STATIC_ACCEL_THRESHOLD = 0.02; // DIMINUÉ : Rend l'IMU plus sensible au mouvement
 const LOW_SPEED_THRESHOLD = 1.0; 
 const ACCEL_FILTER_ALPHA = 0.8; 
-const ACCEL_MOVEMENT_THRESHOLD = 0.5; 
+const ACCEL_MOVEMENT_THRESHOLD = 0.2; // DIMINUÉ : La référence de gravité est mise à jour plus rapidement
 let kAccel = { x: 0, y: 0, z: 0 };
 let G_STATIC_REF = { x: 0, y: 0, z: 0 };
 let latestVerticalAccelIMU = 0; 
@@ -248,11 +244,15 @@ async function syncH() {
 
 /** Calcule le Temps Solaire Vrai (TST) normalisé. */
 function getSolarTime(date, lon) {
-    if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D', TST_MS: 0 };
+    if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D', TST_MS: 0, DECL: 'N/D' }; 
     const d = toDays(date);
     const M = solarMeanAnomaly(d); 
     const L = eclipticLongitude(M); 
     const epsilon = D2R * (23.4393 - 0.000000356 * d); 
+    
+    const declination_rad = Math.asin(Math.sin(epsilon) * Math.sin(L));
+    const final_declination = declination_rad * R2D; 
+
     let alpha = Math.atan2(Math.cos(epsilon) * Math.sin(L), Math.cos(L));
     if (alpha < 0) alpha += 2 * Math.PI; 
     
@@ -279,12 +279,22 @@ function getSolarTime(date, lon) {
         let s = Math.floor((ms % 60000) / 1000);
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
-    return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
+    return { 
+        TST: toTimeString(tst_ms), 
+        TST_MS: tst_ms, // Ajout de la valeur brute pour le cadran
+        MST: toTimeString(mst_ms), 
+        EOT: eot_min.toFixed(3), 
+        ECL_LONG: final_ecl_long.toFixed(2), 
+        DECL: final_declination.toFixed(2) 
+    };
 }
 
+/** Met à jour les données Astro. */
 function updateAstro(latA, lonA) {
     const cDate = getCDate(); 
     if (!cDate || isNaN(latA) || isNaN(lonA) || !window.SunCalc) { return; }
+
+    const { TST, TST_MS, MST, EOT, ECL_LONG, DECL } = getSolarTime(cDate, lonA); 
 
     const pos = SunCalc.getPosition(cDate, latA, lonA);
     const times = SunCalc.getTimes(cDate, latA, lonA);
@@ -297,45 +307,38 @@ function updateAstro(latA, lonA) {
     const solarNoonUTCMs = solarNoonLocal.getTime() + (solarNoonLocal.getTimezoneOffset() * 60000);
     const solarNoonUTC = new Date(solarNoonUTCMs); 
     
-    const minutesSinceMidnight = cDate.getHours() * 60 + cDate.getMinutes() + cDate.getSeconds() / 60;
-    const solarNoonMinutes = solarNoonLocal.getHours() * 60 + solarNoonLocal.getMinutes() + solarNoonLocal.getSeconds() / 60;
-    
-    const TST_minutes = minutesSinceMidnight + (720 - solarNoonMinutes);
-    const EOT_minutes = 720 - solarNoonMinutes + (cDate.getTimezoneOffset());
-    
     let dayDurationH = "N/A";
     if (times.sunrise && times.sunset) {
         dayDurationH = (times.sunset.getTime() - times.sunrise.getTime()) / (1000 * 3600);
     }
     
-    const sunEcliptic = SunCalc.getEclipticPosition(cDate);
-    const sunDeclination = sunEcliptic.dec * R2D; 
-
     // --- MISE À JOUR DU DOM (Astro) ---
     $('sun-elevation').textContent = `${sunElevationDeg.toFixed(2)} °`;
     $('zenith-angle').textContent = `${zenithAngleDeg.toFixed(2)} °`;
-    $('tst').textContent = formatTime(TST_minutes);
-    $('lsm').textContent = formatTime(TST_minutes - EOT_minutes); 
+    $('tst').textContent = TST; // CORRIGÉ : Utilise la chaîne formatée
+    $('lsm').textContent = MST; // CORRIGÉ : Utilise la chaîne formatée
     $('noon-solar').textContent = solarNoonUTC.toTimeString().split(' ')[0] + ' UTC'; 
     $('day-duration').textContent = typeof dayDurationH === 'number' ? `${dayDurationH.toFixed(2)} h` : dayDurationH; 
     
-    $('ecliptic-long').textContent = `${(sunEcliptic.lon * R2D).toFixed(2)} °`; 
-    $('eot').textContent = `${EOT_minutes.toFixed(3)} min`; 
+    $('ecliptic-long').textContent = `${ECL_LONG} °`; 
+    $('eot').textContent = `${EOT} min`; 
     $('moon-phase-display').textContent = getMoonPhaseName(moonIllum.phase);
-    $('sun-declination').textContent = `${sunDeclination.toFixed(2)} °`; 
+    $('sun-declination').textContent = `${DECL} °`; 
     
-    updateMinecraftClock(TST_minutes, sunElevationDeg); 
+    // Appel mis à jour avec la déclinaison solaire
+    updateMinecraftClock(TST_MS / 60000, sunElevationDeg, parseFloat(DECL)); 
 }
 
-/** Met à jour l'affichage de l'horloge stylisée du Soleil. */
-function updateMinecraftClock(TST_minutes, elevation) {
+/** Met à jour l'affichage de l'horloge stylisée du Soleil avec logique saisonnière. */
+function updateMinecraftClock(TST_minutes, elevation, sunDeclination) {
     const $clock = $('minecraft-clock');
     if (!$clock) return;
     
     const $status = $('clock-status');
-    // Note: L'heure TST est affichée via l'ID 'tst' mais peut être ajoutée ici si on veut un affichage dédié:
-    // const $tstDisplay = $('time-minecraft'); 
-    // if ($tstDisplay) $tstDisplay.textContent = formatTime(TST_minutes); 
+    
+    if ($('time-minecraft')) {
+        $('time-minecraft').textContent = formatTime(TST_minutes); 
+    }
     
     $status.textContent = `TST (Élévation: ${elevation.toFixed(2)}°)`;
     
@@ -344,15 +347,33 @@ function updateMinecraftClock(TST_minutes, elevation) {
     const TST_angle_deg_raw = (TST_normalized - 12) * 15;
     const TST_angle_deg = (TST_angle_deg_raw + 360) % 360; 
 
+    // --- LOGIQUE SAISONNIÈRE ---
+    const MAX_DECL = 23.44; 
+    
+    // Facteur de taille du Soleil (max aux solstices)
+    const normalizedDecl = Math.abs(sunDeclination) / MAX_DECL; 
+    const sunSizeFactor = 1.0 + (normalizedDecl * 0.2); 
+    
+    // Décalage vertical de la Lune (inverse du Soleil pour simuler le chemin saisonnier)
+    const moonVerticalShift = -(sunDeclination / MAX_DECL) * 5; 
+
+    // --- MISE À JOUR DES ÉLÉMENTS CÉLESTES ---
+
     let sunEl = $clock.querySelector('.sun-element');
     if (!sunEl) { sunEl = document.createElement('div'); sunEl.className = 'sun-element'; $clock.appendChild(sunEl); }
+    
+    // 1. Applique le facteur de taille saisonnier au Soleil
+    sunEl.style.fontSize = `${1.0 * sunSizeFactor}em`; 
     sunEl.style.transform = `rotate(${TST_angle_deg}deg) translateY(-45px)`; 
     sunEl.textContent = '☀️'; 
 
     let moonEl = $clock.querySelector('.moon-element');
     if (!moonEl) { moonEl = document.createElement('div'); moonEl.className = 'moon-element'; $clock.appendChild(moonEl); }
+    
     const moon_TST_angle_deg = (TST_angle_deg + 180) % 360;
-    moonEl.style.transform = `rotate(${moon_TST_angle_deg}deg) translateY(-45px)`;
+    
+    // 2. Applique le décalage vertical saisonnier à la Lune
+    moonEl.style.transform = `rotate(${moon_TST_angle_deg}deg) translateY(${-45 + moonVerticalShift}px)`; 
     
     const moonIllum = SunCalc.getMoonIllumination(getCDate());
     const phase = moonIllum.phase;
@@ -412,9 +433,11 @@ function updateDisp(pos) {
 
     // 1. DÉTERMINATION DU FACTEUR D'AMORTISSEMENT IMU
     let imuDampeningFactor = 1.0; 
-    if (effectiveAcc <= GOOD_ACC_THRESHOLD) { imuDampeningFactor = 0.5; } 
-    else if (effectiveAcc >= MAX_ACC) { imuDampeningFactor = 1.0; } 
-    else {
+    if (effectiveAcc <= GOOD_ACC_THRESHOLD) { // Utilise le nouveau GOOD_ACC_THRESHOLD (6.0)
+        imuDampeningFactor = 0.5; 
+    } else if (effectiveAcc >= MAX_ACC) { 
+        imuDampeningFactor = 1.0; 
+    } else {
         const range = MAX_ACC - GOOD_ACC_THRESHOLD;
         const value = effectiveAcc - GOOD_ACC_THRESHOLD;
         imuDampeningFactor = 0.5 + 0.5 * (value / range); 
@@ -431,12 +454,12 @@ function updateDisp(pos) {
     let spd3D_raw = Math.sqrt(spdH ** 2 + spdV_raw ** 2);
 
     // 3. LOGIQUE ZÉRO-VITESSE DYNAMIQUE (ZVU)
-    const GPS_NOISE_SPEED = effectiveAcc / VEL_NOISE_FACTOR; 
-    const isStaticByIMU = latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD;
+    const GPS_NOISE_SPEED = effectiveAcc / VEL_NOISE_FACTOR; // Utilise le nouveau VEL_NOISE_FACTOR (3.0)
+    const isStaticByIMU = latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD; // Utilise le nouveau STATIC_ACCEL_THRESHOLD (0.02)
     const isStaticByDynamicSpeed = spd3D_raw < GPS_NOISE_SPEED;
     
-    const isStatic = isStaticByIMU && isStaticByDynamicSpeed;
-    
+    const isStatic = isStaticByIMU && isStaticByDynamicSpeed; // Condition ZVU
+
     let isIMUOnlyMode = false; 
     let spd3D = spd3D_raw; 
 
@@ -449,7 +472,7 @@ function updateDisp(pos) {
         accel_control_3D = 0.0; 
         accel_control_V = 0.0; 
         
-        kSpd = 0.0;
+        kSpd = 0.0; 
         kUncert = 0.000001; 
         lastFSpeed = 0.0; 
     } else {
@@ -485,12 +508,12 @@ function updateDisp(pos) {
     const fSpd = kFilter(spd3D, dt, R_dyn, accel_control_3D); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
-    // --- CALCUL DES MÉTRIQUES ET NOUVELLES CONVERSIONS ---
-    const speedForMetrics = sSpdFE < MIN_SPD ? 0 : sSpdFE; 
-    
-    // NOUVELLES VITESSES
-    const spd_kms = speedForMetrics / 1000;
-    const spd_mach = speedForMetrics / SPEED_SOUND; 
+    // Correction Distance : utilise spd3D_raw (vitesse brute) pour capturer les micro-mouvements
+    const speedForMetrics = spd3D_raw < MIN_SPD ? 0 : spd3D_raw; 
+
+    // NOUVELLES VITESSES (Basées sur l'EKF stable sSpdFE)
+    const spd_kms = sSpdFE / 1000;
+    const spd_mach = sSpdFE / SPEED_SOUND; 
 
     let accel_long = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
     lastFSpeed = sSpdFE;
@@ -504,31 +527,32 @@ function updateDisp(pos) {
     // NOUVELLES DISTANCES
     const dist_s_light = distM / C_L;
     const dist_ua = distM / AU_M;
-    const dist_j_light = dist_s_light / (24 * 3600);
     
     const coriolusForce = 2 * MASS * sSpdFE * W_EARTH * Math.sin(lat * D2R); 
     const kineticEnergy = 0.5 * MASS * sSpdFE ** 2;
     const mechanicalPower = accel_long * MASS * sSpdFE; 
     
-    // ... [Calcul de la Densité de l'Air et Force de Traînée] ...
+    const C_DRAG = 0.4; 
+    const A_REF = 1.0; 
+    const dragForce = 0.5 * lastAirDensity * sSpdFE * sSpdFE * C_DRAG * A_REF;
 
     // --- MISE À JOUR DU DOM (GPS/Physique) ---
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
     $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s`; 
-    $('speed-stable-kms').textContent = `${spd_kms.toFixed(5)} km/s`; // NOUVEAU
-    $('speed-mach').textContent = `${spd_mach.toFixed(5)} Mach`; // NOUVEAU
-    $('speed-3d-inst').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`;
+    $('speed-stable-kms').textContent = `${spd_kms.toFixed(5)} km/s`; 
+    $('speed-mach').textContent = `${spd_mach.toFixed(5)} Mach`; 
+    $('speed-3d-inst').textContent = `${(spd3D_raw * KMH_MS).toFixed(5)} km/h`; 
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
     $('speed-avg-moving').textContent = `${(avgSpdMoving * KMH_MS).toFixed(5)} km/h`;
-    $('perc-speed-c').textContent = `${(spd3D / C_L * 100).toExponential(2)}%`; 
-    $('perc-speed-sound').textContent = `${(spd3D / SPEED_SOUND * 100).toFixed(2)} %`; 
+    $('perc-speed-c').textContent = `${(sSpdFE / C_L * 100).toExponential(2)}%`; 
+    $('perc-speed-sound').textContent = `${(sSpdFE / SPEED_SOUND * 100).toFixed(2)} %`; 
     
     $('distance-total-km').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
     
-    $('distance-ua').textContent = `${dist_ua.toExponential(3)} UA`; // NOUVEAU
-    $('distance-s-light').textContent = `${dist_s_light.toExponential(3)} s lumière`; // AJUSTÉ ID
-    $('distance-j-light').textContent = `${dist_j_light.toExponential(3)} j lumière`; // NOUVEAU
-    $('distance-cosmic-al').textContent = `${(dist_s_light / (3600*24*365.25)).toExponential(3)} al`; // AJUSTÉ ID
+    $('distance-ua').textContent = `${dist_ua.toExponential(3)} UA`; 
+    $('distance-s-light').textContent = `${dist_s_light.toExponential(3)} s lumière`; 
+    $('distance-j-light').textContent = `${(dist_s_light / (24 * 3600)).toExponential(3)} j lumière`; 
+    $('distance-cosmic-al').textContent = `${(dist_s_light / (3600*24*365.25)).toExponential(3)} al`; 
     
     $('latitude').textContent = lat.toFixed(6);
     $('longitude').textContent = lon.toFixed(6);
@@ -546,8 +570,6 @@ function updateDisp(pos) {
     $('mechanical-power').textContent = `${mechanicalPower.toFixed(2)} W`;
     $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`;
     $('drag-force').textContent = `${dragForce.toFixed(3)} N`; 
-    
-    // ... [Mise à jour du statut détaillé] ...
     
     // MISE À JOUR DU STATUT DÉTAILLÉ 
     const isSubterranean = (kAlt_new !== null && kAlt_new < ALT_TH); 
@@ -591,8 +613,6 @@ function updateDisp(pos) {
 // FONCTIONS API MÉTÉO
 // ===========================================
 
-// ... [Reste des fonctions handleDeviceMotion, initMap, updateMap, setGPSMode, etc. jusqu'à la fin] ...
-
 async function updateWeather(latA, lonA) {
     if (!OWM_API_KEY || OWM_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
         if ($('temp-air')) $('temp-air').textContent = 'API CLÉ MANQUANTE';
@@ -621,6 +641,13 @@ async function updateWeather(latA, lonA) {
              windChillC = 13.12 + 0.6215 * tempC - 11.37 * (windSpeedMs**0.16) + 0.3965 * tempC * (windSpeedMs**0.16);
         }
 
+        // Calcul de la densité de l'air
+        const R_SPECIFIQUE_AIR = 287.05; // J/(kg·K)
+        const tempK = tempC + 273.15;
+        const pressurePa = pressurehPa * 100;
+        const density = pressurePa / (R_SPECIFIQUE_AIR * tempK);
+        lastAirDensity = density; 
+        
         const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
         const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
 
@@ -632,7 +659,8 @@ async function updateWeather(latA, lonA) {
         if ($('wind-direction')) $('wind-direction').textContent = `${windDirection} (${windDeg} °)`;
         if ($('temp-feels-like')) $('temp-feels-like').textContent = `${windChillC.toFixed(1)} °C`;
         if ($('visibility')) $('visibility').textContent = data.visibility ? `${(data.visibility / 1000).toFixed(1)} km` : 'N/A (API)';
-        
+        if ($('air-density')) $('air-density').textContent = `${density.toFixed(3)} kg/m³`; 
+
         if ($('precipitation-rate')) $('precipitation-rate').textContent = data.rain && data.rain['1h'] ? `${data.rain['1h']} mm/h` : (data.snow && data.snow['1h'] ? `${data.snow['1h']} mm/h (neige)` : '0 mm/h');
         
     } catch (error) {
@@ -666,21 +694,18 @@ function handleDeviceMotion(event) {
         G_STATIC_REF.x = kAccel.x;
         G_STATIC_REF.y = kAccel.y;
         G_STATIC_REF.z = kAccel.z;
-        accel_vertical_lin = 0.0; // Pas d'accélération linéaire si statique
+        accel_vertical_lin = 0.0; 
     } else {
-        // Extraction de l'accélération linéaire (en soustrayant la référence de gravité)
+        // Extraction de l'accélération linéaire 
         linear_x = kAccel.x - G_STATIC_REF.x;
         linear_y = kAccel.y - G_STATIC_REF.y;
         linear_z = kAccel.z - G_STATIC_REF.z; 
-        // On considère que l'axe Z (linear_z) est la composante verticale
         accel_vertical_lin = linear_z; 
     }
 
-    // Sauvegarde des valeurs pour la logique GPS/EKF dans updateDisp
     latestVerticalAccelIMU = accel_vertical_lin; 
     latestLinearAccelMagnitude = Math.sqrt(linear_x ** 2 + linear_y ** 2 + linear_z ** 2); 
     
-    // Mise à jour de l'affichage
     if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${accel_vertical_lin.toFixed(3)} m/s²`;
     if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(accel_vertical_lin / G_ACC).toFixed(2)} G`;
 }
@@ -834,7 +859,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Démarrage des Capteurs IMU ---
-    // Nécessite l'autorisation de l'utilisateur sur mobile
     if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', handleDeviceMotion, true);
     } else {
@@ -866,4 +890,4 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lat !== 0 && lon !== 0) updateWeather(lat, lon);
         }, WEATHER_UPDATE_MS); 
     }
-});
+});lors de la récupération des données météo:", e
