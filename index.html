@@ -14,7 +14,13 @@
           
     <style>
         /* Styles adaptés */
-        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; transition: background-color 0.5s, color 0.5s; }
+        .dark-mode { background-color: #1e1e1e; color: #f4f4f4; }
+        .dark-mode .section { background-color: #2e2e2e; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+        .dark-mode .section h2 { border-bottom: 2px solid #444; }
+        .dark-mode .data-point span:first-child { color: #ccc; }
+        .dark-mode .data-point { border-bottom: 1px dotted #444; }
+        
         .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
         .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .section h2 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; font-size: 1.2em; }
@@ -43,6 +49,27 @@
             width: 90px;
             height: 90px;
             position: relative;
+            border: 2px solid #555;
+            border-radius: 50%;
+            overflow: hidden;
+            background-color: #3f51b5; 
+        }
+        #minecraft-clock::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #00008b; 
+            opacity: 0.8; 
+            transition: background-color 2s, opacity 2s;
+            z-index: 1;
+        }
+        .sun-element, .moon-element {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-origin: 0 0;
+            transition: transform 0.1s linear;
+            z-index: 2;
         }
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
     </style>
@@ -61,6 +88,8 @@
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> 
             <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>Masse (kg)</span><span id="mass-display">70.000 kg</span></div>
+            <div class="data-point"><span>Statut ZVU</span><span id="zvu-lock-status">NON-VERROUILLÉ</span></div>
+            <div class="data-point"><span>Durée ZVU (IMU Lock)</span><span id="zvu-lock-time">0.0 s</span></div>
             
             <hr>
             
@@ -103,7 +132,7 @@
             <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">-- %</span></div> 
             <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
             <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
-            <div class="data-point"><span>Distance Cosmique</span><span id="distance-cosmic">0.00e+00 s lumière | 0.00e+00 al</span></div>
+            <div class="data-point"><span>Distance Cosmique</span><span id="distance-cosmic-al">0.00e+00 al</span></div>
         </div>
 
         <div class="section">
@@ -111,8 +140,7 @@
             <div class="data-point"><span>Latitude Brute</span><span id="latitude">N/A</span></div>
             <div class="data-point"><span>Longitude Brute</span><span id="longitude">N/A</span></div>
             <div class="data-point"><span>Altitude GPS (WGS84)</span><span id="altitude-gps">N/A</span></div>
-            <div class="data-point"><span>Altitude Géoïde (MSL)</span><span id="altitude-geoid">N/A</span></div>
-            <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
+            <div class="data-point"><span>Altitude Géoïde (MSL)</span><span id="altitude-geoid">N/A</span></div> <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
             <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
             <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div> 
             
@@ -122,8 +150,7 @@
             <div class="data-point"><span>Accel. Longitudinale (EKF)</span><span id="accel-long">0.000 m/s²</span></div>
             <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div> 
             <div class="data-point"><span>Vitesse Verticale (Raw)</span><span id="vertical-speed">0.00 m/s</span></div>
-            <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s²</span></div>
-            <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div>
+            <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s²</span></div> <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div> <div class="data-point"><span>Force de Traînée</span><span id="drag-force">0.000 N</span></div> 
 
             <hr>
 
@@ -163,8 +190,7 @@
 
             <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
             <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
-            
-            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
+            <div class="data-point"><span>Angle Zénithal</span><span id="zenith-angle">-- °</span></div> <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
             <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="lsm">N/D</span></div> 
             <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/D</span></div> 
             
@@ -173,9 +199,8 @@
             
             <div class="data-point"><span>Durée du Jour Solaire</span><span id="day-duration">N/A</span></div> 
             <div class="data-point"><span>Longitude écliptique du Soleil</span><span id="ecliptic-long">-- °</span></div> 
-            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
-            
-            <hr>
+            <div class="data-point"><span>Déclinaison Solaire</span><span id="sun-declination">-- °</span></div> <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
+            <div class="data-point"><span>Phase Lunaire</span><span id="moon-phase-display">N/A</span></div> <hr>
 
             <h2>•0â8 Chimie & Composition</h2>
             <div class="data-point"><span>Taux d'Oxygène (O₂)</span><span id="o2-level">20.9 % vol (Capteur requis)</span></div>
@@ -200,4 +225,4 @@
 <script src="gnss-dashboard-full.js"></script>
 
 </body>
-    </html>
+                                                                                                                           </html>
