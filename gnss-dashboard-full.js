@@ -737,3 +737,192 @@ function updateDisp(pos) {
 // setGPSMode, startGPS, stopGPS, emergencyStop, resumeSystem, 
 // handleErr, et le bloc document.addEventListener('DOMContentLoaded'), doit suivre ici, 
 // tel que dans la dernière version fournie.)
+// ... (Suite de la fonction updateDisp) ... 
+
+
+// ===========================================
+// FONCTIONS CARTE ET CONTRÔLE GPS
+// ===========================================
+
+/** Initialise la carte Leaflet. */
+function initMap(latA, lonA) {
+    if (map) return;
+    try {
+        map = L.map('map-container').setView([latA, lonA], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        marker = L.marker([latA, lonA]).addTo(map);
+        tracePolyline = L.polyline([], { color: 'red' }).addTo(map);
+        console.log("Carte Leaflet initialisée.");
+    } catch (e) {
+        console.error("Échec de l'initialisation de la carte Leaflet:", e);
+        if ($('map-container')) $('map-container').textContent = 'Erreur d\'initialisation de la carte.';
+    }
+}
+
+/** Met à jour la carte. */
+function updateMap(latA, lonA) {
+    if (!map || !marker || !tracePolyline) { initMap(latA, lonA); return; }
+    
+    const newLatLng = [latA, lonA];
+    marker.setLatLng(newLatLng);
+    tracePolyline.addLatLng(newLatLng);
+    map.setView(newLatLng);
+}
+
+function setGPSMode(mode) {
+    if (wID !== null) navigator.geolocation.clearWatch(wID);
+    currentGPSMode = mode;
+    wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[mode]); 
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `⏸️ PAUSE GPS`;
+    if ($('freq-select')) $('freq-select').value = mode; 
+}
+
+function startGPS() {
+    if (wID === null) {
+        if ($('freq-select')) $('freq-select').value = currentGPSMode; 
+        setGPSMode(currentGPSMode);
+        sTime = null; // Réinitialise le temps de session (et timeMoving sera réinitialisé dans updateDisp)
+    }
+}
+
+function stopGPS(resetButton = true) {
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID);
+        wID = null;
+    }
+    if (resetButton) {
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `▶️ MARCHE GPS`;
+    }
+}
+
+function emergencyStop() {
+    emergencyStopActive = true;
+    stopGPS(false);
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: ACTIF 🔴";
+    }
+}
+
+function resumeSystem() {
+    emergencyStopActive = false;
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: INACTIF 🟢";
+    }
+    startGPS();
+}
+
+function handleErr(err) {
+    console.error(`Erreur GNSS (${err.code}): ${err.message}`);
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `❌ ERREUR GPS`;
+}
+
+
+// ===========================================
+// INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES
+// ===========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // --- Initialisation des contrôles et de l'état ---
+    if ($('environment-select')) {
+        $('environment-select').value = selectedEnvironment;
+        $('environment-select').addEventListener('change', (e) => { 
+            if (emergencyStopActive) return;
+            selectedEnvironment = e.target.value; 
+        });
+    }
+
+    // --- Écouteurs pour les boutons et contrôles ---
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
+        if (emergencyStopActive) return;
+        wID === null ? startGPS() : stopGPS();
+    });
+    
+    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
+        if (emergencyStopActive) return;
+        setGPSMode(e.target.value);
+    });
+    
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
+        emergencyStopActive ? resumeSystem() : emergencyStop(); 
+    });
+    
+    if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        netherMode = !netherMode; 
+        if ($('mode-nether')) $('mode-nether').textContent = netherMode ? "ACTIVÉ (1:8) 🔥" : "DÉSACTIVÉ (1:1)"; 
+    });
+
+    // --- Écouteurs pour la réinitialisation des métriques ---
+    if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        distM = 0; timeMoving = 0; 
+        if ($('distance-total-km')) $('distance-total-km').textContent = "0.000 km | 0.00 m";
+    });
+    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        maxSpd = 0; 
+        if ($('speed-max')) $('speed-max').textContent = "0.00000 km/h";
+    });
+    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
+        if (emergencyStopActive) return; 
+        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
+            distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; kAlt = 0; kAltUncert = 1000; timeMoving = 0; lastFSpeed = 0;
+            if (tracePolyline) tracePolyline.setLatLngs([]); 
+        } 
+    });
+    
+    if ($('data-capture-btn')) $('data-capture-btn').addEventListener('click', () => {
+        alert("Données actuelles capturées (logique de sauvegarde à implémenter)!");
+    });
+    
+    if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        $('toggle-mode-btn').textContent = isDarkMode ? "☀️ Mode Jour" : "🌗 Mode Nuit";
+    });
+
+    // --- Démarrage des Capteurs IMU (Accélération) ---
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', handleDeviceMotion, true);
+    } else {
+        console.warn("DeviceMotion n'est pas supporté ou activé sur cet appareil/navigateur.");
+    } 
+    
+    // --- Démarrage des Capteurs d'Orientation (pour correction verticale) ---
+    if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+    } else {
+        console.warn("DeviceOrientation n'est pas supporté. La correction de l'accélération verticale ne sera pas appliquée.");
+    }
+
+    // --- Initialisation du Système ---
+    syncH(); 
+    startGPS(); 
+
+    // --- Intervalle lent pour les mises à jour (Astro/Temps) ---
+    if (domID === null) {
+        domID = setInterval(() => {
+            const now = getCDate();
+            if (now) {
+                if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString();
+                if ($('date-display')) $('date-display').textContent = now.toLocaleDateString();
+                if ($('time-elapsed')) $('time-elapsed').textContent = sTime ? ((now.getTime() - sTime) / 1000).toFixed(2) + ' s' : '0.00 s';
+                if ($('time-moving')) $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
+            }
+            
+            if (lat !== 0 && lon !== 0) updateAstro(lat, lon); 
+        }, DOM_SLOW_UPDATE_MS); 
+    }
+    
+    // --- Intervalle pour la mise à jour Météo (30s) ---
+    if (weatherID === null) {
+        weatherID = setInterval(() => {
+            if (lat !== 0 && lon !== 0) updateWeather(lat, lon);
+        }, WEATHER_UPDATE_MS); 
+    }
+}); // Fin de document.addEventListener('DOMContentLoaded')
