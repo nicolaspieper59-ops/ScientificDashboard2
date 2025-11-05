@@ -699,6 +699,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('environment-select')) {
         $('environment-select').value = selectedEnvironment;
         $('environment-select').addEventListener('change', (e) => { 
+            if (emergencyStopActive) return;
+            selectedEnvironment = e.target.value; 
+        });
+    }
+
+    // --- Écouteurs pour les boutons et contrôles ---
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
         if (emergencyStopActive) return;
         wID === null ? startGPS() : stopGPS();
@@ -757,15 +763,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- Démarrage des Capteurs d'Orientation (pour correction verticale) ---
     if (window.DeviceOrientationEvent) {
-        // Ajout de l'écouteur pour obtenir global_roll et global_pitch
         window.addEventListener('deviceorientation', handleDeviceOrientation, true);
     } else {
         console.warn("DeviceOrientation n'est pas supporté. La correction de l'accélération verticale ne sera pas appliquée.");
     }
 
     // --- Initialisation du Système ---
-    syncH(); // Synchronisation de l'horloge
-    startGPS(); // Démarrage initial du GPS
+    syncH(); 
+    startGPS(); 
 
     // --- Intervalle lent pour les mises à jour (Astro/Temps) ---
     if (domID === null) {
@@ -788,4 +793,4 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lat !== 0 && lon !== 0) updateWeather(lat, lon);
         }, WEATHER_UPDATE_MS); 
     }
-}); // Fin de document.addEventListener('DOMContentLoaded')
+});
