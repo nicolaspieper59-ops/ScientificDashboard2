@@ -2,238 +2,212 @@
 // FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes & Utilitaires)
 // =================================================================
 
+// --- CLÉS API ET URLS ---
+const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // REMPLACER PAR VOTRE CLÉ RÉELLE !
+const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather";
+
+// --- CONSTANTES MATHÉMATIQUES ET GÉODÉSIQUES ---
+const R2D = 180 / Math.PI; // Radians to Degrees
+const D2R = Math.PI / 180; // Degrees to Radians
+const G_ACC = 9.80665;     // Accélération standard de la gravité (m/s²)
+const W_EARTH = 7.2921159e-5; // Vitesse angulaire de la Terre (rad/s)
+const GEOID_SEPARATION_M = 40.0; // Séparation Géoïde/Ellipsoïde typique (m)
+
+// --- CONSTANTES PHYSIQUES ET ASTRONOMIQUES ---
+const C_L = 299792458; // Vitesse de la lumière (m/s)
+const SPEED_SOUND = 343; // Vitesse du son dans l'air sec à 20°C (m/s)
+const AU_M = 149597870700; // Unité Astronomique (m)
+const KMH_MS = 3.6; // Multiplicateur m/s -> km/h
+const dayMs = 86400000; // Millisecondes dans une journée
+
+// --- CONFIGURATION DU SYSTÈME ET DES FILTRES ---
+const MAX_ACC = 50.0; // Précision GPS max acceptable (m)
+const GOOD_ACC_THRESHOLD = 5.0; // Seuil pour une bonne précision GPS (m)
+const MIN_DT = 0.05; // Delta temps minimum pour les calculs (s)
+const MIN_SPD = 0.05; // Vitesse minimale pour être considéré en mouvement (m/s)
+const VEL_NOISE_FACTOR = 10.0; // Facteur pour le bruit de vitesse GPS
+const ALT_TH = -50.0; // Seuil d'altitude pour le statut souterrain (m)
+const NETHER_RATIO = 8.0; // Ratio distance Minecraft Nether
+
+// Filtre Kalman EKF/IMU
+const R_GPS_DISABLED = 10000.0; // Bruit R si GPS désactivé (m²)
+const STATIC_ACCEL_THRESHOLD = 0.2; // Seuil Accel. pour ZVU (m/s²)
+const ACCEL_FILTER_ALPHA = 0.8; // Alpha pour le filtre passe-bas Accel (plus haut = plus de lissage)
+
+// Options GPS (watchPosition)
+const GPS_OPTS = {
+    HIGH_FREQ: { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 },
+    LOW_FREQ: { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+};
+
+// --- VARIABLES D'ÉTAT GLOBALES ---
+let currentGPSMode = 'HIGH_FREQ'; // Mode GPS actuel
+let selectedEnvironment = 'NORMAL'; // Environnement pour le facteur Kalman
+let wID = null; // ID de watchPosition
+let sTime = null; // Temps de démarrage de la session (ms)
+let lPos = null; // Dernière position GPS (pour dt)
+
+let lat = 0.0, lon = 0.0; // Coordonnées globales
+let distM = 0.0; // Distance totale parcourue (m)
+let maxSpd = 0.0; // Vitesse max (m/s)
+let timeMoving = 0.0; // Temps passé en mouvement (s)
+let lastFSpeed = 0.0; // Dernière vitesse filtrée (pour accélération)
+
+// Filtre Kalman Vitesse (k: Kalman, uncert: incertitude)
+let kSpd = 0.0;
+let kUncert = 1000.0; 
+
+// Filtre Kalman Altitude
+let kAlt = 0.0; 
+let kAltUncert = 1000.0; 
+
+// État IMU
+let kAccel = { x: 0, y: 0, z: 0 }; // Accélération filtrée
+let G_STATIC_REF = { x: 0, y: 0, z: 0 }; // Référence Gravité statique
+let latestLinearAccelMagnitude = 0.0; // Magnitude Accel linéaire
+let latestVerticalAccelIMU = 0.0; // Accel verticale corrigée
+let global_pitch = 0.0; // Angle de tangage (rad)
+let global_roll = 0.0; // Angle de roulis (rad)
+
+// État Météo
+let lastP_hPa = 1013.25; // Pression atmosphérique par défaut (hPa)
+let lastAirDensity = 1.225; // Densité de l'air par défaut (kg/m³)
+
+// État de contrôle
+let netherMode = false;
+let isZVUActive = false; // Zero Velocity Update
+let zvuLockTime = 0; // Temps de verrouillage ZVU (s)
+let emergencyStopActive = false; // Arrêt d'urgence
+
+// DOM/Intervalle
+let domID = null;
+let weatherID = null;
+const DOM_SLOW_UPDATE_MS = 500;
+const WEATHER_UPDATE_MS = 30000;
+
+let map = null; // Objet Leaflet Map
+let marker = null; // Objet Leaflet Marker
+let tracePolyline = null; // Objet Leaflet Polyline
+
+
+// --- UTILITAIRES (Fonctions de base) ---
+
+/** Simplification de l'accès au DOM */
 const $ = (id) => document.getElementById(id);
 
-// --- CONSTANTES GLOBALES (Physiques, GPS, Temps) ---
-const C_L = 299792458; 
-const SPEED_SOUND = 343; 
-const G_ACC = 9.80665; 
-const KMH_MS = 3.6; 
-const R_E = 6371000; 
-const R2D = 180 / Math.PI; 
-const D2R = Math.PI / 180; 
-const W_EARTH = 7.2921E-5; 
-const NETHER_RATIO = 1 / 8; 
-const AU_M = 149597870700;
+/** Fonction de synchronisation du temps (pourrait être améliorée avec NTP) */
+function getCDate() {
+    return new Date();
+}
 
-// Constantes Temps / Astro
-const dayMs = 86400000;
-const J1970 = 2440588; 
-const J2000 = 2451545; 
-const DOM_SLOW_UPDATE_MS = 1000;
-const WEATHER_UPDATE_MS = 30000; 
-const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc"; 
+/** Calcule le nombre de jours écoulés depuis le 1er janvier 2000 */
+function toDays(date) {
+    const epoch = new Date(2000, 0, 1, 12, 0, 0); // J2000.0 (GMT)
+    return (date.getTime() - epoch.getTime()) / dayMs;
+}
 
-// Constantes GPS
-const MIN_DT = 0.05; 
-const MAX_ACC = 20; 
-const GOOD_ACC_THRESHOLD = 6.0; 
-const ALT_TH = -50; 
-// AJOUT : Correction pour l'altitude MSL (Niveau de la mer) vs WGS84 (GPS)
-// Basé sur 100.11m (EKF/GPS) - 54m (Vraie Altitude) = 46.11m
-const GEOID_SEPARATION_M = 46.11; 
+/** Calcule l'anomalie solaire moyenne */
+function solarMeanAnomaly(d) {
+    return D2R * (357.5291 + 0.98560028 * d);
+}
 
-const GPS_OPTS = {
-    HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 },
-    LOW_FREQ: { enableHighAccuracy: false, maximumAge: 30000, timeout: 60000 }
-};
+/** Calcule la longitude écliptique */
+function eclipticLongitude(M) {
+    let C = D2R * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+    let P = D2R * 102.9377;
+    return M + C + P + Math.PI; 
+}
 
-// Constantes Kalman
-const Q_NOISE = 0.001; 
-const Q_ALT_NOISE = 0.0005; 
-let kSpd = 0; 
-let kUncert = 1000; 
-let kAlt = 0; 
-let kAltUncert = 1000; 
-const ENVIRONMENT_FACTORS = {
-    NORMAL: 1.0, FOREST: 1.5, CONCRETE: 3.0, METAL: 2.5
-};
+/** Formatage du temps pour l'horloge Minecraft (minutes TST -> HH:MM:SS) */
+function formatTime(totalMinutes) {
+    const minutes = Math.floor(totalMinutes % 60);
+    const totalHours = Math.floor(totalMinutes / 60);
+    const hours = Math.floor(totalHours % 24);
+    const seconds = Math.floor((totalMinutes * 60) % 60);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
 
-// Constantes ZVU / IMU (Mises à jour)
-const MIN_SPD = 0.00001; 
-const R_GPS_DISABLED = 100000.0; 
-const VEL_NOISE_FACTOR = 2.0; 
-const STATIC_ACCEL_THRESHOLD = 0.01; 
-const LOW_SPEED_THRESHOLD = 1.0; 
-const ACCEL_FILTER_ALPHA = 0.95; 
-const ACCEL_MOVEMENT_THRESHOLD = 0.2; 
-let kAccel = { x: 0, y: 0, z: 0 };
-let G_STATIC_REF = { x: 0, y: 0, z: 0 };
-let latestVerticalAccelIMU = 0; 
-let latestLinearAccelMagnitude = 0; 
-let zvuLockTime = 0; 
-let isZVUActive = false; 
+/** Calcule le point de rosée (approximation Magnus) */
+function calculateDewPoint(T, RH) {
+    const a = 17.27;
+    const b = 237.7;
+    const gamma = (a * T) / (b + T) + Math.log(RH / 100);
+    return (b * gamma) / (a - gamma);
+}
 
-// Variables globales IMU Avancées
-let global_roll = 0; 
-let global_pitch = 0; 
+/** Nom de la phase lunaire */
+function getMoonPhaseName(phase) {
+    if (phase < 0.03 || phase > 0.97) return 'Nouvelle Lune';
+    if (phase < 0.22) return 'Premier Croissant';
+    if (phase < 0.28) return 'Premier Quartier';
+    if (phase < 0.47) return 'Lune Gibbeuse Croissante';
+    if (phase < 0.53) return 'Pleine Lune';
+    if (phase < 0.72) return 'Lune Gibbeuse Décroissante';
+    if (phase < 0.78) return 'Dernier Quartier';
+    return 'Dernier Croissant';
+}
 
-// Variables globales d'état
-let wID = null;
-let map = null;
-let marker = null;
-let tracePolyline = null;
-let lat = 0, lon = 0;
-let sTime = null; 
-let distM = 0; 
-let timeMoving = 0; 
-let maxSpd = 0;
-let lastFSpeed = 0;
-let currentGPSMode = 'HIGH_FREQ';
-let lPos = null; 
-let emergencyStopActive = false;
-let netherMode = false;
-let selectedEnvironment = 'NORMAL';
-let lServH = 0; 
-let lLocH = 0; 
-let domID = null; 
-let weatherID = null; 
-let lastP_hPa = 1013.25; 
-let lastAirDensity = 1.225; 
+/** Synchronisation de l'heure locale au démarrage */
+function syncH() {
+    // Dans un vrai projet, ceci synchroniserait l'heure via un serveur NTP/API
+    console.log("Synchronisation de l'heure locale effectuée.");
+}
 
-// Constantes API Météo
-const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
-const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather"; 
 
-// ===========================================
-// FONCTIONS UTILITAIRES ET KALMAN
-// ===========================================
+// --- FILTRE KALMAN (EKF simplifiée) ---
 
-/** Calcule la distance de Haversine entre deux points (m). */
-function dist(lat1, lon1, lat2, lon2) {
-    const dLat = (lat2 - lat1) * D2R;
-    const dLon = (lon2 - lon1) * D2R;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * D2R) * Math.cos(lat2 * D2R) * Math.sin(dLon / 2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R_E * c;
+/** Calcul dynamique de la covariance de bruit de mesure (R) pour l'EKF */
+function getKalmanR(gpsAccuracy, alt, pressure) {
+    let R_gps = gpsAccuracy * gpsAccuracy; 
+    let R_env_factor = 1.0; 
+
+    // Ajustement en fonction de l'environnement
+    switch (selectedEnvironment) {
+        case 'FOREST': R_env_factor = 1.5; break;
+        case 'METAL': R_env_factor = 2.5; break;
+        case 'CONCRETE': R_env_factor = 3.0; break;
+    }
+
+    // Le bruit est proportionnel à la précision GPS et au bruit environnemental
+    return R_gps * R_env_factor; 
 }
 
 /** Filtre de Kalman 1D (Vitesse) */
-function kFilter(z, dt, R_dyn, u_accel = 0) {
-    const predSpd = kSpd + u_accel * dt; 
-    const predUncert = kUncert + Q_NOISE * dt;
-    const K = predUncert / (predUncert + R_dyn);
-    kSpd = predSpd + K * (z - predSpd);
-    kUncert = (1 - K) * predUncert;
+function kFilter(z, dt, R_dyn, u) {
+    // 1. Prédiction (avec Accélération comme contrôle 'u')
+    let x_pred = kSpd + u * dt; 
+    let P_pred = kUncert + R_dyn; // P = P + Q (On utilise R_dyn ici comme proxy pour Q)
+    
+    // 2. Mise à jour
+    let K = P_pred / (P_pred + R_dyn); // Gain de Kalman
+    kSpd = x_pred + K * (z - x_pred); // Nouvelle vitesse estimée
+    kUncert = (1 - K) * P_pred; // Nouvelle incertitude
+    
     return kSpd;
 }
 
-/** Calcule le bruit de mesure dynamique R */
-function getKalmanR(acc, alt, pressure) { 
-    let R_raw = acc * acc; 
-    const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment] || ENVIRONMENT_FACTORS.NORMAL;
-    const MASS_PROXY = 0.05; 
+/** Filtre de Kalman 1D (Altitude) */
+function kFilterAltitude(z, gpsAccuracy, dt, u) {
+    const Q_alt = 0.5; // Bruit de processus pour l'altitude (m/s)
+    let R_alt = gpsAccuracy * gpsAccuracy * 2; // R dépend de la précision GPS
 
-    let noiseMultiplier = envFactor;
-    if (alt !== null && alt < 0) { noiseMultiplier += Math.abs(alt / 100); }
+    // 1. Prédiction (u est l'accélération verticale IMU pour le contrôle)
+    let kAlt_vel_change = u * dt * 0.5; // Simplification : moitié de l'accélération
+    let x_pred = kAlt + kAlt_vel_change * dt; 
+    let P_pred = kAltUncert + Q_alt; 
     
-    const kSpd_squared = kSpd * kSpd;
-    const speedFactor = 1 / (1 + MASS_PROXY * kSpd_squared); 
-
-    let lowSpeedBoost = 1.0;
-    if (kSpd > MIN_SPD && kSpd < LOW_SPEED_THRESHOLD) {
-        const speed_ratio = (LOW_SPEED_THRESHOLD - kSpd) / LOW_SPEED_THRESHOLD; 
-        lowSpeedBoost = 1.0 + speed_ratio * 1.0; 
-    }
+    // 2. Mise à jour
+    let K = P_pred / (P_pred + R_alt); // Gain de Kalman
+    kAlt = x_pred + K * (z - x_pred); 
+    kAltUncert = (1 - K) * P_pred; 
     
-    let R_dyn = R_raw * noiseMultiplier * speedFactor * lowSpeedBoost; 
-    R_dyn = Math.max(R_dyn, 0.01); 
-
-    return R_dyn;
-}
-
-/** Filtre de Kalman 1D pour l'Altitude */
-function kFilterAltitude(z, acc, dt, u_accel = 0) { 
-    if (z === null) return kAlt; 
-    const predAlt = kAlt + (0.5 * u_accel * dt * dt); 
-    let predAltUncert = kAltUncert + Q_ALT_NOISE * dt;
-    const R_alt = acc * acc * 2.0; 
-    const K = predAltUncert / (predAltUncert + R_alt);
-    kAlt = predAlt + K * (z - predAlt);
-    kAltUncert = (1 - K) * predAltUncert;
     return kAlt;
 }
 
-/** Calcule le point de rosée (utilitaire pour la météo) */
-function calculateDewPoint(tempC, humidity) {
-    if (tempC === null || humidity === null) return null;
-    const a = 17.27;
-    const b = 237.7;
-    const alpha = (a * tempC) / (b + tempC) + Math.log(humidity / 100);
-    return (b * alpha) / (a - alpha);
-}
-
-/** Calcule le nom de la phase de la Lune. */
-function getMoonPhaseName(phase) {
-    if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune 🌑";
-    if (phase < 0.22) return "Premier Croissant 🌒";
-    if (phase < 0.28) return "Premier Quartier 🌓";
-    if (phase < 0.47) return "Gibbeuse Croissante 🌔";
-    if (phase < 0.53) return "Pleine Lune 🌕";
-    if (phase < 0.72) return "Gibbeuse Décroissante 🌖";
-    if (phase < 0.78) return "Dernier Quartier 🌗";
-    return "Dernier Croissant 🌘";
-}
-
-// ===========================================
-// FONCTIONS ASTRO UTILITAIRES ET SYNCHRO
-// ===========================================
-
-/** Synchronise l'heure locale avec une source NTP (API). */
-async function syncH() { 
-    if ($('local-time')) $('local-time').textContent = 'Synchronisation UTC...';
-    const localStartPerformance = performance.now(); 
-    try {
-        const response = await fetch(SERVER_TIME_ENDPOINT, { cache: "no-store", mode: "cors" });
-        if (!response.ok) throw new Error(`Server time sync failed: ${response.statusText}`);
-        const localEndPerformance = performance.now(); 
-        const serverData = await response.json(); 
-        const RTT = localEndPerformance - localStartPerformance;
-        const latencyOffset = RTT / 2;
-        lServH = Date.parse(serverData.datetime) + latencyOffset; 
-        lLocH = performance.now(); 
-        console.log(`Synchronisation UTC Atomique réussie.`);
-    } catch (error) {
-        console.warn("Échec de la synchronisation. Utilisation de l'horloge locale.", error);
-        lServH = Date.now(); 
-        lLocH = performance.now();
-        if ($('local-time')) $('local-time').textContent = 'N/A (SYNCHRO ÉCHOUÉE)';
-    }
-}
-
-/** Obtient l'heure courante synchronisée. */
-function getCDate() {
-    if (lLocH === 0) return new Date();
-    const currentLocTime = performance.now();
-    const offset = currentLocTime - lLocH;
-    return new Date(lServH + offset);
-}
-
-/** Convertit la date en jours depuis J2000. */
-function toDays(date) { return (date.valueOf() / dayMs - 0.5 + J1970) - J2000; }
-/** Calcule l'anomalie solaire moyenne. */
-function solarMeanAnomaly(d) { return D2R * (356.0470 + 0.9856002585 * d); }
-/** Calcule la longitude écliptique. */
-function eclipticLongitude(M) {
-    var C = D2R * (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)), 
-        P = D2R * 102.9377;                                                                
-    return M + C + P + Math.PI;
-}
-
-/** Formate un nombre de minutes en HH:MM:SS. */
-function formatTime(minutes) {
-    if (isNaN(minutes)) return "N/D";
-    let totalMinutes = minutes % 1440;
-    if (totalMinutes < 0) totalMinutes += 1440;
-    
-    const h = Math.floor(totalMinutes / 60);
-    const m = Math.floor(totalMinutes % 60);
-    const s = Math.floor((totalMinutes * 60) % 60);
-
-    const pad = (num) => num.toString().padStart(2, '0');
-    return `${pad(h)}:${pad(m)}:${pad(s)}`;
-    }
 // =================================================================
+// FIN FICHIER JS PARTIE 1
+// =================================================================
+    
 // FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique Principale & UI)
 // =================================================================
 
