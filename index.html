@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GNSS SpaceTime Dashboard •0‹4</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
-          crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
           integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
           crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -36,8 +33,21 @@
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
         
-        /* Conteneur pour la carte et l'horloge */
-        #map-container { height: 400px; width: 100%; border-radius: 8px; margin-top: 15px; }
+        /* Conteneur pour le globe et l'horloge */
+        #globe-container { 
+            height: 400px; 
+            width: 100%; 
+            border-radius: 8px; 
+            margin-top: 15px; 
+            background-color: #000; /* Fond noir typique des globes 3D */
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            text-align: center;
+            font-family: monospace;
+        }
         #minecraft-clock-container { 
             display: flex; 
             justify-content: center; 
@@ -72,6 +82,37 @@
             z-index: 2;
         }
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
+
+        /* Styles pour les Boussoles */
+        #compass-visual, #target-visual {
+            position: relative; 
+            width: 80px; 
+            height: 80px; 
+            border: 2px solid #555; 
+            border-radius: 50%; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            margin-left: 10px;
+        }
+        #compass-needle {
+            width: 2px; 
+            height: 35px; 
+            background: red; 
+            position: absolute; 
+            top: 5px; 
+            transform-origin: 50% 100%; 
+            transition: transform 0.1s linear;
+        }
+        #target-needle {
+            width: 4px; 
+            height: 4px; 
+            border-radius: 50%; 
+            background: green; 
+            position: absolute; 
+            top: 5px; 
+            transition: transform 0.1s linear;
+        }
     </style>
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
@@ -124,6 +165,7 @@
             <h2>•0‹4 Vitesse & Distance</h2>
             <div class="data-point"><span>Vitesse Stable (EKF)</span><span id="speed-stable">-- km/h</span></div>
             <div class="data-point"><span>Précision EKF (R dyn.)</span><span id="speed-error-perc">N/A</span></div> 
+            <div class="data-point"><span>Précision Magnetic (R mag)</span><span id="mag-variance-display">0.000 m²</span></div>
             <div class="data-point"><span>Précision Effective (R)</span><span id="gps-accuracy-effective">N/A</span></div>
             <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
             <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00000 km/h</span></div> 
@@ -140,7 +182,8 @@
             <div class="data-point"><span>Latitude Brute</span><span id="latitude">N/A</span></div>
             <div class="data-point"><span>Longitude Brute</span><span id="longitude">N/A</span></div>
             <div class="data-point"><span>Altitude GPS (WGS84)</span><span id="altitude-gps">N/A</span></div>
-            <div class="data-point"><span>Altitude Géoïde (MSL)</span><span id="altitude-geoid">N/A</span></div> <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
+            <div class="data-point"><span>Altitude Géoïde (MSL)</span><span id="altitude-geoid">N/A</span></div>
+            <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
             <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
             <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div> 
             
@@ -149,8 +192,12 @@
             <h2>”9Ù9 Dynamique du Véhicule & Forces</h2>
             <div class="data-point"><span>Accel. Longitudinale (EKF)</span><span id="accel-long">0.000 m/s²</span></div>
             <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div> 
+            <div class="data-point"><span>Accel. Linéaire 3D (IMU)</span><span id="accel-3d-imu">0.000 m/s²</span></div>
+            <div class="data-point"><span>Force G (3D Linéaire)</span><span id="force-g-3d-imu">0.00 G</span></div>
             <div class="data-point"><span>Vitesse Verticale (Raw)</span><span id="vertical-speed">0.00 m/s</span></div>
-            <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s²</span></div> <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div> <div class="data-point"><span>Force de Traînée</span><span id="drag-force">0.000 N</span></div> 
+            <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s²</span></div>
+            <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div>
+            <div class="data-point"><span>Force de Traînée</span><span id="drag-force">0.000 N</span></div> 
 
             <hr>
 
@@ -162,20 +209,13 @@
             <div class="data-point"><span>Force de Coriolis (N)</span><span id="coriolis-force">0.00 N</span></div>
             
             <hr>
-            
-            <h2>”9³1„1‚5 Météo & Capteurs</h2>
-            <div class="data-point"><span>Température Air</span><span id="temp-air">N/A</span></div>
-            <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure">N/A</span></div>
-            <div class="data-point"><span>Humidité Relative</span><span id="humidity">N/A</span></div>
-            <div class="data-point"><span>Point de Rosée</span><span id="dew-point">N/A</span></div>
-            <div class="data-point"><span>Visibilité (km)</span><span id="visibility">N/A</span></div>
-            <div class="data-point"><span>Indice UV</span><span id="uv-index">N/A</span></div>
-            <div class="data-point"><span>Direction du Vent</span><span id="wind-direction">N/A</span></div>
-            <div class="data-point"><span>Taux de Précipitation</span><span id="precipitation-rate">N/A</span></div>
-            <div class="data-point"><span>Temp. Ressentie (Wind Chill)</span><span id="temp-feels-like">N/A</span></div>
 
-            <h2 style="margin-top: 15px;">”9ü0„1‚5 Carte GNSS</h2>
-            <div id="map-container">Initialisation de la carte...</div>
+            <h2 style="margin-top: 15px;">”9ü0„1‚5 Globe 3D GNSS</h2>
+            <div id="globe-container">
+                Initialisation du Globe 3D...
+                <p id="globe-status-display"></p>
+            </div>
+            
         </div>
         
         <div class="section">
@@ -190,7 +230,9 @@
 
             <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
             <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
-            <div class="data-point"><span>Angle Zénithal</span><span id="zenith-angle">-- °</span></div> <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
+            <div class="data-point"><span>Angle Zénithal</span><span id="zenith-angle">-- °</span></div>
+            
+            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
             <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="lsm">N/D</span></div> 
             <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/D</span></div> 
             
@@ -199,8 +241,32 @@
             
             <div class="data-point"><span>Durée du Jour Solaire</span><span id="day-duration">N/A</span></div> 
             <div class="data-point"><span>Longitude écliptique du Soleil</span><span id="ecliptic-long">-- °</span></div> 
-            <div class="data-point"><span>Déclinaison Solaire</span><span id="sun-declination">-- °</span></div> <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
-            <div class="data-point"><span>Phase Lunaire</span><span id="moon-phase-display">N/A</span></div> <hr>
+            <div class="data-point"><span>Déclinaison Solaire</span><span id="sun-declination">-- °</span></div> 
+            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
+            <div class="data-point"><span>Phase Lunaire</span><span id="moon-phase-display">N/A</span></div> 
+            
+            <hr>
+
+            <h2>🧭 Boussoles & Navigation</h2>
+            <div class="data-point"><span>Cap Appareil (Heading)</span><span id="compass-heading">0.0 °</span></div>
+            <div id="compass-display-container" style="display: flex; justify-content: space-around; align-items: center; height: 100px; margin: 10px 0;">
+                <div id="compass-visual">
+                    <div id="compass-needle"></div>
+                    <div style="font-size: 0.8em;">N</div>
+                </div>
+
+                <div id="target-visual">
+                    <div style="width: 2px; height: 35px; background: blue; position: absolute; top: 5px; transform-origin: 50% 100%;"></div>
+                    <div id="target-needle"></div>
+                    <div style="font-size: 0.8em; color: green;">Cible</div>
+                </div>
+            </div>
+
+            <h3>Cible: Tour Eiffel</h3>
+            <div class="data-point"><span>Distance à la Cible</span><span id="target-distance">N/A</span></div>
+            <div class="data-point"><span>Cap Géodésique (Azimut)</span><span id="target-bearing">N/A</span></div>
+
+            <hr>
 
             <h2>•0â8 Chimie & Composition</h2>
             <div class="data-point"><span>Taux d'Oxygène (O₂)</span><span id="o2-level">20.9 % vol (Capteur requis)</span></div>
@@ -221,8 +287,7 @@
 
     </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
 <script src="gnss-dashboard-full.js"></script>
 
 </body>
-                                                                                                                           </html>
+                                                                                                    </html>
