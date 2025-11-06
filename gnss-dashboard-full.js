@@ -1,5 +1,5 @@
 // =================================================================
-// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (FINAL AVEC NEUTRALISATION D'ANGLE)
+// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (FINAL DÉBLOQUÉ)
 // =================================================================
 
 // 1. CONSTANTES GLOBALES
@@ -119,62 +119,50 @@ function handleDeviceMotion(event) {
     const dt_imu = lTimeIMU ? (timestamp - lTimeIMU) / 1000 : 0.05;
     lTimeIMU = timestamp; 
 
-    // ... (Dans gnss-dashboard-partA.js, autour de la ligne 120 dans handleDeviceMotion) ...
-
     if (acc_g_raw && acc_g_raw.x !== null) {
         
-        // 1. ÉTALONNAGE & LISSAGE (inchangé)
+        // 1. ÉTALONNAGE & LISSAGE
         kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.x - ACCEL_BIAS_X);
         kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.y - ACCEL_BIAS_Y);
         kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.z - ACCEL_BIAS_Z);
 
-        // NOUVEAU : LOGIQUE DE NIVEAU À BULLE VIRTUEL
-        // Si les angles ne sont pas mis à jour par handleDeviceOrientation (valeurs proches de zéro),
+        // NOUVEAU : LOGIQUE DE NIVEAU À BULLE VIRTUEL (Estimation des angles si N/A)
+        // Si global_pitch est à 0 (i.e. handleDeviceOrientation n'a pas pu lire les angles),
         // nous les estimons à partir de l'accélération avec gravité.
-        
-        // VÉRIFICATION RAPIDE (si les angles sont à zéro et que l'IMU brut n'est pas à 9.81 sur Z)
         if (Math.abs(global_pitch) < 0.01 && Math.abs(global_roll) < 0.01) {
-            // Estimation du Pitch (rotation autour de Y, affecte X et Z)
+            // Calculer l'angle d'inclinaison (Pitch) en radians
             global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
             
-            // Estimation du Roll (rotation autour de X, affecte Y et Z)
+            // Calculer l'angle de roulis (Roll) en radians
             global_roll = Math.atan2(kAccel.y, kAccel.z);
             
-            // Mise à jour de l'affichage dans le DOM (utilisé pour le débogage)
+            // Mise à jour de l'affichage dans le DOM pour confirmer l'estimation
             if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} ° (Est.)`;
             if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} ° (Est.)`;
+        } else if (global_pitch != 0 || global_roll != 0) {
+             // Si les angles sont mis à jour par handleDeviceOrientation, on affiche juste la valeur
+             // (Le Bloc B se charge de l'affichage s'il reçoit une vraie valeur)
         }
         
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
         const phi = global_roll; // Roll (gamma) en RADIANS
         const theta = global_pitch; // Pitch (beta) en RADIANS
-        // ... (Reste de la correction et des conditions ZVU inchangé) ...
+        const g_local = calculateGravityAtAltitude(kAlt);
         
-        // Projection de G ajustée pour correspondre à la convention de signe du capteur brut
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
         const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta);  
         
-        // 3. ACCÉLÉRATION LINÉAIRE : CHANGEMENT CRITIQUE
+        // 3. ACCÉLÉRATION LINÉAIRE (Simplification pour débloquer le mouvement)
         let acc_lin_t_x = kAccel.x;
         let acc_lin_t_y = kAccel.y;
         let acc_lin_t_z = kAccel.z;
 
-        // VÉRIFICATION D'ACCÈS AUX ANGLES (seuil à 0.5 degré)
-        // Si les angles ne sont pas mis à jour (restent proches de zéro), on neutralise l'IMU.
-        const anglesAvailable = (Math.abs(phi * R2D) > 0.5) || (Math.abs(theta * R2D) > 0.5);
-        
-        if (anglesAvailable) {
-            // A_lin = A_raw - G_proj (Correction de gravité si les angles sont lus)
-            acc_lin_t_x = kAccel.x - G_x_proj;
-            acc_lin_t_y = kAccel.y - G_y_proj;
-            acc_lin_t_z = kAccel.z - G_z_proj;
-        } else {
-            // Neutralisation de l'accélération IMU si les angles sont N/A
-            acc_lin_t_x = 0; 
-            acc_lin_t_y = 0;
-            acc_lin_t_z = 0;
-        }
+        // Nous appliquons TOUJOURS la correction de gravité (utilisant les angles estimés/réels). 
+        // Le ZVU (plus bas) gère si l'accélération corrigée est suffisamment faible.
+        acc_lin_t_x = kAccel.x - G_x_proj;
+        acc_lin_t_y = kAccel.y - G_y_proj;
+        acc_lin_t_z = kAccel.z - G_z_proj;
         
         latestVerticalAccelIMU = acc_lin_t_z;
         latestLinearAccelMagnitude = Math.sqrt(
@@ -184,7 +172,7 @@ function handleDeviceMotion(event) {
     } else { return; }
     
     // 4. ZVU (Zero Velocity Update)
-    if (latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD) { 
+    if (latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD * 0.5) { // Seuil plus strict pour le repos
         latestLinearAccelMagnitude = 0.0;
         latestVerticalAccelIMU = 0.0;
         isZVUActive = true;
@@ -216,7 +204,13 @@ function updateDisp(pos_dummy) {
     const spd_raw_ips = pos.coords.speed ?? 0.0;
 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : 0.2;
-    if (lPos === null) { sTime = new Date().getTime(); }
+    if (lPos === null) { 
+        sTime = new Date().getTime(); 
+        // Initialisation de l'Altitude EKF avec la première lecture brute
+        if (kAlt === 0.0 && alt_ips_raw > 0.0) {
+            kAlt = alt_ips_raw;
+        }
+    }
 
     let spd3D_raw = spd_raw_ips;
     let d_moved_3D = 0.0;
@@ -291,9 +285,9 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-}
+              }
 // =================================================================
-// BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (FINAL CORRIGÉ AVEC DÉBOGAGE)
+// BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (FINAL CORRIGÉ)
 // =================================================================
 
 // 1. Fonctions Astro (Dépend des utilitaires et constantes du Bloc A)
@@ -381,17 +375,22 @@ function updateWeather(latA, lonA) {
 function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
     if (event.alpha !== null) {
-        // Enregistre en RADIANS pour la soustraction de G dans le Bloc A
-        global_pitch = event.beta ? event.beta * D2R : 0; 
-        global_roll = event.gamma ? event.gamma * D2R : 0; 
+        // Mettre à jour le cap quelle que soit la disponibilité des angles
         currentHeading = event.alpha ?? 0;
 
-        // DÉBOGAGE : Vérification des données brutes (console)
-        console.log(`Orientation brute: A=${(event.alpha || 0).toFixed(0)}, P=${(event.beta || 0).toFixed(0)}, R=${(event.gamma || 0).toFixed(0)}`);
-
-        // DÉBOGAGE : AFFICHAGE DANS LE DOM
-        if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(event.beta || 0).toFixed(1)} °`;
-        if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(event.gamma || 0).toFixed(1)} °`;
+        // Si les angles sont reçus (PAS N/A), nous les utilisons et mettons à jour global_pitch/roll
+        if (event.beta !== null && event.gamma !== null) {
+            global_pitch = event.beta * D2R; 
+            global_roll = event.gamma * D2R; 
+            
+            // Affichage normal (non estimé)
+            if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(event.beta || 0).toFixed(1)} °`;
+            if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(event.gamma || 0).toFixed(1)} °`;
+        } else {
+            // Si N/A, on laisse les valeurs globales à 0, et l'estimation dans le Bloc A prend le relais de l'affichage.
+            if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `N/A`;
+            if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `N/A`;
+        }
     }
 }
 function calculateBearing(lat1, lon1, lat2, lon2) {
