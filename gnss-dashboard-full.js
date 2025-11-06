@@ -111,25 +111,8 @@ function getIPSPositionSimulation(dt) {
 }
 
 // 5. FONCTIONS CAPTEURS INERTIELS (IMU)
-// ... (Dans gnss-dashboard-partA.js)
-
-// 5. FONCTIONS CAPTEURS INERTIELS (IMU)
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
-    
-    // ... (Reste du code inchangé) ...
-    
-    // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-    const phi = global_roll; // Roll (gamma) en RADIANS
-    const theta = global_pitch; // Pitch (beta) en RADIANS
-    const g_local = calculateGravityAtAltitude(kAlt);
-
-    // TEMPORAIRE : Vérification des angles
-    console.log(`Angles (R/P): ${Math.round(phi * R2D)}° / ${Math.round(theta * R2D)}°`); 
-    
-    // CORRECTION FINALE : ... (Reste inchangé)
-    // ...
-    }
     
     const acc_g_raw = event.accelerationIncludingGravity;
     const timestamp = event.timeStamp;
@@ -148,14 +131,16 @@ function handleDeviceMotion(event) {
         const theta = global_pitch; // Pitch (beta) en RADIANS
         const g_local = calculateGravityAtAltitude(kAlt);
         
+        // TEMPORAIRE : Vérification des angles
+        // console.log(`Angles (R/P): ${Math.round(phi * R2D)}° / ${Math.round(theta * R2D)}°`); 
+
         // CORRECTION FINALE : Projection de G. 
-        // L'inversion des signes de projection (par rapport à la théorie standard) est faite 
-        // pour correspondre à la convention inhabituelle de certains navigateurs/OS mobiles 
-        // (où kAccel.z est positif à plat, +9.81m/s²).
+        // Les signes des projections sont ajustés pour correspondre à la convention où 
+        // kAccel.z semble être POSITIF à plat dans l'environnement de test.
         
-        const G_x_proj = g_local * Math.sin(theta);        // Inversion pour annuler kAccel.x
-        const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); // Inversion pour annuler kAccel.y
-        const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta);  // Inversion pour annuler kAccel.z
+        const G_x_proj = g_local * Math.sin(theta);        
+        const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
+        const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta);  
         
         // 3. ACCÉLÉRATION LINÉAIRE
         // A_lin = A_raw - G_proj
@@ -278,9 +263,9 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-                }
+        }
 // =================================================================
-// BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (FINAL)
+// BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (FINAL CORRIGÉ AVEC DÉBOGAGE)
 // =================================================================
 
 // 1. Fonctions Astro (Dépend des utilitaires et constantes du Bloc A)
@@ -365,13 +350,6 @@ function updateWeather(latA, lonA) {
 }
 
 // 3. Fonctions Orientation et Compass
-// ... (Dans gnss-dashboard-partB.js)
-
-// 3. Fonctions Orientation et Compass
-function handleDeviceOrientation(event) {
-// ... (Dans gnss-dashboard-partB.js)
-
-// 3. Fonctions Orientation et Compass
 function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
     if (event.alpha !== null) {
@@ -380,25 +358,12 @@ function handleDeviceOrientation(event) {
         global_roll = event.gamma ? event.gamma * D2R : 0; 
         currentHeading = event.alpha ?? 0;
 
-        // TEMPORAIRE (pour le log) : Vérification des données brutes
-        console.log(`Orientation brute: A=${event.alpha.toFixed(0)}, P=${event.beta.toFixed(0)}, R=${event.gamma.toFixed(0)}`);
+        // DÉBOGAGE : Vérification des données brutes (console)
+        console.log(`Orientation brute: A=${(event.alpha || 0).toFixed(0)}, P=${(event.beta || 0).toFixed(0)}, R=${(event.gamma || 0).toFixed(0)}`);
 
-        // NOUVEAU : AFFICHAGE DANS LE DOM
+        // DÉBOGAGE : AFFICHAGE DANS LE DOM
         if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(event.beta || 0).toFixed(1)} °`;
         if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(event.gamma || 0).toFixed(1)} °`;
-    }
-}
-// ...
-
-        // TEMPORAIRE : Vérification des données brutes
-        console.log(`Orientation brute: A=${event.alpha.toFixed(0)}, P=${event.beta.toFixed(0)}, R=${event.gamma.toFixed(0)}`);
-    }
-}
-// ...
-        // Enregistre en RADIANS pour la soustraction de G dans le Bloc A
-        global_pitch = event.beta ? event.beta * D2R : 0; 
-        global_roll = event.gamma ? event.gamma * D2R : 0; 
-        currentHeading = event.alpha ?? 0;
     }
 }
 function calculateBearing(lat1, lon1, lat2, lon2) {
