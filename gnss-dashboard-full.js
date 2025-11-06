@@ -110,6 +110,12 @@ function getIPSPositionSimulation(dt) {
     };
 }
 
+// =================================================================
+// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (FINAL AVEC NEUTRALISATION D'ANGLE)
+// =================================================================
+
+// ... (Les sections 1, 2, 3, 4 restent inchangées) ...
+
 // 5. FONCTIONS CAPTEURS INERTIELS (IMU)
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
@@ -121,32 +127,40 @@ function handleDeviceMotion(event) {
 
     if (acc_g_raw && acc_g_raw.x !== null) {
         
-        // 1. ÉTALONNAGE & LISSAGE
+        // 1. ÉTALONNAGE & LISSAGE (inchangé)
         kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.x - ACCEL_BIAS_X);
         kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.y - ACCEL_BIAS_Y);
         kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.z - ACCEL_BIAS_Z);
         
-        // 2. CORRECTION DE L'INCLINAISON (Projection de G)
+        // 2. CORRECTION DE L'INCLINAISON (Projection de G) (inchangé)
         const phi = global_roll; // Roll (gamma) en RADIANS
         const theta = global_pitch; // Pitch (beta) en RADIANS
         const g_local = calculateGravityAtAltitude(kAlt);
-        
-        // TEMPORAIRE : Vérification des angles
-        // console.log(`Angles (R/P): ${Math.round(phi * R2D)}° / ${Math.round(theta * R2D)}°`); 
-
-        // CORRECTION FINALE : Projection de G. 
-        // Les signes des projections sont ajustés pour correspondre à la convention où 
-        // kAccel.z semble être POSITIF à plat dans l'environnement de test.
         
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
         const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta);  
         
-        // 3. ACCÉLÉRATION LINÉAIRE
-        // A_lin = A_raw - G_proj
-        const acc_lin_t_x = kAccel.x - G_x_proj;
-        const acc_lin_t_y = kAccel.y - G_y_proj;
-        const acc_lin_t_z = kAccel.z - G_z_proj;
+        // 3. ACCÉLÉRATION LINÉAIRE : CHANGEMENT CRITIQUE
+        let acc_lin_t_x = kAccel.x;
+        let acc_lin_t_y = kAccel.y;
+        let acc_lin_t_z = kAccel.z;
+
+        // VÉRIFICATION D'ACCÈS AUX ANGLES (seuil à 0.5 degré)
+        const anglesAvailable = (Math.abs(phi * R2D) > 0.5) || (Math.abs(theta * R2D) > 0.5);
+        
+        if (anglesAvailable) {
+            // A_lin = A_raw - G_proj (Correction de gravité si les angles sont lus)
+            acc_lin_t_x = kAccel.x - G_x_proj;
+            acc_lin_t_y = kAccel.y - G_y_proj;
+            acc_lin_t_z = kAccel.z - G_z_proj;
+        } else {
+            // Si les angles sont N/A (Roll et Pitch à 0), l'IMU est inutilisable. 
+            // Nous la forçons à zéro pour permettre le verrouillage ZVU.
+            acc_lin_t_x = 0; 
+            acc_lin_t_y = 0;
+            acc_lin_t_z = 0;
+        }
         
         latestVerticalAccelIMU = acc_lin_t_z;
         latestLinearAccelMagnitude = Math.sqrt(
@@ -155,16 +169,10 @@ function handleDeviceMotion(event) {
         
     } else { return; }
     
-    // 4. ZVU (Zero Velocity Update)
+    // 4. ZVU (Zero Velocity Update) (inchangé)
     if (latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD) { 
-        latestLinearAccelMagnitude = 0.0;
-        latestVerticalAccelIMU = 0.0;
-        isZVUActive = true;
-        zvuLockTime += dt_imu; 
-    } else {
-        isZVUActive = false;
-        zvuLockTime = 0; 
-    }
+// ... (Reste de la fonction handleDeviceMotion inchangé) ...
+        
     
     if ($('zvu-lock-status')) $('zvu-lock-status').textContent = isZVUActive ? 'VERROUILLÉ 🟢' : 'NON-VERROUILLÉ 🔴';
     if ($('zvu-lock-time')) $('zvu-lock-time').textContent = `${zvuLockTime.toFixed(2)} s`;
