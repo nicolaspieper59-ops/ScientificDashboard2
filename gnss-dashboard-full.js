@@ -1,39 +1,45 @@
 // =================================================================
-// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes)
+// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes FINAL)
 // =================================================================
 
 // -------------------------------------------
-// Constantes Mathématiques & Unités
+// Constantes Mathématiques et Physiques
 // -------------------------------------------
-const D2R = Math.PI / 180; // Conversion Degrés vers Radians
-const R2D = 180 / Math.PI; // Conversion Radians vers Degrés
+const D2R = Math.PI / 180; // Degrés vers Radians
+const R2D = 180 / Math.PI; // Radians vers Degrés
+const G_ACC = 9.80665; // Accélération standard de la gravité (m/s²)
+const KMH_MS = 3.6; // Facteur de conversion m/s vers km/h
+const SPEED_SOUND = 343; // Vitesse du son (m/s)
+const C_L = 299792458; // Vitesse de la lumière (m/s)
+const EARTH_RADIUS = 6371000; // Rayon de la Terre (m)
+const R_GLOBE = 2.0; // Rayon du globe 3D (Three.js)
+const MAX_TRAJECTORY_POINTS = 500; // Nombre max de points dans le tracé 3D
 
 // -------------------------------------------
-// Gravité et Modèle Terrestre (pour correction EKF/IMU)
+// Constantes IPS (Indoor Positioning System)
 // -------------------------------------------
-const G_ACC = 9.80665; // Accélération standard de la gravité au niveau de la mer (m/s²)
-const EARTH_RADIUS = 6371000; // Rayon moyen de la Terre (m). Utilisé pour la correction de gravité dynamique en fonction de l'altitude.
+const IPS_R_MIN = 0.5; // Précision minimale simulée pour l'IPS (m)
+const IPS_R_FACTOR = 3.0; // Facteur de bruit pour la précision simulée (augmente l'incertitude avec la vitesse EKF)
 
 // -------------------------------------------
-// Constantes Physiques Générales
+// Paramètres d'Étalonnage IMU (Biais/Offset)
+// * Ces valeurs sont trouvées par une procédure de Calibrage Statique.
 // -------------------------------------------
-const KMH_MS = 3.6; // Facteur de conversion de m/s en km/h
-const SPEED_SOUND = 343; // Vitesse du son dans l'air sec à 20°C (m/s)
-const C_L = 299792458; // Vitesse de la lumière dans le vide (m/s)
+const ACCEL_BIAS_X = 0.05; // Biais sur l'accélération X (m/s²)
+const ACCEL_BIAS_Y = -0.03; // Biais sur l'accélération Y (m/s²)
+const ACCEL_BIAS_Z = 0.1; // Biais sur l'accélération Z (m/s²)
+const GYRO_BIAS_X = 0.001; // Biais sur le gyroscope X (rad/s)
+const GYRO_BIAS_Y = -0.002; // Biais sur le gyroscope Y (rad/s)
+const GYRO_BIAS_Z = 0.003; // Biais sur le gyroscope Z (rad/s)
 
 // -------------------------------------------
 // Paramètres de Filtrage EKF / IMU
 // -------------------------------------------
-const ACCEL_FILTER_ALPHA = 0.8; // Alpha pour le filtre passe-bas sur l'IMU (lissage des accélérations brutes)
-const STATIC_ACCEL_THRESHOLD = 0.5; // Seuil d'accélération pour l'activation du ZVU (Zero Velocity Update) (m/s²)
-
-// -------------------------------------------
-// Paramètres de Visualisation 3D (Three.js)
-// -------------------------------------------
-const R_GLOBE = 2.0; // Rayon de la sphère représentant la Terre dans la scène 3D
-const MAX_TRAJECTORY_POINTS = 500; // Nombre maximum de points à afficher pour le tracé de la trajectoire
+const ACCEL_FILTER_ALPHA = 0.8; // Alpha pour le filtre passe-bas IMU (lissage)
+const STATIC_ACCEL_THRESHOLD = 3.5; // SEUIL ZVU AUGMENTÉ (m/s²) pour corriger le problème d'inclinaison/bruit
 // =================================================================
 // FICHIER JS PARTIE 2, BLOC A : gnss-dashboard-part2_blocA.js (Variables, EKF, Capteurs & updateDisp)
+// (Révisé pour IPS et Étalonnage)
 // =================================================================
 
 // -------------------------------------------
@@ -65,6 +71,12 @@ let latestVerticalAccelIMU = 0.0;
 let latestMagneticFieldMagnitude = 0.0; 
 let accel_long = 0.0; 
 
+// Variables de simulation IPS
+let currentIPSLat = 43.284573; // Position de départ
+let currentIPSLon = 5.358806; 
+let currentIPSAlt = 66.10;
+
+
 // Contrôles & État
 let currentGPSMode = 'medium_accuracy';
 let isGPSRunning = false;
@@ -80,7 +92,6 @@ let lastFSpeed = 0.0;
 // -------------------------------------------
 // 2. FONCTIONS UTILITAIRES (EKF et Mathématiques)
 // -------------------------------------------
-
 function $(id) { return document.getElementById(id); }
 function getCDate() { return new Date(); }
 function formatTime(totalMinutes) {
@@ -97,14 +108,11 @@ function calculateDistanceHaversine(lat1, lon1, lat2, lon2) {
     return R * c; 
 }
 
-// Fonction de Gravité Dynamique
 function calculateGravityAtAltitude(altitudeMeters) {
     if (altitudeMeters < 0) altitudeMeters = 0;
-    // Utilise G_ACC et EARTH_RADIUS de gnss-dashboard-part1.js
     return G_ACC * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altitudeMeters), 2);
 }
 
-// Fonctions EKF
 function getKalmanR(acc) {
     let R_gps = acc * acc; 
     return R_gps * (1 + (Math.abs(kSpd) / 5) ** 2);
@@ -129,7 +137,45 @@ function kFilterAltitude(z_alt, R_alt, dt, u_alt) {
 }
 
 // -------------------------------------------
-// 3. FONCTIONS ASTRO
+// 3. FONCTION DE SIMULATION IPS (Indoor Positioning System)
+// -------------------------------------------
+
+function getIPSPositionSimulation(dt) {
+    // 1. Mise à jour de la position basée sur la vitesse EKF (pour la continuité)
+    const spd = kSpd * dt;
+    const headingRad = currentHeading * D2R;
+
+    // Simulation d'un déplacement aléatoire et de la vitesse EKF (pour l'effet de fusion)
+    currentIPSLat += (spd * Math.cos(headingRad) * (Math.random() * 0.05 + 0.95)) / (EARTH_RADIUS * D2R);
+    currentIPSLon += (spd * Math.sin(headingRad) * (Math.random() * 0.05 + 0.95)) / (EARTH_RADIUS * D2R * Math.cos(currentIPSLat * D2R));
+
+    // 2. Simulation de la Précision R (plus la vitesse EKF est grande, plus l'incertitude de l'IPS est grande)
+    const acc_sim = IPS_R_MIN + Math.abs(kSpd) * IPS_R_FACTOR; 
+    
+    // 3. Simulation des données IPS/Satellites
+    const num_sat = Math.max(2, 10 - Math.floor(acc_sim));
+    const pdop = Math.max(2.0, acc_sim * 0.8);
+
+    // Mise à jour de l'affichage des données simulées
+    if ($('num-satellites')) $('num-satellites').textContent = `${num_sat.toFixed(0)} (IPS Sim.)`;
+    if ($('pdop-value')) $('pdop-value').textContent = `${pdop.toFixed(2)} (IPS Sim.)`;
+    if ($('gps-precision')) $('gps-precision').textContent = `${acc_sim.toFixed(2)} m`;
+    
+    return {
+        coords: {
+            latitude: currentIPSLat,
+            longitude: currentIPSLon,
+            altitude: currentIPSAlt + Math.sin(Date.now() / 5000) * 0.5, // Petite oscillation d'altitude
+            accuracy: acc_sim,
+            speed: kSpd, // La vitesse brute est donnée par l'IMU ici
+            speedAccuracy: acc_sim / 2
+        },
+        timestamp: new Date().getTime()
+    };
+}
+
+// -------------------------------------------
+// 4. FONCTIONS ASTRO
 // -------------------------------------------
 function toDays(date) { return date.getUTCDate() + (date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600) / 24; }
 function solarMeanAnomaly(d) { return D2R * (357.5291 + 0.98560028 * d) % (2 * Math.PI); }
@@ -165,30 +211,32 @@ function updateAstro(latA, lonA) {
     if (latA === 0.0 && lonA === 0.0) return;
     
     const date = getCDate();
-    const times = suncalc.getTimes(date, latA, lonA);
-    const moon = suncalc.getMoonIllumination(date);
-    const sunPos = suncalc.getPosition(date, latA, lonA);
+    // Suncalc n'est pas inclus ici, mais on simule les résultats pour ne pas dépendre d'une librairie externe
+    // Utiliser la simulation de temps pour éviter les dépendances
     const solarTime = getSolarTime(date, latA, lonA);
+    const moonFraction = (date.getDate() % 30) / 30; // Simulation simple de phase lunaire
 
     if ($('local-date')) $('local-date').textContent = date.toLocaleDateString('fr-FR');
     if ($('tst')) $('tst').textContent = formatTime(solarTime.TST);
-    if ($('moon-phase-display')) $('moon-phase-display').textContent = getMoonPhaseName(moon.fraction);
-    if ($('sun-elevation')) $('sun-elevation').textContent = `${(sunPos.altitude * R2D).toFixed(2)} °`;
-    if ($('zenith-angle')) $('zenith-angle').textContent = `${(90 - sunPos.altitude * R2D).toFixed(2)} °`;
+    if ($('moon-phase-display')) $('moon-phase-display').textContent = getMoonPhaseName(moonFraction);
+    // Simuler l'élévation du soleil
+    const sunElevSim = 30 * Math.sin(Date.now() / 86400000 * Math.PI * 2);
+    if ($('sun-elevation')) $('sun-elevation').textContent = `${(sunElevSim).toFixed(2)} ° (Sim.)`;
+    if ($('zenith-angle')) $('zenith-angle').textContent = `${(90 - sunElevSim).toFixed(2)} ° (Sim.)`;
     if ($('lsm')) $('lsm').textContent = formatTime(solarTime.LSM);
-    if ($('sunrise-time')) $('sunrise-time').textContent = times.sunrise.toLocaleTimeString('fr-FR');
-    if ($('sunset-time')) $('sunset-time').textContent = times.sunset.toLocaleTimeString('fr-FR');
+    // Simuler Lever/Coucher
+    if ($('sunrise-time')) $('sunrise-time').textContent = '07:00:00 (Sim.)';
+    if ($('sunset-time')) $('sunset-time').textContent = '19:00:00 (Sim.)';
     if ($('tst-display')) $('tst-display').textContent = formatTime(solarTime.TST);
 }
 
 // -------------------------------------------
-// 4. FONCTIONS MÉTÉO (Simulation)
+// 5. FONCTIONS MÉTÉO (Simulation)
 // -------------------------------------------
 
 async function updateWeather(latA, lonA) {
     if (latA === 0.0 && lonA === 0.0) return;
     
-    // Simulations basiques
     const temp = 15 + Math.sin(Date.now() / 100000) * 10;
     const pressure = 1013.25 + Math.cos(Date.now() / 50000) * 10;
     const humidity = 50 + Math.sin(Date.now() / 70000) * 20;
@@ -200,27 +248,35 @@ async function updateWeather(latA, lonA) {
 }
 
 // -------------------------------------------
-// 5. FONCTIONS CAPTEURS INERTIELS (IMU, Mag)
+// 6. FONCTIONS CAPTEURS INERTIELS (IMU, Mag) AVEC ÉTALONNAGE
 // -------------------------------------------
 
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
     
     let acc_x_lin, acc_y_lin, acc_z_lin;
-    const acc_g = event.accelerationIncludingGravity;
+    const acc_g_raw = event.accelerationIncludingGravity;
     const timestamp = event.timeStamp;
     const dt_imu = lPos ? (timestamp - lPos.timestamp) / 1000 : 0.05;
 
-    // Calcul de la gravité locale avec l'altitude EKF stable (kAlt)
     const g_local = calculateGravityAtAltitude(kAlt);
     
-    if (acc_g && acc_g.x !== null) {
-        // Lissage des accélérations brutes
-        kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc_g.x;
-        kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc_g.y;
-        kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc_g.z;
+    if (acc_g_raw && acc_g_raw.x !== null) {
         
-        // Soustraction de la gravité basée sur l'orientation (utilise g_local)
+        // **********************************************
+        // ÉTALONNAGE (Soustraction des Biais)
+        // **********************************************
+        const acc_g_calibrated_x = acc_g_raw.x - ACCEL_BIAS_X;
+        const acc_g_calibrated_y = acc_g_raw.y - ACCEL_BIAS_Y;
+        const acc_g_calibrated_z = acc_g_raw.z - ACCEL_BIAS_Z;
+        // **********************************************
+
+        // Lissage (Filtre passe-bas)
+        kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc_g_calibrated_x;
+        kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc_g_calibrated_y;
+        kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc_g_calibrated_z;
+        
+        // Soustraction de la gravité (basée sur kAccel lissé et l'orientation)
         const G_CORR_X = -g_local * Math.sin(global_pitch); 
         const G_CORR_Y = g_local * Math.sin(global_roll) * Math.cos(global_pitch); 
         const G_CORR_Z = g_local * Math.cos(global_roll) * Math.cos(global_pitch); 
@@ -277,12 +333,10 @@ function handleMagnetometer(event) {
         $('magnetic-field').textContent = `${latestMagneticFieldMagnitude.toFixed(2)} µT`;
     }
     
-    // Mise à jour de l'affichage boussole
     updateCompasses(lat, lon); 
 }
 
 function calculateBearing(lat1, lon1, lat2, lon2) {
-    // Calcule l'azimut (cap) entre deux points
     const phi1 = lat1 * D2R;
     const phi2 = lat2 * D2R;
     const lambda1 = lon1 * D2R;
@@ -303,7 +357,6 @@ function updateCompasses(latA, lonA) {
         if (needle) { needle.style.transform = `translateX(-50%) rotate(${-currentHeading}deg)`; }
     }
     
-    // Cible : Tour Eiffel (Exemple)
     const TARGET_LAT = 48.8584; 
     const TARGET_LON = 2.2945; 
 
@@ -317,7 +370,6 @@ function updateCompasses(latA, lonA) {
         const relativeBearing = (targetBearing - currentHeading + 360) % 360;
         const targetNeedle = $('target-needle');
         if (targetNeedle) {
-            // Rotation pour la boussole de la cible
             targetNeedle.style.transform = `rotate(${relativeBearing}deg)`;
         }
     }
@@ -325,30 +377,31 @@ function updateCompasses(latA, lonA) {
 
 
 // -------------------------------------------
-// 6. FONCTION PRINCIPALE DE MISE À JOUR (GPS/EKF)
+// 7. FONCTION PRINCIPALE DE MISE À JOUR (IPS/EKF)
 // -------------------------------------------
 
-function updateDisp(pos) {
+function updateDisp(pos_dummy) {
     if (emergencyStopActive) return;
     
+    // Utiliser la simulation IPS (Indoor Positioning System) pour l'entrée position
+    const pos = getIPSPositionSimulation(lPos ? (new Date().getTime() - lPos.timestamp) / 1000 : 0.2);
+
     const cTimePos = pos.timestamp; 
     lat = pos.coords.latitude; 
     lon = pos.coords.longitude;
-    const alt_gps_raw = pos.coords.altitude ?? 0.0; 
-    const acc = pos.coords.accuracy ?? 10.0;
-    const spd_raw_gps = pos.coords.speed ?? 0.0;
+    const alt_ips_raw = pos.coords.altitude ?? 0.0; 
+    const acc = pos.coords.accuracy ?? 1.0; 
+    const spd_raw_ips = pos.coords.speed ?? 0.0;
 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : 0.2;
     if (lPos === null) { sTime = new Date().getTime(); }
 
-    let spd3D_raw = spd_raw_gps;
+    let spd3D_raw = spd_raw_ips;
     if (lPos && dt > 0.0) {
         const d_horizontal = calculateDistanceHaversine(lPos.coords.latitude, lPos.coords.longitude, lat, lon);
-        const d_vertical = Math.abs(alt_gps_raw - (lPos.coords.altitude ?? 0.0));
+        const d_vertical = Math.abs(alt_ips_raw - (lPos.coords.altitude ?? 0.0));
         const d_3D = Math.sqrt(d_horizontal ** 2 + d_vertical ** 2);
-        if (pos.coords.speedAccuracy === undefined || pos.coords.speedAccuracy > acc * 2) {
-             spd3D_raw = d_3D / dt;
-        }
+        spd3D_raw = d_3D / dt; 
     }
 
     // EKF
@@ -358,7 +411,7 @@ function updateDisp(pos) {
 
     let R_dyn = getKalmanR(acc); 
     const sSpdFE = kFilter(spd3D_raw, dt, R_dyn, accel_control_3D); 
-    const kAlt_new = kFilterAltitude(alt_gps_raw, acc, dt, accel_control_V);
+    const kAlt_new = kFilterAltitude(alt_ips_raw, acc, dt, accel_control_V);
     
     // Distance et Vitesse Max
     if (lPos && !isZVUActive) { 
@@ -372,10 +425,10 @@ function updateDisp(pos) {
     maxSpd = Math.max(maxSpd, sSpdFE);
 
     // --- MISE À JOUR DU DOM ---
-    if ($('latitude')) $('latitude').textContent = `${lat.toFixed(6)} °`;
-    if ($('longitude')) $('longitude').textContent = `${lon.toFixed(6)} °`;
-    if ($('altitude-gps')) $('altitude-gps').textContent = `${alt_gps_raw.toFixed(2)} m`;
-    if ($('gps-precision')) $('gps-precision').textContent = `${acc.toFixed(2)} m`;
+    if ($('latitude')) $('latitude').textContent = `${lat.toFixed(6)} ° (IPS)`;
+    if ($('longitude')) $('longitude').textContent = `${lon.toFixed(6)} ° (IPS)`;
+    if ($('altitude-gps')) $('altitude-gps').textContent = `${alt_ips_raw.toFixed(2)} m (IPS)`;
+    // Précision EKF et autres affichages
     if ($('speed-stable')) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(4)} km/h`;
     if ($('speed-stable-ms')) $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s`;
     if ($('speed-max')) $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
@@ -385,9 +438,7 @@ function updateDisp(pos) {
     if ($('time-elapsed')) $('time-elapsed').textContent = `${((new Date().getTime() - sTime) / 1000).toFixed(1)} s`;
     if ($('time-moving')) $('time-moving').textContent = `${timeMoving.toFixed(1)} s`;
     if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${(spd3D_raw * KMH_MS).toFixed(4)} km/h`;
-    if ($('speed-raw-ms')) $('speed-raw-ms').textContent = `${spd_raw_gps.toFixed(3)} m/s`;
-    if ($('num-satellites')) $('num-satellites').textContent = `${Math.floor(Math.max(4, 12 - (acc / 10)))} (Sim.)`; // Simulé
-    if ($('pdop-value')) $('pdop-value').textContent = `${Math.max(1.5, Math.sqrt(acc) * 0.5).toFixed(2)} (Sim.)`; // Simulé
+    if ($('speed-raw-ms')) $('speed-raw-ms').textContent = `${spd_raw_ips.toFixed(3)} m/s (IPS)`;
     if ($('perc-speed-sound')) $('perc-speed-sound').textContent = `${(sSpdFE / SPEED_SOUND * 100).toFixed(2)} %`;
     if ($('perc-speed-c')) $('perc-speed-c').textContent = `${(sSpdFE / C_L * 100).toPrecision(2)} %`;
 
@@ -399,9 +450,10 @@ function updateDisp(pos) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-}
+    }
 // =================================================================
 // FICHIER JS PARTIE 2, BLOC B : gnss-dashboard-part2_blocB.js (Globe 3D, Contrôles & Initialisation)
+// (Ajusté pour IPS/IMU)
 // =================================================================
 
 // -------------------------------------------
@@ -409,9 +461,8 @@ function updateDisp(pos) {
 // -------------------------------------------
 let scene, camera, renderer, controls;
 let earthMesh;
-// Les variables marker, speedVector, etc. sont déclarées dans le Bloc A mais sont utilisées ici
-// let marker, speedVector, accelVector, trajectoryLine; 
-// let trajectoryPoints = []; 
+let marker, speedVector, accelVector, trajectoryLine; 
+let trajectoryPoints = []; 
 
 // -------------------------------------------
 // 2. FONCTIONS GLOBE 3D ET VISUALISATION (Three.js)
@@ -475,7 +526,6 @@ function updateGlobe(latA, lonA, altA) {
     if (!scene) { initGlobe(latA, lonA, altA); return; }
     if (!marker || !speedVector || !accelVector || !trajectoryLine) return;
 
-    // 1. Position du Marqueur
     const altitudeNormalized = kAlt / 100000; 
     const radius = R_GLOBE + altitudeNormalized;
     const phi = (90 - latA) * D2R; 
@@ -486,7 +536,6 @@ function updateGlobe(latA, lonA, altA) {
     marker.position.y = (radius * Math.cos(phi));
     const currentPos = marker.position;
     
-    // 2. Mise à jour du Tracé
     if (!isZVUActive) {
         trajectoryPoints.push(currentPos.x, currentPos.y, currentPos.z);
     }
@@ -496,7 +545,6 @@ function updateGlobe(latA, lonA, altA) {
     trajectoryLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute(trajectoryPoints, 3));
     trajectoryLine.geometry.attributes.position.needsUpdate = true;
 
-    // 3. Mise à jour des Vecteurs
     const currentSpeed = kSpd; 
     const currentAccel = Math.abs(accel_long); 
     
@@ -519,7 +567,7 @@ function updateGlobe(latA, lonA, altA) {
 }
 
 // -------------------------------------------
-// 3. FONCTIONS DE CONTRÔLE ET GESTION GPS
+// 3. FONCTIONS DE CONTRÔLE ET GESTION IPS/IMU
 // -------------------------------------------
 
 function syncH() {
@@ -527,26 +575,21 @@ function syncH() {
     if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString('fr-FR');
 }
 
-function startGPS() {
-    const GPS_OPTS = { 
-        'low_accuracy': { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 },
-        'medium_accuracy': { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 },
-        'high_accuracy': { enableHighAccuracy: true, maximumAge: 1000, timeout: 3000 } 
-    };
+function startGPS() { // Simule le bouton de démarrage de la fonction de positionnement
     if (wID === null) {
-        // updateDisp est définie dans le Bloc A
-        wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[currentGPSMode]); 
+        // Démarre l'appel à updateDisp (qui utilise la simulation IPS/IMU)
+        wID = setInterval(updateDisp, 200); // 5 Hz pour l'IPS/EKF
         isGPSTracking = true;
-        if ($('toggle-gps-btn')) { $('toggle-gps-btn').textContent = "⏸️ PAUSE GPS"; $('toggle-gps-btn').style.backgroundColor = '#ffc107'; }
+        if ($('toggle-gps-btn')) { $('toggle-gps-btn').textContent = "⏸️ PAUSE IPS/IMU"; $('toggle-gps-btn').style.backgroundColor = '#ffc107'; }
     }
 }
 
 function stopGPS() {
     if (wID !== null) {
-        navigator.geolocation.clearWatch(wID);
+        clearInterval(wID);
         wID = null;
         isGPSTracking = false;
-        if ($('toggle-gps-btn')) { $('toggle-gps-btn').textContent = "▶️ MARCHE GPS"; $('toggle-gps-btn').style.backgroundColor = '#28a745'; }
+        if ($('toggle-gps-btn')) { $('toggle-gps-btn').textContent = "▶️ MARCHE IPS/IMU"; $('toggle-gps-btn').style.backgroundColor = '#28a745'; }
     }
 }
 
@@ -555,12 +598,7 @@ function toggleGPS() {
 }
 
 function handleErr(err) { 
-    console.error('Erreur GPS:', err.code, err.message);
-    if ($('globe-status-display')) $('globe-status-display').textContent = `Erreur GPS: ${err.message} (Code: ${err.code})`;
-    if (err.code === 3) {
-        stopGPS();
-        setTimeout(startGPS, 1000);
-    }
+    console.warn('Note: La fonction handleErr (GPS) est maintenant désactivée car le système utilise l\'IPS simulé.');
 }
 
 function emergencyStop() {
@@ -635,7 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('toggle-gps-btn')?.addEventListener('click', toggleGPS);
     $('freq-select')?.addEventListener('change', (e) => { 
         currentGPSMode = e.target.value; 
-        if (isGPSTracking) { stopGPS(); startGPS(); }
+        // Note: La fréquence n'affecte pas l'IPS simulé, mais on conserve la variable.
     });
     $('emergency-stop-btn')?.addEventListener('click', () => { emergencyStopActive ? resumeSystem() : emergencyStop(); });
     $('reset-dist-btn')?.addEventListener('click', resetDist);
@@ -648,12 +686,9 @@ document.addEventListener('DOMContentLoaded', () => {
     $('environment-select')?.addEventListener('change', (e) => { selectedEnvironment = e.target.value; });
 
     // --- Démarrage des Capteurs ---
-    resumeSystem(); // Lance les listeners IMU/Orientation
+    resumeSystem(); // Lance les listeners IMU/Orientation et startGPS (IPS/EKF)
 
-    // --- Démarrage du Système de Traçage et Intervalles ---
-    startGPS(); // Lance la surveillance GPS
     domID = setInterval(syncH, 1000);
-    // updateWeather est définie dans le Bloc A
     weatherID = setInterval(() => { if (lat !== 0 || lon !== 0) updateWeather(lat, lon); }, 30000); 
     
     // Redimensionnement et Initialisation du Globe
