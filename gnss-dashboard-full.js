@@ -1,266 +1,38 @@
 // =================================================================
 // FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes)
+// Ce fichier définit toutes les constantes du tableau de bord.
 // =================================================================
 
-const D2R = Math.PI / 180; // Degrés vers Radians
-const R2D = 180 / Math.PI; // Radians vers Degrés
+// -------------------------------------------
+// Constantes Mathématiques & Unités
+// -------------------------------------------
+const D2R = Math.PI / 180; // Conversion Degrés vers Radians
+const R2D = 180 / Math.PI; // Conversion Radians vers Degrés
+
+// -------------------------------------------
+// Gravité et Modèle Terrestre (pour correction EKF/IMU)
+// -------------------------------------------
 const G_ACC = 9.80665; // Accélération standard de la gravité au niveau de la mer (m/s²)
+const EARTH_RADIUS = 6371000; // Rayon moyen de la Terre (m). Utilisé pour la correction de gravité dynamique en fonction de l'altitude.
 
-// Constantes pour la gravité dynamique
-const EARTH_RADIUS = 6371000; // Rayon moyen de la Terre (m)
+// -------------------------------------------
+// Constantes Physiques Générales
+// -------------------------------------------
+const KMH_MS = 3.6; // Facteur de conversion de m/s en km/h
+const SPEED_SOUND = 343; // Vitesse du son dans l'air sec à 20°C (m/s)
+const C_L = 299792458; // Vitesse de la lumière dans le vide (m/s)
 
+// -------------------------------------------
 // Paramètres de Filtrage EKF / IMU
-const ACCEL_FILTER_ALPHA = 0.8; 
-const STATIC_ACCEL_THRESHOLD = 0.5;
-
-// Constantes de conversion et physiques
-const KMH_MS = 3.6; 
-const SPEED_SOUND = 343; 
-const C_L = 299792458; 
-
-// Constante du globe (utilisée par Three.js)
-const R_GLOBE = 2.0;
-const MAX_TRAJECTORY_POINTS = 500;
-
-// --- CONSTANTES EKF ET DYNAMIQUE ---
-const MIN_DT = 0.05; // Temps minimum pour les calculs de dérivée
-const GPS_NOISE_FACTOR = 0.15; // Facteur pour convertir la précision en bruit de vitesse
-const VEL_NOISE_FACTOR = 5.0; // Facteur pour seuil ZVU (m/s par mètre de bruit)
-const MAX_ACC = 50.0; // Précision GPS maximale acceptable (m)
-const GOOD_ACC_THRESHOLD = 5.0; // Précision GPS considérée comme bonne (m)
-const ALT_TH = 10.0; // Seuil pour le mode souterrain (m)
-const STATIC_ACCEL_THRESHOLD = 0.5; // Seuil pour l'IMU (m/s²)
-const ACCEL_FILTER_ALPHA = 0.9; // Coefficient de lissage passe-bas de l'IMU (0.9 = 90% ancien)
-const DOM_SLOW_UPDATE_MS = 1000; // Rafraîchissement lent pour l'heure/date
-const WEATHER_UPDATE_MS = 30000; // Rafraîchissement météo (30 secondes)
-
-// --- CONSTANTES MAGNÉTIQUES ---
-const MAG_FIELD_THRESHOLD_UT = 100.0; // Seuil de champ magnétique (microTesla) pour considérer une interférence (Typique: 25-65 µT)
-const MAG_NOISE_FACTOR = 0.05; // Facteur d'influence du champ magnétique sur le bruit EKF
-
-// --- CONSTANTES NAVIGATION ET GÉODÉSIE ---
-const TARGET_LAT = 48.8584; // Latitude de la Tour Eiffel (exemple de cible)
-const TARGET_LON = 2.2945; // Longitude de la Tour Eiffel (exemple de cible)
-
-// --- CONSTANTES SYSTÈME ET API ---
-const NETHER_RATIO = 8; // Ratio de distance pour le mode Nether
-const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // Remplacer
-const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather";
-const GEOID_SEPARATION_M = 43.14; // Séparation géoïde EGM96 (exemple)
-
-// Facteurs de bruit EKF par environnement
-const R_NORMAL = 1.0; 
-const R_FOREST = 1.5;
-const R_CONCRETE = 3.0;
-const R_METAL = 2.5; 
-const R_GPS_DISABLED = 1000.0; // Bruit très élevé pour la vitesse si pas de GPS
-
-// Options du GPS Watcher
-const GPS_OPTS = {
-    HIGH_FREQ: { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 },
-    LOW_FREQ: { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-};
-
-// --- VARIABLES GLOBALES ---
-let lat = 0.0, lon = 0.0;
-let wID = null; // ID du GPS watchPosition
-let lPos = null; // Dernière position enregistrée
-let sTime = null; // Temps de début de session
-let distM = 0.0; // Distance totale parcourue (m)
-let maxSpd = 0.0; // Vitesse maximale (m/s)
-let timeMoving = 0.0; // Temps passé au-dessus du seuil de vitesse
-let lastFSpeed = 0.0; // Dernière vitesse filtrée (pour calcul accel.)
-let currentGPSMode = 'HIGH_FREQ'; 
-let selectedEnvironment = 'NORMAL';
-let netherMode = false;
-let emergencyStopActive = false;
-
-// Variables du filtre Kalman (Vitesse Horizontale 3D)
-let kSpd = 0.0; // Vitesse EKF filtrée (m/s)
-let kUncert = 10.0; // Incertitude (variance) de la vitesse (m²/s²) - CORRIGÉ (était 1000.0)
-
-// Variables du filtre Kalman (Altitude)
-let kAlt = 0.0; // Altitude EKF filtrée (m)
-let kAltUncert = 10.0; // Incertitude de l'altitude (m²) - CORRIGÉ (était 1000.0)
-
-// Variables IMU
-let global_pitch = 0.0; // Tangage (rad)
-let global_roll = 0.0; // Roulis (rad)
-let kAccel = { x: 0, y: 0, z: 0 }; // Accélération lissée (incluant gravité)
-let latestLinearAccelMagnitude = 0.0; // Magnitude de l'accélération linéaire (sans gravité)
-let latestVerticalAccelIMU = 0.0; // Accélération verticale linéaire (sans gravité)
-let G_STATIC_REF = { x: 0, y: 0, z: 0 }; // Référence de gravité statique
-let latestMagneticFieldMagnitude = 0.0; // Magnitude du champ magnétique (µT)
-let currentHeading = 0.0; // Cap actuel de l'appareil (pour la boussole standard)
-
-// Variables Météo
-let lastP_hPa = 1013.25; // Pression atmosphérique (hPa)
-let lastAirDensity = 1.225; // Densité de l'air (kg/m³)
-
-// Variables Astro/Temps
-let domID = null;
-let weatherID = null;
-let zvuLockTime = 0;
-let isZVUActive = false;
-
-// Variables Globe 3D (Three.js)
-let scene, camera, renderer, controls;
-let marker; 
-
-// --- FONCTIONS UTILITAIRES ---
-
-function $(id) { return document.getElementById(id); }
-
-/** Convertit une date en jours juliens à partir de J2000. */
-function toDays(date) { return (date.getTime() / dayMs) - 10957.5; }
-
-/** Calcule l'anomalie solaire moyenne. */
-function solarMeanAnomaly(d) { return (D2R * 356.047 + d * D2R * 0.98560028) % (2 * Math.PI); }
-
-/** Calcule la longitude écliptique du Soleil. */
-function eclipticLongitude(M) {
-    const C = D2R * (1.914 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)); // Équation du centre
-    const P = D2R * 102.9377; // Longitude du périhélie
-    return (M + C + P + Math.PI) % (2 * Math.PI); 
-}
-
-/** Calcule le point de rosée (approximation Magnus-Tetens). */
-function calculateDewPoint(tempC, humidity) {
-    const A = 17.625;
-    const B = 243.04;
-    const alpha = Math.log(humidity / 100) + (A * tempC) / (B + tempC);
-    return (B * alpha) / (A - alpha);
-}
-
-/** Renvoie le nom de la phase lunaire. */
-function getMoonPhaseName(phase) {
-    if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune 🌑";
-    if (phase < 0.22) return "Premier Croissant 🌒";
-    if (phase < 0.28) return "Premier Quartier 🌓";
-    if (phase < 0.47) return "Lune Gibbeuse Croissante 🌔";
-    if (phase < 0.53) return "Pleine Lune 🌕";
-    if (phase < 0.72) return "Lune Gibbeuse Décroissante 🌖";
-    if (phase < 0.78) return "Dernier Quartier 🌗";
-    return "Dernier Croissant 🌘";
-}
-
-/** Synchronise l'heure locale au démarrage. */
-function syncH() {
-    window.cDate = new Date();
-    if ($('local-time')) $('local-time').textContent = window.cDate.toLocaleTimeString();
-    if ($('date-display')) $('date-display').textContent = window.cDate.toLocaleDateString();
-}
-
-/** Renvoie l'objet Date actuel. */
-function getCDate() { return window.cDate || new Date(); }
-
-/** Formatte le temps en heures:minutes:secondes pour TST/MST. */
-function formatTime(totalMinutes) {
-    const mins = (totalMinutes + 1440) % 1440; 
-    const hours = Math.floor(mins / 60);
-    const minutes = Math.floor(mins % 60);
-    const seconds = Math.floor((totalMinutes * 60) % 60);
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-/** Fonction de prédiction/mise à jour du filtre EKF (Vitesse). */
-function kFilter(measurement, dt, R, accel_control) {
-    // 1. Prediction (Modèle de mouvement simple : Accélération constante)
-    kSpd += accel_control * dt; // Nouvelle vitesse prédite (basée sur l'IMU)
-    kUncert += R * dt; // Augmentation de l'incertitude avec le temps
-    
-    // 2. Mise à jour (Correction avec la mesure GPS brute)
-    const K = kUncert / (kUncert + R); // Gain de Kalman
-    kSpd += K * (measurement - kSpd); // Correction de la vitesse
-    kUncert *= (1 - K); // Réduction de l'incertitude
-    
-    // Clamping: La vitesse filtrée ne peut pas être négative.
-    return Math.max(0, kSpd); 
-}
-
-/** Fonction de filtre EKF simplifiée pour l'Altitude. */
-function kFilterAltitude(measurement, accuracy, dt, accel_control_V) {
-    // Ce filtre simplifie en filtrant la position (altitude) directement
-    
-    // 1. Prediction
-    let kAlt_v_pred = 0; // Vitesse verticale non filtrée
-    if (lPos && lPos.kAltUncert_old !== undefined && dt > MIN_DT) {
-        kAlt_v_pred = (kAlt - lPos.kAlt_old) / dt; // Approximation de la vitesse verticale
-    }
-    kAlt_v_pred += accel_control_V * dt; // Influence de l'accélération
-    kAlt += kAlt_v_pred * dt; // Prédiction de la nouvelle altitude
-    
-    // Augmentation de l'incertitude
-    kAltUncert += 1.0 * dt; 
-    
-    // 2. Mise à jour (Correction avec la mesure GPS brute si disponible)
-    if (measurement !== null) {
-        const R_alt = accuracy * accuracy; // Variance de la mesure GPS (R)
-        const K = kAltUncert / (kAltUncert + R_alt); // Gain de Kalman
-        kAlt += K * (measurement - kAlt); // Correction
-        kAltUncert *= (1 - K); // Réduction de l'incertitude
-    }
-    
-    return kAlt; 
-}
-
-/** Sélectionne le bruit R de l'EKF en fonction de l'environnement, altitude, et magnétisme. */
-function getKalmanR(effectiveAcc, alt, pressurehPa) {
-    const noiseFromGPS = effectiveAcc * effectiveAcc; 
-    let baseR = noiseFromGPS * GPS_NOISE_FACTOR;
-
-    // --- 1. Facteur Environnemental (Multiplicatif) ---
-    switch (selectedEnvironment) {
-        case 'FOREST': baseR *= R_FOREST; break;
-        case 'CONCRETE': baseR *= R_CONCRETE; break;
-        case 'METAL': baseR *= R_METAL; break;
-        default: baseR *= R_NORMAL; 
-    }
-    
-    // --- 2. Facteur Souterrain (Altitude) ---
-    if (alt !== null && alt < ALT_TH) {
-        baseR *= 1.5; // Augmente le bruit en souterrain
-    }
-    
-    // --- 3. Variance Magnétique de Vitesse (VMV) (Additif) ---
-    let magVariance = 0.0;
-    if (latestMagneticFieldMagnitude > MAG_FIELD_THRESHOLD_UT) {
-        const excessMag = latestMagneticFieldMagnitude - MAG_FIELD_THRESHOLD_UT;
-        magVariance = excessMag * MAG_NOISE_FACTOR; 
-        baseR += magVariance;
-    }
-    
-    if ($('mag-variance-display')) {
-         $('mag-variance-display').textContent = `+${magVariance.toFixed(3)} m² ${magVariance > 0.001 ? '(Interférence)' : ''}`;
-    }
-    
-    // Le bruit minimal assure la stabilité du filtre même si l'erreur GPS est 0.
-    return Math.max(baseR, 0.001); 
-}
-
-/** Calcule la distance entre deux points GPS (mètres) - Formule Haversine. */
-function calculateDistanceHaversine(lat1, lon1, lat2, lon2) {
-    const R = 6371e3; // Rayon moyen de la Terre en mètres
-    const phi1 = lat1 * D2R;
-    const phi2 = lat2 * D2R;
-    const deltaPhi = (lat2 - lat1) * D2R;
-    const deltaLambda = (lon2 - lon1) * D2R;
-
-    const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-              Math.cos(phi1) * Math.cos(phi2) *
-              Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-    }
-// ======
-// =================================================================
-// FICHIER JS PARTIE 2, BLOC A : gnss-dashboard-part2_blocA.js (Variables, EKF, Capteurs & updateDisp)
-// =================================================================
+// -------------------------------------------
+const ACCEL_FILTER_ALPHA = 0.8; // Alpha pour le filtre passe-bas sur l'IMU (lissage des accélérations brutes)
+const STATIC_ACCEL_THRESHOLD = 0.5; // Seuil d'accélération pour l'activation du ZVU (Zero Velocity Update) (m/s²)
 
 // -------------------------------------------
-// 1. VARIABLES GLOBALES (Déclarations initiales)
+// Paramètres de Visualisation 3D (Three.js)
 // -------------------------------------------
+const R_GLOBE = 2.0; // Rayon de la sphère représentant la Terre dans la scène 3D
+const MAX_TRAJECTORY_POINTS = 500; // Nombre maximum de points à afficher pour le tracé de la trajectoire
 
 let wID = null; 
 let domID = null;
