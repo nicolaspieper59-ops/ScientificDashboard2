@@ -111,8 +111,25 @@ function getIPSPositionSimulation(dt) {
 }
 
 // 5. FONCTIONS CAPTEURS INERTIELS (IMU)
+// ... (Dans gnss-dashboard-partA.js)
+
+// 5. FONCTIONS CAPTEURS INERTIELS (IMU)
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
+    
+    // ... (Reste du code inchangé) ...
+    
+    // 2. CORRECTION DE L'INCLINAISON (Projection de G)
+    const phi = global_roll; // Roll (gamma) en RADIANS
+    const theta = global_pitch; // Pitch (beta) en RADIANS
+    const g_local = calculateGravityAtAltitude(kAlt);
+
+    // TEMPORAIRE : Vérification des angles
+    console.log(`Angles (R/P): ${Math.round(phi * R2D)}° / ${Math.round(theta * R2D)}°`); 
+    
+    // CORRECTION FINALE : ... (Reste inchangé)
+    // ...
+    }
     
     const acc_g_raw = event.accelerationIncludingGravity;
     const timestamp = event.timeStamp;
@@ -348,9 +365,22 @@ function updateWeather(latA, lonA) {
 }
 
 // 3. Fonctions Orientation et Compass
+// ... (Dans gnss-dashboard-partB.js)
+
+// 3. Fonctions Orientation et Compass
 function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
     if (event.alpha !== null) {
+        // Enregistre en RADIANS pour la soustraction de G dans le Bloc A
+        global_pitch = event.beta ? event.beta * D2R : 0; 
+        global_roll = event.gamma ? event.gamma * D2R : 0; 
+        currentHeading = event.alpha ?? 0;
+
+        // TEMPORAIRE : Vérification des données brutes
+        console.log(`Orientation brute: A=${event.alpha.toFixed(0)}, P=${event.beta.toFixed(0)}, R=${event.gamma.toFixed(0)}`);
+    }
+}
+// ...
         // Enregistre en RADIANS pour la soustraction de G dans le Bloc A
         global_pitch = event.beta ? event.beta * D2R : 0; 
         global_roll = event.gamma ? event.gamma * D2R : 0; 
