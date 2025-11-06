@@ -14,7 +14,6 @@
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
     
     <style>
-        /* Styles adaptés (laisser les styles ici pour la simplicité) */
         body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; transition: background-color 0.5s, color 0.5s; }
         .dark-mode { background-color: #1e1e1e; color: #f4f4f4; }
         .dark-mode .section { background-color: #2e2e2e; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
@@ -28,7 +27,6 @@
         .data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
         .data-point span:first-child { font-weight: bold; color: #555; }
         
-        /* Contrôles */
         .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
         .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
         .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
@@ -37,7 +35,6 @@
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
         
-        /* Conteneur pour le globe et l'horloge */
         #globe-container { 
             height: 400px; 
             width: 100%; 
@@ -53,71 +50,13 @@
             font-family: monospace;
             overflow: hidden; 
         }
-        #minecraft-clock-container { 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            flex-direction: column;
-            padding-top: 10px;
-        }
-        #minecraft-clock {
-            width: 90px;
-            height: 90px;
-            position: relative;
-            border: 2px solid #555;
-            border-radius: 50%;
-            overflow: hidden;
-            background-color: #3f51b5; 
-        }
-        #minecraft-clock::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #00008b; 
-            opacity: 0.8; 
-            transition: background-color 2s, opacity 2s;
-            z-index: 1;
-        }
-        .sun-element, .moon-element {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform-origin: 0 0;
-            transition: transform 0.1s linear;
-            z-index: 2;
-        }
+        #minecraft-clock-container { display: flex; justify-content: center; align-items: center; flex-direction: column; padding-top: 10px; }
+        #minecraft-clock { width: 90px; height: 90px; position: relative; border: 2px solid #555; border-radius: 50%; overflow: hidden; background-color: #3f51b5; }
+        #minecraft-clock::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #00008b; opacity: 0.8; transition: background-color 2s, opacity 2s; z-index: 1; }
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
-
-        /* Styles pour les Boussoles */
-        #compass-visual, #target-visual {
-            position: relative; 
-            width: 80px; 
-            height: 80px; 
-            border: 2px solid #555; 
-            border-radius: 50%; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center;
-            margin-left: 10px;
-        }
-        #compass-needle {
-            width: 2px; 
-            height: 35px; 
-            background: red; 
-            position: absolute; 
-            top: 5px; 
-            transform-origin: 50% 100%; 
-            transition: transform 0.1s linear;
-        }
-        #target-needle {
-            width: 4px; 
-            height: 4px; 
-            border-radius: 50%; 
-            background: green; 
-            position: absolute; 
-            top: 5px; 
-            transition: transform 0.1s linear;
-        }
+        #compass-visual, #target-visual { position: relative; width: 80px; height: 80px; border: 2px solid #555; border-radius: 50%; display: flex; justify-content: center; align-items: center; margin-left: 10px; }
+        #compass-needle { width: 2px; height: 35px; background: red; position: absolute; top: 5px; transform-origin: 50% 100%; transition: transform 0.1s linear; }
+        #target-needle { width: 4px; height: 4px; border-radius: 50%; background: green; position: absolute; top: 5px; transition: transform 0.1s linear; }
     </style>
 </head>
 <body>
@@ -218,8 +157,7 @@
         <div class="section">
             <h2> 8¬2 Soleil & Lune (SunCalc)</h2>
             <div id="minecraft-clock-container">
-                <div id="minecraft-clock">
-                    </div>
+                <div id="minecraft-clock"></div>
                 <div class="clock-display" id="clock-status">Heure Solaire Vraie (TST)</div>
             </div>
             
@@ -245,13 +183,16 @@
                     <div id="compass-needle"></div>
                     <div style="font-size: 0.8em;">N</div>
                 </div>
-
                 <div id="target-visual">
                     <div style="width: 2px; height: 35px; background: blue; position: absolute; top: 5px; transform-origin: 50% 100%;"></div>
                     <div id="target-needle"></div>
                     <div style="font-size: 0.8em; color: green;">Cible</div>
                 </div>
             </div>
+            
+            <h3>Cible: Tour Eiffel</h3>
+            <div class="data-point"><span>Distance à la Cible</span><span id="target-distance">N/A</span></div>
+            <div class="data-point"><span>Cap Géodésique (Azimut)</span><span id="target-bearing">N/A</span></div>
 
             <hr>
 
@@ -263,8 +204,6 @@
         </div>
 
     </div>
-
-<script src="gnss-dashboard-part1.js"></script>
 
 <script src="gnss-dashboard-full.js"></script>
 
