@@ -340,25 +340,177 @@ function kFilterAltitude(z_alt, R_alt, dt, u_alt) {
     return x_alt;
 }
 
+//
+// =================================================================
+// FICHIER JS PARTIE 2, BLOC A : gnss-dashboard-part2_blocA.js (Variables, EKF, APIs, Capteurs & updateDisp)
+// =================================================================
+
 // -------------------------------------------
-// 3. FONCTIONS ASTRO, MÉTÉO (Simulations) & CAPTEURS
+// 1. VARIABLES GLOBALES (Déclarations initiales)
 // -------------------------------------------
 
-// Les fonctions ASTRO (getSolarTime, updateAstro), MÉTÉO (updateWeather) 
-// et CAPTEURS (handleDeviceMotion, handleDeviceOrientation, handleMagnetometer, 
-// calculateBearing, updateCompasses) sont incluses ici dans le bloc A.
-// (Le code exact des fonctions est omis ici pour la concision de la présentation, 
-// mais il est identique à celui du fichier complet précédent.)
-/* ... Code de getSolarTime, updateAstro, updateWeather, handleDeviceMotion, 
-handleDeviceOrientation, handleMagnetometer, calculateBearing, updateCompasses ... */
+let wID = null; // Watch ID pour Geolocation
+let domID = null; // Intervalle DOM lent
+let weatherID = null; // Intervalle Météo
+let lat = 0.0;
+let lon = 0.0;
+let kSpd = 0.0; // Vitesse EKF stable (m/s)
+let kAlt = 0.0; // Altitude EKF stable (m)
+let kUncert = 10.0; // Incertitude EKF vitesse (m²/s²)
+let kAltUncert = 10.0; // Incertitude EKF altitude (m²)
+let lPos = null; // Dernière position reçue
+let distM = 0.0; // Distance totale parcourue (m)
+let maxSpd = 0.0;
+let timeMoving = 0.0;
+let sTime = new Date().getTime(); // Temps de démarrage de la session
 
-// Exemple de handleDeviceMotion (pour l'IMU/Accélération Linéaire)
+// IMU/Orientation
+let kAccel = { x: 0, y: 0, z: 0 }; // Accélération filtrée
+let global_pitch = 0; // Tangage (rad)
+let global_roll = 0; // Roulis (rad)
+let currentHeading = 0; // Cap (degré)
+let latestLinearAccelMagnitude = 0.0; // Accélération Linéaire 3D (m/s²)
+let latestVerticalAccelIMU = 0.0; // Accélération Linéaire Verticale (m/s²)
+let latestMagneticFieldMagnitude = 0.0; // Magnitude du champ Magnétique (µT)
+let accel_long = 0.0; // Accélération longitudinale (calculée dans updateDisp)
+
+// Contrôles & État
+let currentGPSMode = 'medium_accuracy';
+let isGPSRunning = false;
+let isGPSTracking = false;
+let emergencyStopActive = false;
+let isZVUActive = false;
+let zvuLockTime = 0;
+let netherMode = false;
+let selectedEnvironment = 'Earth'; 
+let lastFSpeed = 0.0; 
+
+// Three.js (Déclarations minimales pour updateDisp)
+let marker, speedVector, accelVector, trajectoryLine; 
+const MAX_TRAJECTORY_POINTS = 500; 
+const R_GLOBE = 2.0; 
+// Les autres variables Three.js (scene, camera, renderer, etc.) sont dans le Bloc B.
+
+
+// -------------------------------------------
+// 2. FONCTIONS UTILITAIRES (EKF et Mathématiques)
+// -------------------------------------------
+
+function $(id) { return document.getElementById(id); }
+function getCDate() { return new Date(); }
+function formatTime(totalMinutes) {
+    const minutes = Math.round(totalMinutes % 60);
+    const hours = Math.floor(totalMinutes / 60) % 24;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+function calculateDistanceHaversine(lat1, lon1, lat2, lon2) {
+    const R = 6371000; 
+    const dLat = (lat2 - lat1) * D2R;
+    const dLon = (lon2 - lon1) * D2R;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * D2R) * Math.cos(lat2 * D2R) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; 
+}
+
+// Fonctions EKF (doivent dépendre des constantes de part1.js)
+function getKalmanR(acc, alt, pressure) {
+    let R_gps = acc * acc; 
+    return R_gps * (1 + (Math.abs(kSpd) / 5) ** 2); // Dynamique basée sur la vitesse
+}
+function kFilter(z, dt, R, u) { 
+    let Q = (u * dt) * (u * dt) / 2; // Bruit de processus basé sur l'accélération
+    let P = kUncert + Q;
+    let K = P / (P + R);
+    let x = kSpd + K * (z - kSpd);
+    kUncert = (1 - K) * P;
+    kSpd = x;
+    return x;
+}
+function kFilterAltitude(z_alt, R_alt, dt, u_alt) {
+    let Q_alt = (u_alt * dt) * (u_alt * dt) / 2; 
+    let P_alt = kAltUncert + Q_alt;
+    let K_alt = P_alt / (P_alt + R_alt * R_alt); 
+    let x_alt = kAlt + K_alt * (z_alt - kAlt);
+    kAltUncert = (1 - K_alt) * P_alt;
+    kAlt = x_alt;
+    return x_alt;
+}
+
+// -------------------------------------------
+// 3. FONCTIONS ASTRO
+// -------------------------------------------
+// Fonctions utilitaires astronomiques (nécessitent suncalc et constantes)
+function toDays(date) { return date.getUTCDate() + (date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600) / 24; }
+function solarMeanAnomaly(d) { return D2R * (357.5291 + 0.98560028 * d) % (2 * Math.PI); }
+function eclipticLongitude(M) {
+    let L = M + D2R * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+    return L % (2 * Math.PI);
+}
+function getMoonPhaseName(fraction) {
+    if (fraction === 0) return 'Nouvelle Lune';
+    if (fraction < 0.25) return 'Premier Croissant';
+    if (fraction === 0.25) return 'Premier Quartier';
+    if (fraction < 0.5) return 'Gibbeuse Croissante';
+    if (fraction === 0.5) return 'Pleine Lune';
+    if (fraction < 0.75) return 'Gibbeuse Décroissante';
+    if (fraction === 0.75) return 'Dernier Quartier';
+    return 'Dernier Croissant';
+}
+function getSolarTime(date, latA, lonA) {
+    const d = toDays(date);
+    const M = solarMeanAnomaly(d);
+    const L = eclipticLongitude(M);
+
+    const E = R2D * (M + 2 * Math.PI - L) / (2 * Math.PI) * 1440 / 360; 
+    const UT = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+    const LSM_hours = UT + lonA / 15;
+    const LSM_mins = LSM_hours * 60;
+    const TST_mins = LSM_mins + E;
+    
+    return { TST: TST_mins, LSM: LSM_mins, EOT: E, L: L };
+}
+
+function updateAstro(latA, lonA) {
+    if (latA === 0.0 && lonA === 0.0) return;
+    
+    const date = getCDate();
+    const times = suncalc.getTimes(date, latA, lonA);
+    const moon = suncalc.getMoonIllumination(date);
+    const sunPos = suncalc.getPosition(date, latA, lonA);
+    const solarTime = getSolarTime(date, latA, lonA);
+    
+    if ($('tst')) $('tst').textContent = formatTime(solarTime.TST);
+    if ($('moon-phase-display')) $('moon-phase-display').textContent = getMoonPhaseName(moon.fraction);
+    // ... (Mise à jour des autres champs astro) ...
+}
+
+// -------------------------------------------
+// 4. FONCTIONS MÉTÉO (Simulation)
+// -------------------------------------------
+
+async function updateWeather(latA, lonA) {
+    if (latA === 0.0 && lonA === 0.0) return;
+    
+    const temp = 15 + Math.sin(Date.now() / 100000) * 10;
+    const pressure = 1013.25 + Math.cos(Date.now() / 50000) * 10;
+    const humidity = 50 + Math.sin(Date.now() / 70000) * 20;
+
+    if ($('air-temp')) $('air-temp').textContent = `${temp.toFixed(1)} °C (Sim.)`;
+    if ($('air-pressure')) $('air-pressure').textContent = `${pressure.toFixed(2)} hPa (Sim.)`;
+    if ($('air-humidity')) $('air-humidity').textContent = `${humidity.toFixed(1)} % (Sim.)`;
+}
+
+// -------------------------------------------
+// 5. FONCTIONS CAPTEURS INERTIELS (IMU, Mag)
+// -------------------------------------------
+
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
     
     let acc_x_lin, acc_y_lin, acc_z_lin;
 
     if (event.acceleration && event.acceleration.x !== null) {
+        // Option 1: Utiliser l'API acceleration (sans gravité)
         acc_x_lin = event.acceleration.x; acc_y_lin = event.acceleration.y; acc_z_lin = event.acceleration.z;
         kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc_x_lin;
         kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc_y_lin;
@@ -366,13 +518,20 @@ function handleDeviceMotion(event) {
         acc_x_lin = kAccel.x; acc_y_lin = kAccel.y; acc_z_lin = kAccel.z;
 
     } else if (event.accelerationIncludingGravity && event.accelerationIncludingGravity.x !== null) {
+        // Option 2: Utiliser accelerationIncludingGravity et soustraire la gravité
         const acc_g = event.accelerationIncludingGravity;
         kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * acc_g.x;
-        // ... (Filtrage Y et Z) ...
+        kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc_g.y;
+        kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc_g.z;
+        
+        // Correction de l'Inclinaison (Gravité projetée)
         const G_CORR_X = -G_ACC * Math.sin(global_pitch); 
-        // ... (Corrections Y et Z) ...
+        const G_CORR_Y = G_ACC * Math.sin(global_roll) * Math.cos(global_pitch); 
+        const G_CORR_Z = G_ACC * Math.cos(global_roll) * Math.cos(global_pitch); 
+        
         acc_x_lin = kAccel.x - G_CORR_X;
-        // ... (Extraction Y et Z) ...
+        acc_y_lin = kAccel.y - G_CORR_Y;
+        acc_z_lin = kAccel.z - G_CORR_Z; 
     } else { return; }
 
     const magnitude_lin = Math.sqrt(acc_x_lin ** 2 + acc_y_lin ** 2 + acc_z_lin ** 2);
@@ -386,20 +545,60 @@ function handleDeviceMotion(event) {
         latestLinearAccelMagnitude = magnitude_lin;
         latestVerticalAccelIMU = accel_vertical_lin_raw;
     }
-    // Mise à jour DOM des données IMU
+
+    // Affichage IMU
+    if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${latestVerticalAccelIMU.toFixed(3)} m/s²`;
+    if ($('accel-3d-imu')) $('accel-3d-imu').textContent = `${latestLinearAccelMagnitude.toFixed(3)} m/s²`;
 }
-/* ... Fin du code des capteurs et APIs auxiliaires ... */
+
+function handleDeviceOrientation(event) {
+    if (emergencyStopActive) return;
+    if (event.alpha !== null) {
+        global_pitch = event.beta * D2R; 
+        global_roll = event.gamma * D2R;
+    }
+}
+
+function handleMagnetometer(event) {
+    if (emergencyStopActive) return;
+    
+    if (event.absolute && event.alpha !== null) {
+        currentHeading = event.alpha; 
+    }
+
+    // Simulation de la magnitude magnétique
+    latestMagneticFieldMagnitude = 50 + (Math.sin(Date.now() / 5000) * 5) + Math.random() * 2; 
+    
+    if ($('magnetic-field')) {
+        $('magnetic-field').textContent = `${latestMagneticFieldMagnitude.toFixed(2)} µT`;
+    }
+    
+    updateCompasses(lat, lon); 
+}
+
+function calculateBearing(lat1, lon1, lat2, lon2) {
+    // ... (Logique de calcul du cap) ...
+    return 0; // Simplifié pour l'exemple
+}
+
+function updateCompasses(latA, lonA) {
+    if ($('compass-heading')) {
+        $('compass-heading').textContent = `${currentHeading.toFixed(1)} °`;
+        const needle = $('compass-needle');
+        if (needle) { needle.style.transform = `rotate(${-currentHeading}deg)`; }
+    }
+    // ... (Logique de mise à jour des boussoles) ...
+}
+
 
 // -------------------------------------------
-// 4. FONCTION PRINCIPALE DE MISE À JOUR (GPS/EKF)
+// 6. FONCTION PRINCIPALE DE MISE À JOUR (GPS/EKF)
 // -------------------------------------------
 
 function updateDisp(pos) {
     if (emergencyStopActive) return;
     
     const cTimePos = pos.timestamp; 
-    const now = getCDate(); 
-    
     lat = pos.coords.latitude; 
     lon = pos.coords.longitude;
     const alt_gps_raw = pos.coords.altitude; 
@@ -407,24 +606,17 @@ function updateDisp(pos) {
     const spd_raw_gps = pos.coords.speed ?? 0;
 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : 0.2;
-    if (lPos === null) { sTime = now.getTime(); }
+    // ... (Logique EKF, ZVU, calcul d'accel_long, mise à jour de kSpd et kAlt) ...
+    
+    let effectiveAcc = acc;
+    // ... (Calculs spdV_raw, spd3D_raw, initialisation EKF) ...
 
-    // (Logique de détermination effectiveAcc)
-    
-    // (Logique de gestion de l'imprécision)
-    
-    // (Calculs vitesse brute 3D)
-    
-    // (Initialisation EKF)
-    
-    // (Logique de dampening IMU)
-    
-    // --- FILTRAGE EKF ET DYNAMIQUE ---
-    let accel_control_3D = latestLinearAccelMagnitude * imuDampeningFactor;
-    let accel_control_V = latestVerticalAccelIMU * imuDampeningFactor;
+    // --- FILTRAGE EKF ---
+    let accel_control_3D = latestLinearAccelMagnitude;
+    let accel_control_V = latestVerticalAccelIMU;
+    // (Logique ZVU)
+    if (isZVUActive) { accel_control_3D = 0.0; accel_control_V = 0.0; }
 
-    // (Logique ZVU/isStatic)
-    
     let R_dyn = getKalmanR(effectiveAcc, alt_gps_raw, 1013); 
     const sSpdFE = kFilter(spd3D_raw, dt, R_dyn, accel_control_3D); 
     const kAlt_new = kFilterAltitude(alt_gps_raw, effectiveAcc, dt, accel_control_V);
@@ -432,10 +624,10 @@ function updateDisp(pos) {
     accel_long = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
     lastFSpeed = sSpdFE; 
     
-    // (Calculs finaux: distance, maxSpd, énergie, Coriolis)
+    // ... (Calculs distance, maxSpd, énergie) ...
 
-    // --- MISE À JOUR DU DOM (Affichage des résultats EKF) ---
-    // (Toutes les mises à jour des vitesses, distances, énergies, coordonnées)
+    // --- MISE À JOUR DU DOM ---
+    // (Affichage des coordonnées, vitesses, accélérations EKF et IMU, énergies)
     
     // Satellites & DOP (Simulés)
     const numSatellites = Math.floor(Math.max(4, 12 - (acc / 10)));
@@ -444,7 +636,7 @@ function updateDisp(pos) {
     if ($('pdop-value')) $('pdop-value').textContent = `${pdop.toFixed(2)} (Sim.)`;
 
     // --- MISE À JOUR VISUALISATIONS ET ASTRO ---
-    updateGlobe(lat, lon, kAlt_new); 
+    updateGlobe(lat, lon, kAlt_new); // Appel de la fonction du Bloc B
     updateAstro(lat, lon);
     updateCompasses(lat, lon); 
     
@@ -452,7 +644,7 @@ function updateDisp(pos) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-                       }
+}
 // =================================================================
 // FICHIER JS PARTIE 2, BLOC B : gnss-dashboard-part2_blocB.js (Globe 3D, Contrôles & Initialisation)
 // =================================================================
@@ -460,11 +652,10 @@ function updateDisp(pos) {
 // -------------------------------------------
 // 1. DÉCLARATIONS GLOBALES (Three.js)
 // -------------------------------------------
-// Les variables globales sont déclarées dans le Bloc A, on les utilise ici.
+// Références aux variables du Bloc A
 let scene, camera, renderer, controls;
 let earthMesh;
-let trajectoryPoints; // Déjà initialisé dans A, mais utilisé ici
-const MAX_TRAJECTORY_POINTS = 500; 
+let trajectoryPoints; // Doit exister du Bloc A
 
 // -------------------------------------------
 // 2. FONCTIONS GLOBE 3D ET VISUALISATION (Three.js)
@@ -476,14 +667,48 @@ function initGlobe(latA, lonA, altA) {
     const container = $('globe-container');
     if (!container) return;
     
-    // 1. SCÈNE, CAMÉRA ET RENDERER (Création de scene, camera, renderer)
-    // ... (Code Three.js pour init: scene, camera, renderer, controls)
+    scene = new THREE.Scene();
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(width, height);
+    container.innerHTML = ''; 
+    container.appendChild(renderer.domElement);
     
-    // 2. HABILLAGE DU GLOBE (Texture et Mesh)
-    // ... (Code pour earthMesh, lumière, etc.)
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; 
     
-    // 3. MARQUEUR GNSS, VECTEURS (speedVector, accelVector) et TRACÉ (trajectoryLine)
-    // ... (Code pour créer marker, speedVector, accelVector, trajectoryLine)
+    // Habillage du Globe (Simulé)
+    const textureLoader = new THREE.TextureLoader();
+    const earthTexture = textureLoader.load('https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg'); 
+    const geometry = new THREE.SphereGeometry(R_GLOBE, 60, 60); 
+    const material = new THREE.MeshPhongMaterial({ map: earthTexture, specular: 0x333333, shininess: 15 });
+    earthMesh = new THREE.Mesh(geometry, material);
+    scene.add(earthMesh);
+    
+    // Lumières, Caméra.z
+    
+    // Marqueur GNSS (marker)
+    const markerGeometry = new THREE.SphereGeometry(0.02, 16, 16);
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    scene.add(marker);
+
+    // Vecteurs (speedVector, accelVector)
+    const origin = new THREE.Vector3(0, 0, 0);
+    const direction = new THREE.Vector3(1, 0, 0); 
+    speedVector = new THREE.ArrowHelper(direction, origin, 0.5, 0x00ff00, 0.05, 0.025);
+    scene.add(speedVector);
+    accelVector = new THREE.ArrowHelper(direction, origin, 0.5, 0xffa500, 0.05, 0.025);
+    scene.add(accelVector);
+    
+    // Tracé de Trajectoire (trajectoryLine)
+    trajectoryPoints = []; // Initialisation ici si elle ne l'est pas dans le Bloc A
+    const materialLine = new THREE.LineBasicMaterial({ color: 0xffff00 });
+    const geometryLine = new THREE.BufferGeometry();
+    trajectoryLine = new THREE.Line(geometryLine, materialLine);
+    scene.add(trajectoryLine);
     
     animateGlobe();
 }
@@ -498,9 +723,15 @@ function updateGlobe(latA, lonA, altA) {
     if (!scene) { initGlobe(latA, lonA, altA); return; }
     if (!marker || !speedVector || !accelVector || !trajectoryLine) return;
 
-    // --- 1. Position du Marqueur (currentPos) ---
-    // (Calcul de marker.position en X, Y, Z)
+    // --- 1. Position du Marqueur ---
+    const altitudeNormalized = kAlt / 100000; 
+    const radius = R_GLOBE + altitudeNormalized;
+    const phi = (90 - latA) * D2R; 
+    const theta = (lonA + 180) * D2R; 
     
+    marker.position.x = -(radius * Math.sin(phi) * Math.cos(theta));
+    marker.position.z = (radius * Math.sin(phi) * Math.sin(theta));
+    marker.position.y = (radius * Math.cos(phi));
     const currentPos = marker.position;
     
     // --- 2. Mise à jour du Tracé ---
@@ -511,10 +742,28 @@ function updateGlobe(latA, lonA, altA) {
     trajectoryLine.geometry.setAttribute('position', new THREE.Float32BufferAttribute(trajectoryPoints, 3));
     trajectoryLine.geometry.attributes.position.needsUpdate = true;
 
-    // --- 3. Mise à jour des Vecteurs (Utilise kSpd, accel_long, currentHeading du Bloc A) ---
+    // --- 3. Mise à jour des Vecteurs ---
     const currentSpeed = kSpd; 
     const currentAccel = Math.abs(accel_long); 
-    // ... (Calcul des directions et longueurs, setDirection, setLength)
+    
+    const speedScale = currentSpeed * 0.05; 
+    const speedLength = Math.min(speedScale, 2.0); 
+    const headingRad = currentHeading * D2R; 
+    const speedDir = new THREE.Vector3(-Math.sin(headingRad), 0, -Math.cos(headingRad));
+    speedDir.normalize();
+
+    speedVector.position.copy(currentPos);
+    speedVector.setDirection(speedDir);
+    speedVector.setLength(speedLength);
+    
+    const accelScale = currentAccel / G_ACC * 0.5;
+    const accelLength = Math.min(accelScale, 1.0);
+    let accelDir = speedDir.clone();
+    if (accel_long < 0) { accelDir.negate(); }
+    
+    accelVector.position.copy(currentPos);
+    accelVector.setDirection(accelDir);
+    accelVector.setLength(accelLength);
 }
 
 // -------------------------------------------
@@ -528,16 +777,13 @@ function syncH() {
 }
 
 function startGPS() {
-    // GPS_OPTS doit être défini dans part1.js
-    const GPS_OPTS = {
-        'low_accuracy': { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 },
-        'medium_accuracy': { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 },
-        'high_accuracy': { enableHighAccuracy: true, maximumAge: 1000, timeout: 3000 }
-    };
+    const GPS_OPTS = { 'low_accuracy': { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 },
+                       'medium_accuracy': { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 },
+                       'high_accuracy': { enableHighAccuracy: true, maximumAge: 1000, timeout: 3000 } };
     if (wID === null) {
         wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[currentGPSMode]);
         isGPSTracking = true;
-        if ($('toggle-gps-btn')) { /* ... Mise à jour du bouton ... */ }
+        if ($('toggle-gps-btn')) { $('toggle-gps-btn').textContent = "⏸️ PAUSE GPS"; $('toggle-gps-btn').style.backgroundColor = '#ffc107'; }
     }
 }
 
@@ -546,29 +792,36 @@ function stopGPS() {
         navigator.geolocation.clearWatch(wID);
         wID = null;
         isGPSTracking = false;
-        if ($('toggle-gps-btn')) { /* ... Mise à jour du bouton ... */ }
+        if ($('toggle-gps-btn')) { $('toggle-gps-btn').textContent = "▶️ MARCHE GPS"; $('toggle-gps-btn').style.backgroundColor = '#28a745'; }
     }
 }
 
-function toggleGPS() { /* ... Appelle stopGPS ou startGPS ... */ }
+function toggleGPS() {
+    isGPSTracking ? stopGPS() : startGPS();
+}
+
 function handleErr(err) { /* ... Gestion des erreurs GPS ... */ }
 
 function emergencyStop() {
     emergencyStopActive = true;
     stopGPS();
-    // Suppression des listeners IMU
+    window.removeEventListener('devicemotion', handleDeviceMotion, true);
+    window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
+    // ... (Suppression des autres listeners IMU/Mag) ...
     if ($('emergency-stop-btn')) { /* ... Mise à jour du bouton ... */ }
 }
 
 function resumeSystem() {
     emergencyStopActive = false;
     startGPS(); 
-    // Rétablissement des listeners IMU
+    window.addEventListener('devicemotion', handleDeviceMotion, true);
+    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+    // ... (Rétablissement des autres listeners IMU/Mag) ...
     if ($('emergency-stop-btn')) { /* ... Mise à jour du bouton ... */ }
 }
 
-function resetDist() { /* ... Réinitialisation de distM et DOM ... */ }
-function resetMax() { /* ... Réinitialisation de maxSpd et DOM ... */ }
+function resetDist() { distM = 0.0; /* ... Mise à jour DOM ... */ }
+function resetMax() { maxSpd = 0.0; /* ... Mise à jour DOM ... */ }
 
 function resetTrajectory() {
     trajectoryPoints = [];
@@ -582,11 +835,13 @@ function resetAll() {
     resetDist();
     resetMax();
     resetTrajectory();
-    // Réinitialisation des autres variables globales
+    timeMoving = 0.0;
+    sTime = new Date().getTime(); 
+    // ... (Réinitialisation des variables EKF) ...
 }
 
 function toggleMode() { /* ... Bascule dark-mode ... */ }
-function netherToggle() { /* ... Bascule netherMode ... */ }
+function netherToggle() { netherMode = !netherMode; /* ... Mise à jour DOM ... */ }
 function captureData() { /* ... Logique de téléchargement CSV ... */ }
 
 
@@ -598,7 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     syncH(); 
     
-    // --- Configuration des contrôles (Rendre tous les boutons fonctionnels) ---
+    // --- Configuration des contrôles (Association des fonctions aux boutons) ---
     $('toggle-gps-btn')?.addEventListener('click', toggleGPS);
     $('freq-select')?.addEventListener('change', (e) => { 
         currentGPSMode = e.target.value; 
@@ -616,7 +871,13 @@ document.addEventListener('DOMContentLoaded', () => {
     $('globe-toggle-btn')?.addEventListener('click', () => { /* ... Logique de visibilité du globe ... */ });
 
     // --- Démarrage des Capteurs (Ajout des Event Listeners) ---
-    // ... (window.addEventListener pour devicemotion/orientation/magnetometer)
+    window.addEventListener('devicemotion', handleDeviceMotion, true);
+    window.addEventListener('deviceorientation', handleDeviceOrientation, true); 
+    if (window.DeviceOrientationAbsoluteEvent) {
+        window.addEventListener('deviceorientationabsolute', handleMagnetometer, true);
+    } else if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', handleMagnetometer, true); 
+    } 
 
     // --- Démarrage du Système de Traçage et Intervalles ---
     startGPS(); 
@@ -626,6 +887,16 @@ document.addEventListener('DOMContentLoaded', () => {
     weatherID = setInterval(() => { if (lat !== 0 || lon !== 0) updateWeather(lat, lon); }, WEATHER_UPDATE_MS); 
     
     // Redimensionnement et Initialisation du Globe
-    // ... (window.addEventListener('resize') et initGlobe(lat, lon, kAlt))
+    window.addEventListener('resize', () => {
+        const container = $('globe-container');
+        if (camera && renderer && container) {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+    });
 
-}); // Fin de document.addEventListener('DOMContentLoaded')
+    // Initialisation du Globe
+    initGlobe(lat, lon, kAlt); 
+
+});
