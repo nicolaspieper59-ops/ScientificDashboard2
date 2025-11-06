@@ -131,9 +131,11 @@ function handleDeviceMotion(event) {
         const theta = global_pitch; // Pitch (beta) en RADIANS
         const g_local = calculateGravityAtAltitude(kAlt);
         
+        // La gravité projetée doit être soustraite, tenant compte de la convention
+        // où Z est négatif lorsque l'appareil est à plat et immobile.
         const G_x_proj = -g_local * Math.sin(theta); 
         const G_y_proj = g_local * Math.sin(phi) * Math.cos(theta); 
-        const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta); 
+        const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta); // CORRECTION FINALE DU SIGNE
         
         // 3. ACCÉLÉRATION LINÉAIRE
         const acc_lin_t_x = kAccel.x - G_x_proj;
@@ -255,7 +257,7 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-        }
+}
 // =================================================================
 // BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (FINAL)
 // =================================================================
