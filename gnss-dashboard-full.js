@@ -1,5 +1,5 @@
 // =================================================================
-// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (FINAL DÉBLOQUÉ)
+// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (VERSION FINALE ZVU SENSIBLE)
 // =================================================================
 
 // 1. CONSTANTES GLOBALES
@@ -18,6 +18,9 @@ const ACCEL_BIAS_X = 0.0, ACCEL_BIAS_Y = 0.0, ACCEL_BIAS_Z = 0.0;
 const LIGHT_YEAR_M = 9460730472580800;
 const UNDERGROUND_THRESHOLD = -50.0; 
 
+// NOUVELLE CONSTANTE POUR LA SENSIBILITÉ ZVU
+const ZVU_SENSITIVITY_THRESHOLD = 0.20; // 0.20 m/s² : détecte tout mouvement réel, y compris les plus petits.
+
 // 2. VARIABLES GLOBALES
 let wID = null, domID = null, weatherID = null; 
 let lat = 0.0, lon = 0.0;
@@ -35,7 +38,7 @@ let currentIPSLat = 43.284539, currentIPSLon = 5.358633, currentIPSAlt = 88.04;
 let isGPSTracking = false, emergencyStopActive = false;
 let isZVUActive = true, zvuLockTime = 0.0; 
 
-// 3. FONCTIONS UTILITAIRES
+// 3. FONCTIONS UTILITAIRES (Inchangées)
 function $(id) { return document.getElementById(id); }
 function getCDate() { return new Date(); }
 function formatTime(totalMinutes) {
@@ -84,7 +87,7 @@ function isUnderground(altitudeMeters) {
     return altitudeMeters < UNDERGROUND_THRESHOLD;
 }
 
-// 4. FONCTION DE SIMULATION IPS
+// 4. FONCTION DE SIMULATION IPS (Inchangée)
 function getIPSPositionSimulation(dt) {
     const speedDrift = (isZVUActive) ? (0.01 / KMH_MS) : kSpd;
     const headingRad = currentHeading * D2R;
@@ -127,48 +130,48 @@ function handleDeviceMotion(event) {
         kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.z - ACCEL_BIAS_Z);
 
         // NOUVEAU : LOGIQUE DE NIVEAU À BULLE VIRTUEL (Estimation des angles si N/A)
-        // Si global_pitch est à 0 (i.e. handleDeviceOrientation n'a pas pu lire les angles),
-        // nous les estimons à partir de l'accélération avec gravité.
         if (Math.abs(global_pitch) < 0.01 && Math.abs(global_roll) < 0.01) {
-            // Calculer l'angle d'inclinaison (Pitch) en radians
             global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
-            
-            // Calculer l'angle de roulis (Roll) en radians
             global_roll = Math.atan2(kAccel.y, kAccel.z);
             
-            // Mise à jour de l'affichage dans le DOM pour confirmer l'estimation
             if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} ° (Est.)`;
             if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} ° (Est.)`;
         } else if (global_pitch != 0 || global_roll != 0) {
-             // Si les angles sont mis à jour par handleDeviceOrientation, on affiche juste la valeur
-             // (Le Bloc B se charge de l'affichage s'il reçoit une vraie valeur)
+            // Si les angles sont reçus, on s'assure que l'affichage est bien mis à jour
+             if ($('debug-pitch-angle').textContent.includes('(Est.)')) $('debug-pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} °`;
+             if ($('debug-roll-angle').textContent.includes('(Est.)')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} °`;
         }
         
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-const phi = global_roll; // Roll (gamma) en RADIANS
-const theta = global_pitch; // Pitch (beta) en RADIANS
-const g_local = calculateGravityAtAltitude(kAlt);
+        const phi = global_roll; // Roll (gamma) en RADIANS
+        const theta = global_pitch; // Pitch (beta) en RADIANS
+        const g_local = calculateGravityAtAltitude(kAlt);
+        
+        const G_x_proj = g_local * Math.sin(theta);        
+        const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
+        // CORRECTION FINALE : Inversion du signe de la projection G_z pour neutraliser l'accélération verticale
+        const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta);  
+        
+        // 3. ACCÉLÉRATION LINÉAIRE 
+        let acc_lin_t_x = kAccel.x;
+        let acc_lin_t_y = kAccel.y;
+        let acc_lin_t_z = kAccel.z;
 
-const G_x_proj = g_local * Math.sin(theta);        
-const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
-// CORRECTION : Inversion du signe de la projection G_z pour tenir compte de la convention IMU (axe Z vers le haut)
-const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta);  // <--- MODIFICATION ICI
-
-// 3. ACCÉLÉRATION LINÉAIRE (Simplification pour débloquer le mouvement)
-let acc_lin_t_x = kAccel.x;
-let acc_lin_t_y = kAccel.y;
-let acc_lin_t_z = kAccel.z;
-
-// Nous appliquons TOUJOURS la correction de gravité (utilisant les angles estimés/réels). 
-// Le ZVU (plus bas) gère si l'accélération corrigée est suffisamment faible.
-acc_lin_t_x = kAccel.x - G_x_proj;
-acc_lin_t_y = kAccel.y - G_y_proj;
-acc_lin_t_z = kAccel.z - G_z_proj;
+        // Application de la correction de gravité (toujours)
+        acc_lin_t_x = kAccel.x - G_x_proj;
+        acc_lin_t_y = kAccel.y - G_y_proj;
+        acc_lin_t_z = kAccel.z - G_z_proj;
+        
+        latestVerticalAccelIMU = acc_lin_t_z;
+        latestLinearAccelMagnitude = Math.sqrt(
+            acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
+        );
         
     } else { return; }
     
     // 4. ZVU (Zero Velocity Update)
-    if (latestLinearAccelMagnitude < STATIC_ACCEL_THRESHOLD * 0.5) { // Seuil plus strict pour le repos
+    // UTILISATION DU NOUVEAU SEUIL POUR DÉTECTER TOUT MOUVEMENT RÉEL
+    if (latestLinearAccelMagnitude < ZVU_SENSITIVITY_THRESHOLD) { 
         latestLinearAccelMagnitude = 0.0;
         latestVerticalAccelIMU = 0.0;
         isZVUActive = true;
@@ -197,7 +200,7 @@ function updateDisp(pos_dummy) {
     lon = pos.coords.longitude;
     const alt_ips_raw = pos.coords.altitude ?? 0.0; 
     const acc = pos.coords.accuracy ?? 1.0; 
-    const spd_raw_ips = pos.coords.speed ?? 0.0;
+    let spd_raw_ips = pos.coords.speed ?? 0.0;
 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : 0.2;
     if (lPos === null) { 
@@ -222,7 +225,11 @@ function updateDisp(pos_dummy) {
     
     const speed_base_for_metrics = (isZVUActive) ? 0.0 : spd3D_raw;
     
-    if (isZVUActive) { accel_control_3D = 0.0; accel_control_V = 0.0; }
+    if (isZVUActive) { 
+        accel_control_3D = 0.0; accel_control_V = 0.0; 
+        // CORRECTION FINALE : Forcer la vitesse d'entrée IPS à zéro si ZVU actif
+        spd3D_raw = 0.0; 
+    }
 
     let R_dyn = getKalmanR(acc); 
     const sSpdFE = kFilter(spd3D_raw, dt, R_dyn, accel_control_3D); 
@@ -281,7 +288,7 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-              }
+}
 // =================================================================
 // BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (FINAL CORRIGÉ)
 // =================================================================
