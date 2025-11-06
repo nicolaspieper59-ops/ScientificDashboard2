@@ -11,6 +11,7 @@
           
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three-orbitcontrols@2.0.1/OrbitControls.js"></script>
+    <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
     
     <style>
         /* Styles adaptés */
@@ -118,7 +119,6 @@
             transition: transform 0.1s linear;
         }
     </style>
-    <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
 <body>
 
@@ -178,6 +178,8 @@
             <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
             <div class="data-point"><span>Vitesse 3D (Inst.)</span><span id="speed-3d-inst">-- km/h</span></div>
             <div class="data-point"><span>Vitesse stable (m/s)</span><span id="speed-stable-ms">-- m/s</span></div> 
+            <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">-- %</span></div> 
+            <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
             <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.000 km</span></div>
         </div>
 
@@ -265,4 +267,4 @@
 <script src="gnss-dashboard-full.js"></script>
 
 </body>
-                                                        </html>
+    </html>
