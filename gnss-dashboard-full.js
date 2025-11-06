@@ -369,12 +369,26 @@ function updateWeather(latA, lonA) {
 
 // 3. Fonctions Orientation et Compass
 function handleDeviceOrientation(event) {
+// ... (Dans gnss-dashboard-partB.js)
+
+// 3. Fonctions Orientation et Compass
+function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
     if (event.alpha !== null) {
         // Enregistre en RADIANS pour la soustraction de G dans le Bloc A
         global_pitch = event.beta ? event.beta * D2R : 0; 
         global_roll = event.gamma ? event.gamma * D2R : 0; 
         currentHeading = event.alpha ?? 0;
+
+        // TEMPORAIRE (pour le log) : Vérification des données brutes
+        console.log(`Orientation brute: A=${event.alpha.toFixed(0)}, P=${event.beta.toFixed(0)}, R=${event.gamma.toFixed(0)}`);
+
+        // NOUVEAU : AFFICHAGE DANS LE DOM
+        if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(event.beta || 0).toFixed(1)} °`;
+        if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(event.gamma || 0).toFixed(1)} °`;
+    }
+}
+// ...
 
         // TEMPORAIRE : Vérification des données brutes
         console.log(`Orientation brute: A=${event.alpha.toFixed(0)}, P=${event.beta.toFixed(0)}, R=${event.gamma.toFixed(0)}`);
