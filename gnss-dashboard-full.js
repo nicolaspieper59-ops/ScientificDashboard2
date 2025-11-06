@@ -145,31 +145,25 @@ function handleDeviceMotion(event) {
         }
         
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-        // ... (autour de la ligne 168)
-        
-        const G_x_proj = g_local * Math.sin(theta);        
-        const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
-        // LIGNE À MODIFIER : Inversion du signe de G_z_proj pour tenir compte des conventions Android/iOS
-        // ANCIEN : const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta);  
-        const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta); // NOUVEAU
-        
-// ... (le reste du code)
-        
-        // 3. ACCÉLÉRATION LINÉAIRE (Simplification pour débloquer le mouvement)
-        let acc_lin_t_x = kAccel.x;
-        let acc_lin_t_y = kAccel.y;
-        let acc_lin_t_z = kAccel.z;
+const phi = global_roll; // Roll (gamma) en RADIANS
+const theta = global_pitch; // Pitch (beta) en RADIANS
+const g_local = calculateGravityAtAltitude(kAlt);
 
-        // Nous appliquons TOUJOURS la correction de gravité (utilisant les angles estimés/réels). 
-        // Le ZVU (plus bas) gère si l'accélération corrigée est suffisamment faible.
-        acc_lin_t_x = kAccel.x - G_x_proj;
-        acc_lin_t_y = kAccel.y - G_y_proj;
-        acc_lin_t_z = kAccel.z - G_z_proj;
-        
-        latestVerticalAccelIMU = acc_lin_t_z;
-        latestLinearAccelMagnitude = Math.sqrt(
-            acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
-        );
+const G_x_proj = g_local * Math.sin(theta);        
+const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
+// CORRECTION : Inversion du signe de la projection G_z pour tenir compte de la convention IMU (axe Z vers le haut)
+const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta);  // <--- MODIFICATION ICI
+
+// 3. ACCÉLÉRATION LINÉAIRE (Simplification pour débloquer le mouvement)
+let acc_lin_t_x = kAccel.x;
+let acc_lin_t_y = kAccel.y;
+let acc_lin_t_z = kAccel.z;
+
+// Nous appliquons TOUJOURS la correction de gravité (utilisant les angles estimés/réels). 
+// Le ZVU (plus bas) gère si l'accélération corrigée est suffisamment faible.
+acc_lin_t_x = kAccel.x - G_x_proj;
+acc_lin_t_y = kAccel.y - G_y_proj;
+acc_lin_t_z = kAccel.z - G_z_proj;
         
     } else { return; }
     
