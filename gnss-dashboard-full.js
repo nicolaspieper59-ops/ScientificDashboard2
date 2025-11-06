@@ -119,17 +119,36 @@ function handleDeviceMotion(event) {
     const dt_imu = lTimeIMU ? (timestamp - lTimeIMU) / 1000 : 0.05;
     lTimeIMU = timestamp; 
 
+    // ... (Dans gnss-dashboard-partA.js, autour de la ligne 120 dans handleDeviceMotion) ...
+
     if (acc_g_raw && acc_g_raw.x !== null) {
         
-        // 1. ÉTALONNAGE & LISSAGE
+        // 1. ÉTALONNAGE & LISSAGE (inchangé)
         kAccel.x = ACCEL_FILTER_ALPHA * kAccel.x + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.x - ACCEL_BIAS_X);
         kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.y - ACCEL_BIAS_Y);
         kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.z - ACCEL_BIAS_Z);
+
+        // NOUVEAU : LOGIQUE DE NIVEAU À BULLE VIRTUEL
+        // Si les angles ne sont pas mis à jour par handleDeviceOrientation (valeurs proches de zéro),
+        // nous les estimons à partir de l'accélération avec gravité.
+        
+        // VÉRIFICATION RAPIDE (si les angles sont à zéro et que l'IMU brut n'est pas à 9.81 sur Z)
+        if (Math.abs(global_pitch) < 0.01 && Math.abs(global_roll) < 0.01) {
+            // Estimation du Pitch (rotation autour de Y, affecte X et Z)
+            global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
+            
+            // Estimation du Roll (rotation autour de X, affecte Y et Z)
+            global_roll = Math.atan2(kAccel.y, kAccel.z);
+            
+            // Mise à jour de l'affichage dans le DOM (utilisé pour le débogage)
+            if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} ° (Est.)`;
+            if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} ° (Est.)`;
+        }
         
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
         const phi = global_roll; // Roll (gamma) en RADIANS
         const theta = global_pitch; // Pitch (beta) en RADIANS
-        const g_local = calculateGravityAtAltitude(kAlt);
+        // ... (Reste de la correction et des conditions ZVU inchangé) ...
         
         // Projection de G ajustée pour correspondre à la convention de signe du capteur brut
         const G_x_proj = g_local * Math.sin(theta);        
