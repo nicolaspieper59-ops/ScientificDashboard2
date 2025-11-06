@@ -145,13 +145,15 @@ function handleDeviceMotion(event) {
         }
         
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-        const phi = global_roll; // Roll (gamma) en RADIANS
-        const theta = global_pitch; // Pitch (beta) en RADIANS
-        const g_local = calculateGravityAtAltitude(kAlt);
+        // ... (autour de la ligne 168)
         
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
-        const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta);  
+        // LIGNE À MODIFIER : Inversion du signe de G_z_proj pour tenir compte des conventions Android/iOS
+        // ANCIEN : const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta);  
+        const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta); // NOUVEAU
+        
+// ... (le reste du code)
         
         // 3. ACCÉLÉRATION LINÉAIRE (Simplification pour débloquer le mouvement)
         let acc_lin_t_x = kAccel.x;
