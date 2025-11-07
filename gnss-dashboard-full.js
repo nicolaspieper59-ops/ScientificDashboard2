@@ -140,6 +140,9 @@ function handleDeviceMotion(event) {
         }
         
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
+        // ... (lignes 170 à 193 de la fonction handleDeviceMotion)
+
+        // 2. CORRECTION DE L'INCLINAISON (Projection de G)
         const phi = global_roll; // Roll (gamma) en RADIANS
         const theta = global_pitch; // Pitch (beta) en RADIANS
         const g_local = calculateGravityAtAltitude(kAlt);
@@ -160,13 +163,18 @@ function handleDeviceMotion(event) {
         acc_lin_t_x = kAccel.x - G_x_proj;
         acc_lin_t_y = kAccel.y - G_y_proj;
         
-        // SOUSTRACTION pour Z : Nécessaire si A_raw_z est POSITIF (+9.81) et G_z_proj_amplitude est POSITIF (+9.81)
+        // SOUSTRACTION pour Z (Tentative d'annulation)
         acc_lin_t_z = kAccel.z - G_z_proj_amplitude; 
+        
+        // CORRECTION D'URGENCE DU SIGNE FINAL SUR Z
+        // Si le résultat est toujours l'opposé de ce qu'il devrait être (i.e. -G au lieu de 0), on inverse.
+        acc_lin_t_z = -acc_lin_t_z; 
         
         latestVerticalAccelIMU = acc_lin_t_z;
         latestLinearAccelMagnitude = Math.sqrt(
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
+// ...
         
     } else { return; }
     
