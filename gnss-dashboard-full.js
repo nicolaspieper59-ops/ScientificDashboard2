@@ -1,5 +1,5 @@
 // =================================================================
-// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (VERSION FINALE AVEC CORRECTION Z D'AMPLITUDE)
+// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (VERSION FINALE AVEC CORRECTION Z D'AMPLITUDE & SOUSTRACTION)
 // =================================================================
 
 // 1. CONSTANTES GLOBALES
@@ -160,8 +160,8 @@ function handleDeviceMotion(event) {
         acc_lin_t_x = kAccel.x - G_x_proj;
         acc_lin_t_y = kAccel.y - G_y_proj;
         
-        // ADDITION pour Z : Nécessaire car A_raw_z est NEGATIF (-9.81) et G_z_proj_amplitude est POSITIF (+9.81)
-        acc_lin_t_z = kAccel.z + G_z_proj_amplitude; 
+        // SOUSTRACTION pour Z : Nécessaire si A_raw_z est POSITIF (+9.81) et G_z_proj_amplitude est POSITIF (+9.81)
+        acc_lin_t_z = kAccel.z - G_z_proj_amplitude; 
         
         latestVerticalAccelIMU = acc_lin_t_z;
         latestLinearAccelMagnitude = Math.sqrt(
@@ -273,7 +273,7 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-    }
+        }
 // =================================================================
 // BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (VERSION FINALE)
 // =================================================================
