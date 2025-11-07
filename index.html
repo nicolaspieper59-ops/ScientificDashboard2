@@ -13,15 +13,13 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
-        /* Styles adaptés */
+        /* Styles de base */
         body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
         .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
         .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .section h2 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; font-size: 1.2em; }
         .data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
         .data-point span:first-child { font-weight: bold; color: #555; }
-        
-        /* Contrôles */
         .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
         .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
         .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
@@ -29,40 +27,46 @@
         button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
-        
-        /* Conteneur pour la carte */
         #map-container { height: 400px; width: 100%; border-radius: 8px; margin-top: 15px; }
+        #minecraft-clock-container { display: flex; justify-content: center; align-items: center; flex-direction: column; padding-top: 10px; }
         
-        /* --- STYLES POUR L'HORLOGE MINECRAFT --- */
-        #minecraft-clock-container { 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            flex-direction: column;
-            padding-top: 10px;
-        }
+        /* Styles de l'Horloge TST (Minecraft Style) */
         #minecraft-clock {
             width: 90px;
             height: 90px;
             position: relative;
-            border-radius: 50%; /* Cercle parfait */
-            overflow: hidden;    /* Cache ce qui dépasse */
-            border: 4px solid #555; /* Bordure de l'horloge */
-            background: #00001a; /* Fond de nuit */
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid #555;
+            background: #00001a;
         }
-        /* Le cadran rotatif (soleil/lune ou ciel/terre) */
         #minecraft-clock-face {
             width: 100%;
             height: 100%;
             position: absolute;
-            /* Bleu (ciel/nuit) et Jaune (soleil/jour) */
+            /* Le gradient sera mis à jour en JS pour les saisons */
             background: conic-gradient(from 0deg, #3777d1 0% 50%, #f7dc00 50% 100%);
-            /* Transition douce pour la rotation (1s) */
             transition: transform 1s linear; 
         }
-        /* --- FIN DES NOUVEAUX STYLES --- */
-
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
+        
+        /* Styles de l'Icône de Lune */
+        #moon-icon {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: transparent;
+            color: #fff; /* Couleur de l'icône Unicode */
+            transition: transform 1s linear;
+            z-index: 200;
+            top: 50%;
+            left: 50%;
+            font-size: 14px;
+            text-align: center;
+            line-height: 15px;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+        }
     </style>
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
@@ -92,7 +96,19 @@
                 <button id="reset-max-btn">🔄 Vitesse Max</button>
                 <button id="reset-all-btn">❌ TOUT RÉINITIALISER</button>
                 <button id="data-capture-btn">💾 Capturer</button>
-
+                
+                <div class="control-input-full">
+                    <label for="override-lat">Latitude Manuelle (si GPS échoue)</label>
+                    <input type="number" id="override-lat" value="43.2965" step="0.0001">
+                </div>
+                <div class="control-input-full">
+                    <label for="override-lon">Longitude Manuelle</label>
+                    <input type="number" id="override-lon" value="5.3698" step="0.0001">
+                </div>
+                <button id="apply-coords-btn" style="grid-column: 1 / -1; background-color: #007bff; color: white;">
+                    Appliquer Coordonnées Manuelles
+                </button>
+                
                 <div class="control-input-full">
                     <label for="gps-accuracy-override">Précision GPS forcée (m) [0=Auto]</label>
                     <input type="number" id="gps-accuracy-override" value="0.000000" step="0.000001">
@@ -132,26 +148,21 @@
             <div class="data-point"><span>Altitude EKF (Stable)</span><span id="altitude-ekf">N/A</span></div>
             <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
             <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
-            <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div> 
+            <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div>
             
             <hr>
             
             <h2>🚀 Dynamique du Véhicule & Forces</h2>
             <div class="data-point"><span>Pitch (Tangage)</span><span id="pitch-angle">0.0 °</span></div>
             <div class="data-point"><span>Roll (Roulis)</span><span id="roll-angle">0.0 °</span></div>
-            <div class="data-point"><span>Accel. Linéaire 3D</span><span id="accel-linear-3d">0.000 m/s²</span></div>
-            <div class="data-point"><span>Force G (3D Linéaire)</span><span id="force-g-3d-linear">0.00 G</span></div>
-            <div class="data-point"><span>Accel. Linéaire Horizontale</span><span id="accel-horizontal-imu">0.000 m/s²</span></div>
-            <div class="data-point"><span>Force G (Horizontale)</span><span id="force-g-horizontal">0.00 G</span></div>
             <div class="data-point"><span>Accel. Longitudinale (EKF)</span><span id="accel-long">0.000 m/s²</span></div>
-            <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div> 
+            <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div>
             <div class="data-point"><span>Vitesse Verticale (Raw)</span><span id="vertical-speed">0.00 m/s</span></div>
             <div class="data-point"><span>Vitesse Verticale (Incert.)</span><span id="vertical-speed-uncert">0.00 m/s</span></div>
             <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s²</span></div>
             <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div>
 
             <hr>
-
             <h2>✨ Champs & Énergie (Physique)</h2>
             <div class="data-point"><span>Énergie Cinétique (J)</span><span id="kinetic-energy">0.00 J</span></div>
             <div class="data-point"><span>Puissance Mécanique (W)</span><span id="mechanical-power">0.00 W</span></div>
@@ -181,23 +192,26 @@
             <div id="minecraft-clock-container">
                 <div id="minecraft-clock">
                     <div id="minecraft-clock-face"></div>
+                    <div id="moon-icon" title="Phase de Lune" style="transform: translate(-50%, -50%)"></div> 
                 </div>
                 <div class="clock-display" id="clock-status">Initialisation TST...</div>
             </div>
             
             <hr>
-
             <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
             <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
-            
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
             <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="lsm">N/D</span></div> 
             <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/D</span></div> 
-            
             <div class="data-point"><span>Durée du Jour Solaire</span><span id="day-duration">N/A</span></div> 
             <div class="data-point"><span>Longitude écliptique du Soleil</span><span id="ecliptic-long">-- °</span></div> 
             <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
             
+            <hr>
+            <div class="data-point"><span>Phase de Lune (Illum.)</span><span id="moon-phase">N/A</span></div>
+            <div class="data-point"><span>Élévation de la Lune</span><span id="moon-elevation">-- °</span></div>
+            <div class="data-point"><span>Azimut de la Lune</span><span id="moon-azimuth">-- °</span></div>
+
             <hr>
 
             <h2>🧪 Chimie & Composition</h2>
@@ -221,7 +235,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20n6a49lW/oW+hZik15WaeS4q6Qe/oJd3QjWv/rJz8A=" crossorigin=""></script>
 
-<script src="gnss-dashboard-full.js"></script> 
+<script src="gnss-dashboard-full.js"></script>
  
 </body>
-                        </html>
+    </html>
