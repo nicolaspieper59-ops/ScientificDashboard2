@@ -139,20 +139,26 @@ function handleDeviceMotion(event) {
              if ($('debug-roll-angle').textContent.includes('(Est.)')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} °`;
         }
         
-        // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-        // ... (lignes 170 à 193 de la fonction handleDeviceMotion)
+        // ... (dans la fonction handleDeviceMotion)
+
+        // ... (kAccel.x, kAccel.y, kAccel.z sont lissés ici)
 
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
         const phi = global_roll; // Roll (gamma) en RADIANS
         const theta = global_pitch; // Pitch (beta) en RADIANS
         const g_local = calculateGravityAtAltitude(kAlt);
         
-        // G_x_proj et G_y_proj restent inchangées 
+        // G_x_proj et G_y_proj restent inchangées (elles sont robustes)
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
         
-        // CORRECTION FINALE Z : Calcul de l'AMPLITUDE de la projection de G sur Z (toujours positive)
-        const G_z_proj_amplitude = g_local * Math.cos(phi) * Math.cos(theta);  
+        // CORRECTION DÉFINITIVE Z : Calcul de l'AMPLITUDE de la projection de G sur Z
+        const G_z_proj_abs = g_local * Math.cos(phi) * Math.cos(theta);  
+        
+        // ASSURER LE SIGNE CORRECT : 
+        // La projection corrigée doit avoir le même signe que le kAccel.z brut pour que la soustraction fonctionne.
+        const sign_z = Math.sign(kAccel.z);
+        const G_z_proj_corrige = G_z_proj_abs * sign_z; // La projection prend le signe du brut
         
         // 3. ACCÉLÉRATION LINÉAIRE 
         let acc_lin_t_x = kAccel.x;
@@ -163,20 +169,20 @@ function handleDeviceMotion(event) {
         acc_lin_t_x = kAccel.x - G_x_proj;
         acc_lin_t_y = kAccel.y - G_y_proj;
         
-        // SOUSTRACTION pour Z (Tentative d'annulation)
-        acc_lin_t_z = kAccel.z - G_z_proj_amplitude; 
+        // SOUSTRACTION pour Z (Maintenant G_z_proj_corrige a le bon signe)
+        acc_lin_t_z = kAccel.z - G_z_proj_corrige; 
         
-        // CORRECTION D'URGENCE DU SIGNE FINAL SUR Z
-        // Si le résultat est toujours l'opposé de ce qu'il devrait être (i.e. -G au lieu de 0), on inverse.
-        acc_lin_t_z = -acc_lin_t_z; 
+        // Plus besoin de la correction d'urgence du signe final
         
-        latestVerticalAccelIMU = acc_lin_t_z;
+        // Mise à jour de la magnitude avec la valeur finale
         latestLinearAccelMagnitude = Math.sqrt(
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
-// ...
         
+        latestVerticalAccelIMU = acc_lin_t_z; // Afficher la valeur corrigée
+
     } else { return; }
+// ...
     
     // 4. ZVU (Zero Velocity Update)
     if (latestLinearAccelMagnitude < ZVU_SENSITIVITY_THRESHOLD) { 
