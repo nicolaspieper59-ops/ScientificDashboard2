@@ -1,6 +1,6 @@
 // =================================================================
 // BLOC A : CONSTANTES, ÉTAT GLOBAL, FILTRES DE KALMAN & IMU
-// Dépendances : AUCUNE
+// (Contient les fonctions handleDeviceOrientation et handleDeviceMotion)
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -132,12 +132,15 @@ function kFilterAltitude(z, acc, dt, u_accel = 0) {
 function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
     
+    // Assumons beta = Pitch (Tangage), gamma = Roll (Roulis)
     const roll_deg = event.gamma || 0; 
     const pitch_deg = event.beta || 0; 
 
+    // Mise à jour des variables globales pour la correction dans handleDeviceMotion
     global_roll = roll_deg * D2R;
     global_pitch = pitch_deg * D2R;
 
+    // Mise à jour de l'affichage (sans la mention "Est.")
     if ($('pitch-angle')) $('pitch-angle').textContent = `${pitch_deg.toFixed(1)} °`;
     if ($('roll-angle')) $('roll-angle').textContent = `${roll_deg.toFixed(1)} °`;
 }
@@ -153,16 +156,30 @@ function handleDeviceMotion(event) {
     kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * acc_g_raw.y;
     kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc_g_raw.z; 
 
+    // FALLBACK : Si DeviceOrientationEvent n'a pas initialisé les angles, les estimer ici.
+    // Cette estimation garantit que la correction de gravité (Étape 2) est toujours appliquée.
+    if (global_pitch === 0 && global_roll === 0) {
+        global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
+        global_roll = Math.atan2(kAccel.y, kAccel.z);
+        
+        // Mise à jour de l'affichage des angles (pour montrer les valeurs estimées sans le tag "Est.")
+        if ($('pitch-angle')) $('pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} °`;
+        if ($('roll-angle')) $('roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} °`;
+    }
+
     // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-    const phi = global_roll; 
-    const theta = global_pitch; 
+    const phi = global_roll; // Roll (gamma) en RADIANS
+    const theta = global_pitch; // Pitch (beta) en RADIANS
     const g_local = G_ACC; 
 
+    // Projections Gx et Gy
     const G_x_proj = g_local * Math.sin(theta);        
     const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
+
+    // Projection Gz (Amplitude toujours positive)
     const G_z_proj_abs = g_local * Math.cos(phi) * Math.cos(theta);  
     
-    // 3. ACCÉLÉRATION LINÉAIRE 
+    // 3. ACCÉLÉRATION LINÉAIRE CORRIGÉE
     let acc_lin_t_x = kAccel.x - G_x_proj;
     let acc_lin_t_y = kAccel.y - G_y_proj;
     let acc_lin_t_z = 0;
@@ -180,23 +197,21 @@ function handleDeviceMotion(event) {
         acc_lin_t_z = -acc_lin_t_z;
     }
     
+    // CALCUL DES MAGNITUDES
+    const acc_lin_horizontal = Math.sqrt(acc_lin_t_x ** 2 + acc_lin_t_y ** 2); // <-- NOUVELLE VALEUR HORIZONTALE
     latestVerticalAccelIMU = acc_lin_t_z; 
     latestLinearAccelMagnitude = Math.sqrt(acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2);
+    
+    // --- MISE À JOUR DU DOM (Horizontal et Vertical Corrigés) ---
+    if ($('accel-horizontal-imu')) $('accel-horizontal-imu').textContent = `${acc_lin_horizontal.toFixed(3)} m/s²`;
+    if ($('force-g-horizontal')) $('force-g-horizontal').textContent = `${(acc_lin_horizontal / G_ACC).toFixed(2)} G`;
     
     if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${acc_lin_t_z.toFixed(3)} m/s²`;
     if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(acc_lin_t_z / G_ACC).toFixed(2)} G`;
     if ($('accel-linear-3d')) $('accel-linear-3d').textContent = `${latestLinearAccelMagnitude.toFixed(3)} m/s²`;
     if ($('force-g-3d-linear')) $('force-g-3d-linear').textContent = `${(latestLinearAccelMagnitude / G_ACC).toFixed(2)} G`;
+}
 
-    // Si les angles ne sont pas fournis par DeviceOrientation, les estimer ici
-    if (global_pitch === 0 && global_roll === 0) {
-        global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
-        global_roll = Math.atan2(kAccel.y, kAccel.z);
-        if ($('pitch-angle')) $('pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} ° (Est.)`;
-        if ($('roll-angle')) $('roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} ° (Est.)`;
-    }
-    }
-// =================================================================
 // BLOC B : BOUCLE PRINCIPALE (updateDisp), ASTRO & MÉTÉO
 // Dépendances : BLOC A (Constantes, Globales, Filtres)
 // =================================================================
