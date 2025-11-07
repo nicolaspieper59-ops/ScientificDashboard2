@@ -145,9 +145,11 @@ function handleDeviceMotion(event) {
         const g_local = calculateGravityAtAltitude(kAlt);
         
         const G_x_proj = g_local * Math.sin(theta);        
+        // ...
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
-        // G_z_proj doit être négatif pour la convention standard (axe Z vers le haut)
-        const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta);  
+// NOUVEAU : G_z_proj doit être POSITIF pour la correction de soustraction
+        const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta); // SIGNATURE POSITIVE RETOURNÉE
+// ...
         
         // 3. ACCÉLÉRATION LINÉAIRE 
         let acc_lin_t_x = kAccel.x;
@@ -159,16 +161,14 @@ function handleDeviceMotion(event) {
 
 // 3. ACCÉLÉRATION LINÉAIRE 
 // ...
+    acc_lin_t_x = kAccel.x - G_x_proj;
+    acc_lin_t_y = kAccel.y - G_y_proj;
 
-// Application de la correction de gravité (toujours)
-acc_lin_t_x = kAccel.x - G_x_proj;
-acc_lin_t_y = kAccel.y - G_y_proj;
+// NOUVEAU : On soustrait G_z_proj (qui est maintenant POSITIF)
+    acc_lin_t_z = kAccel.z - G_z_proj; // REVIENT À LA SOUSTRACTION
 
-// CORRECTION DÉFINITIVE DE L'AXE Z : Retour à la soustraction pour neutraliser G_z_proj (négatif)
-acc_lin_t_z = kAccel.z - G_z_proj; 
-
-latestVerticalAccelIMU = acc_lin_t_z;
-latestLinearAccelMagnitude = Math.sqrt(
+    latestVerticalAccelIMU = acc_lin_t_z;
+// ...
 // ...
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
