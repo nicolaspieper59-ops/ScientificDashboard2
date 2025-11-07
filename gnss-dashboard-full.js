@@ -466,7 +466,8 @@ function updateDisp(pos) {
     lPos.kAlt_old = kAlt_new; 
     lPos.kAltUncert_old = kAltUncert; 
                                                       }
-// =================================================================
+
+     // =================================================================
 // BLOC C : CARTE (Leaflet), CONTRÔLES & GESTIONNAIRES D'ÉVÉNEMENTS
 // Dépendances : BLOC A (Globales, Constantes), BLOC B (updateDisp, syncH, updateAstro, updateWeather)
 // =================================================================
@@ -653,9 +654,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Événements IMU et Orientation (attachés ici)
     if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', handleDeviceOrientation, true);
-    } 
+    } else {
+        console.warn("DeviceOrientation n'est pas supporté. Les angles seront estimés via DeviceMotion.");
+    }
+    
     if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', handleDeviceMotion, true);
+    } else {
+        console.warn("DeviceMotion n'est pas supporté.");
     } 
 
     startGPS(); // Démarrage initial du GPS
@@ -674,4 +680,4 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lPos) updateWeather(lPos.coords.latitude, lPos.coords.longitude);
         }, WEATHER_UPDATE_MS); 
     }
-});
+});   
