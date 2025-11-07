@@ -1,5 +1,5 @@
 // =================================================================
-// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (VERSION FINALE AVEC CORRECTION Z)
+// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (VERSION FINALE AVEC CORRECTION Z D'AMPLITUDE)
 // =================================================================
 
 // 1. CONSTANTES GLOBALES
@@ -144,32 +144,27 @@ function handleDeviceMotion(event) {
         const theta = global_pitch; // Pitch (beta) en RADIANS
         const g_local = calculateGravityAtAltitude(kAlt);
         
+        // G_x_proj et G_y_proj restent inchangées 
         const G_x_proj = g_local * Math.sin(theta);        
-        // ...
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
-// NOUVEAU : G_z_proj doit être POSITIF pour la correction de soustraction
-        const G_z_proj = g_local * Math.cos(phi) * Math.cos(theta); // SIGNATURE POSITIVE RETOURNÉE
-// ...
+        
+        // CORRECTION FINALE Z : Calcul de l'AMPLITUDE de la projection de G sur Z (toujours positive)
+        const G_z_proj_amplitude = g_local * Math.cos(phi) * Math.cos(theta);  
         
         // 3. ACCÉLÉRATION LINÉAIRE 
         let acc_lin_t_x = kAccel.x;
         let acc_lin_t_y = kAccel.y;
         let acc_lin_t_z = kAccel.z;
 
-        // Application de la correction de gravité (toujours)
-    // ... (dans handleDeviceMotion)
-
-// 3. ACCÉLÉRATION LINÉAIRE 
-// ...
-    acc_lin_t_x = kAccel.x - G_x_proj;
-    acc_lin_t_y = kAccel.y - G_y_proj;
-
-// NOUVEAU : On soustrait G_z_proj (qui est maintenant POSITIF)
-    acc_lin_t_z = kAccel.z - G_z_proj; // REVIENT À LA SOUSTRACTION
-
-    latestVerticalAccelIMU = acc_lin_t_z;
-// ...
-// ...
+        // Soustraction pour X et Y (Correction standard)
+        acc_lin_t_x = kAccel.x - G_x_proj;
+        acc_lin_t_y = kAccel.y - G_y_proj;
+        
+        // ADDITION pour Z : Nécessaire car A_raw_z est NEGATIF (-9.81) et G_z_proj_amplitude est POSITIF (+9.81)
+        acc_lin_t_z = kAccel.z + G_z_proj_amplitude; 
+        
+        latestVerticalAccelIMU = acc_lin_t_z;
+        latestLinearAccelMagnitude = Math.sqrt(
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
         
@@ -278,9 +273,9 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-    }
+}
 
-// 1. Fonctions Astro (Dépend des utilitaires et constantes du Bloc A)
+Astro (Dépend des utilitaires et constantes du Bloc A)
 function toDays(date) { return date.getUTCDate() + (date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600) / 24; }
 function solarMeanAnomaly(d) { return D2R * (357.5291 + 0.98560028 * d) % (2 * Math.PI); }
 function eclipticLongitude(M) {
