@@ -31,16 +31,16 @@ const GPS_OPTS = {
 
 // Constantes Kalman (Vitesse 3D)
 const Q_NOISE = 0.001; 
-let kSpd = 0; // Estimation vitesse (m/s)
-let kUncert = 1000; // Incertitude vitesse (m/s)²
+let kSpd = 0; 
+let kUncert = 1000; 
 const ENVIRONMENT_FACTORS = {
     NORMAL: 1.0, FOREST: 1.5, CONCRETE: 3.0, METAL: 2.5
 };
 
 // Constantes Kalman (Altitude)
 const Q_ALT_NOISE = 0.01; 
-let kAlt = 0; // Estimation altitude (m)
-let kAltUncert = 1000; // Incertitude altitude (m)²
+let kAlt = 0; 
+let kAltUncert = 1000; 
 
 // Constantes IMU (Accéléromètre)
 const ACCEL_FILTER_ALPHA = 0.8; 
@@ -49,9 +49,9 @@ let kAccel = { x: 0, y: 0, z: 0 };
 let G_STATIC_REF = { x: 0, y: 0, z: 0 };
 let latestVerticalAccelIMU = 0; 
 let latestLinearAccelMagnitude = 0; 
-let latestAccelLongIMU = 0; // Accel longitudinale (X) pour EKF R_dyn
-let latestAccelLatIMU = 0; // Accel latérale (Y)
-let maxGForce = 0; // Initialisation Max G-Force
+let latestAccelLongIMU = 0; 
+let latestAccelLatIMU = 0; 
+let maxGForce = 0; 
 
 // --- VARIABLES GLOBALES (État du système) ---
 let wID = null;
@@ -74,6 +74,7 @@ let lLocH = 0;
 let domID = null; 
 let weatherID = null; 
 let lastP_hPa = 1013.25; 
+let G_ACC_LOCAL = G_ACC; // Variable pour la gravité locale
 
 // --- CONSTANTES API MÉTÉO ---
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
@@ -95,11 +96,8 @@ function dist(lat1, lon1, lat2, lon2) {
 
 /** Filtre de Kalman 1D (Vitesse) */
 function kFilter(z, dt, R_dyn) {
-    // 1. Prediction
     const predSpd = kSpd;
     const predUncert = kUncert + Q_NOISE * dt;
-
-    // 2. Mesure
     const K = predUncert / (predUncert + R_dyn);
     kSpd = predSpd + K * (z - predSpd);
     kUncert = (1 - K) * predUncert;
@@ -111,13 +109,11 @@ function getKalmanR(acc, alt, pressure, linearAccelMag) {
     let R_raw = acc * acc; 
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment] || ENVIRONMENT_FACTORS.NORMAL;
     
-    // 1. Base Noise + Correction d'Altitude
     let noiseMultiplier = envFactor;
     if (alt !== null && alt < 0) {
         noiseMultiplier += Math.abs(alt / 100); 
     }
     
-    // 2. Correction par l'Accélération Linéaire (IMU)
     if (linearAccelMag > 0.5) { 
         noiseMultiplier += Math.pow(linearAccelMag, 1.5) * 0.5; 
     }
@@ -129,11 +125,9 @@ function getKalmanR(acc, alt, pressure, linearAccelMag) {
 function kFilterAltitude(z, acc, dt, u_accel = 0) { 
     if (z === null) return kAlt; 
 
-    // 1. Prediction (avec Accélération IMU comme entrée de contrôle)
     const predAlt = kAlt + (0.5 * u_accel * dt * dt); 
     let predAltUncert = kAltUncert + Q_ALT_NOISE * dt;
 
-    // 2. Mesure (R_alt est basé sur la précision brute du GPS)
     const R_alt = acc * acc * 2.0; 
     const K = predAltUncert / (predAltUncert + R_alt);
     kAlt = predAlt + K * (z - predAlt);
@@ -148,6 +142,23 @@ function calculateDewPoint(tempC, humidity) {
     const b = 237.7;
     const alpha = (a * tempC) / (b + tempC) + Math.log(humidity / 100);
     return (b * alpha) / (a - alpha);
+}
+
+// ===========================================
+// NOUVELLE FONCTION GRAVITÉ LOCALE (IGF 1980)
+// ===========================================
+
+/** Calcule l'accélération de la gravité locale (IGF 1980) en fonction de la latitude (m/s²). */
+function calculateGravity(latitude) {
+    const latRad = latitude * D2R;
+    const sinLat = Math.sin(latRad);
+    const sin2Lat = Math.sin(2 * latRad);
+    
+    // Formule de la Gravité Internationale (IGF 1980) à l'ellipsoïde
+    // g = 9.780327 * (1 + 0.0053024 * sin²(φ) - 0.0000058 * sin²(2φ))
+    const g0 = 9.780327 * (1 + 0.0053024 * sinLat * sinLat - 0.0000058 * sin2Lat * sin2Lat);
+
+    return g0;
 }
 // ===========================================
 // FONCTIONS UTILITAIRES ASTRO & TEMPS
@@ -174,7 +185,6 @@ async function syncH() {
         const latencyOffset = RTT / 2;
         lServH = Date.parse(serverData.datetime) + latencyOffset; 
         lLocH = performance.now(); 
-        console.log(`Synchronisation UTC Atomique réussie.`);
     } catch (error) {
         console.warn("Échec de la synchronisation. Utilisation de l'horloge locale.", error);
         lServH = Date.now(); 
@@ -285,7 +295,6 @@ async function updateWeather(latA, lonA) {
         lastP_hPa = pressurehPa; 
 
         const dewPointC = calculateDewPoint(tempC, humidity);
-        // Formule Wind Chill simplifiée pour les températures au-dessus de 0
         const windChillC = tempC - (windSpeedMs * 1.1) 
         const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
         const windDirection = directions[Math.round((windDeg / 22.5) + 0.5) % 16];
@@ -325,7 +334,7 @@ function handleDeviceMotion(event) {
     let linear_x = 0.0, linear_y = 0.0, linear_z = 0.0;
     
     // Détermination de la gravité statique
-    if (Math.abs(kAccel_mag - G_ACC) < ACCEL_MOVEMENT_THRESHOLD) {
+    if (Math.abs(kAccel_mag - G_ACC) < ACCEL_MOVEMENT_THRESHOLD) { 
         G_STATIC_REF.x = kAccel.x;
         G_STATIC_REF.y = kAccel.y;
         G_STATIC_REF.z = kAccel.z;
@@ -338,12 +347,12 @@ function handleDeviceMotion(event) {
 
     // Mise à jour des globales (pour le Kalman/la prochaine itération)
     latestVerticalAccelIMU = linear_z; 
-    latestAccelLongIMU = linear_x; // Longitudinal (axe X)
-    latestAccelLatIMU = linear_y; // Latéral (axe Y)
+    latestAccelLongIMU = linear_x; 
+    latestAccelLatIMU = linear_y; 
     latestLinearAccelMagnitude = Math.sqrt(linear_x ** 2 + linear_y ** 2 + linear_z ** 2); 
     
     // Calcul de la Force G Totale (Mouvement)
-    const totalGForce = latestLinearAccelMagnitude / G_ACC;
+    const totalGForce = latestLinearAccelMagnitude / G_ACC_LOCAL; // UTILISE G_ACC_LOCAL
 
     // Mise à jour de la Force G Max
     if (totalGForce > maxGForce) {
@@ -352,13 +361,13 @@ function handleDeviceMotion(event) {
 
     // --- MISE À JOUR DU DOM ---
     if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${linear_z.toFixed(3)} m/s²`;
-    if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(linear_z / G_ACC).toFixed(2)} G`;
+    if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(linear_z / G_ACC_LOCAL).toFixed(2)} G`; 
     
     if ($('accel-long-imu')) $('accel-long-imu').textContent = `${linear_x.toFixed(3)} m/s²`; 
-    if ($('force-g-long-imu')) $('force-g-long-imu').textContent = `${(linear_x / G_ACC).toFixed(2)} G`; 
+    if ($('force-g-long-imu')) $('force-g-long-imu').textContent = `${(linear_x / G_ACC_LOCAL).toFixed(2)} G`; 
     
     if ($('accel-lateral')) $('accel-lateral').textContent = `${linear_y.toFixed(3)} m/s²`;
-    if ($('force-g-lateral')) $('force-g-lateral').textContent = `${(linear_y / G_ACC).toFixed(2)} G`;
+    if ($('force-g-lateral')) $('force-g-lateral').textContent = `${(linear_y / G_ACC_LOCAL).toFixed(2)} G`; 
     
     if ($('force-g-total')) $('force-g-total').textContent = `${totalGForce.toFixed(2)} G`;
     if ($('force-g-max')) $('force-g-max').textContent = `${maxGForce.toFixed(2)} G`;
@@ -380,9 +389,7 @@ function initMap(latA, lonA) {
 
         marker = L.marker([latA, lonA]).addTo(map);
         tracePolyline = L.polyline([], { color: 'red' }).addTo(map);
-        console.log("Carte Leaflet initialisée.");
     } catch (e) {
-        console.error("Échec de l'initialisation de la carte Leaflet:", e);
         if ($('map')) $('map').textContent = 'Erreur d\'initialisation de la carte.';
     }
 }
@@ -458,12 +465,16 @@ function handleErr(err) {
 function updateDisp(pos) {
     if (emergencyStopActive) return;
     lat = pos.coords.latitude; lon = pos.coords.longitude;
-    const alt = pos.coords.altitude, acc = pos.coords.accuracy;
+    const alt_raw = pos.coords.altitude, acc = pos.coords.accuracy; 
     const spd_raw_gps = pos.coords.speed;
     const cTimePos = pos.timestamp; 
     const now = getCDate(); 
     
-    // CORRECTION MAJEURE: Lecture de la masse depuis le DOM
+    // NOUVEAU: Calcul de la gravité locale et mise à jour de la constante locale
+    const G_local = calculateGravity(lat);
+    G_ACC_LOCAL = G_local; 
+
+    // Lecture de la masse
     let MASS = 70.0;
     if ($('mass-input')) {
         const inputMass = parseFloat($('mass-input').value);
@@ -488,19 +499,19 @@ function updateDisp(pos) {
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
     // 1. FILTRAGE DE L'ALTITUDE (via Kalman) - Utilise l'IMU verticale
-    const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt, latestVerticalAccelIMU); 
+    const kAlt_new = kFilterAltitude(alt_raw, effectiveAcc, dt, latestVerticalAccelIMU); 
     
     // 2. VITESSE VERTICALE FILTRÉE ET INCERTITUDE 
     let spdV = 0; 
     let verticalSpeedUncert = 0;
 
-    if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) { 
+    if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt_raw !== null) { 
         spdV = (kAlt_new - lPos.kAlt_old) / dt; 
         
         const kAltUncert_old = lPos.kAltUncert_old !== undefined ? lPos.kAltUncert_old : kAltUncert;
         verticalSpeedUncert = Math.sqrt(kAltUncert ** 2 + kAltUncert_old ** 2) / dt;
         verticalSpeedUncert = Math.min(20, verticalSpeedUncert); 
-    } else if (alt !== null) { 
+    } else if (alt_raw !== null) { 
         spdV = 0; 
     }
     
@@ -513,12 +524,12 @@ function updateDisp(pos) {
     // 4. VITESSE 3D
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
 
-    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable) - Utilise l'IMU linéaire pour R_dyn
-    const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa, latestLinearAccelMagnitude); 
+    // 5. FILTRE DE KALMAN FINAL (Vitesse 3D Stable)
+    const R_dyn = getKalmanR(effectiveAcc, alt_raw, lastP_hPa, latestLinearAccelMagnitude); 
     const fSpd = kFilter(spd3D, dt, R_dyn); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
-    // Calculs Physiques (utilisent la vitesse stable et la masse corrigée)
+    // Calculs Physiques
     let accel_long_ekf = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
     lastFSpeed = sSpdFE;
     distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
@@ -530,7 +541,7 @@ function updateDisp(pos) {
     const kineticEnergy = 0.5 * MASS * sSpdFE ** 2;
     const mechanicalPower = accel_long_ekf * MASS * sSpdFE; 
     
-    // CALCUL DE LA DENSITÉ DE L'AIR
+    // Calcul de la densité de l'air (inchangé)
     let airDensity = "N/A";
     const tempElement = $('temp-air').textContent;
     const tempCMatch = tempElement.match(/(-?[\d.]+)\s*°C/);
@@ -549,29 +560,35 @@ function updateDisp(pos) {
 
     // --- MISE À JOUR DU DOM (GPS/Physique) ---
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
-    $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1000).toFixed(0)} mm/s`; 
-    $('speed-3d-inst').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
     $('speed-avg-moving').textContent = `${(avgSpdMoving * KMH_MS).toFixed(5)} km/h`;
-    $('perc-speed-c').textContent = `${(spd3D / C_L * 100).toExponential(2)}%`;
-    $('perc-speed-sound').textContent = `${(spd3D / SPEED_SOUND * 100).toFixed(2)} %`;
     $('distance-total-km').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
-    $('distance-cosmic').textContent = `${(distM / C_L).toExponential(2)} s lumière | ${(distM / C_L / (3600*24*365.25)).toExponential(2)} al`;
     
     $('latitude').textContent = lat.toFixed(6);
     $('longitude').textContent = lon.toFixed(6);
-    $('altitude-gps').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A';
+    
+    $('gravity-local').textContent = `${G_local.toFixed(5)} m/s²`; // Affichage de la gravité locale
+    
+    $('altitude-gps-raw').textContent = alt_raw !== null ? `${alt_raw.toFixed(2)} m` : 'N/A'; // Altitude Brute GPS
+    $('altitude-gps-ekf').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A'; // Altitude Filtrée EKF
+
+    $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
+    $('vertical-speed-uncert').textContent = `${verticalSpeedUncert.toFixed(2)} m/s`; 
+    
+    $('accel-long').textContent = `${accel_long_ekf.toFixed(3)} m/s²`;
+    $('force-g-long').textContent = `${(accel_long_ekf / G_ACC_LOCAL).toFixed(2)} G`; // UTILISE G_ACC_LOCAL
+    
+    // ... (Autres affichages)
+    $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1000).toFixed(0)} mm/s`; 
+    $('speed-3d-inst').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`;
+    $('perc-speed-c').textContent = `${(spd3D / C_L * 100).toExponential(2)}%`;
+    $('perc-speed-sound').textContent = `${(spd3D / SPEED_SOUND * 100).toFixed(2)} %`;
+    $('distance-cosmic').textContent = `${(distM / C_L).toExponential(2)} s lumière | ${(distM / C_L / (3600*24*365.25)).toExponential(2)} al`;
+    
     $('gps-precision').textContent = `${acc.toFixed(2)} m`;
     $('gps-accuracy-effective').textContent = `${effectiveAcc.toFixed(2)} m`;
     $('speed-raw-ms').textContent = spd_raw_gps !== null ? `${spd_raw_gps.toFixed(2)} m/s` : 'N/A';
     $('underground-status').textContent = (kAlt_new !== null && kAlt_new < ALT_TH) ? 'Oui' : 'Non';
-    
-    $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
-    $('vertical-speed-uncert').textContent = `${verticalSpeedUncert.toFixed(2)} m/s`; 
-    
-    // Accélération EKF (vitesse longitudinale)
-    $('accel-long').textContent = `${accel_long_ekf.toFixed(3)} m/s²`;
-    $('force-g-long').textContent = `${(accel_long_ekf / G_ACC).toFixed(2)} G`;
     $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; 
     
     $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
@@ -587,8 +604,9 @@ function updateDisp(pos) {
     lPos.timestamp = cTimePos; 
     lPos.kAlt_old = kAlt_new; 
     lPos.kAltUncert_old = kAltUncert; 
-}
-// ===========================================
+        }
+// ==========================================
+
 // INITIALISATION DES ÉVÉNEMENTS ET INTERVALLES (TOUS LES BOUTONS)
 // ===========================================
 
@@ -604,7 +622,7 @@ const updateGpsButtonState = () => {
     } else {
         btn.innerHTML = '<i class="fas fa-play"></i> MARCHE GPS';
         btn.classList.remove('green');
-        btn.classList.add('red'); // Rouge pour indiquer qu'il est à l'arrêt, prêt à être cliqué
+        btn.classList.add('red');
     }
 };
 
@@ -628,12 +646,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     syncH(); 
 
-    // Gestionnaire du Bouton Démarrer/Arrêter GPS (avec mise à jour de l'état)
+    // Gestionnaire du Bouton Démarrer/Arrêter GPS
     if ($('toggle-gps-btn')) {
         $('toggle-gps-btn').addEventListener('click', () => {
             if (emergencyStopActive) return;
             wID === null ? startGPS() : stopGPS();
-            updateGpsButtonState(); // Mise à jour de l'état visuel
+            updateGpsButtonState(); 
         });
     }
     
@@ -641,13 +659,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
         if (emergencyStopActive) return;
         setGPSMode(e.target.value);
-        updateGpsButtonState(); // Mise à jour de l'état visuel
+        updateGpsButtonState(); 
     });
     
     // Arrêt d'Urgence
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
         emergencyStopActive ? resumeSystem() : emergencyStop(); 
-        updateGpsButtonState(); // Mise à jour de l'état GPS après urgence
+        updateGpsButtonState(); 
     });
     
     // Mode Nether
@@ -664,25 +682,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('distance-total-km')) $('distance-total-km').textContent = "0.000 km | 0.00 m";
         if ($('time-moving')) $('time-moving').textContent = "0.00 s";
         if ($('speed-avg-moving')) $('speed-avg-moving').textContent = "0.00000 km/h";
-        if (tracePolyline) tracePolyline.setLatLngs([]); // Efface la trace
+        if (tracePolyline) tracePolyline.setLatLngs([]); 
     });
     
     // Bouton de Réinitialisation Vitesse Max / G-Force Max
     if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         maxSpd = 0; 
-        maxGForce = 0; // Réinitialise également la G-Force Max
+        maxGForce = 0; 
         if ($('speed-max')) $('speed-max').textContent = "0.00000 km/h";
         if ($('force-g-max')) $('force-g-max').textContent = "0.00 G";
     });
     
-    // Bouton de Réinitialisation TOUT (GPS, Kalman, Max, Distance)
+    // Bouton de Réinitialisation TOUT
     if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
             distM = 0; maxSpd = 0; kSpd = 0; kUncert = 1000; timeMoving = 0; lastFSpeed = 0;
-            maxGForce = 0; // Réinitialisation générale
-            if (tracePolyline) tracePolyline.setLatLngs([]); // Efface la trace sur la carte
+            maxGForce = 0; 
+            if (tracePolyline) tracePolyline.setLatLngs([]); 
         } 
     });
     
@@ -706,7 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } 
 
     startGPS(); 
-    updateGpsButtonState(); // Mise à jour de l'état initial
+    updateGpsButtonState(); 
 
     // Intervalle lent pour les mises à jour Astro (1s)
     if (domID === null) {
