@@ -1,25 +1,30 @@
 // =================================================================
-// BLOC A : CONSTANTES, ÉTAT GLOBAL, FILTRES DE KALMAN & IMU
+// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js
+// CONSTANTES, ÉTAT GLOBAL, FILTRES DE KALMAN & IMU
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
 
-// --- CONSTANTES GLOBALES ---
-const C_L = 299792458; 
-const SPEED_SOUND = 343; 
-const G_ACC = 9.80665; 
+// --- CONSTANTES GLOBALES (Physiques, GPS, Temps) ---
+const C_L = 299792458; // Vitesse de la lumière (m/s)
+const SPEED_SOUND = 343; // Vitesse du son (m/s)
+const G_ACC = 9.80665; // Gravité standard (m/s²)
 const KMH_MS = 3.6; 
-const R_E = 6371000; 
+const R_E = 6371000; // Rayon moyen de la Terre (m)
 const R2D = 180 / Math.PI;
 const D2R = Math.PI / 180;
-const W_EARTH = 7.2921E-5; 
+const W_EARTH = 7.2921E-5; // Vitesse angulaire de la Terre (rad/s)
 const NETHER_RATIO = 1 / 8; 
+
+// Constantes Temps / Astro
 const dayMs = 86400000;
 const J1970 = 2440588; 
 const J2000 = 2451545; 
 const DOM_SLOW_UPDATE_MS = 1000;
 const WEATHER_UPDATE_MS = 30000; 
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc"; 
+
+// Constantes GPS
 const MIN_DT = 0.05; 
 const MIN_SPD = 0.01; 
 const MAX_ACC = 20; 
@@ -28,6 +33,8 @@ const GPS_OPTS = {
     HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 },
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 30000, timeout: 60000 }
 };
+
+// Constantes Kalman & IMU
 const Q_NOISE = 0.001; 
 let kSpd = 0; 
 let kUncert = 1000; 
@@ -41,11 +48,19 @@ const ACCEL_FILTER_ALPHA = 0.8;
 let kAccel = { x: 0, y: 0, z: 0 };
 let latestVerticalAccelIMU = 0; 
 let latestLinearAccelMagnitude = 0; 
+let latestAccelLongEKF = 0; 
+
+// Constantes Astro / UI
+const CLOCK_RADIUS_PX = 45; 
+const MOON_ICON_SIZE_PX = 15;
+const MOON_ORBIT_RADIUS_PX = CLOCK_RADIUS_PX - (MOON_ICON_SIZE_PX / 2); 
+const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
+const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather";
 
 // --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null;
-let lat = 43.2965; // Latitude par défaut (Marseille)
-let lon = 5.3698;  // Longitude par défaut
+let lat = 43.2965; 
+let lon = 5.3698;  
 let sTime = null; 
 let distM = 0; 
 let timeMoving = 0; 
@@ -59,15 +74,16 @@ let selectedEnvironment = 'NORMAL';
 let lServH = 0; 
 let lLocH = 0; 
 let lastP_hPa = 1013.25; 
-
-// --- VARIABLES GLOBALES IMU & MAP ---
 let global_pitch = 0; 
 let global_roll = 0; 
 const trajectoryPoints = []; 
 
-// --- CONSTANTES API MÉTÉO ---
-const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
-const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather";
+// Variables pour la carte (Doit être dans un fichier global ou ici)
+let map = null;
+let marker = null;
+let tracePolyline = null;
+let domID = null; 
+let weatherID = null; 
 
 // ===========================================
 // FONCTIONS UTILITAIRES ET KALMAN
@@ -90,14 +106,38 @@ function kFilter(z, dt, R_dyn) {
     return kSpd;
 }
 
-function getKalmanR(acc, alt, pressure, linearAccelMag) { 
-    let R_raw = acc * acc; 
-    if (R_raw < 0.1) R_raw = 0.1;
+/** CALCULE L'INCERTITUDE DYNAMIQUE R_dyn (LOGIQUE RENFORCÉE EKF/IMU)
+ * **CORRECTION VITESSE APPLIQUÉE ICI**
+ * @param acc Précision GPS (m)
+ * @param alt Altitude (m)
+ * @param pressure Pression Atmosphérique (hPa)
+ * @param linearAccelMag Magnitude de l'Accélération Linéaire (IMU) (m/s²)
+ * @param accelLongEKF Accélération Longitudinale filtrée (EKF) (m/s²)
+ */
+function getKalmanR(acc, alt, pressure, linearAccelMag, accelLongEKF) { 
+    let R_gps_base = acc * acc; 
+    if (R_gps_base < 0.1) R_gps_base = 0.1;
+
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment] || ENVIRONMENT_FACTORS.NORMAL;
-    let noiseMultiplier = envFactor;
-    if (alt !== null && alt < 0) { noiseMultiplier += Math.abs(alt / 100); }
-    if (linearAccelMag > 0.5) { noiseMultiplier += Math.pow(linearAccelMag, 1.5) * 0.5; }
-    return R_raw * noiseMultiplier;
+    let dynamicMultiplier = envFactor;
+    
+    // 1. Influence de l'altitude / Underground
+    if (alt !== null && alt < 0) { 
+        dynamicMultiplier += Math.abs(alt / 50); 
+    }
+    
+    // 2. RENFORCEMENT EKF/IMU : Influence de l'Accélération Longitudinale (EKF)
+    const accel_influence = Math.pow(Math.abs(accelLongEKF), 2) * 1.5; // Facteur plus agressif
+    dynamicMultiplier += accel_influence;
+    
+    // 3. Influence de l'accélération linéaire totale (IMU) - Bruit de choc/vibration
+    const imu_noise_influence = Math.pow(linearAccelMag, 2) * 0.1;
+    dynamicMultiplier += imu_noise_influence;
+    
+    // 4. Ajout d'une influence de base pour que l'IMU corrige toujours un minimum
+    dynamicMultiplier += 0.5; // Planche pour l'influence IMU
+
+    return R_gps_base * dynamicMultiplier;
 }
 
 function kFilterAltitude(z, acc, dt, u_accel = 0) { 
@@ -164,26 +204,17 @@ function handleDeviceMotion(event) {
         acc_lin_t_z = -acc_lin_t_z;
     }
     
-    // acc_lin_horizontal n'est plus affichée mais utilisée dans getKalmanR
-    const acc_lin_horizontal = Math.sqrt(acc_lin_t_x ** 2 + acc_lin_t_y ** 2); 
     latestVerticalAccelIMU = acc_lin_t_z; 
-    // latestLinearAccelMagnitude n'est plus affichée mais utilisée dans getKalmanR
     latestLinearAccelMagnitude = Math.sqrt(acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2); 
     
-    // Accel. Verticale (IMU) conservée
     if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = `${acc_lin_t_z.toFixed(3)} m/s²`;
     if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(acc_lin_t_z / G_ACC).toFixed(2)} G`;
 }
 // =================================================================
-// BLOC B : BOUCLE PRINCIPALE (updateDisp), ASTRO & MÉTÉO
-// Dépendances : BLOC A (Constantes, Globales, Filtres)
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js
+// BOUCLE ASTRO, MÉTÉO, FOND DE CIEL & MISE À JOUR PRINCIPALE (updateDisp)
+// Dépend de gnss-dashboard-part1.js
 // =================================================================
-
-// --- CONSTANTES ASTRO / UI ---
-const CLOCK_RADIUS_PX = 45; // 90px / 2
-const MOON_ICON_SIZE_PX = 15;
-// Rayon pour positionner l'icône de Lune (45 - 15/2 = 37.5)
-const MOON_ORBIT_RADIUS_PX = CLOCK_RADIUS_PX - (MOON_ICON_SIZE_PX / 2); 
 
 // --- Fonctions utilitaires du Temps ---
 function getCDate() {
@@ -256,7 +287,6 @@ function getSolarTime(date, lon) {
     return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
 }
 
-/** * Détermine le symbole Unicode de la phase de lune le plus proche */
 function getClosestMoonPhaseSymbol(phase) {
     const phases = [
         { threshold: 0.00, symbol: '🌑', name: 'Nouvelle Lune' },
@@ -271,7 +301,6 @@ function getClosestMoonPhaseSymbol(phase) {
     ];
     let bestPhase = phases[0];
     let minDiff = Infinity;
-    // On cherche l'icône la plus proche de la phase réelle (fraction)
     for (let i = 0; i < phases.length; i++) {
         const diff = Math.abs(phase - phases[i].threshold);
         if (diff < minDiff) {
@@ -282,7 +311,59 @@ function getClosestMoonPhaseSymbol(phase) {
     return bestPhase;
 }
 
-/** Met à jour les valeurs Astro et TST sur le DOM (avec horloge Minecraft Saisons et Lune) */
+/** Met à jour le dégradé du ciel et simule la trajectoire saisonnière.
+ * **CORRECTION DÉGRADÉ DU CIEL APPLIQUÉE ICI**
+ */
+function updateSkyGradient(elevation_deg, now) {
+    const skyEl = $('sky-background');
+    if (!skyEl) return;
+
+    const month = now.getMonth(); // 0 (Jan) to 11 (Dec)
+    
+    // Couleurs de base pour le ciel
+    const nightTop = '#00001a'; // Noir/Bleu Nuit
+    const nightBottom = '#00004d'; // Bleu Nuit
+    const blueDay = '#87ceeb'; // Bleu Clair
+    const whiteDay = '#e0ffff'; // Blanc Très Clair
+    const deepOrange = '#ff4500'; 
+    
+    // Ajustement saisonnier pour le crépuscule
+    const seasonalOrange = (month >= 9 || month <= 2) ? deepOrange : '#ffa500';
+
+    if (elevation_deg > 10) { 
+        // Plein jour (Altitude > 10°)
+        skyEl.style.background = `linear-gradient(to top, ${whiteDay}, ${blueDay})`;
+        skyEl.style.opacity = 1;
+    } else if (elevation_deg > 0) { 
+        // Jour faible / Crépuscule civil (0° < Altitude ≤ 10°)
+        const factor = elevation_deg / 10;
+        const colorMiddle = `rgba(255, 165, 0, ${1 - factor})`; 
+
+        skyEl.style.background = `linear-gradient(to top, ${whiteDay} 0%, ${colorMiddle} 50%, ${blueDay} 100%)`;
+        skyEl.style.opacity = 1;
+    } else if (elevation_deg > -18) { 
+        // Crépuscule nautique et astronomique (-18° < Altitude ≤ 0°)
+        const factor = (elevation_deg + 18) / 18; 
+        
+        const darkPurple = Math.round(75 * (1 - factor)); 
+        const colorMiddle = `rgb(${darkPurple}, 0, 100)`; 
+
+        // Transition nuit -> crépuscule
+        skyEl.style.background = `linear-gradient(to top, ${seasonalOrange} 0%, ${colorMiddle} 30%, ${nightTop} 80%)`;
+        skyEl.style.opacity = Math.max(0.5, factor); 
+    } else { 
+        // Nuit (Altitude ≤ -18°)
+        skyEl.style.background = `linear-gradient(to top, ${nightBottom}, ${nightTop})`;
+        skyEl.style.opacity = 1;
+    }
+    
+    // SIMULATION DE TRAJECTOIRE SAISONNIÈRE (Inclinaison de l'horizon)
+    const seasonalEclipticTilt = Math.sin((month - 3) * (Math.PI / 6)) * 15; 
+    const tilt = 18 + seasonalEclipticTilt; 
+    skyEl.style.transform = `perspective(1000px) rotateX(${tilt}deg)`; 
+}
+
+
 function updateAstro(latA, lonA) {
     const now = getCDate(); 
     if (now === null || latA === 0 || lonA === 0) return; 
@@ -295,6 +376,9 @@ function updateAstro(latA, lonA) {
     const solarTimes = getSolarTime(now, lonA);
     const elevation_deg = sunPos ? (sunPos.altitude * R2D) : 0;
     
+    // MISE À JOUR DU FOND DE CIEL SAISONNIER
+    updateSkyGradient(elevation_deg, now);
+    
     $('local-time').textContent = now.toLocaleTimeString('fr-FR', { timeZone: 'UTC', hour12: false });
     $('date-display').textContent = now.toLocaleDateString();
     
@@ -304,7 +388,6 @@ function updateAstro(latA, lonA) {
         $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
     }
     
-    // --- MISE À JOUR DE L'HORLOGE TST MINECRAFT (SOLEIL) ---
     const tst_ms = solarTimes.TST_MS;
     if (isNaN(tst_ms)) return; 
     
@@ -313,22 +396,16 @@ function updateAstro(latA, lonA) {
     const clockFace = $('minecraft-clock-face');
     
     if (clockFace && times) {
-        // Logique Saisons : Ajuste le ratio Jour/Nuit (Jaune/Bleu)
         const dayDurationMs = times.sunset.getTime() - times.sunrise.getTime();
         const dayPercent = (dayDurationMs / dayMs) * 100;
-        
-        // Calcule le point de départ du gradient (lever de soleil) en % TST
         const sunriseTST = getSolarTime(times.sunrise, lonA).TST_MS;
         const sunrisePercent = (sunriseTST / dayMs) * 100;
-        
-        // Calcule l'angle de départ (aligné sur le lever de soleil TST)
-        const startAngle = (sunrisePercent * 360) - 90; // -90 pour aligner
+        const startAngle = (sunrisePercent * 360) - 90; 
 
         clockFace.style.background = `conic-gradient(from ${startAngle}deg, #f7dc00 0% ${dayPercent}%, #3777d1 ${dayPercent}% 100%)`;
         clockFace.style.transform = `rotate(${rotationDeg}deg)`;
     }
     
-    // Statut textuel
     if ($('clock-status')) {
          if (elevation_deg > 0) {
              $('clock-status').textContent = `Jour (Soleil visible)`;
@@ -339,28 +416,18 @@ function updateAstro(latA, lonA) {
          }
     }
     
-    // --- NOUVEAU : MISE À JOUR DE LA LUNE ---
     const moonIconEl = $('moon-icon');
     if (moonPos && moonIllum && moonIconEl) {
         
-        // Calcul de l'angle de position de la Lune par rapport au Soleil (TST)
         const angleOffsetRad = moonIllum.angle; 
         const angleOffsetDeg = angleOffsetRad * R2D;
         
-        // Angle de la Lune sur le cadran TST (rotation du soleil + offset)
-        // La Lune se trouve angulairement 'angleOffsetDeg' après le Soleil.
         let moonRotationDeg = rotationDeg + angleOffsetDeg;
 
-        // Positionnement de l'icône sur le cercle :
-        // 1. Déplace le centre de l'icône à (-50%, -50%).
-        // 2. Fait tourner le système de coordonnées de 'moonRotationDeg + 180' (pour aligner 0° TST au Nord).
-        // 3. Translate l'icône sur le bord du cercle (MOON_ORBIT_RADIUS_PX).
-        // 4. Effectue une contre-rotation (l'opposé de la rotation) pour garder l'icône toujours verticale.
         const rotationAngleAroundCenter = (moonRotationDeg + 180); 
         
         moonIconEl.style.transform = `translate(-50%, -50%) rotate(${rotationAngleAroundCenter}deg) translateX(${MOON_ORBIT_RADIUS_PX}px) rotate(${-rotationAngleAroundCenter}deg)`;
 
-        // Mise à jour de la phase (Icône et Texte)
         const currentPhase = getClosestMoonPhaseSymbol(moonIllum.phase);
         moonIconEl.textContent = currentPhase.symbol;
         moonIconEl.title = `${currentPhase.name} - Illum: ${(moonIllum.fraction * 100).toFixed(1)} %`;
@@ -369,14 +436,12 @@ function updateAstro(latA, lonA) {
         $('moon-elevation').textContent = `${(moonPos.altitude * R2D).toFixed(2)} °`;
         $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)} °`;
     } else if (moonIconEl) {
-        // Cache la Lune si les données manquent
         moonIconEl.textContent = '';
         $('moon-phase').textContent = 'N/A';
         $('moon-elevation').textContent = '-- °';
         $('moon-azimuth').textContent = '-- °';
     }
 
-    // --- MISE À JOUR DU DOM (ASTRO) ---
     $('time-minecraft').textContent = solarTimes.TST; 
     $('tst').textContent = solarTimes.TST;
     $('lsm').textContent = solarTimes.MST;
@@ -446,14 +511,13 @@ async function updateWeather(latA, lonA) {
 }
 
 
-/** * FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique) */
+/** FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique) */
 function updateDisp(pos) {
     if (emergencyStopActive) return;
     
     let alt, acc, spd_raw_gps, cTimePos;
     
     if (pos) {
-        // Mode GPS Normal
         lat = pos.coords.latitude; 
         lon = pos.coords.longitude;
         alt = pos.coords.altitude;
@@ -461,7 +525,6 @@ function updateDisp(pos) {
         spd_raw_gps = pos.coords.speed;
         cTimePos = pos.timestamp;
     } else {
-        // Mode GPS Échoué (Mode Dégradé)
         alt = null;
         acc = 99.0;
         spd_raw_gps = 0;
@@ -510,11 +573,14 @@ function updateDisp(pos) {
 
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
 
-    const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa, latestLinearAccelMagnitude); 
+    const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa, latestLinearAccelMagnitude, latestAccelLongEKF); 
     const fSpd = kFilter(spd3D, dt, R_dyn); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
     let accel_long = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
+    
+    latestAccelLongEKF = accel_long; 
+
     lastFSpeed = sSpdFE;
     if (pos) { 
         distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
@@ -581,25 +647,22 @@ function updateDisp(pos) {
     }
     lPos.kAlt_old = kAlt_new; 
     lPos.kAltUncert_old = kAltUncert; 
-    }
+        }
 // =================================================================
-// BLOC C : CARTE (Leaflet), CONTRÔLES & GESTIONNAIRES D'ÉVÉNEMENTS
-// Dépendances : BLOC A, BLOC B (updateAstro, updateWeather, updateDisp)
+// FICHIER JS PARTIE 3 : gnss-dashboard-part3.js
+// CARTE (Leaflet), CONTRÔLES & GESTIONNAIRES D'ÉVÉNEMENTS
+// Dépend de gnss-dashboard-part1.js et gnss-dashboard-part2.js
 // =================================================================
-
-let map = null;
-let marker = null;
-let tracePolyline = null;
-let domID = null; 
-let weatherID = null; 
-
-// ===========================================
-// FONCTIONS CARTE ET CONTRÔLE GPS
-// ===========================================
 
 /** Initialise la carte Leaflet. */
 function initMap(latA, lonA) {
-    if (map) { // Si la carte existe, on la centre
+    // Vérifie si Leaflet (L) est chargé
+    if (typeof L === 'undefined') {
+        if ($('map-container')) $('map-container').textContent = 'Erreur: Librairie Leaflet non chargée.';
+        return;
+    }
+
+    if (map) { 
         map.setView([latA, lonA], 15);
         return;
     }
@@ -622,16 +685,15 @@ function initMap(latA, lonA) {
     }
 }
 
-/** Met à jour la carte. (Appelée par updateDisp dans BLOC B) */
+/** Met à jour la carte. */
 function updateMap(latA, lonA) {
-    if (!map || !marker || !tracePolyline) { 
+    if (typeof L === 'undefined' || !map || !marker || !tracePolyline) { 
         if (latA !== 0 || lonA !== 0) initMap(latA, lonA); 
         return; 
     }
     
     const newLatLng = [latA, lonA];
     
-    // N'ajoute des points que si le GPS est actif (wID est non null)
     if (wID !== null) {
         trajectoryPoints.push(newLatLng);
         tracePolyline.setLatLngs(trajectoryPoints);
@@ -645,7 +707,6 @@ function updateMap(latA, lonA) {
     }
 }
 
-/** Réinitialise le tracé de la trajectoire. */
 function resetTrajectory() {
     trajectoryPoints.length = 0; 
     if (tracePolyline) {
@@ -656,7 +717,6 @@ function resetTrajectory() {
     }
 }
 
-/** Applique les coordonnées manuelles des champs de saisie */
 function applyManualCoords() {
     const latInput = parseFloat($('override-lat').value);
     const lonInput = parseFloat($('override-lon').value);
@@ -666,23 +726,18 @@ function applyManualCoords() {
         return;
     }
 
-    // Met à jour les variables globales
     lat = latInput;
     lon = lonInput;
     
-    // Force la mise à jour de l'Astro et de la Météo
-    updateAstro(lat, lon);
-    updateWeather(lat, lon);
-    
-    // Initialise ou centre la carte
+    if (typeof updateAstro === 'function') updateAstro(lat, lon);
+    if (typeof updateWeather === 'function') updateWeather(lat, lon);
+
     initMap(lat, lon);
     
-    // Réinitialise lPos pour utiliser la nouvelle base
     lPos = null;
-    sTime = null; // Réinitialise le temps de session
+    sTime = null; 
     
-    // Déclenche un tick en mode dégradé (sans 'pos' du GPS)
-    updateDisp(null); 
+    if (typeof updateDisp === 'function') updateDisp(null); 
 }
 
 
@@ -690,25 +745,28 @@ function handleErr(err) {
     console.error(`Erreur GNSS (${err.code}): ${err.message}`);
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `❌ ERREUR GPS`;
     
-    // Active les contrôles manuels
     $('override-lat').disabled = false;
     $('override-lon').disabled = false;
     $('apply-coords-btn').disabled = false;
 
-    // Déclenche une mise à jour en mode dégradé
     if (sTime === null) { 
-        applyManualCoords(); // Tente d'initialiser avec les coords manuelles par défaut
+        applyManualCoords(); 
     }
 }
 
 function setGPSMode(mode) {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     currentGPSMode = mode;
-    wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[mode]);
+    
+    if (typeof updateDisp === 'function') {
+        wID = navigator.geolocation.watchPosition(updateDisp, handleErr, GPS_OPTS[mode]);
+    } else {
+        wID = navigator.geolocation.watchPosition(console.log, handleErr, GPS_OPTS[mode]);
+    }
+    
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `⏸️ PAUSE GPS`;
     if ($('freq-select')) $('freq-select').value = mode; 
     
-    // Désactive les contrôles manuels si le GPS fonctionne
     $('override-lat').disabled = true;
     $('override-lon').disabled = true;
     $('apply-coords-btn').disabled = true;
@@ -730,7 +788,6 @@ function stopGPS(resetButton = true) {
     if (resetButton) {
         if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = `▶️ MARCHE GPS`;
     }
-    // Active les contrôles manuels si le GPS est arrêté
     $('override-lat').disabled = false;
     $('override-lon').disabled = false;
     $('apply-coords-btn').disabled = false;
@@ -753,18 +810,12 @@ function resumeSystem() {
     }
     startGPS();
 }
-
-
-// ===========================================
-// INITIALISATION DES ÉVÉNEMENTS
-// ===========================================
     
 document.addEventListener('DOMContentLoaded', () => {
     
-    syncH(); 
+    // syncH est dans Part 2
+    if (typeof syncH === 'function') syncH(); 
 
-    // --- GESTIONNAIRES DE CONTRÔLE ---
-    
     if ($('environment-select')) {
         $('environment-select').value = selectedEnvironment;
         $('environment-select').addEventListener('change', (e) => { 
@@ -818,13 +869,11 @@ document.addEventListener('DOMContentLoaded', () => {
         $('toggle-mode-btn').textContent = isDarkMode ? "☀️ Mode Jour" : "🌗 Mode Nuit";
     });
 
-    // Gestionnaire pour les coordonnées manuelles
     if ($('apply-coords-btn')) {
         $('apply-coords-btn').addEventListener('click', applyManualCoords);
     }
     
-    // --- ATTACHEMENT DES CAPTEURS ---
-    
+    // handleDeviceOrientation et handleDeviceMotion sont dans Part 1
     if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', handleDeviceOrientation, true);
     } else {
@@ -836,21 +885,24 @@ document.addEventListener('DOMContentLoaded', () => {
         console.warn("DeviceMotion n'est pas supporté.");
     } 
 
-    startGPS(); // Démarrage initial du GPS
+    startGPS(); 
 
-    // --- INTERVALLES (ASTRO & MÉTÉO) ---
-    
-    if (domID === null) {
-        domID = setInterval(() => {
-            updateAstro(lat, lon); // Utilise les globales
-        }, DOM_SLOW_UPDATE_MS); 
+    // updateAstro et updateWeather sont dans Part 2
+    if (typeof updateAstro === 'function') {
+        if (domID === null) {
+            domID = setInterval(() => {
+                updateAstro(lat, lon); 
+            }, DOM_SLOW_UPDATE_MS); 
+        }
     }
     
-    if (weatherID === null) {
-        weatherID = setInterval(() => {
-            if (lat !== 0 && lon !== 0) { 
-                updateWeather(lat, lon);
-            }
-        }, WEATHER_UPDATE_MS); 
+    if (typeof updateWeather === 'function') {
+        if (weatherID === null) {
+            weatherID = setInterval(() => {
+                if (lat !== 0 && lon !== 0) { 
+                    updateWeather(lat, lon);
+                }
+            }, WEATHER_UPDATE_MS); 
+        }
     }
 });
