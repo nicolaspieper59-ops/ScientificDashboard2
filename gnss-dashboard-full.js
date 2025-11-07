@@ -1,5 +1,5 @@
 // =================================================================
-// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (VERSION FINALE ZVU SENSIBLE)
+// BLOC A : CONSTANTES, UTILITAIRES, CAPTEURS & CŒUR DE L'EKF (VERSION FINALE AVEC CORRECTION Z)
 // =================================================================
 
 // 1. CONSTANTES GLOBALES
@@ -17,9 +17,7 @@ const STATIC_ACCEL_THRESHOLD = 0.8;
 const ACCEL_BIAS_X = 0.0, ACCEL_BIAS_Y = 0.0, ACCEL_BIAS_Z = 0.0;
 const LIGHT_YEAR_M = 9460730472580800;
 const UNDERGROUND_THRESHOLD = -50.0; 
-
-// NOUVELLE CONSTANTE POUR LA SENSIBILITÉ ZVU
-const ZVU_SENSITIVITY_THRESHOLD = 0.20; // 0.20 m/s² : détecte tout mouvement réel, y compris les plus petits.
+const ZVU_SENSITIVITY_THRESHOLD = 0.20; 
 
 // 2. VARIABLES GLOBALES
 let wID = null, domID = null, weatherID = null; 
@@ -129,7 +127,7 @@ function handleDeviceMotion(event) {
         kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.y - ACCEL_BIAS_Y);
         kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.z - ACCEL_BIAS_Z);
 
-        // NOUVEAU : LOGIQUE DE NIVEAU À BULLE VIRTUEL (Estimation des angles si N/A)
+        // LOGIQUE DE NIVEAU À BULLE VIRTUEL (Estimation des angles si N/A)
         if (Math.abs(global_pitch) < 0.01 && Math.abs(global_roll) < 0.01) {
             global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
             global_roll = Math.atan2(kAccel.y, kAccel.z);
@@ -137,7 +135,6 @@ function handleDeviceMotion(event) {
             if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} ° (Est.)`;
             if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} ° (Est.)`;
         } else if (global_pitch != 0 || global_roll != 0) {
-            // Si les angles sont reçus, on s'assure que l'affichage est bien mis à jour
              if ($('debug-pitch-angle').textContent.includes('(Est.)')) $('debug-pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} °`;
              if ($('debug-roll-angle').textContent.includes('(Est.)')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} °`;
         }
@@ -149,7 +146,7 @@ function handleDeviceMotion(event) {
         
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
-        // CORRECTION FINALE : Inversion du signe de la projection G_z pour neutraliser l'accélération verticale
+        // G_z_proj doit être négatif pour la convention standard (axe Z vers le haut)
         const G_z_proj = -g_local * Math.cos(phi) * Math.cos(theta);  
         
         // 3. ACCÉLÉRATION LINÉAIRE 
@@ -160,7 +157,9 @@ function handleDeviceMotion(event) {
         // Application de la correction de gravité (toujours)
         acc_lin_t_x = kAccel.x - G_x_proj;
         acc_lin_t_y = kAccel.y - G_y_proj;
-        acc_lin_t_z = kAccel.z - G_z_proj;
+        
+        // CORRECTION DÉFINITIVE DE L'AXE Z : Addition de G_z_proj car G_z_proj est négatif
+        acc_lin_t_z = kAccel.z + G_z_proj; 
         
         latestVerticalAccelIMU = acc_lin_t_z;
         latestLinearAccelMagnitude = Math.sqrt(
@@ -170,7 +169,6 @@ function handleDeviceMotion(event) {
     } else { return; }
     
     // 4. ZVU (Zero Velocity Update)
-    // UTILISATION DU NOUVEAU SEUIL POUR DÉTECTER TOUT MOUVEMENT RÉEL
     if (latestLinearAccelMagnitude < ZVU_SENSITIVITY_THRESHOLD) { 
         latestLinearAccelMagnitude = 0.0;
         latestVerticalAccelIMU = 0.0;
@@ -205,10 +203,7 @@ function updateDisp(pos_dummy) {
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : 0.2;
     if (lPos === null) { 
         sTime = new Date().getTime(); 
-        // Initialisation de l'Altitude EKF avec la première lecture brute
-        if (kAlt === 0.0 && alt_ips_raw > 0.0) {
-            kAlt = alt_ips_raw;
-        }
+        if (kAlt === 0.0 && alt_ips_raw > 0.0) { kAlt = alt_ips_raw; }
     }
 
     let spd3D_raw = spd_raw_ips;
@@ -227,7 +222,6 @@ function updateDisp(pos_dummy) {
     
     if (isZVUActive) { 
         accel_control_3D = 0.0; accel_control_V = 0.0; 
-        // CORRECTION FINALE : Forcer la vitesse d'entrée IPS à zéro si ZVU actif
         spd3D_raw = 0.0; 
     }
 
@@ -242,41 +236,30 @@ function updateDisp(pos_dummy) {
         }
     }
     maxSpd = Math.max(maxSpd, speed_base_for_metrics); 
-    let avgSpeed = (timeMoving > 5.0) ? distM / timeMoving : 0.0;
     accel_long = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
     lastFSpeed = sSpdFE; 
     
-    // --- MISE À JOUR DU DOM (IDs Finalisés) ---
+    // --- MISE À JOUR DU DOM (Inchangée) ---
     if ($('latitude')) $('latitude').textContent = `${lat.toFixed(6)}`;
     if ($('longitude')) $('longitude').textContent = `${lon.toFixed(6)}`;
     if ($('altitude-gps')) $('altitude-gps').textContent = `${alt_ips_raw.toFixed(2)} m`;
     if ($('gps-precision')) $('gps-precision').textContent = `${acc.toFixed(2)} m`;
-    
     if ($('altitude-ekf')) $('altitude-ekf').textContent = `${kAlt_new.toFixed(2)} m`;
-    
     if ($('speed-stable')) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`;
-    
     if ($('ekf-precision-rdyn')) $('ekf-precision-rdyn').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; 
     if ($('gps-accuracy-effective')) $('gps-accuracy-effective').textContent = `${acc.toFixed(2)} m`;
-    
     if ($('speed-max')) $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
     if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${(spd3D_raw * KMH_MS).toFixed(5)} km/h`;
     if ($('speed-stable-ms')) $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${Math.round(sSpdFE * 1000)} mm/s`;
-    
     if ($('perc-speed-sound')) $('perc-speed-sound').textContent = `${(sSpdFE / SPEED_SOUND * 100).toFixed(2)} %`;
     if ($('perc-speed-c')) $('perc-speed-c').textContent = `${(sSpdFE / C_L * 100).toExponential(2)} %`;
-
     if ($('distance-total-km')) $('distance-total-km').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
-    
     if ($('accel-long')) $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
     if ($('force-g-long')) $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G`;
-    
     if ($('accel-3d-imu')) $('accel-3d-imu').textContent = `${latestLinearAccelMagnitude.toFixed(3)} m/s²`;
     if ($('force-g-3d-imu')) $('force-g-3d-imu').textContent = `${(latestLinearAccelMagnitude / G_ACC).toFixed(2)} G`;
-
     if ($('time-elapsed')) $('time-elapsed').textContent = `${((new Date().getTime() - sTime) / 1000).toFixed(2)} s`;
     if ($('time-moving')) $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
-
     if ($('underground-status')) $('underground-status').textContent = isUnderground(kAlt_new) ? 'Oui' : 'Non';
     
     // --- APPELS VERS LE BLOC B ---
@@ -288,10 +271,7 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-}
-// =================================================================
-// BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (FINAL CORRIGÉ)
-// =================================================================
+    }
 
 // 1. Fonctions Astro (Dépend des utilitaires et constantes du Bloc A)
 function toDays(date) { return date.getUTCDate() + (date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600) / 24; }
