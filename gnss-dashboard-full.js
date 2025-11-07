@@ -259,18 +259,41 @@ function handleDeviceMotion(event) {
     lPos.kAltUncert_old = kAltUncert; 
         }
 // =================================================================
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js
-// BOUCLE ASTRO, MÉTÉO, FOND DE CIEL & MISE À JOUR PRINCIPALE (updateDisp)
-// Dépend de gnss-dashboard-part1.js
+')) $('vertical-speed-uncert').textContent = `${Math.min(20, verticalSpeedUncert).toFixed(2)} m/s`;
+// =================================================================
+// FICHIER JS PARTIE 2 : Logique Astro, Météo & Mise à Jour Principale (updateDisp)
+// Dépend des variables et fonctions définies en PARTIE 1
 // =================================================================
 
-// ... (fonctions astro et météo omises) ...
+/** Récupère la date actuelle (UTC ou NTP si disponible) */
+function getCDate() {
+    // Logique simplifiée : utilise l'heure locale si l'heure NTP n'est pas synchronisée
+    return new Date(); 
+}
 
-/** FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique) */
+/** Mise à jour des données Astronomiques (SunCalc) */
+function updateAstro(lat, lon) {
+    // Logique de calcul SunCalc (omise pour la concision)
+    // Devrait mettre à jour les éléments DOM relatifs au soleil et à la lune
+    if (!lat || !lon) return;
+
+    // ... (Implémentation SunCalc) ...
+}
+
+/** Récupération des données Météo (API) */
+function getWeather() {
+    // Logique de récupération API (omise pour la concision)
+    // Devrait mettre à jour les éléments DOM de la section météo
+}
+
+
+/** * FONCTION PRINCIPALE DE MISE À JOUR (GPS, Kalman, Physique) 
+ * C'est le cœur du tableau de bord.
+ */
 function updateDisp(pos) {
     if (emergencyStopActive) return;
     
-    // ... (Logique d'initialisation des coordonnées et du temps) ...
+    // 1. Initialisation des coordonnées et du temps
     let alt, acc, spd_raw_gps, cTimePos;
     if (pos) {
         lat = pos.coords.latitude; 
@@ -287,11 +310,19 @@ function updateDisp(pos) {
     }
     
     const now = getCDate(); 
-    const MASS = parseFloat($('mass-input') ? $('mass-input').value : 70.0); // Récupère la masse utilisateur
+    // Récupère la masse saisie par l'utilisateur
+    const MASS = parseFloat($('mass-input') ? $('mass-input').value : 70.0);
     
-    // ... (Logique d'initialisation sTime/kAlt) ...
-    if (sTime === null) { sTime = now.getTime(); }
+    // 2. Initialisation du temps de session et de l'altitude EKF
+    if (sTime === null) { 
+        sTime = now.getTime(); 
+        if (alt !== null && kAlt === 0) {
+            kAlt = alt;
+            kAltUncert = acc * acc * 2.0; 
+        }
+    }
     
+    // Gestion de l'imprécision GPS (sortie précoce)
     if (acc > MAX_ACC && pos) { 
         if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; 
         if (lPos === null) lPos = { coords: { latitude: lat, longitude: lon }}; 
@@ -299,12 +330,14 @@ function updateDisp(pos) {
     }
 
     let effectiveAcc = acc;
+    // Application de la précision forcée
     const accOverride = parseFloat($('gps-accuracy-override').value);
     if (accOverride > 0) { effectiveAcc = accOverride; }
 
     let spdH = spd_raw_gps ?? 0; 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
+    // 3. Filtrage d'Altitude (EKF)
     const kAlt_new = kFilterAltitude(alt, effectiveAcc, dt, latestVerticalAccelIMU); 
     
     let spdV = 0; 
@@ -321,24 +354,26 @@ function updateDisp(pos) {
 
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
 
-    // --- MISE À JOUR EKF FUSION IMU/GPS ---
+    // 4. MISE À JOUR EKF FUSION IMU/GPS
     const R_dyn = getKalmanR(effectiveAcc, alt, lastP_hPa, latestLinearAccelMagnitude, latestAccelLongEKF); 
     
-    // Utilise la nouvelle fonction kFilter avec l'accélération IMU comme input de contrôle
+    // Fusion : Utilise l'accélération IMU (latestAccelLongIMU) comme input de contrôle pour la PRÉDICTION
     const fSpd = kFilter(spd3D, dt, R_dyn, latestAccelLongIMU); 
+    
+    // Le seuil assure que la vitesse faible n'est pas nulle, mais s'annule à l'arrêt.
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
 
     // L'accélération EKF (pour la boucle de R_dyn) est toujours calculée à partir de la vitesse EKF
     let accel_long_ekf_calc = (dt > 0.05) ? (sSpdFE - lastFSpeed) / dt : 0;
     
-    // Mise à jour de l'EKF pour la boucle suivante
+    // Mise à jour de l'EKF pour la boucle suivante (pour influencer R_dyn et l'altitude)
     if (effectiveAcc < 10.0 && Math.abs(accel_long_ekf_calc) < 50.0) {
         latestAccelLongEKF = accel_long_ekf_calc; 
     }
 
     lastFSpeed = sSpdFE;
     
-    // ... (Logique de mise à jour distM, timeMoving, maxSpd, avgSpdMoving) ...
+    // 5. Mise à jour de la distance et des statistiques
     if (pos) { 
         distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
     }
@@ -346,38 +381,72 @@ function updateDisp(pos) {
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     const avgSpdMoving = timeMoving > 0 ? (distM / timeMoving) : 0;
     
-    // L'accélération finale affichée est l'accélération IMU (la plus précise pour la dynamique)
+    // L'accélération finale affichée est l'accélération IMU
     const accel_long_final = latestAccelLongIMU; 
     
+    // 6. Calculs de Physique
     const coriolusForce = 2 * MASS * sSpdFE * W_EARTH * Math.sin(lat * D2R);
     const kineticEnergy = 0.5 * MASS * sSpdFE ** 2;
+    // Puissance mécanique basée sur l'accélération IMU pour plus de réalisme
     const mechanicalPower = accel_long_final * MASS * sSpdFE; 
     
-    // ... (Logique de calcul airDensity) ...
+    const percentageSpeedOfSound = (sSpdFE / SPEED_SOUND) * 100;
+    const percentageSpeedOfLight = (sSpdFE / C_L) * 100;
 
-    // --- MISE À JOUR DU DOM (GPS/Physique) ---
+    // 7. MISE À JOUR DU DOM
+    
+    // Système / Temps
+    $('time-elapsed').textContent = `${((now.getTime() - sTime) / 1000).toFixed(2)} s`;
+    $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
+    
+    // Vitesse & Distance
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
-    $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1000).toFixed(0)} mm/s`; 
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
+    $('speed-avg').textContent = `${(avgSpdMoving * KMH_MS).toFixed(5)} km/h`;
+    $('speed-3d-raw').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`;
+    $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1000).toFixed(0)} mm/s`; 
+    $('speed-sound-perc').textContent = `${percentageSpeedOfSound.toFixed(2)} %`;
+    $('speed-light-perc').textContent = `${percentageSpeedOfLight.toExponential(2)}%`;
     $('distance-total-km').textContent = `${(distM / 1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
+    
+    // GPS / Brutes
     $('latitude').textContent = lat.toFixed(6);
     $('longitude').textContent = lon.toFixed(6);
+    $('altitude-raw').textContent = alt !== null ? `${alt.toFixed(2)} m` : 'N/A';
+    $('altitude-ekf').textContent = `${kAlt_new.toFixed(2)} m`;
     $('gps-precision').textContent = `${acc.toFixed(2)} m`;
     $('gps-accuracy-effective').textContent = `${effectiveAcc.toFixed(2)} m`;
+    $('speed-raw-ms').textContent = `${spd_raw_gps !== null ? spd_raw_gps.toFixed(2) : '0.00'} m/s`;
+    $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
+    $('underground-status').textContent = kAlt_new < ALT_TH ? 'Oui' : 'Non';
     
-    // Affichage des données de Force G
+    // Dynamique & Forces (Priorité IMU)
     $('accel-long').textContent = `${accel_long_final.toFixed(3)} m/s²`;
     $('force-g-long').textContent = `${(accel_long_final / G_ACC).toFixed(2)} G`;
-    $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; 
+    $('accel-lateral').textContent = `${latestAccelLatIMU.toFixed(3)} m/s²`;
+    $('force-g-lateral').textContent = `${(latestAccelLatIMU / G_ACC).toFixed(2)} G`;
+    $('force-g-total').textContent = `${(latestLinearAccelMagnitude / G_ACC).toFixed(2)} G`;
+    $('force-g-max').textContent = `${maxGForce.toFixed(2)} G`;
+
+    // Champs & Énergie
+    $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; // Incertitude dynamique du filtre
     $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
     $('mechanical-power').textContent = `${mechanicalPower.toFixed(2)} W`;
     $('coriolis-force').textContent = `${coriolusForce.toExponential(2)} N`;
     
-    if ($('force-g-max')) $('force-g-max').textContent = `${maxGForce.toFixed(2)} G`;
+    // 8. Mise à jour de l'état (pour la boucle suivante)
+    lPos = { 
+        coords: { latitude: lat, longitude: lon, altitude: alt, accuracy: acc, speed: spd_raw_gps }, 
+        timestamp: cTimePos, 
+        kAlt_old: kAlt_new, 
+        kAltUncert_old: kAltUncert 
+    };
     
-    // ... (Reste de la mise à jour du DOM et de lPos) ...
-        }
-// =================================================================
+    // 9. Mise à jour de la carte (doit être implémentée)
+    // updateMap(lat, lon, acc, sSpdFE, R_dyn);
+}
+
+// ... (Ajouter ici les fonctions startGPS, updateMap et les gestionnaires d'événements) ...
 // FICHIER JS PARTIE 3 : gnss-dashboard-part3.js
 // CARTE (Leaflet), CONTRÔLES & GESTIONNAIRES D'ÉVÉNEMENTS
 // Dépend de gnss-dashboard-part1.js et gnss-dashboard-part2.js
