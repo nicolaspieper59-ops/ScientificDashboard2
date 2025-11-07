@@ -273,9 +273,12 @@ function updateDisp(pos_dummy) {
     lPos = pos;
     lPos.kAlt_old = kAlt_new;
     lPos.kSpd_old = sSpdFE; 
-}
+    }
+// =================================================================
+// BLOC B : ASTRO, MÉTÉO, CONTRÔLES & INITIALISATION (VERSION FINALE)
+// =================================================================
 
-Astro (Dépend des utilitaires et constantes du Bloc A)
+// 1. Fonctions Astro (Dépend des utilitaires et constantes du Bloc A)
 function toDays(date) { return date.getUTCDate() + (date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600) / 24; }
 function solarMeanAnomaly(d) { return D2R * (357.5291 + 0.98560028 * d) % (2 * Math.PI); }
 function eclipticLongitude(M) {
@@ -360,19 +363,15 @@ function updateWeather(latA, lonA) {
 function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
     if (event.alpha !== null) {
-        // Mettre à jour le cap quelle que soit la disponibilité des angles
         currentHeading = event.alpha ?? 0;
 
-        // Si les angles sont reçus (PAS N/A), nous les utilisons et mettons à jour global_pitch/roll
         if (event.beta !== null && event.gamma !== null) {
             global_pitch = event.beta * D2R; 
             global_roll = event.gamma * D2R; 
             
-            // Affichage normal (non estimé)
             if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `${(event.beta || 0).toFixed(1)} °`;
             if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `${(event.gamma || 0).toFixed(1)} °`;
         } else {
-            // Si N/A, on laisse les valeurs globales à 0, et l'estimation dans le Bloc A prend le relais de l'affichage.
             if ($('debug-pitch-angle')) $('debug-pitch-angle').textContent = `N/A`;
             if ($('debug-roll-angle')) $('debug-roll-angle').textContent = `N/A`;
         }
