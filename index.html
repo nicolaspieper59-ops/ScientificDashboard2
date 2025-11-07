@@ -15,14 +15,35 @@
     <style>
         /* Styles de base */
         body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
-        .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
-        .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        
+        /* NOUVEAU : Fond de ciel dynamique */
+        #sky-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            /* Dégradé de base (Jour) */
+            background: linear-gradient(to top, #e0ffff, #87ceeb); 
+            transition: background 3s ease-in-out, opacity 3s ease-in-out, transform 0.5s ease;
+            transform-origin: center bottom; /* Point de pivot pour la simulation de saison */
+        }
+
+        .dashboard-container { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 20px; 
+            padding: 20px; 
+            position: relative; /* Assure que le contenu est au-dessus du ciel */
+            z-index: 10;
+        }
+        .section { background-color: rgba(255, 255, 255, 0.9); padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .section h2 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; font-size: 1.2em; }
         .data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
         .data-point span:first-child { font-weight: bold; color: #555; }
         .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
         .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
-        .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
         .control-input-full input, .control-input-full select { width: 98%; padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
         button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         #toggle-gps-btn { background-color: #28a745; color: white; }
@@ -44,8 +65,6 @@
             width: 100%;
             height: 100%;
             position: absolute;
-            /* Le gradient sera mis à jour en JS pour les saisons */
-            background: conic-gradient(from 0deg, #3777d1 0% 50%, #f7dc00 50% 100%);
             transition: transform 1s linear; 
         }
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
@@ -57,7 +76,7 @@
             height: 15px;
             border-radius: 50%;
             background: transparent;
-            color: #fff; /* Couleur de l'icône Unicode */
+            color: #fff; 
             transition: transform 1s linear;
             z-index: 200;
             top: 50%;
@@ -67,10 +86,19 @@
             line-height: 15px;
             text-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
         }
+        
+        /* Styles pour le mode nuit */
+        body.dark-mode { background-color: #1a1a1a; color: #ddd; }
+        body.dark-mode .section { background-color: rgba(34, 34, 34, 0.9); box-shadow: 0 4px 8px rgba(255,255,255,0.1); }
+        body.dark-mode .section h2 { border-bottom-color: #444; color: #eee; }
+        body.dark-mode .data-point span:first-child { color: #ccc; }
+        body.dark-mode .data-point { border-bottom-color: #333; }
     </style>
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
 <body>
+
+    <div id="sky-background"></div>
 
     <div class="dashboard-container">
         
@@ -238,4 +266,4 @@
 <script src="gnss-dashboard-full.js"></script>
  
 </body>
-    </html>
+            </html>
