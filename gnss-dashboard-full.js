@@ -155,14 +155,21 @@ function handleDeviceMotion(event) {
         let acc_lin_t_z = kAccel.z;
 
         // Application de la correction de gravité (toujours)
-        acc_lin_t_x = kAccel.x - G_x_proj;
-        acc_lin_t_y = kAccel.y - G_y_proj;
-        
-        // CORRECTION DÉFINITIVE DE L'AXE Z : Addition de G_z_proj car G_z_proj est négatif
-        acc_lin_t_z = kAccel.z + G_z_proj; 
-        
-        latestVerticalAccelIMU = acc_lin_t_z;
-        latestLinearAccelMagnitude = Math.sqrt(
+    // ... (dans handleDeviceMotion)
+
+// 3. ACCÉLÉRATION LINÉAIRE 
+// ...
+
+// Application de la correction de gravité (toujours)
+acc_lin_t_x = kAccel.x - G_x_proj;
+acc_lin_t_y = kAccel.y - G_y_proj;
+
+// CORRECTION DÉFINITIVE DE L'AXE Z : Retour à la soustraction pour neutraliser G_z_proj (négatif)
+acc_lin_t_z = kAccel.z - G_z_proj; 
+
+latestVerticalAccelIMU = acc_lin_t_z;
+latestLinearAccelMagnitude = Math.sqrt(
+// ...
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
         
