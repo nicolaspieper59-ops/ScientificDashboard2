@@ -1,6 +1,6 @@
 // =================================================================
 // BLOC A : CONSTANTES, ÉTAT GLOBAL, FILTRES DE KALMAN & IMU
-// (Contient les fonctions handleDeviceOrientation et handleDeviceMotion)
+// Dépendances : AUCUNE
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -115,6 +115,10 @@ function getKalmanR(acc, alt, pressure, linearAccelMag) {
 /** Filtre de Kalman 1D pour l'Altitude (Utilise u_accel IMU) */
 function kFilterAltitude(z, acc, dt, u_accel = 0) { 
     if (z === null) return kAlt; 
+    
+    // Correction pour l'initialisation (gérée dans updateDisp)
+    if (kAlt === 0 && z !== null) kAlt = z; 
+    
     const predAlt = kAlt + (0.5 * u_accel * dt * dt); 
     let predAltUncert = kAltUncert + Q_ALT_NOISE * dt;
     const R_alt = acc * acc * 2.0; 
@@ -157,26 +161,21 @@ function handleDeviceMotion(event) {
     kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * acc_g_raw.z; 
 
     // FALLBACK : Si DeviceOrientationEvent n'a pas initialisé les angles, les estimer ici.
-    // Cette estimation garantit que la correction de gravité (Étape 2) est toujours appliquée.
     if (global_pitch === 0 && global_roll === 0) {
         global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
         global_roll = Math.atan2(kAccel.y, kAccel.z);
         
-        // Mise à jour de l'affichage des angles (pour montrer les valeurs estimées sans le tag "Est.")
         if ($('pitch-angle')) $('pitch-angle').textContent = `${(global_pitch * R2D).toFixed(1)} °`;
         if ($('roll-angle')) $('roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} °`;
     }
 
     // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-    const phi = global_roll; // Roll (gamma) en RADIANS
-    const theta = global_pitch; // Pitch (beta) en RADIANS
+    const phi = global_roll; 
+    const theta = global_pitch; 
     const g_local = G_ACC; 
 
-    // Projections Gx et Gy
     const G_x_proj = g_local * Math.sin(theta);        
     const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
-
-    // Projection Gz (Amplitude toujours positive)
     const G_z_proj_abs = g_local * Math.cos(phi) * Math.cos(theta);  
     
     // 3. ACCÉLÉRATION LINÉAIRE CORRIGÉE
@@ -198,7 +197,7 @@ function handleDeviceMotion(event) {
     }
     
     // CALCUL DES MAGNITUDES
-    const acc_lin_horizontal = Math.sqrt(acc_lin_t_x ** 2 + acc_lin_t_y ** 2); // <-- NOUVELLE VALEUR HORIZONTALE
+    const acc_lin_horizontal = Math.sqrt(acc_lin_t_x ** 2 + acc_lin_t_y ** 2);
     latestVerticalAccelIMU = acc_lin_t_z; 
     latestLinearAccelMagnitude = Math.sqrt(acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2);
     
@@ -211,7 +210,7 @@ function handleDeviceMotion(event) {
     if ($('accel-linear-3d')) $('accel-linear-3d').textContent = `${latestLinearAccelMagnitude.toFixed(3)} m/s²`;
     if ($('force-g-3d-linear')) $('force-g-3d-linear').textContent = `${(latestLinearAccelMagnitude / G_ACC).toFixed(2)} G`;
 }
-
+// =================================================================
 // BLOC B : BOUCLE PRINCIPALE (updateDisp), ASTRO & MÉTÉO
 // Dépendances : BLOC A (Constantes, Globales, Filtres)
 // =================================================================
@@ -287,33 +286,73 @@ function getSolarTime(date, lon) {
         let s = Math.floor((ms % 60000) / 1000);
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
+    // Retourne TST_MS pour l'horloge
     return { TST: toTimeString(tst_ms), TST_MS: tst_ms, MST: toTimeString(mst_ms), EOT: eot_min.toFixed(3), ECL_LONG: final_ecl_long.toFixed(2) };
 }
 
-/** Met à jour les valeurs Astro et TST sur le DOM */
+/** Met à jour les valeurs Astro et TST sur le DOM (avec horloge Minecraft) */
 function updateAstro(latA, lonA) {
     const now = getCDate(); 
-    if (now === null) return;
+    if (now === null || latA === 0 || lonA === 0) return; 
     
+    const times = window.SunCalc ? SunCalc.getTimes(now, latA, lonA) : null;
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
     const solarTimes = getSolarTime(now, lonA);
     const elevation_deg = sunPos ? (sunPos.altitude * R2D) : 0;
     
     $('local-time').textContent = now.toLocaleTimeString('fr-FR', { timeZone: 'UTC', hour12: false });
     $('date-display').textContent = now.toLocaleDateString();
+    
     if (sTime) {
         const timeElapsed = (now.getTime() - sTime) / 1000;
         $('time-elapsed').textContent = `${timeElapsed.toFixed(2)} s`;
         $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
     }
     
+    // --- MISE À JOUR DE L'HORLOGE TST MINECRAFT ---
+    const tst_ms = solarTimes.TST_MS;
+    const percentOfDay = tst_ms / dayMs; 
+    const rotationDeg = (percentOfDay * 360) - 180; 
+    
+    const clockFace = $('minecraft-clock-face');
+    if (clockFace) {
+        clockFace.style.transform = `rotate(${rotationDeg}deg)`;
+    }
+    
+    // Logique Saisons/Ciel
+    if ($('clock-status')) {
+         if (elevation_deg > 0) {
+             $('clock-status').textContent = `Jour (Soleil visible)`;
+         } else if (elevation_deg > -18) {
+             $('clock-status').textContent = `Crépuscule / Aube`;
+         } else {
+             $('clock-status').textContent = `Nuit (Lune visible)`;
+         }
+    }
+    // --- FIN MISE À JOUR HORLOGE ---
+
     $('time-minecraft').textContent = solarTimes.TST; 
     $('tst').textContent = solarTimes.TST;
     $('lsm').textContent = solarTimes.MST;
     $('sun-elevation').textContent = sunPos ? `${elevation_deg.toFixed(2)} °` : 'N/A';
     $('eot').textContent = solarTimes.EOT + ' min'; 
     $('ecliptic-long').textContent = solarTimes.ECL_LONG + ' °';
+
+    if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString();
+
+    if (times) {
+        $('noon-solar').textContent = times.solarNoon.toLocaleTimeString('fr-FR', { timeZone: 'UTC' });
+        const dayDurationMs = times.sunset.getTime() - times.sunrise.getTime();
+        if (dayDurationMs > 0) {
+            const hours = Math.floor(dayDurationMs / 3600000);
+            const minutes = Math.floor((dayDurationMs % 3600000) / 60000);
+            $('day-duration').textContent = `${hours}h ${minutes}m`;
+        } else {
+            $('day-duration').textContent = "Nuit polaire";
+        }
+    }
 }
+
 
 /** Calcule le point de rosée (utilitaire pour la météo) */
 function calculateDewPoint(tempC, humidity) {
@@ -376,7 +415,17 @@ function updateDisp(pos) {
 
     // Initialisation du temps ou vérification des conditions
     if (now === null) { updateAstro(lat, lon); return; } 
-    if (sTime === null) { sTime = now.getTime(); }
+    
+    if (sTime === null) { 
+        sTime = now.getTime(); 
+        
+        // <-- CORRECTION : Initialisation de l'Altitude EKF -->
+        if (alt !== null && kAlt === 0) {
+            kAlt = alt;
+            kAltUncert = acc * acc * 2.0; 
+        }
+    }
+    
     if (acc > MAX_ACC) { 
         if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; 
         if (lPos === null) lPos = pos; return; 
@@ -440,7 +489,6 @@ function updateDisp(pos) {
         }
     }
 
-
     // --- MISE À JOUR DU DOM (GPS/Physique) ---
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
     $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1000).toFixed(0)} mm/s`; 
@@ -480,9 +528,8 @@ function updateDisp(pos) {
     lPos.timestamp = cTimePos; 
     lPos.kAlt_old = kAlt_new; 
     lPos.kAltUncert_old = kAltUncert; 
-                                                      }
-
-     // =================================================================
+        }
+// =================================================================
 // BLOC C : CARTE (Leaflet), CONTRÔLES & GESTIONNAIRES D'ÉVÉNEMENTS
 // Dépendances : BLOC A (Globales, Constantes), BLOC B (updateDisp, syncH, updateAstro, updateWeather)
 // =================================================================
@@ -684,15 +731,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Intervalle lent pour les mises à jour Astro (1s)
     if (domID === null) {
         domID = setInterval(() => {
-            if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
-            else updateAstro(0, 0); 
+            // Assurer que la lat/lon existe avant d'appeler updateAstro
+            const currentLat = (lPos) ? lPos.coords.latitude : 43.28; // Défaut Marseille si lPos est nul
+            const currentLon = (lPos) ? lPos.coords.longitude : 5.35;
+            updateAstro(currentLat, currentLon);
         }, DOM_SLOW_UPDATE_MS); 
     }
     
     // Intervalle pour la mise à jour Météo (30s)
     if (weatherID === null) {
         weatherID = setInterval(() => {
-            if (lPos) updateWeather(lPos.coords.latitude, lPos.coords.longitude);
+            if (lPos) {
+                updateWeather(lPos.coords.latitude, lPos.coords.longitude);
+            }
         }, WEATHER_UPDATE_MS); 
     }
-});   
+});
