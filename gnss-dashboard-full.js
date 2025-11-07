@@ -152,6 +152,10 @@ function handleDeviceMotion(event) {
 
         // ... (Autour de la ligne 185)
         // G_x_proj et G_y_proj restent inchangées 
+        // ... (dans la fonction handleDeviceMotion)
+
+        // ... (Autour de la ligne 185)
+        // G_x_proj et G_y_proj restent inchangées 
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
         
@@ -167,20 +171,25 @@ function handleDeviceMotion(event) {
         acc_lin_t_x = kAccel.x - G_x_proj;
         acc_lin_t_y = kAccel.y - G_y_proj;
         
-        // SOUSTRACTION pour Z (La meilleure tentative qui était proche)
+        // SOUSTRACTION UNIVERSSELLE : La valeur corrigée doit être proche de zéro.
         acc_lin_t_z = kAccel.z - G_z_proj_abs; 
-        
-        // CORRECTION D'URGENCE DU SIGNE FINAL SUR Z (Celle qui a donné 0.939 m/s²)
-        acc_lin_t_z = -acc_lin_t_z; 
 
-        // MAINTENANT L'ORDRE CORRECT : Magnitude doit utiliser la valeur finale
+        // AJOUT DE L'INVERSION CONDITIONNELLE : 
+        // Si le résultat est proche de -G (comme -7.545 m/s²), cela signifie que nous avons fait la mauvaise opération (soustraction au lieu d'addition)
+        // La seule façon de corriger ce cas est d'inverser le signe.
+        if (Math.abs(acc_lin_t_z - G_ACC) < G_ACC / 2.0) { // Si l'erreur est encore supérieure à 0.5G (g/2)
+             acc_lin_t_z = kAccel.z + G_z_proj_abs; // On passe à l'addition
+        }
+        
+        // Rétablissement de l'ordre d'opération corrigé pour le ZVU
+        latestVerticalAccelIMU = acc_lin_t_z;
+        
         latestLinearAccelMagnitude = Math.sqrt(
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
         
-        latestVerticalAccelIMU = acc_lin_t_z; // Afficher la valeur corrigée
-        
     } else { return; }
+// ...
 // ...
 // ...
     
