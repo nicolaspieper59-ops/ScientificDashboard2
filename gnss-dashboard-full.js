@@ -120,6 +120,8 @@ function handleDeviceMotion(event) {
     const dt_imu = lTimeIMU ? (timestamp - lTimeIMU) / 1000 : 0.05;
     lTimeIMU = timestamp; 
 
+// ... (à l'intérieur de la fonction handleDeviceMotion)
+
     if (acc_g_raw && acc_g_raw.x !== null) {
         
         // 1. ÉTALONNAGE & LISSAGE
@@ -127,8 +129,9 @@ function handleDeviceMotion(event) {
         kAccel.y = ACCEL_FILTER_ALPHA * kAccel.y + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.y - ACCEL_BIAS_Y);
         kAccel.z = ACCEL_FILTER_ALPHA * kAccel.z + (1 - ACCEL_FILTER_ALPHA) * (acc_g_raw.z - ACCEL_BIAS_Z);
 
-        // LOGIQUE DE NIVEAU À BULLE VIRTUEL (Estimation des angles si N/A)
-        if (Math.abs(global_pitch) < 0.01 && Math.abs(global_roll) < 0.01) {
+        // LOGIQUE DES ANGLES : On utilise toujours les angles les plus récents (fournis par Bloc B ou estimés ici si N/A)
+        // Laissez cette section si elle est déjà présente pour assurer la continuité des mises à jour des angles.
+        if ($('debug-pitch-angle').textContent.includes('(Est.)') || (global_pitch == 0 && global_roll == 0)) {
             global_pitch = Math.atan2(kAccel.x, Math.sqrt(kAccel.y * kAccel.y + kAccel.z * kAccel.z));
             global_roll = Math.atan2(kAccel.y, kAccel.z);
             
@@ -139,27 +142,16 @@ function handleDeviceMotion(event) {
              if ($('debug-roll-angle').textContent.includes('(Est.)')) $('debug-roll-angle').textContent = `${(global_roll * R2D).toFixed(1)} °`;
         }
         
-        // ... (dans la fonction handleDeviceMotion)
-
-        // ... (kAccel.x, kAccel.y, kAccel.z sont lissés ici)
-
         // 2. CORRECTION DE L'INCLINAISON (Projection de G)
-        const phi = global_roll; // Roll (gamma) en RADIANS
-        const theta = global_pitch; // Pitch (beta) en RADIANS
+        const phi = global_roll; 
+        const theta = global_pitch; 
         const g_local = calculateGravityAtAltitude(kAlt);
         
-        // ... (dans la fonction handleDeviceMotion)
-
-        // ... (Autour de la ligne 185)
-        // G_x_proj et G_y_proj restent inchangées 
-        // ... (dans la fonction handleDeviceMotion)
-
-        // ... (Autour de la ligne 185)
-        // G_x_proj et G_y_proj restent inchangées 
+        // Projections Gx et Gy (restent stables)
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
         
-        // CORRECTION DÉFINITIVE Z : Calcul de l'AMPLITUDE de la projection de G sur Z
+        // Projection Gz (Amplitude toujours positive)
         const G_z_proj_abs = g_local * Math.cos(phi) * Math.cos(theta);  
         
         // 3. ACCÉLÉRATION LINÉAIRE 
@@ -171,24 +163,35 @@ function handleDeviceMotion(event) {
         acc_lin_t_x = kAccel.x - G_x_proj;
         acc_lin_t_y = kAccel.y - G_y_proj;
         
-        // SOUSTRACTION UNIVERSSELLE : La valeur corrigée doit être proche de zéro.
-        acc_lin_t_z = kAccel.z - G_z_proj_abs; 
+        // LOGIQUE DYNAMIQUE ROBUSTE Z : 
+        
+        // Tentative 1 : Soustraction d'amplitude (fonctionne si kAccel.z est POSITIF)
+        let acc_lin_temp = kAccel.z - G_z_proj_abs; 
 
-        // AJOUT DE L'INVERSION CONDITIONNELLE : 
-        // Si le résultat est proche de -G (comme -7.545 m/s²), cela signifie que nous avons fait la mauvaise opération (soustraction au lieu d'addition)
-        // La seule façon de corriger ce cas est d'inverser le signe.
-        if (Math.abs(acc_lin_t_z - G_ACC) < G_ACC / 2.0) { // Si l'erreur est encore supérieure à 0.5G (g/2)
-             acc_lin_t_z = kAccel.z + G_z_proj_abs; // On passe à l'addition
+        // Bascule : Si l'erreur est encore proche de G (i.e., la soustraction a échoué)
+        if (Math.abs(acc_lin_temp) > 0.8 * G_ACC) { 
+            // Tentative 2 : Addition d'amplitude (fonctionne si kAccel.z est NÉGATIF)
+            acc_lin_t_z = kAccel.z + G_z_proj_abs; 
+        } else {
+            // Tentative 1 était la bonne
+            acc_lin_t_z = acc_lin_temp;
+        }
+
+        // On vérifie une dernière fois si la convention finale est inversée (cas 2G vs -2G)
+        if (Math.abs(acc_lin_t_z) > 0.8 * G_ACC) {
+            // Si même après l'addition/soustraction, le résultat est toujours faux (près de G), on inverse le signe final.
+            acc_lin_t_z = -acc_lin_t_z;
         }
         
-        // Rétablissement de l'ordre d'opération corrigé pour le ZVU
         latestVerticalAccelIMU = acc_lin_t_z;
         
+        // Mise à jour de la magnitude avec la valeur finale et corrigée de acc_lin_t_z
         latestLinearAccelMagnitude = Math.sqrt(
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
         
     } else { return; }
+// ...
 // ...
 // ...
 // ...
