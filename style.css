@@ -1,1 +1,36 @@
- 
+/* Styles de base */
+body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
+.dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
+.panel { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+.controls { grid-column: span 3; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center;}
+
+/* Titres */
+h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; margin-top: 0; font-size: 1.2em; }
+h3 { color: #555; margin-top: 15px; margin-bottom: 5px; font-size: 1em;}
+
+/* Points de données */
+.data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
+.data-point span:first-child { font-weight: 500; }
+.data-point span:last-child { font-weight: bold; color: #007BFF; text-align: right; }
+
+/* Carte */
+#map { 
+    height: 400px; 
+    width: 100%; 
+    border-radius: 8px; 
+    margin-bottom: 15px; 
+    /* La transition permet un effet "switch" fluide pour le filtre X-Ray */
+    transition: filter 1.0s ease-in-out; 
+}
+
+/* Boutons */
+.btn { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; color: white; transition: background-color 0.3s; }
+.green { background-color: #28a745; }
+.red { background-color: #dc3545; }
+.blue { background-color: #007BFF; }
+.btn:hover { opacity: 0.9; }
+
+/* Inputs */
+.input-group { display: flex; align-items: center; gap: 5px; margin-bottom: 10px; }
+.input-group label { white-space: nowrap; font-size: 0.9em; }
+.input-group input, .input-group select { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
