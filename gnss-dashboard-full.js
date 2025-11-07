@@ -148,17 +148,15 @@ function handleDeviceMotion(event) {
         const theta = global_pitch; // Pitch (beta) en RADIANS
         const g_local = calculateGravityAtAltitude(kAlt);
         
-        // G_x_proj et G_y_proj restent inchangées (elles sont robustes)
+        // ... (dans la fonction handleDeviceMotion)
+
+        // ... (Autour de la ligne 185)
+        // G_x_proj et G_y_proj restent inchangées 
         const G_x_proj = g_local * Math.sin(theta);        
         const G_y_proj = -g_local * Math.sin(phi) * Math.cos(theta); 
         
         // CORRECTION DÉFINITIVE Z : Calcul de l'AMPLITUDE de la projection de G sur Z
         const G_z_proj_abs = g_local * Math.cos(phi) * Math.cos(theta);  
-        
-        // ASSURER LE SIGNE CORRECT : 
-        // La projection corrigée doit avoir le même signe que le kAccel.z brut pour que la soustraction fonctionne.
-        const sign_z = Math.sign(kAccel.z);
-        const G_z_proj_corrige = G_z_proj_abs * sign_z; // La projection prend le signe du brut
         
         // 3. ACCÉLÉRATION LINÉAIRE 
         let acc_lin_t_x = kAccel.x;
@@ -169,19 +167,21 @@ function handleDeviceMotion(event) {
         acc_lin_t_x = kAccel.x - G_x_proj;
         acc_lin_t_y = kAccel.y - G_y_proj;
         
-        // SOUSTRACTION pour Z (Maintenant G_z_proj_corrige a le bon signe)
-        acc_lin_t_z = kAccel.z - G_z_proj_corrige; 
+        // SOUSTRACTION pour Z (La meilleure tentative qui était proche)
+        acc_lin_t_z = kAccel.z - G_z_proj_abs; 
         
-        // Plus besoin de la correction d'urgence du signe final
-        
-        // Mise à jour de la magnitude avec la valeur finale
+        // CORRECTION D'URGENCE DU SIGNE FINAL SUR Z (Celle qui a donné 0.939 m/s²)
+        acc_lin_t_z = -acc_lin_t_z; 
+
+        // MAINTENANT L'ORDRE CORRECT : Magnitude doit utiliser la valeur finale
         latestLinearAccelMagnitude = Math.sqrt(
             acc_lin_t_x ** 2 + acc_lin_t_y ** 2 + acc_lin_t_z ** 2
         );
         
         latestVerticalAccelIMU = acc_lin_t_z; // Afficher la valeur corrigée
-
+        
     } else { return; }
+// ...
 // ...
     
     // 4. ZVU (Zero Velocity Update)
