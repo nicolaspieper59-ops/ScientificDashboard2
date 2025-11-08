@@ -1,6 +1,7 @@
 // =================================================================
-// FICHIER 1/2 (BLOC 1/2) : gnss-dashboard-core-part1.js
-// Contient constantes, variables d'état, fonctions utilitaires et gravité dynamique.
+// FICHIER 1/2 : gnss-dashboard-core.js
+// CŒUR DU SYSTÈME (Variables, EKF, Capteurs, Logique GPS/IMU)
+// Toutes les fonctionnalités physiques et de calcul de haute fréquence.
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -16,7 +17,7 @@ const R2D = 180 / Math.PI;
 const D2R = Math.PI / 180;
 const NETHER_RATIO = 1 / 8; 
 
-// Constantes de Conversion
+// Constantes de Conversion de Distance Cosmique
 const KMH_MS = 3.6; 
 const KMS_MS = 1000; 
 const AU_TO_M = 149597870700; 
@@ -28,7 +29,7 @@ const DAY_LIGHT = 86400;
 const WEEK_LIGHT = 604800;
 const MONTH_LIGHT = 2592000; 
 
-// Constantes Planétaires (Ajout de la masse/rayon pour la gravité dynamique)
+// Constantes Planétaires (pour la gravité dynamique)
 const G_SURFACE_MOON = 1.625; const R_MOON = 1737400; const M_MOON = 7.34767e22; 
 const G_SURFACE_MARS = 3.721; const R_MARS = 3389500; const M_MARS = 6.4171e23; 
 
@@ -59,7 +60,9 @@ let netherMode = false;
 // FONCTIONS UTILITAIRES ET GRAVITÉ DYNAMIQUE
 // ===========================================
 
-/** Calcule la gravité locale en fonction du corps céleste et de l'altitude (Fonction de l'altitude). */
+/** * Calcule la gravité locale en fonction du corps céleste et de l'altitude.
+ * Formule: G * M / (R + h)^2 
+ */
 function calculateLocalGravity(altitude) {
     let R, M, g_surface;
     switch (currentCelestialBody) {
@@ -68,7 +71,6 @@ function calculateLocalGravity(altitude) {
         case 'EARTH': default: R = R_E; M = M_EARTH; g_surface = G_ACC_STD; break;
     }
     
-    // Gravité en fonction de l'altitude: G * M / (R + h)^2
     if (altitude === null || isNaN(altitude) || currentCelestialBody !== 'EARTH') {
         G_ACC_LOCAL = g_surface; 
     } else {
@@ -106,6 +108,7 @@ function getEnvironmentFactor() {
     }
 }
 
+/** Convertit un nombre en notation scientifique lisible pour les distances cosmiques. */
 function toReadableScientific(num) {
     if (num === 0) return "0.00e+00";
     if (isNaN(num) || !isFinite(num)) return "N/A";
@@ -115,20 +118,16 @@ function toReadableScientific(num) {
 }
 
 function getCDate() {
+    // Utilise la synchronisation NTP si disponible, sinon l'heure locale
     return sTime ? new Date(new Date().getTime() - (sTime.getTime() - gpsTS)) : new Date();
-        }
-// =================================================================
-// FICHIER 1/2 (BLOC 2/2) : gnss-dashboard-core-part2.js
-// Contient le Cœur EKF, l'IMU, la logique GPS, et les mises à jour DOM.
-// ASSUME QUE LE BLOC 1/2 EST DÉJÀ CHARGÉ (accès aux variables et fonctions).
-// =================================================================
+}
 
 // ===========================================
 // CŒUR EKF, ZVU ET MISE À JOUR (updateDisp)
 // ===========================================
 
 function updateDisp(pos) {
-    // Vérification de l'arrêt d'urgence et de la fonction updateMap (définie dans gnss-dashboard-ui-init.js)
+    // Nécessite la fonction updateMap du fichier UI
     if (emergencyStopActive || typeof updateMap !== 'function') return;
 
     const acc = $('gps-accuracy-override').value !== '0.000000' ? parseFloat($('gps-accuracy-override').value) : pos.coords.accuracy;
@@ -158,14 +157,15 @@ function updateDisp(pos) {
 
     const g_dynamic = calculateLocalGravity(currentAlt);
     
-    // 2. DÉTERMINATION DE L'ACCÉLÉRATION IMU (POUR PRÉDICTION)
+    // 2. DÉTERMINATION DE L'ACCÉLÉRATION IMU (POUR PRÉDICTION ACCÉLÉRATION RAPIDE)
+    // Utilise le signe de la dernière accélération EKF (ou de la vitesse)
     const accel_ekf_estimate = (dt > MIN_DT) ? (kSpd - lastFSpeed) / dt : 0;
     let accel_imu_sign = Math.sign(accel_ekf_estimate || speedRaw || kSpd || 1);
     const accel_imu_signed = latestLinearAccelMagnitude * accel_imu_sign;
 
     // --- EKF (AVEC PRÉDICTION IMU pour le Dead Reckoning) ---
     
-    // 3. ÉTAPE DE PRÉDICTION 
+    // 3. ÉTAPE DE PRÉDICTION - Intègre l'accélération IMU pour la réactivité
     let kSpd_pred = kSpd + (accel_imu_signed * dt);
     let kUncert_pred = kUncert + Q_NOISE * dt; 
 
@@ -176,7 +176,7 @@ function updateDisp(pos) {
     kSpd = kSpd_pred + kGain * (speedRaw - kSpd_pred);
     kUncert = (1 - kGain) * kUncert_pred;
     
-    kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); // Plancher d'Incertitude EKF
+    kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); 
     
     // 5. ZVU (Mise à jour Zéro Vitesse)
     if (speedRaw < 0.1 && latestLinearAccelMagnitude < 0.1) { 
@@ -186,7 +186,7 @@ function updateDisp(pos) {
     
     // --- CALCULS FINAUX ---
     let sSpdFE = Math.abs(kSpd);
-    if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
+    if (sSpdFE > maxSpd) maxSpd = sSpdFE; // Vitesse Max
     
     // Vitesse Verticale
     let verticalSpeedRaw = 0;
@@ -201,11 +201,11 @@ function updateDisp(pos) {
     // Vitesse 3D (Instantanée)
     let speed3DInst = Math.sqrt(sSpdFE * sSpdFE + verticalSpeedRaw * verticalSpeedRaw);
     
-    // Distance Totale (Distance 3D)
+    // Distance Totale (Calcul de la distance 3D)
     if (lastPos && sSpdFE > MIN_SPD) { 
         const d_horiz_ekf = sSpdFE * dt;
         let d_vert = (verticalSpeedRaw) * dt;
-        const d_3d = Math.sqrt(d_horiz_ekf * d_horiz_ekf + d_vert * d_vert); 
+        const d_3d = Math.sqrt(d_horiz_ekf * d_horiz_ekf + d_vert * d_vert); // Distance 3D (Hypoténuse)
         distM += d_3d * (netherMode ? NETHER_RATIO : 1); 
         timeMoving += dt;
     }
@@ -215,23 +215,18 @@ function updateDisp(pos) {
 
     // --- MISE À JOUR DU DOM (Données principales) ---
     
-    // Vitesse (Vitesse en km/s et nm/s)
+    // Vitesse (km/h, km/s, nm/s, Max, Moyenne)
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(4)} km/h`;
     $('speed-stable-kms').textContent = `${(sSpdFE / KMS_MS).toFixed(7)} km/s`; 
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`; 
     const avgSpdMoving = timeMoving > 0 ? (distM / timeMoving) : 0;
     $('speed-avg-moving').textContent = `${(avgSpdMoving * KMH_MS).toFixed(4)} km/h`; 
-    $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1e6).toFixed(0)} µm/s | ${(sSpdFE * 1e9).toFixed(0)} nm/s`; 
     $('speed-3d-inst').textContent = `${(speed3DInst * KMH_MS).toFixed(4)} km/h`; 
+    $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1e6).toFixed(0)} µm/s | ${(sSpdFE * 1e9).toFixed(0)} nm/s`; 
     
-    // % Vitesse
-    $('perc-speed-sound').textContent = `${((sSpdFE / SPEED_SOUND) * 100).toFixed(2)} %`;
-    $('perc-speed-c').textContent = `${((sSpdFE / C_L) * 100).toExponential(2)} %`;
-
-    // Distance Totale (3D)
+    // Distances Cosmologiques (en lumière et UA)
     $('distance-total-km').textContent = `${(distM/1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
     
-    // Distances Cosmologiques (Ajout des unités de temps-lumière et UA)
     const distLightSeconds = distM / C_L;
     $('distance-light-s').textContent = `${toReadableScientific(distLightSeconds / SEC_LIGHT)} s lumière`;
     $('distance-light-min').textContent = `${toReadableScientific(distLightSeconds / MIN_LIGHT)} min lumière`;
@@ -248,25 +243,13 @@ function updateDisp(pos) {
     $('force-g-long').textContent = `${(accel_long / g_dynamic).toFixed(2)} G`; 
     $('vertical-speed').textContent = `${verticalSpeedRaw.toFixed(2)} m/s`;
     
-    // Énergie (Corrigé)
-    const mass = parseFloat($('mass-display').textContent) || 70;
-    $('kinetic-energy').textContent = `${(0.5 * mass * sSpdFE * sSpdFE).toFixed(2)} J`;
-    $('mechanical-power').textContent = `${(mass * accel_long * sSpdFE).toFixed(2)} W`;
-
-    // Vue Brute GPS
-    $('latitude').textContent = lat.toFixed(6);
-    $('longitude').textContent = lon.toFixed(6);
-    $('altitude-gps').textContent = currentAlt !== null ? `${currentAlt.toFixed(2)} m` : 'N/A';
-    $('gps-precision').textContent = acc !== null ? `${acc.toFixed(3)} m` : 'N/A';
-    $('speed-raw-ms').textContent = speedRaw !== null ? `${speedRaw.toFixed(3)} m/s` : 'N/A';
-    $('heading-display').textContent = currentHeading !== 'N/A' ? `${currentHeading.toFixed(1)} °` : 'N/A';
-    $('underground-status').textContent = currentAlt !== null && currentAlt < -50 ? 'OUI' : 'Non';
-
+    // Mise à jour de la carte
     if (lat !== 0 && lon !== 0) updateMap(lat, lon); 
 }
 
 // ===========================================
-// HANDLERS CAPTEURS IMU 
+// HANDLERS CAPTEURS IMU ET LOGIQUE GPS 
+// (Doivent être chargés avant l'initialisation dans le fichier UI)
 // ===========================================
 
 function handleDeviceMotion(event) {
@@ -275,34 +258,22 @@ function handleDeviceMotion(event) {
     const linearAccel = event.acceleration;
     
     if (linearAccel && linearAccel.x !== null) {
-        // Magnitude 3D (pour fusion EKF horizontale/longitudinale)
         latestLinearAccelMagnitude = Math.sqrt(linearAccel.x*linearAccel.x + linearAccel.y*linearAccel.y + linearAccel.z*linearAccel.z);
         
-        // Accélération Z linéaire
         const linearZ = linearAccel.z;
         $('accel-vertical-imu').textContent = `${linearZ.toFixed(3)} m/s ²`;
         $('force-g-vertical').textContent = `${(linearZ / G_ACC_LOCAL).toFixed(2)} G`;
-
-    } else {
-        latestLinearAccelMagnitude = 0; 
-        $('accel-vertical-imu').textContent = 'N/A';
-        $('force-g-vertical').textContent = 'N/A';
     }
 }
 
 function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
-    latestRotationBeta = event.beta || 0;   // Tangage (Pitch)
-    latestRotationGamma = event.gamma || 0; // Roulis (Roll)
+    latestRotationBeta = event.beta || 0;   
+    latestRotationGamma = event.gamma || 0; 
     
-    // Mise à jour du DOM (Niveau à bulle)
     if($('pitch-angle')) $('pitch-angle').textContent = `${latestRotationBeta.toFixed(1)} °`;
     if($('roll-angle')) $('roll-angle').textContent = `${latestRotationGamma.toFixed(1)} °`;
 }
-
-// ===========================================
-// LOGIQUE GPS ET DÉMARRAGE 
-// ===========================================
 
 function continueGPSStart() {
     const opts = { enableHighAccuracy: currentGPSMode === 'HIGH_FREQ', timeout: 5000, maximumAge: 0 };
@@ -380,13 +351,12 @@ function stopGPS() {
 
     $('toggle-gps-btn').textContent = ' 7œ4„1‚5 MARCHE GPS';
     $('toggle-gps-btn').style.backgroundColor = '#28a745';
-        }
+    }
 // =================================================================
 // FICHIER 2/2 : gnss-dashboard-ui-init.js
 // MODULES UI & INITIALISATION (Astro, Carte, DOM)
+// Dépendances de gnss-dashboard-core.js: $, getCDate, lat, lon, R2D, C_L, SPEED_SOUND, OWM_API_KEY, SERVER_TIME_ENDPOINT, etc.
 // =================================================================
-
-// Dépendances de gnss-dashboard-core.js: $, getCDate, lat, lon, R2D, NETHER_RATIO
 
 let map = null;
 let marker = null;
@@ -411,15 +381,16 @@ function updateAstro(latitude, longitude) {
     const m = Math.floor((tstHours - h) * 60);
     const s = Math.floor(((tstHours - h) * 60 - m) * 60);
 
-    // Affichage TST pour l'horloge
-    if($('time-minecraft')) $('time-minecraft').textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    if($('tst')) $('tst').textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    // Affichage TST
+    const tstString = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    if($('time-minecraft')) $('time-minecraft').textContent = tstString;
+    if($('tst')) $('tst').textContent = tstString;
 
-    // 2. Animation Horloge (Style Minecraft TST)
+    // 2. Animation Horloge (TST Logique: 12h TST = 0° (Zénith), 6h/18h TST = 270°/90° (Horizon))
     
-    // Logique de rotation TST: 12h TST (Midi Solaire / Zénith) = 0° (Top)
+    // Rotation = (Heures TST - 12) / 24 * 360
     let clockRotation = ((tstHours - 12) / 24) * 360; 
-    clockRotation = (clockRotation % 360 + 360) % 360; // Assure que l'angle est entre 0 et 360
+    clockRotation = (clockRotation % 360 + 360) % 360; // Normalisation 0-360
     
     const sunEl = $('sun-element');
     const moonEl = $('moon-element');
@@ -457,6 +428,7 @@ function updateAstro(latitude, longitude) {
     const lstSec = (meanSolarTime % 24) * 3600;
     const eotMin = (tstSec - lstSec) / 60;
     $('eot').textContent = `${eotMin.toFixed(2)} min`;
+    $('lsm').textContent = new Date(times.solarMidnight.getTime() + meanSolarTime * 3600000).toLocaleTimeString();
 
     $('date-display-astro').textContent = now.toLocaleDateString();
 }
@@ -558,6 +530,18 @@ document.addEventListener('DOMContentLoaded', () => {
             $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
         }
         
+        // Vitesse du Son / Lumière
+        const speed_ms = Math.abs(kSpd);
+        $('perc-speed-sound').textContent = `${((speed_ms / SPEED_SOUND) * 100).toFixed(2)} %`;
+        $('perc-speed-c').textContent = `${((speed_ms / C_L) * 100).toExponential(2)} %`;
+
+        // Énergie (répété ici pour l'update lente des valeurs de masse)
+        const mass = parseFloat($('mass-display').textContent) || 70;
+        const accel_long_val = parseFloat($('accel-long').textContent) || 0;
+        $('kinetic-energy').textContent = `${(0.5 * mass * speed_ms * speed_ms).toFixed(2)} J`;
+        $('mechanical-power').textContent = `${(mass * accel_long_val * speed_ms).toFixed(2)} W`;
+
+
         updateAstro(lat, lon); 
         
     }, 1000); 
