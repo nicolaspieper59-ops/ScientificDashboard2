@@ -3,169 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS & Physique Dashboard</title>
+    <title>GNSS SpaceTime Dashboard •0‹4 (FINAL)</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoASSHd+UeWbYtT8xedbFhC5J3sNqR0fC3V6X5I="
-        crossorigin=""/>
-    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
+          crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
+          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+          
     <style>
-        body { font-family: sans-serif; background-color: #333; color: #fff; margin: 20px; }
-        .dashboard-section { margin-bottom: 20px; padding: 15px; border: 1px solid #555; border-radius: 8px; }
-        .data-label { font-weight: bold; margin-right: 10px; }
+        /* CSS GENERAL */
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 20px; background-color: #333; color: #fff; transition: background-color 0.8s, color 0.8s; }
+        .dashboard-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .dashboard-section { padding: 15px; border: 1px solid #555; border-radius: 8px; }
+        .data-point { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+        .data-point span:first-child { font-weight: bold; }
         #map-container { height: 200px; width: 100%; margin-top: 10px; }
+        .control-btn { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; color: #fff; margin-right: 10px; }
+        #toggle-gps-btn { background-color: #28a745; }
+        #emergency-stop-btn { background-color: #dc3545; }
+        #emergency-stop-btn.active { background-color: #f8d7da; color: #721c24; }
         
-        /* Styles pour l'Horloge Astronomique (Modèle Stellarium) */
+        /* COULEUR DU CIEL DYNAMIQUE (appliquée à body) */
+        .sky-day { background-color: #6a9fec; color: #333; }
+        .sky-sunset { background-color: #ff9955; color: #000; }
+        .sky-night-light { background-color: #191970; color: #fff; }
+        .sky-night { background-color: #000000; color: #ccc; }
+
+        /* ASTRO ZÉNITHAL (STELLARIUM) */
         #astro-display-container {
-            width: 200px; /* Doit correspondre à 2 * MAX_RADIUS_PX dans JS */
-            height: 200px; /* Doit correspondre à 2 * MAX_RADIUS_PX dans JS */
+            width: 90px; height: 90px; /* 2 * MAX_RADIUS_PX = 90 */
             border-radius: 50%;
-            position: relative; /* Point de référence pour les astres */
-            margin: 0 auto;
+            position: relative; 
+            margin: 10px auto;
             border: 5px solid #ffc107; /* Cadre Jaune */
-            overflow: hidden; /* Pour cacher les astres sous l'horizon */
+            overflow: hidden; 
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
         }
         #sky-display {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            position: absolute;
-            top: 0;
-            left: 0;
-            background-color: #000; /* Couleur initiale du ciel (sera changé par JS) */
+            width: 100%; height: 100%; border-radius: 50%;
+            position: absolute; top: 0; left: 0;
         }
-        
-        /* Styles pour le Soleil et la Lune (positionnés via JS.transform) */
         .astro-symbol {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            transform: translate(-50%, -50%); /* Centrer l'élément sur le point X,Y */
+            position: absolute; width: 8px; height: 8px; border-radius: 50%;
+            transform: translate(-50%, -50%); 
             z-index: 10;
         }
         #sun-element { background-color: yellow; }
-        #moon-element { background-color: white; width: 8px; height: 8px; }
-        
-        /* Indicateurs cardinaux pour le réalisme (optionnel, à superposer sur astro-display-container) */
-        #astro-display-container::before {
-            content: 'N'; position: absolute; top: 0px; left: 50%; transform: translateX(-50%); color: #fff; z-index: 20;
+        #moon-element { background-color: white; width: 6px; height: 6px; }
+
+        /* Indicateurs cardinaux (visuels) */
+        #astro-display-container::before, #astro-display-container::after {
+            position: absolute; font-size: 10px; font-weight: bold; color: #fff; z-index: 20;
         }
-        #astro-display-container::after {
-            content: 'S'; position: absolute; bottom: 0px; left: 50%; transform: translateX(-50%); color: #fff; z-index: 20;
-        }
-        /* Ajoutez E et O avec une position relative ou d'autres pseudo-éléments */
+        #astro-display-container::before { content: 'N'; top: -15px; left: 50%; transform: translateX(-50%); }
+        #astro-display-container::after { content: 'S'; bottom: -15px; left: 50%; transform: translateX(-50%); }
+        #astro-display-container .E, #astro-display-container .O { position: absolute; font-size: 10px; font-weight: bold; color: #fff; z-index: 20; }
+        #astro-display-container .E { top: 50%; right: -15px; transform: translateY(-50%); content: 'E'; }
+        #astro-display-container .O { top: 50%; left: -15px; transform: translateY(-50%); content: 'O'; }
         
-        .control-btn { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; color: #fff; }
-        #toggle-gps-btn { background-color: #28a745; }
-        #emergency-stop-btn { background-color: #dc3545; }
-        #reset-dist-btn, #reset-max-btn { background-color: #007bff; }
     </style>
 </head>
 <body>
 
-    <h1>•0•0„1‚5 Contrôles & Système</h1>
-    <div class="dashboard-section">
-        <p><span class="data-label">Heure Locale (NTP):</span> <span id="local-time">N/A</span></p>
-        <p><span class="data-label">Date Locale:</span> <span id="date-display">N/A</span></p>
-        <p><span class="data-label">Temps écoulé (Session):</span> <span id="time-elapsed">N/A</span></p>
-        <p><span class="data-label">Temps de Mouvement:</span> <span id="time-moving">N/A</span></p>
-        <p><span class="data-label">Heure Solaire Vraie (TST):</span> <span id="tst">00:00:00</span></p>
-        <p><span class="data-label">Corps Céleste Actuel:</span> <span id="celestial-body-display">Terre</span></p>
-        <p><span class="data-label">Gravité Locale (g):</span> <span id="gravity-local">9.81967 m/s²</span></p>
-        
-        <select id="celestial-body-select" onchange="updateCelestialBody(this.value)">
-            <option value="EARTH">Terre</option>
-            <option value="MOON">Lune</option>
-            <option value="MARS">Mars</option>
-        </select>
-        
-        <p>
-            <button id="toggle-gps-btn" class="control-btn">7œ4„1‚5 ARRÊT GPS</button>
-            <button id="emergency-stop-btn" class="control-btn">•0“5 Arrêt d'urgence: INACTIF •0 4</button>
-        </p>
-    </div>
+<div class="dashboard-container">
 
-    <hr>
-    
-    <h2>•0‹4 Vitesse & Distance</h2>
     <div class="dashboard-section">
-        <p><span class="data-label">Vitesse Stable (EKF):</span> <span id="speed-stable">0.0000 km/h</span></p>
-        <p><span class="data-label">Vitesse 3D (Inst.):</span> <span id="speed-3d-inst">0.0000 km/h</span></p>
-        <p><span class="data-label">Vitesse Max (Session):</span> <span id="speed-max">0.0000 km/h</span></p>
-        <p><span class="data-label">Distance Totale (3D):</span> <span id="distance-total-km">0.000 km | 0.00 m</span></p>
-        <p>
-            <button id="reset-max-btn" class="control-btn">”9ã4 Vitesse Max</button>
-            <button id="reset-dist-btn" class="control-btn">7¿8 TOUT RÉINITIALISER</button>
-        </p>
-    </div>
-    
-    <hr>
-
-    <h2>•0–6„1‚5 Vue brute GPS & Physique</h2>
-    <div class="dashboard-section">
-        <p><span class="data-label">Latitude Brute:</span> <span id="lat-raw">N/A</span></p>
-        <p><span class="data-label">Longitude Brute:</span> <span id="lon-raw">N/A</span></p>
-        <p><span class="data-label">Altitude GPS:</span> <span id="alt-gps">N/A</span></p>
-        <p><span class="data-label">Précision GPS (EPE):</span> <span id="acc-gps">N/A</span></p>
-        <p><span class="data-label">Facteur Kalman Environnement:</span>
-            <select id="environment-select">
-                <option value="NORMAL">Normal (x1.0)</option>
-                <option value="FOREST">Forêt (x1.5)</option>
-                <option value="METAL">Métal (x2.5)</option>
-                <option value="CONCRETE">Béton (x3.0)</option>
+        <h2>•0•0„1‚5 Système & Contrôles</h2>
+        <div class="data-point"><span>Heure Locale (UTC Synchrone)</span><span id="local-time">N/A</span></div>
+        <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">00:00:00</span></div>
+        <div class="data-point"><span>Temps Écoulé (Session)</span><span id="time-elapsed">N/A</span></div>
+        <hr>
+        <button id="toggle-gps-btn" class="control-btn">▶️ MARCHE GPS</button>
+        <button id="emergency-stop-btn" class="control-btn">🛑 Arrêt d'urgence: INACTIF 🟢</button>
+        <div style="margin-top: 10px;">
+            <label for="freq-select">Mode GPS/EKF :</label>
+            <select id="freq-select">
+                <option value="HIGH_FREQ">Haute Fréquence (IMU Fusion)</option>
+                <option value="LOW_FREQ">Basse Fréquence (Économie)</option>
             </select>
-        </p>
-    </div>
-    
-    <hr>
-
-    <h2>”9Ù9 Dynamique du Véhicule & Forces</h2>
-    <div class="dashboard-section">
-        <p><span class="data-label">Accel. Longitudinale (Hybride):</span> <span id="accel-long">0.000 m/s²</span></p>
-        <p><span class="data-label">Force G (Longitudinale):</span> <span id="force-g-long">0.00 G | Max: 0.00 G</span></p>
-        <p><span class="data-label">Accel. Verticale (IMU):</span> <span id="accel-vertical-imu">0.000 m/s²</span></p>
-        <p><span class="data-label">Force G (Verticale):</span> <span id="force-g-vertical">1.00 G</span></p>
-    </div>
-    
-    <hr>
-    
-    <h2>”9³1„1‚5 Météo & Capteurs</h2>
-    <div class="dashboard-section">
-        <p><span class="data-label">Température Air:</span> <span id="temp-air">API Requis</span></p>
-        <p><span class="data-label">Pression Atmosphérique:</span> <span id="pressure">API Requis</span></p>
-        <p><span class="data-label">Humidité Relative:</span> <span id="humidity">API Requis</span></p>
-        <p><span class="data-label">Vitesse du Vent (m/s):</span> <span id="wind-speed-ms">API Requis</span></p>
+        </div>
     </div>
 
-    <hr>
-
-    <h2>8¬2 Soleil & Lune (Projection Zénithale)</h2>
     <div class="dashboard-section">
+        <h2>•0‹4 Vitesse & Accélération</h2>
+        <div class="data-point"><span>Vitesse Stable (EKF)</span><span id="speed-stable">0.00000 km/h</span></div>
+        <div class="data-point"><span>Vitesse 3D Brute (Inst.)</span><span id="speed-3d-inst">0.00000 km/h</span></div>
+        <div class="data-point"><span>Vitesse Verticale (Filtrée)</span><span id="vertical-speed">0.00 m/s</span></div>
+        <div class="data-point"><span>Accel. Longitudinale (Hybride)</span><span id="accel-long">0.000 m/s²</span></div>
+        <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div>
+        <hr>
+        <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
+        <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
+        <button id="reset-dist-btn" class="control-btn" style="background-color: #007bff;">↺ Réinit. Distance</button>
+        <button id="reset-max-btn" class="control-btn" style="background-color: #007bff;">↺ Réinit. Max</button>
+    </div>
+    
+    <div class="dashboard-section">
+        <h2>”9Ù9 IMU & Niveau à Bulle</h2>
+        <div class="data-point"><span>Tangage (Pitch - X)</span><span id="pitch-angle">0.0 °</span></div>
+        <div class="data-point"><span>Roulis (Roll - Y)</span><span id="roll-angle">0.0 °</span></div>
+        <div class="data-point"><span>Accel. Verticale (IMU Linéaire)</span><span id="accel-vertical-imu">0.000 m/s²</span></div>
+        <div class="data-point"><span>Force G (Verticale Corrigée)</span><span id="force-g-vertical">0.00 G</span></div>
+        <hr>
+        <h2>8¬2 Horloge Astronomique</h2>
         <div id="astro-display-container">
             <div id="sky-display">
                 <div id="sun-element" class="astro-symbol"></div>
                 <div id="moon-element" class="astro-symbol"></div>
-            </div>
+                <span class="E">E</span><span class="O">O</span> </div>
         </div>
-        <p style="margin-top: 15px;"><span class="data-label">Élévation du Soleil:</span> <span id="sun-elevation">-- °</span></p>
-        <p><span class="data-label">Midi Solaire Local:</span> <span id="noon-solar">N/A</span></p>
-        <p><span class="data-label">Durée du Jour Solaire:</span> <span id="day-duration">N/A</span></p>
-        <p><span class="data-label">Lune & Phases:</span> <span id="moon-phase-display">N/A</span></p>
+        <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
+        <div class="data-point"><span>Phase Lunaire</span><span id="moon-phase-display">N/A</span></div>
     </div>
     
-    <hr>
-
-    <h2>”9ü0„1‚5 Carte GNSS</h2>
     <div class="dashboard-section">
+        <h2>”9ü0„1‚5 Coordonnées & Précision</h2>
+        <div class="data-point"><span>Latitude Filrtrée</span><span id="latitude">N/A</span></div>
+        <div class="data-point"><span>Longitude Filtrée</span><span id="longitude">N/A</span></div>
+        <div class="data-point"><span>Altitude (Kalman)</span><span id="altitude-gps">N/A</span></div>
+        <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
+        <div class="data-point"><span>Cap (Heading)</span><span id="heading-display">N/A</span></div>
+        <hr>
+        <h2>”9³1„1‚5 Météo (API)</h2>
+        <div class="data-point"><span>Température Air</span><span id="temp-air">API Requis</span></div>
+        <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure">API Requis</span></div>
+        <div class="data-point"><span>Humidité Relative</span><span id="humidity">API Requis</span></div>
+        <div class="data-point"><span>Vitesse du Vent</span><span id="wind-speed-ms">API Requis</span></div>
+    </div>
+    
+    <div class="dashboard-section" style="grid-column: 1 / -1;">
+        <h2>🗺️ Carte GNSS</h2>
         <div id="map-container">Initialisation de la carte...</div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20n6B+A8ay8YlFk1T2Wf82f2fQJ/1y5c5v+t6zNqE2S="
         crossorigin=""></script>
-    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
 
-    <script src="gnss-dashboard-full.js"></script>
+<script src="gnss-dashboard-full.js"></script>
 </body>
-    </html>
+                                                                                                                     </html>
