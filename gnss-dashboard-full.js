@@ -21,7 +21,6 @@ const DOM_SLOW_UPDATE_MS = 1000;
 const WEATHER_UPDATE_MS = 30000; 
 
 // !!! CLÉ API CRITIQUE !!! : REMPLACEZ VOTRE_CLE_API_OPENWEATHERMAP
-// Le tableau de bord affichera "API CLÉ MANQUANTE" tant que cette clé n'est pas remplacée.
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
 
 // Constantes EKF & ZVU (Zero Velocity Update)
@@ -36,20 +35,21 @@ const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; // 5e-5 m² (implémentation du Planc
 let lat = 0, lon = 0, alt = 0, speed = 0, hdop = 1000, gpsTS = 0;
 let wID = null, domID = null, weatherID = null, emergencyStopActive = false;
 let sTime = null, lastTS = 0, lastPos = null, timeMoving = 0;
-let distM = 0;
+let distM = 0; // Contient maintenant la distance 3D totale
 let currentGPSMode = 'HIGH_FREQ'; 
 let netherMode = false;
 let G_ACC_LOCAL = G_ACC; 
 let mass = 70.0; 
+let lastAlt = 0; // Dernière altitude enregistrée pour le calcul 3D
 
 // --- VARIABLES EKF (Filtre de Kalman Étendu) ---
-let kSpd = 0;       // Vitesse stable EKF (m/s)
-let kUncert = 1000; // Incertitude horizontale EKF (m²) - commence haut
-let kAlt = 0;       // Altitude stable EKF (m)
-let kAltUncert = 1000; // Incertitude verticale EKF (m²) - commence haut
-let lastFSpeed = 0; // Dernière vitesse filtrée pour l'accélération
-let maxSpd = 0;     // Vitesse max (m/s)
-let maxGForce = 0;  // G-Force Max (G) - Initialisée à 0
+let kSpd = 0;       
+let kUncert = 1000; 
+let kAlt = 0;       
+let kAltUncert = 1000; 
+let lastFSpeed = 0; 
+let maxSpd = 0;     
+let maxGForce = 0;  
 
 // --- VARIABLES DE CAPTEURS IMU ---
 let latestLinearAccelMagnitude = 0;
@@ -57,9 +57,9 @@ let latestAccelX = 0, latestAccelY = 0, latestAccelZ = 0;
 
 // --- VARIABLES RECORDS DE PRÉCISION (Persistance) ---
 let P_RECORDS = {
-    max_kUncert_min: 1000, // Incertitude horizontale minimale atteinte (m²)
-    max_acc_min: 1000,     // Précision GPS brute minimale atteinte (m)
-    max_g_force_max: 0     // Force G maximale absolue enregistrée (G)
+    max_kUncert_min: 1000, 
+    max_acc_min: 1000,     
+    max_g_force_max: 0     
 };
 const P_RECORDS_KEY = 'gnss_precision_records'; 
 
@@ -81,15 +81,12 @@ function getEnvironmentFactor() {
 // ===========================================
 // FONCTIONS PERSISTANCE DES RECORDS
 // ===========================================
-
 function loadPrecisionRecords() {
     try {
         const stored = localStorage.getItem(P_RECORDS_KEY);
         if (stored) {
             const loaded = JSON.parse(stored);
             P_RECORDS = { ...P_RECORDS, ...loaded };
-            
-            // Appliquer le record de G-Force max au compteur courant
             maxGForce = P_RECORDS.max_g_force_max;
         }
     } catch (e) {
@@ -99,13 +96,12 @@ function loadPrecisionRecords() {
 
 function savePrecisionRecords() {
     try {
-        // Mettre à jour la G-Force max actuelle avant de sauvegarder
         P_RECORDS.max_g_force_max = maxGForce; 
         localStorage.setItem(P_RECORDS_KEY, JSON.stringify(P_RECORDS));
     } catch (e) {
         console.error("Erreur lors de la sauvegarde des records de précision:", e);
     }
-                       }
+            }
 // =================================================================
 // FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (EKF, Capteurs & Logique Critique)
 // =================================================================
@@ -113,8 +109,7 @@ function savePrecisionRecords() {
 /** Simule la correction GPS théorique parfaite (Correction Théorique Automatique au Démarrage). */
 function simulateBestCorrection() {
     if (lat === 0 && lon === 0) {
-        // Initialisation à l'incertitude minimale si aucune position n'est connue
-        kUncert = MIN_UNCERT_FLOOR; // Plancher d'Incertitude EKF
+        kUncert = MIN_UNCERT_FLOOR; 
         kAltUncert = MIN_UNCERT_FLOOR; 
         return; 
     }
@@ -153,7 +148,6 @@ function continueGPSStart() {
 /** Démarre le GPS et gère l'autorisation des capteurs de mouvement (IMU/iOS). */
 function startGPS() {
     if (wID === null) {
-        // Logique d'autorisation des capteurs IMU (CRITIQUE pour iOS/Safari)
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
@@ -169,7 +163,6 @@ function startGPS() {
                     continueGPSStart(); 
                 });
         } else {
-            // Pour Android, Desktop, ou si la fonction d'autorisation n'existe pas
             continueGPSStart();
         }
     }
@@ -188,70 +181,88 @@ function updateDisp(pos) {
 
     if (wasDrifting && hasGPSFix) {
         console.log("Correction automatique déclenchée : Signal GPS revenu après dérive.");
-        
-        // Caler la position EKF sur la nouvelle mesure GPS
         lat = pos.coords.latitude; 
         lon = pos.coords.longitude;
         kAlt = pos.coords.altitude !== null ? pos.coords.altitude : kAlt; 
-        
-        // Annuler l'incertitude accumulée (réinitialiser la dérive d'état)
-        kUncert = MIN_UNCERT_FLOOR; // Utilisation du Plancher d'Incertitude EKF
+        kUncert = MIN_UNCERT_FLOOR; 
         kAltUncert = MIN_UNCERT_FLOOR; 
     }
     // ---------------------------------------------------
 
     lat = pos.coords.latitude; 
     lon = pos.coords.longitude;
-    alt = pos.coords.altitude;
-    speed = pos.coords.speed !== null ? pos.coords.speed : 0;
+    const currentAlt = pos.coords.altitude; 
+    alt = currentAlt; 
+    speed = pos.coords.speed !== null ? pos.coords.speed : 0; // Vitesse horizontale brute du GPS
     gpsTS = pos.timestamp;
     
     const nowTS = getCDate().getTime();
     const dt = lastTS === 0 ? MIN_DT : (nowTS - lastTS) / 1000;
     lastTS = nowTS;
 
+    // --- CALCUL VITESSE VERTICALE ET 3D ---
+    let verticalSpeedRaw = 0;
+    let speed3DInst = speed; 
+    
+    if (currentAlt !== null && lastAlt !== 0 && dt > 0) {
+        verticalSpeedRaw = (currentAlt - lastAlt) / dt;
+        // Vitesse 3D Instantannée = sqrt(V_horizontale_GPS² + V_verticale_GPS²)
+        speed3DInst = Math.sqrt(speed * speed + verticalSpeedRaw * verticalSpeedRaw);
+    }
+    
     // --- EKF (Simplified 1D Speed/Position Filter) ---
-    let kR = acc * acc * getEnvironmentFactor(); // Bruit de mesure
+    let kR = acc * acc * getEnvironmentFactor(); 
     let kGain = kUncert / (kUncert + kR);
-    kSpd = kSpd + kGain * (speed - kSpd);
+    kSpd = kSpd + kGain * (speed - kSpd); // Filtre appliqué à la vitesse horizontale
     kUncert = (1 - kGain) * kUncert;
-    kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); // Plancher d'Incertitude EKF
+    kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); 
 
     // --- ACCÉLÉRATION & G-FORCE MAX ---
     let sSpdFE = Math.abs(kSpd);
     let accel_long = (dt > MIN_DT) ? (sSpdFE - lastFSpeed) / dt : 0;
     lastFSpeed = sSpdFE;
 
-    // G-Force Max (longitudinale)
     const currentGForceLong = Math.abs(accel_long / G_ACC); 
-    if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; // Mise à jour du record
+    if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; 
 
-    // --- MISE À JOUR DOM & nm/s ---
+    // --- MISE À JOUR DOM ---
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(4)} km/h`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
 
-    // Affichage de la Vitesse avec la précision nm/s (CORRIGÉ)
     $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1e6).toFixed(0)} µm/s | ${(sSpdFE * 1e9).toFixed(0)} nm/s`; 
     
-    // Affichage de la G-Force Max
+    $('speed-3d-inst').textContent = `${(speed3DInst * KMH_MS).toFixed(4)} km/h`; 
+    $('vertical-speed').textContent = `${verticalSpeedRaw.toFixed(2)} m/s`;
+
     $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G | Max: ${maxGForce.toFixed(2)} G`;
 
     // --- MISE À JOUR DES RECORDS DE PRÉCISION ---
     if (acc !== null && acc < P_RECORDS.max_acc_min) {
-        P_RECORDS.max_acc_min = acc; // Record de Précision GPS Brute
+        P_RECORDS.max_acc_min = acc;
     }
     if (kUncert < P_RECORDS.max_kUncert_min) {
-        P_RECORDS.max_kUncert_min = kUncert; // Record d'Incertitude EKF
+        P_RECORDS.max_kUncert_min = kUncert;
     }
     
-    // Logique de distance et de mouvement
+    // Logique de distance et de mouvement (CALCUL 3D)
     if (lastPos) {
-        const d = distanceCalc(lastPos.latitude, lastPos.longitude, lat, lon);
-        distM += d;
+        const d_horiz = distanceCalc(lastPos.latitude, lastPos.longitude, lat, lon);
+        
+        let d_vert = 0;
+        if (currentAlt !== null && lastAlt !== 0) {
+            d_vert = Math.abs(currentAlt - lastAlt);
+        }
+        
+        // Distance 3D = sqrt(d_horiz² + d_vert²)
+        const d_3d = Math.sqrt(d_horiz * d_horiz + d_vert * d_vert); 
+        distM += d_3d; 
+
         if (sSpdFE > MIN_SPD) {
             timeMoving += dt;
         }
-    }
+    } 
+    
+    if (currentAlt !== null) lastAlt = currentAlt; 
     lastPos = { latitude: lat, longitude: lon };
     
     $('distance-total-km').textContent = `${(distM/1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
@@ -265,7 +276,6 @@ function handleDeviceMotion(event) {
 
     latestAccelZ = accel.z || 0;
     
-    // Accélération linéaire sans la gravité
     const linearAccel = event.acceleration;
     if (linearAccel) {
         latestLinearAccelMagnitude = Math.sqrt(linearAccel.x*linearAccel.x + linearAccel.y*linearAccel.y + linearAccel.z*linearAccel.z);
@@ -273,14 +283,12 @@ function handleDeviceMotion(event) {
         latestLinearAccelMagnitude = 0;
     }
     
-    // Mise à jour de la G-Force Max totale (IMU)
     const totalGForce = latestLinearAccelMagnitude / G_ACC_LOCAL; 
 
     if (totalGForce > maxGForce) {
-        maxGForce = totalGForce; // MET À JOUR LE RECORD COURANT
+        maxGForce = totalGForce; 
     }
     
-    // Mise à jour de l'affichage vertical
     $('accel-vertical-imu').textContent = `${(latestAccelZ - G_ACC_LOCAL).toFixed(3)} m/s²`;
     $('force-g-vertical').textContent = `${(latestAccelZ / G_ACC_LOCAL).toFixed(2)} G`;
 }
@@ -306,7 +314,7 @@ function getWeather() {
             console.error("Erreur de récupération Météo:", err);
             $('temp-air').textContent = "API ERREUR";
         });
-}
+        }
 // =================================================================
 // FICHIER JS PARTIE 3 : gnss-dashboard-part3.js (Astro, Événements & Initialisation)
 // =================================================================
