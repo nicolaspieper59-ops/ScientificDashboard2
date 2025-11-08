@@ -9,7 +9,7 @@
           integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
           crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
-          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
+          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=\" 
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
@@ -40,18 +40,17 @@
             padding-top: 10px;
         }
         
-        /* --- Styles de l'Horloge Astro (CORRIGÉ) --- */
+        /* --- Styles de l'Horloge Astro --- */
         #minecraft-clock {
             width: 90px;
             height: 90px;
             position: relative;
             border: 3px solid #333; 
             overflow: hidden;
-            background-color: #303040; /* Couleur de nuit par défaut */
-            border-radius: 50%; /* Disque */
+            background-color: #303040; 
+            border-radius: 50%; 
         }
         
-        /* Élément de fond pour le changement de couleur du ciel dans le disque */
         #minecraft-clock::before { 
             content: ''; 
             position: absolute; 
@@ -61,17 +60,20 @@
             z-index: 1;
         }
         
-        /* Conteneur pour les éléments Soleil/Lune (ils sont positionnés au "Zénith" et le conteneur tourne) */
         .sun-element {
             position: absolute;
             width: 100%; height: 100%;
             top: 0; left: 0;
             display: flex; justify-content: center;
-            align-items: flex-start; /* Positionne l'icône en haut */
-            font-size: 2em;
-            transform-origin: center center; /* Rotation autour du centre */
+            align-items: flex-start; 
+            transform-origin: center center; 
             transition: transform 1s linear;
             z-index: 2;
+        }
+        
+        .sun-icon, .moon-icon {
+            font-size: 1.2em; 
+            transform: translateY(-50%); 
         }
 
         .sun-icon { color: #ffdd00; text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
@@ -79,13 +81,12 @@
 
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
 
-        /* --- Styles Mode Nuit & Couleurs du Ciel sur le BODY (CORRIGÉ) --- */
+        /* --- Styles Mode Nuit & Couleurs du Ciel sur le BODY --- */
         
-        /* Couleurs du ciel basées sur l'élévation du soleil (pour le body) */
-        .sky-day { background-color: #87ceeb !important; color: #333 !important; } /* Bleu ciel */
-        .sky-sunset { background-color: #ff8c00 !important; color: #333 !important; } /* Orange profond */
-        .sky-night-light { background-color: #303040 !important; color: #e0e0e0 !important; } /* Nuit claire */
-        .sky-night { background-color: #121220 !important; color: #e0e0e0 !important; } /* Nuit noire profonde */
+        .sky-day { background-color: #87ceeb !important; color: #333 !important; } 
+        .sky-sunset { background-color: #ff8c00 !important; color: #333 !important; } 
+        .sky-night-light { background-color: #303040 !important; color: #e0e0e0 !important; } 
+        .sky-night { background-color: #121220 !important; color: #e0e0e0 !important; } 
         
         body.dark-mode, body.sky-night { 
             background-color: #121212; 
@@ -102,7 +103,6 @@
             color: #bdbdbd; 
         }
         body.dark-mode .clock-display, body.sky-night .clock-display { color: #aaa; }
-        /* Les autres styles dark-mode/sky-night doivent aussi cibler les inputs/buttons */
     </style>
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
@@ -119,6 +119,7 @@
             <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> 
             <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>Masse (kg)</span><span id="mass-display">70.000 kg</span></div>
+            <div class="data-point"><span>Gravité Locale (g)</span><span id="gravity-local">9.80665 m/s²</span></div>
             
             <hr>
             
@@ -152,16 +153,22 @@
             
             <h2>•0‹4 Vitesse & Distance</h2>
             <div class="data-point"><span>Vitesse Stable (EKF)</span><span id="speed-stable">-- km/h</span></div>
-            <div class="data-point"><span>Précision EKF (R dyn.)</span><span id="speed-error-perc">N/A</span></div> 
-            <div class="data-point"><span>Précision Effective (R)</span><span id="gps-accuracy-effective">N/A</span></div>
+            <div class="data-point"><span>Vitesse Stable (km/s)</span><span id="speed-stable-kms">-- km/s</span></div>
             <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
             <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00000 km/h</span></div> 
             <div class="data-point"><span>Vitesse 3D (Inst.)</span><span id="speed-3d-inst">-- km/h</span></div>
             <div class="data-point"><span>Vitesse stable (m/s)</span><span id="speed-stable-ms">-- m/s | -- µm/s | -- nm/s</span></div> 
             <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">-- %</span></div> 
             <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
-            <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
-            <div class="data-point"><span>Distance Cosmique</span><span id="distance-cosmic">0.00e+00 s lumière | 0.00e+00 al</span></div>
+            <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
+            
+            <div class="data-point"><span>Distance Cosm. (s-lumière)</span><span id="distance-light-s">0.00e+00 s lumière</span></div>
+            <div class="data-point"><span>Distance Cosm. (min-lumière)</span><span id="distance-light-min">0.00e+00 min lumière</span></div>
+            <div class="data-point"><span>Distance Cosm. (h-lumière)</span><span id="distance-light-h">0.00e+00 h lumière</span></div>
+            <div class="data-point"><span>Distance Cosm. (j-lumière)</span><span id="distance-light-day">0.00e+00 j lumière</span></div>
+            <div class="data-point"><span>Distance Cosm. (sem-lumière)</span><span id="distance-light-week">0.00e+00 sem lumière</span></div>
+            <div class="data-point"><span>Distance Cosm. (mois-lumière)</span><span id="distance-light-month">0.00e+00 mois lumière</span></div>
+            <div class="data-point"><span>Distance Cosm. (UA / al)</span><span id="distance-cosmic">0.00e+00 UA | 0.00e+00 al</span></div>
         </div>
 
         <div class="section">
@@ -171,12 +178,13 @@
             <div class="data-point"><span>Altitude GPS</span><span id="altitude-gps">N/A</span></div>
             <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
             <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
+            <div class="data-point"><span>Cap (Direction)</span><span id="heading-display">N/A</span></div>
             <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div> 
             
             <hr>
             
             <h2>”9Ù9 Dynamique du Véhicule & Forces</h2>
-            <div class="data-point"><span>Accel. Longitudinale (EKF)</span><span id="accel-long">0.000 m/s ²</span></div>
+            <div class="data-point"><span>Accel. Longitudinale (Hybride)</span><span id="accel-long">0.000 m/s ²</span></div>
             <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div> 
             <div class="data-point"><span>Vitesse Verticale (Raw)</span><span id="vertical-speed">0.00 m/s</span></div>
             <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s ²</span></div>
@@ -261,4 +269,4 @@
 <script src="gnss-dashboard-full.js"></script>
 
 </body>
-                    </html>
+        </html>
