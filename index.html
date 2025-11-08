@@ -1,423 +1,250 @@
-// =================================================================
-// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes, Globales et Persistance)
-// =================================================================
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GNSS SpaceTime Dashboard •0‹4</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
+          crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
+          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+          
+    <style>
+        /* Styles adaptés */
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; transition: background-color 0.3s; }
+        .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
+        .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); transition: background-color 0.3s, box-shadow 0.3s; }
+        .section h2 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; font-size: 1.2em; }
+        .data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
+        .data-point span:first-child { font-weight: bold; color: #555; }
+        
+        /* Contrôles */
+        .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
+        .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
+        .control-input-full input, .control-input-full select { width: 98%; padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
+        button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #toggle-gps-btn { background-color: #28a745; color: white; }
+        #emergency-stop-btn { background-color: #dc3545; color: white; }
+        
+        /* Conteneur pour la carte et l'horloge */
+        #map-container { height: 400px; width: 100%; border-radius: 8px; margin-top: 15px; }
+        #minecraft-clock-container { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            flex-direction: column;
+            padding-top: 10px;
+        }
+        #minecraft-clock {
+            width: 90px;
+            height: 90px;
+            position: relative;
+            border: 3px solid #333; /* Bordure de base */
+            overflow: hidden;
+        }
+        #minecraft-clock::before { 
+            content: ''; 
+            position: absolute; 
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #87ceeb; /* Ciel de jour par défaut */
+            transition: background-color 0.5s, opacity 0.5s;
+            z-index: 1;
+        }
+        .sun-element, .moon-element {
+            position: absolute;
+            width: 100%; height: 100%;
+            top: 0; left: 0;
+            display: flex; justify-content: center;
+            align-items: flex-start;
+            font-size: 2em;
+            transition: transform 1s linear;
+            z-index: 2;
+        }
 
-const $ = (id) => document.getElementById(id);
+        .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
 
-// --- CONSTANTES GLOBALES (Physiques, GPS, Temps) ---
-const C_L = 299792458; // Vitesse de la lumière (m/s)
-const SPEED_SOUND = 343; // Vitesse du son (m/s)
-const G_ACC = 9.80665; // Gravité standard (m/s²)
-const KMH_MS = 3.6; 
-const R_E = 6371000; // Rayon moyen de la Terre (m)
-const R2D = 180 / Math.PI;
-const D2R = Math.PI / 180;
-const W_EARTH = 7.2921E-5; // Vitesse angulaire de la Terre (rad/s)
-const NETHER_RATIO = 1 / 8; 
+        /* Styles Mode Nuit (AJOUTÉS) */
+        body.dark-mode { 
+            background-color: #121212; 
+            color: #e0e0e0;
+        }
+        body.dark-mode .section {
+            background-color: #1e1e1e;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+        body.dark-mode .section h2 {
+            border-bottom: 2px solid #333;
+        }
+        body.dark-mode .data-point span:first-child { 
+            color: #bdbdbd; 
+        }
+        body.dark-mode button, body.dark-mode select, body.dark-mode input {
+            background-color: #333;
+            color: #e0e0e0;
+            border: 1px solid #555;
+        }
+        body.dark-mode #toggle-gps-btn { 
+            background-color: #38761d; 
+            color: white; 
+        }
+        body.dark-mode #emergency-stop-btn { 
+            background-color: #8f0d0d; 
+            color: white; 
+        }
+        body.dark-mode .clock-display { color: #aaa; }
+    </style>
+    <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
+</head>
+<body>
 
-// Constantes Temps / Astro
-const dayMs = 86400000;
-const DOM_SLOW_UPDATE_MS = 1000;
-const WEATHER_UPDATE_MS = 30000; 
-
-// !!! CLÉ API CRITIQUE !!! : REMPLACEZ VOTRE_CLE_API_OPENWEATHERMAP
-// Le tableau de bord affichera "API CLÉ MANQUANTE" tant que cette clé n'est pas remplacée.
-const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
-
-// Constantes EKF & ZVU (Zero Velocity Update)
-const MIN_DT = 0.05; // Fréquence d'échantillonnage de l'EKF
-const Q_NOISE = 0.001; // Bruit de processus (m/s²)
-const MIN_SPD = 0.001; // Seuil de vitesse minimale (1 mm/s)
-
-// Seuil plancher théorique pour l'incertitude d'état EKF (P)
-const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; // 5e-5 m² (implémentation du Plancher d'Incertitude EKF)
-
-// --- VARIABLES GLOBALES (État du Système) ---
-let lat = 0, lon = 0, alt = 0, speed = 0, hdop = 1000, gpsTS = 0;
-let wID = null, domID = null, weatherID = null, emergencyStopActive = false;
-let sTime = null, lastTS = 0, lastPos = null, timeMoving = 0;
-let distM = 0;
-let currentGPSMode = 'HIGH_FREQ'; 
-let netherMode = false;
-let G_ACC_LOCAL = G_ACC; 
-let mass = 70.0; 
-
-// --- VARIABLES EKF (Filtre de Kalman Étendu) ---
-let kSpd = 0;       // Vitesse stable EKF (m/s)
-let kUncert = 1000; // Incertitude horizontale EKF (m²) - commence haut
-let kAlt = 0;       // Altitude stable EKF (m)
-let kAltUncert = 1000; // Incertitude verticale EKF (m²) - commence haut
-let lastFSpeed = 0; // Dernière vitesse filtrée pour l'accélération
-let maxSpd = 0;     // Vitesse max (m/s)
-let maxGForce = 0;  // G-Force Max (G) - Initialisée à 0
-
-// --- VARIABLES DE CAPTEURS IMU ---
-let latestLinearAccelMagnitude = 0;
-let latestAccelX = 0, latestAccelY = 0, latestAccelZ = 0;
-
-// --- VARIABLES RECORDS DE PRÉCISION (Persistance) ---
-let P_RECORDS = {
-    max_kUncert_min: 1000, // Incertitude horizontale minimale atteinte (m²)
-    max_acc_min: 1000,     // Précision GPS brute minimale atteinte (m)
-    max_g_force_max: 0     // Force G maximale absolue enregistrée (G)
-};
-const P_RECORDS_KEY = 'gnss_precision_records'; 
-
-// --- UTILS ---
-function getCDate() { return new Date(); }
-function distanceCalc(lat1, lon1, lat2, lon2) {
-    if (lat1 === 0 || lat2 === 0) return 0;
-    const p = Math.PI / 180;
-    const a = 0.5 - Math.cos((lat2 - lat1) * p)/2 + 
-              Math.cos(lat1 * p) * Math.cos(lat2 * p) * (1 - Math.cos((lon2 - lon1) * p))/2;
-    return 2 * R_E * Math.asin(Math.sqrt(a));
-}
-function getEnvironmentFactor() {
-    const factorMap = { 'NORMAL': 1.0, 'FOREST': 1.5, 'CONCRETE': 3.0, 'METAL': 2.5 };
-    const selected = $('environment-select').value;
-    return factorMap[selected] || 1.0;
-}
-
-// ===========================================
-// FONCTIONS PERSISTANCE DES RECORDS
-// ===========================================
-
-function loadPrecisionRecords() {
-    try {
-        const stored = localStorage.getItem(P_RECORDS_KEY);
-        if (stored) {
-            const loaded = JSON.parse(stored);
-            P_RECORDS = { ...P_RECORDS, ...loaded };
+    <div class="dashboard-container">
+        
+        <div class="section">
+            <h2>•0•0„1‚5 Contrôles & Système</h2>
+            <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">N/A</span></div>
+            <div class="data-point"><span>Date Locale</span><span id="date-display">N/A</span></div> 
+            <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
+            <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
+            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> 
+            <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
+            <div class="data-point"><span>Masse (kg)</span><span id="mass-display">70.000 kg</span></div>
             
-            // Appliquer le record de G-Force max au compteur courant
-            maxGForce = P_RECORDS.max_g_force_max;
-        }
-    } catch (e) {
-        console.error("Erreur lors du chargement des records de précision:", e);
-    }
-}
+            <hr>
+            
+            <div class="controls-grid">
+                <button id="toggle-gps-btn"> 7œ4„1‚5 MARCHE GPS</button>
+                <select id="freq-select"><option value="HIGH_FREQ">Haute Fréquence</option><option value="LOW_FREQ">Basse Fréquence</option></select>
+                <button id="emergency-stop-btn">•0“5 Arrêt d'urgence: INACTIF •0 4</button>
+                <button id="toggle-mode-btn">”9±7 Mode Nuit</button>
+                <button id="nether-toggle-btn">Nether Mode</button>
+                <button id="reset-dist-btn">”9ã4 Distance</button>
+                <button id="reset-max-btn">”9ã4 Vitesse Max</button>
+                <button id="reset-all-btn"> 7¿8 TOUT RÉINITIALISER</button>
+                <button id="data-capture-btn">”9Ý7 Capturer</button>
 
-function savePrecisionRecords() {
-    try {
-        // Mettre à jour la G-Force max actuelle avant de sauvegarder
-        P_RECORDS.max_g_force_max = maxGForce; 
-        localStorage.setItem(P_RECORDS_KEY, JSON.stringify(P_RECORDS));
-    } catch (e) {
-        console.error("Erreur lors de la sauvegarde des records de précision:", e);
-    }
-}
-// =================================================================
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (EKF, Capteurs & Logique Critique)
-// =================================================================
+                <div class="control-input-full">
+                    <label for="gps-accuracy-override">Précision GPS forcée (m) [0=Auto]</label>
+                    <input type="number" id="gps-accuracy-override" value="0.000000" step="0.000001">
+                </div>
+                <div class="control-input-full">
+                    <label for="environment-select">Facteur Kalman Environnement :</label>
+                    <select id="environment-select">
+                        <option value="NORMAL">Normal (x1.0)</option>
+                        <option value="FOREST">Forêt (x1.5)</option>
+                        <option value="CONCRETE">Grotte/Tunnel (x3.0)</option>
+                        <option value="METAL">Métal/Bâtiment (x2.5)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <hr>
+            
+            <h2>•0‹4 Vitesse & Distance</h2>
+            <div class="data-point"><span>Vitesse Stable (EKF)</span><span id="speed-stable">-- km/h</span></div>
+            <div class="data-point"><span>Précision EKF (R dyn.)</span><span id="speed-error-perc">N/A</span></div> 
+            <div class="data-point"><span>Précision Effective (R)</span><span id="gps-accuracy-effective">N/A</span></div>
+            <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
+            <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00000 km/h</span></div> 
+            <div class="data-point"><span>Vitesse 3D (Inst.)</span><span id="speed-3d-inst">-- km/h</span></div>
+            <div class="data-point"><span>Vitesse stable (m/s)</span><span id="speed-stable-ms">-- m/s | -- µm/s | -- nm/s</span></div> 
+            <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">-- %</span></div> 
+            <div class="data-point"><span>% Vitesse de la Lumière (c)</span><span id="perc-speed-c">--%</span></div>
+            <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
+            <div class="data-point"><span>Distance Cosmique</span><span id="distance-cosmic">0.00e+00 s lumière | 0.00e+00 al</span></div>
+        </div>
 
-/** Simule la correction GPS théorique parfaite (Correction Théorique Automatique au Démarrage). */
-function simulateBestCorrection() {
-    if (lat === 0 && lon === 0) {
-        // Initialisation à l'incertitude minimale si aucune position n'est connue
-        kUncert = MIN_UNCERT_FLOOR; // Plancher d'Incertitude EKF
-        kAltUncert = MIN_UNCERT_FLOOR; 
-        return; 
-    }
+        <div class="section">
+            <h2>•0–6„1‚5 Vue brute GPS & Physique</h2>
+            <div class="data-point"><span>Latitude Brute</span><span id="latitude">N/A</span></div>
+            <div class="data-point"><span>Longitude Brute</span><span id="longitude">N/A</span></div>
+            <div class="data-point"><span>Altitude GPS</span><span id="altitude-gps">N/A</span></div>
+            <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
+            <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
+            <div class="data-point"><span>Sous-sol (Seuil -50m)</span><span id="underground-status">Non</span></div> 
+            
+            <hr>
+            
+            <h2>”9Ù9 Dynamique du Véhicule & Forces</h2>
+            <div class="data-point"><span>Accel. Longitudinale (EKF)</span><span id="accel-long">0.000 m/s ²</span></div>
+            <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div> 
+            <div class="data-point"><span>Vitesse Verticale (Raw)</span><span id="vertical-speed">0.00 m/s</span></div>
+            <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s ²</span></div>
+            <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div>
 
-    const IDEAL_ACCURACY = 0.00001; 
-    const mockBestCorrectionPos = {
-        coords: { latitude: lat, longitude: lon, altitude: kAlt, accuracy: IDEAL_ACCURACY, speed: kSpd, altitudeAccuracy: IDEAL_ACCURACY },
-        timestamp: new Date().getTime()
-    };
+            <hr>
 
-    kUncert = MIN_UNCERT_FLOOR; 
-    kAltUncert = MIN_UNCERT_FLOOR; 
+            <h2> 7±7„1‚5 Champs & Énergie (Physique)</h2>
+            <div class="data-point"><span>Énergie Cinétique (J)</span><span id="kinetic-energy">0.00 J</span></div>
+            <div class="data-point"><span>Puissance Mécanique (W)</span><span id="mechanical-power">0.00 W</span></div>
+            <div class="data-point"><span>Champ Magnétique (µT)</span><span id="magnetic-field">N/A</span></div>
+            <div class="data-point"><span>Débit Atmosphérique (m³/s)</span><span id="air-flow">N/A</span></div>
+            <div class="data-point"><span>Force de Coriolis (N)</span><span id="coriolis-force">0.00 N</span></div>
+            
+            <hr>
+            
+            <h2>”9³1„1‚5 Météo & Capteurs</h2>
+            <div class="data-point"><span>Température Air</span><span id="temp-air">N/A</span></div>
+            <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure">N/A</span></div>
+            <div class="data-point"><span>Humidité Relative</span><span id="humidity">N/A</span></div>
+            <div class="data-point"><span>Point de Rosée</span><span id="dew-point">N/A</span></div>
+            <div class="data-point"><span>Visibilité (km)</span><span id="visibility">N/A</span></div>
+            <div class="data-point"><span>Indice UV</span><span id="uv-index">N/A</span></div>
+            <div class="data-point"><span>Direction du Vent</span><span id="wind-direction">N/A</span></div>
+            <div class="data-point"><span>Taux de Précipitation</span><span id="precipitation-rate">N/A</span></div>
+            <div class="data-point"><span>Temp. Ressentie (Wind Chill)</span><span id="temp-feels-like">N/A</span></div>
 
-    updateDisp(mockBestCorrectionPos); 
-    
-    console.log(`Simulateur de Correction Théorique activé : EKF réglé sur l'incertitude minimale (${MIN_UNCERT_FLOOR.toExponential(2)} m²).`);
-}
-
-/** Gestion du démarrage du GPS après l'autorisation IMU (iOS). */
-function continueGPSStart() {
-    const opts = { enableHighAccuracy: currentGPSMode === 'HIGH_FREQ', timeout: 5000, maximumAge: 0 };
-    
-    if (wID !== null) navigator.geolocation.clearWatch(wID);
-
-    wID = navigator.geolocation.watchPosition(updateDisp, (error) => {
-        console.warn(`ERREUR GPS(${error.code}): ${error.message}`);
-        if (error.code === 1) {
-            alert("Accès à la géolocalisation refusé. Le tableau de bord ne peut fonctionner.");
-        }
-    }, opts);
-
-    if ($('freq-select')) $('freq-select').value = currentGPSMode; 
-    sTime = sTime === null ? getCDate().getTime() : sTime; 
-}
-
-/** Démarre le GPS et gère l'autorisation des capteurs de mouvement (IMU/iOS). */
-function startGPS() {
-    if (wID === null) {
-        // Logique d'autorisation des capteurs IMU (CRITIQUE pour iOS/Safari)
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission()
-                .then(permissionState => {
-                    if (permissionState === 'granted') {
-                        continueGPSStart();
-                    } else {
-                        console.warn("Accès aux capteurs de mouvement refusé. Certaines données seront indisponibles.");
-                        continueGPSStart(); 
-                    }
-                })
-                .catch(err => {
-                    console.error("Erreur d'autorisation DeviceMotion:", err);
-                    continueGPSStart(); 
-                });
-        } else {
-            // Pour Android, Desktop, ou si la fonction d'autorisation n'existe pas
-            continueGPSStart();
-        }
-    }
-}
-
-
-/** Handler des données GPS et du filtre EKF (Correction Automatique de Dérive GPS). */
-function updateDisp(pos) {
-    if (emergencyStopActive) return;
-    
-    const acc = $('gps-accuracy-override').value !== '0.000000' ? parseFloat($('gps-accuracy-override').value) : pos.coords.accuracy;
-
-    // --- LOGIQUE DE CORRECTION AUTOMATIQUE À LA FIN DE LA DÉRIVE (ZVU) ---
-    const hasGPSFix = acc !== null && acc < 50; 
-    const wasDrifting = kUncert > 1.0; 
-
-    if (wasDrifting && hasGPSFix) {
-        console.log("Correction automatique déclenchée : Signal GPS revenu après dérive.");
+            <h2 style="margin-top: 15px;">”9ü0„1‚5 Carte GNSS</h2>
+            <div id="map-container">Initialisation de la carte...</div>
+        </div>
         
-        // Caler la position EKF sur la nouvelle mesure GPS
-        lat = pos.coords.latitude; 
-        lon = pos.coords.longitude;
-        kAlt = pos.coords.altitude !== null ? pos.coords.altitude : kAlt; 
-        
-        // Annuler l'incertitude accumulée (réinitialiser la dérive d'état)
-        kUncert = MIN_UNCERT_FLOOR; // Utilisation du Plancher d'Incertitude EKF
-        kAltUncert = MIN_UNCERT_FLOOR; 
-    }
-    // ---------------------------------------------------
+        <div class="section">
+            <h2> 8¬2 Soleil & Lune (SunCalc)</h2>
+            <div id="minecraft-clock-container">
+                <div id="minecraft-clock">
+                    </div>
+                <div class="clock-display" id="clock-status">Initialisation TST...</div>
+            </div>
+            
+            <hr>
 
-    lat = pos.coords.latitude; 
-    lon = pos.coords.longitude;
-    alt = pos.coords.altitude;
-    speed = pos.coords.speed !== null ? pos.coords.speed : 0;
-    gpsTS = pos.timestamp;
-    
-    const nowTS = getCDate().getTime();
-    const dt = lastTS === 0 ? MIN_DT : (nowTS - lastTS) / 1000;
-    lastTS = nowTS;
+            <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
+            <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
+            
+            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
+            <div class="data-point"><span>Lune & Phases</span><span id="moon-phase-display">N/A</span></div>
+            <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="lsm">N/D</span></div> 
+            <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/D</span></div> 
+            
+            <div class="data-point"><span>Durée du Jour Solaire</span><span id="day-duration">N/A</span></div> 
+            <div class="data-point"><span>Longitude écliptique du Soleil</span><span id="ecliptic-long">-- °</span></div> 
+            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
+            
+            <hr>
 
-    // --- EKF (Simplified 1D Speed/Position Filter) ---
-    let kR = acc * acc * getEnvironmentFactor(); // Bruit de mesure
-    let kGain = kUncert / (kUncert + kR);
-    kSpd = kSpd + kGain * (speed - kSpd);
-    kUncert = (1 - kGain) * kUncert;
-    kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); // Plancher d'Incertitude EKF
+            <h2>•0â8 Chimie & Composition</h2>
+            <div class="data-point"><span>Taux d'Oxygène (O₂)</span><span id="o2-level">20.9 % vol (Capteur requis)</span></div>
+            <div class="data-point"><span>Taux de CO₂ (ppm)</span><span id="co2-level">N/A (Capteur/API)</span></div>
+            <div class="data-point"><span>Densité de l'Air (kg/m³)</span><span id="air-density">N/A</span></div>
+            <div class="data-point"><span>Concentration Ozone (DU)</span><span id="ozone-conc">N/A (Capteur/API)</span></div>
+            <div class="data-point"><span>Potentiel Hydrogène (pH)</span><span id="ph-level">N/A (Capteur)</span></div>
 
-    // --- ACCÉLÉRATION & G-FORCE MAX ---
-    let sSpdFE = Math.abs(kSpd);
-    let accel_long = (dt > MIN_DT) ? (sSpdFE - lastFSpeed) / dt : 0;
-    lastFSpeed = sSpdFE;
+            <hr>
 
-    // G-Force Max (longitudinale)
-    const currentGForceLong = Math.abs(accel_long / G_ACC); 
-    if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; // Mise à jour du record
+            <h2>”9´7 SVT & Environnement</h2>
+            <div class="data-point"><span>Radiation Solaire (W/m²)</span><span id="solar-radiation">N/A</span></div>
+            <div class="data-point"><span>Niveau Sonore (dB)</span><span id="noise-level">N/A (Capteur)</span></div>
+            <div class="data-point"><span>Vitesse du Vent (m/s)</span><span id="wind-speed-ms">N/A</span></div>
+            <div class="data-point"><span>Type de Sol (Capteur/API)</span><span id="soil-type">N/A (API Géo/Capteur)</span></div>
+            <div class="data-point"><span>Biomasse NDVI (API Sat.)</span><span id="ndvi-index">N/A (API Satellite)</span></div>
+        </div>
 
-    // --- MISE À JOUR DOM & nm/s ---
-    $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(4)} km/h`;
-    $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
+    </div>
 
-    // Affichage de la Vitesse avec la précision nm/s (CORRIGÉ)
-    $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1e6).toFixed(0)} µm/s | ${(sSpdFE * 1e9).toFixed(0)} nm/s`; 
-    
-    // Affichage de la G-Force Max
-    $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G | Max: ${maxGForce.toFixed(2)} G`;
-
-    // --- MISE À JOUR DES RECORDS DE PRÉCISION ---
-    if (acc !== null && acc < P_RECORDS.max_acc_min) {
-        P_RECORDS.max_acc_min = acc; // Record de Précision GPS Brute
-    }
-    if (kUncert < P_RECORDS.max_kUncert_min) {
-        P_RECORDS.max_kUncert_min = kUncert; // Record d'Incertitude EKF
-    }
-    
-    // Logique de distance et de mouvement
-    if (lastPos) {
-        const d = distanceCalc(lastPos.latitude, lastPos.longitude, lat, lon);
-        distM += d;
-        if (sSpdFE > MIN_SPD) {
-            timeMoving += dt;
-        }
-    }
-    lastPos = { latitude: lat, longitude: lon };
-    
-    $('distance-total-km').textContent = `${(distM/1000).toFixed(3)} km | ${distM.toFixed(2)} m`;
-}
-
-
-/** Handler pour les capteurs de mouvement (IMU) */
-function handleDeviceMotion(event) {
-    if (emergencyStopActive) return;
-    const accel = event.accelerationIncludingGravity;
-
-    latestAccelZ = accel.z || 0;
-    
-    // Accélération linéaire sans la gravité
-    const linearAccel = event.acceleration;
-    if (linearAccel) {
-        latestLinearAccelMagnitude = Math.sqrt(linearAccel.x*linearAccel.x + linearAccel.y*linearAccel.y + linearAccel.z*linearAccel.z);
-    } else {
-        latestLinearAccelMagnitude = 0;
-    }
-    
-    // Mise à jour de la G-Force Max totale (IMU)
-    const totalGForce = latestLinearAccelMagnitude / G_ACC_LOCAL; 
-
-    if (totalGForce > maxGForce) {
-        maxGForce = totalGForce; // MET À JOUR LE RECORD COURANT
-    }
-    
-    // Mise à jour de l'affichage vertical
-    $('accel-vertical-imu').textContent = `${(latestAccelZ - G_ACC_LOCAL).toFixed(3)} m/s²`;
-    $('force-g-vertical').textContent = `${(latestAccelZ / G_ACC_LOCAL).toFixed(2)} G`;
-}
-
-/** Récupère les données météo via l'API OpenWeatherMap */
-function getWeather() {
-    if (OWM_API_KEY === "VOTRE_CLE_API_OPENWEATHERMAP") {
-        $('temp-air').textContent = "API CLÉ MANQUANTE";
-        return;
-    }
-    if (lat === 0 && lon === 0) return;
-
-    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${OWM_API_KEY}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.main) {
-                $('temp-air').textContent = `${data.main.temp.toFixed(1)} °C`;
-                $('pressure').textContent = `${data.main.pressure} hPa`;
-                $('humidity').textContent = `${data.main.humidity} %`;
-            }
-        })
-        .catch(err => {
-            console.error("Erreur de récupération Météo:", err);
-            $('temp-air').textContent = "API ERREUR";
-        });
-}
-        // =================================================================
-// FICHIER JS PARTIE 3 : gnss-dashboard-part3.js (Astro, Événements & Initialisation)
-// =================================================================
-
-function updateAstro(latitude, longitude) {
-    if (typeof SunCalc === 'undefined') return;
-    const now = getCDate();
-    const sunTimes = SunCalc.getTimes(now, latitude, longitude);
-    const moonIllumination = SunCalc.getMoonIllumination(now);
-
-    // ... (Logique de calcul TST et autres affichages astro)
-
-    const moonPhaseName = getMoonPhaseName(moonIllumination.phase);
-    $('moon-phase-display').textContent = moonPhaseName; 
-    $('sun-elevation').textContent = `${(sunTimes.solarAngle * R2D).toFixed(2)} °`;
-    $('noon-solar').textContent = sunTimes.solarNoon ? sunTimes.solarNoon.toLocaleTimeString() : 'N/D';
-}
-
-function getMoonPhaseName(phase) {
-    if (phase < 0.03 || phase >= 0.97) return 'Nouvelle Lune';
-    if (phase < 0.22) return 'Premier Croissant';
-    if (phase < 0.28) return 'Premier Quartier';
-    if (phase < 0.47) return 'Lune Gibbeuse Croissante';
-    if (phase < 0.53) return 'Pleine Lune';
-    if (phase < 0.72) return 'Lune Gibbeuse Décroissante';
-    if (phase < 0.78) return 'Dernier Quartier';
-    return 'Dernier Croissant';
-}
-
-function syncH() {
-    // Fonction de synchronisation de l'heure (non détaillée ici)
-}
-
-function updateMinecraftClock(tstTimeMs) {
-    // Fonction d'affichage de l'horloge (non détaillée ici)
-    $('time-minecraft').textContent = new Date(tstTimeMs).toTimeString().slice(0, 8);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    // --- Initialisation du Système EKF & Persistence ---
-    loadPrecisionRecords();
-    simulateBestCorrection(); // Correction Théorique Automatique au Démarrage
-
-    // --- Événements GPS/Capteurs IMU ---
-    // Le listener IMU est nécessaire pour maxGForce
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', handleDeviceMotion, true);
-    } else {
-        console.warn("DeviceMotion n'est pas supporté ou activé sur cet appareil/navigateur.");
-    } 
-
-    // --- Initialisation des intervalles ---
-    syncH(); 
-    startGPS(); // Démarrage initial du GPS (inclut l'autorisation IMU)
-    getWeather(); 
-
-    // Intervalle lent pour les mises à jour DOM et Astro/Météo
-    domID = setInterval(() => {
-        const now = getCDate();
-        if (now) {
-            $('local-time').textContent = now.toLocaleTimeString();
-            $('date-display').textContent = now.toLocaleDateString();
-            $('time-elapsed').textContent = sTime ? ((now.getTime() - sTime) / 1000).toFixed(2) + ' s' : '0.00 s';
-            $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
-        }
-        if (lat !== 0 && lon !== 0) updateAstro(lat, lon); 
-    }, DOM_SLOW_UPDATE_MS); 
-    
-    weatherID = setInterval(getWeather, WEATHER_UPDATE_MS);
-
-    // --- Gestion des Boutons ---
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => { 
-        if (wID) {
-            navigator.geolocation.clearWatch(wID);
-            wID = null;
-            $('toggle-gps-btn').textContent = " 7œ4„1‚5 MARCHE GPS";
-        } else {
-            startGPS();
-            $('toggle-gps-btn').textContent = " 7œ4„1‚5 ARRÊT GPS";
-        }
-    });
-
-    if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-    });
-
-    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
-        emergencyStopActive = !emergencyStopActive;
-        $('emergency-stop-btn').textContent = emergencyStopActive ? "•0“5 Arrêt d'urgence: ACTIF •0 4" : "•0“5 Arrêt d'urgence: INACTIF •0 4";
-    });
-
-    // Réinitialisation de tous les records (avec G-Force Max)
-    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
-        if (emergencyStopActive) return; 
-        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
-            distM = 0; maxSpd = 0; maxGForce = 0; // Réinitialisation de la G-Force Max
-            kSpd = 0; kUncert = MIN_UNCERT_FLOOR; kAlt = 0; kAltUncert = MIN_UNCERT_FLOOR; timeMoving = 0; lastFSpeed = 0;
-            savePrecisionRecords(); // Sauvegarder l'état réinitialisé
-        } 
-    });
-
-    // Réinitialisation de la vitesse max (Vitesse Max Session)
-    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => {
-        if (emergencyStopActive) return; 
-        maxSpd = 0;
-        maxGForce = 0;
-        P_RECORDS.max_g_force_max = 0;
-        savePrecisionRecords(); 
-        alert("Vitesse Max et G-Force Max réinitialisées.");
-    });
-    
-    // Événement pour sauvegarder les records avant de quitter la page
-    window.addEventListener('beforeunload', savePrecisionRecords);
-});
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
+<script src="gnss-dashboard-full.js"></script>
+</body>
+                                                               </html>
