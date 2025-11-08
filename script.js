@@ -548,7 +548,7 @@ function updateDisp(pos) {
     lPos.timestamp = cTimePos; 
     lPos.kAlt_old = kAlt_new; 
     lPos.kAltUncert_old = kAltUncert; 
-        }
+}
 // =================================================================
 // gnss-dashboard-part3.js : Astro, Map, Controls & Initialisation Finale
 // (Dépend de gnss-dashboard-part1.js et gnss-dashboard-part2.js)
