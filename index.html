@@ -51,14 +51,7 @@
             border-radius: 50%; 
         }
         
-        #minecraft-clock::before { 
-            content: ''; 
-            position: absolute; 
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #87ceeb; 
-            transition: background-color 0.5s, opacity 0.5s;
-            z-index: 1;
-        }
+        /* L'arrière-plan est géré par la classe .sky-XXX appliquée au body */
         
         .sun-element {
             position: absolute;
@@ -67,7 +60,7 @@
             display: flex; justify-content: center;
             align-items: flex-start; 
             transform-origin: center center; 
-            transition: transform 1s linear;
+            transition: transform 1s linear, opacity 0.5s; /* Transition pour l'animation */
             z-index: 2;
         }
         
@@ -115,10 +108,18 @@
             <div class="data-point"><span>Date Locale</span><span id="date-display">N/A</span></div> 
             <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
             <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
-            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> 
-            <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
-            <div class="data-point"><span>Masse (kg)</span><span id="mass-display">70.000 kg</span></div>
-            
+            <div class="data-point"><span>Heure Minecraft</span><span id="time-minecraft">00:00:00</span></div> <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-solar-true">00:00:00</span></div> <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
+
+            <div class="data-point">
+                <span>Masse (kg)</span>
+                <input type="number" id="mass-input" value="70.000" step="0.001" min="0.001" style="width: 60px; text-align: right; border: 1px solid #ccc; padding: 2px;">
+                <select id="mass-preset-select" style="margin-left: 5px;">
+                    <option value="70.000">Personne (70 kg)</option>
+                    <option value="0.200">Téléphone (0.2 kg)</option>
+                    <option value="15.000">Vélo + Utilisateur (~15 kg)</option>
+                    <option value="1500.000">Voiture (~1500 kg)</option>
+                </select>
+            </div>
             <div class="data-point"><span>Corps Céleste Actuel</span>
                 <select id="celestial-body-select" onchange="updateCelestialBody(this.value)">
                     <option value="EARTH">Terre</option>
@@ -194,11 +195,8 @@
             <div class="data-point"><span>Accel. Longitudinale (Hybride)</span><span id="accel-long">0.000 m/s ²</span></div>
             <div class="data-point"><span>Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div> 
             <div class="data-point"><span>Vitesse Verticale (Raw)</span><span id="vertical-speed">0.00 m/s</span></div>
-            
-            <div class="data-point"><span>Tangage (Pitch - X)</span><span id="pitch-angle">0.0 °</span></div>
-            <div class="data-point"><span>Roulis (Roll - Y)</span><span id="roll-angle">0.0 °</span></div>
-            <div class="data-point"><span>Accel. Verticale (IMU Linéaire)</span><span id="accel-vertical-imu">0.000 m/s ²</span></div>
-            <div class="data-point"><span>Force G (Verticale Corrigée)</span><span id="force-g-vertical">0.00 G</span></div>
+            <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s ²</span></div>
+            <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div>
 
             <hr>
 
@@ -245,14 +243,14 @@
             <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
             <div class="data-point"><span>Élévation du Soleil</span><span id="sun-elevation">-- °</span></div>
             
-            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
+            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
             <div class="data-point"><span>Lune & Phases</span><span id="moon-phase-display">N/A</span></div>
-            <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="lsm">N/D</span></div> 
+            <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="culmination-lsm">N/D</span></div> 
             <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/D</span></div> 
             
             <div class="data-point"><span>Durée du Jour Solaire</span><span id="day-duration">N/A</span></div> 
             <div class="data-point"><span>Longitude écliptique du Soleil</span><span id="ecliptic-long">-- °</span></div> 
-            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
+            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot-min">N/D min</span></div> 
             
             <hr>
 
