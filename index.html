@@ -55,52 +55,6 @@
             height: 300px;
             border-radius: 8px;
         }
-
-        /* --- STYLES ASTRO / MINECRAFT SKY --- */
-        .sky-day { background-color: #87CEEB; }
-        .sky-sunset { background-color: #ff8c42; }
-        .sky-night { background-color: #00004f; color: #eee; }
-        
-        .celestial-clock {
-            width: 150px;
-            height: 150px;
-            border: 2px solid #ccc;
-            border-radius: 50%;
-            margin: 20px auto;
-            position: relative;
-            overflow: hidden;
-            background: radial-gradient(circle, #eee, #ddd);
-        }
-        .celestial-body {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform-origin: 0 0;
-            transition: transform 1s, opacity 1s;
-        }
-        #sun-element {
-            width: 15px;
-            height: 15px;
-            background: yellow;
-            border-radius: 50%;
-            box-shadow: 0 0 10px yellow;
-            margin-top: -7.5px;
-            margin-left: -7.5px;
-        }
-        #moon-element {
-            width: 10px;
-            height: 10px;
-            background: silver;
-            border-radius: 50%;
-            box-shadow: 0 0 5px silver;
-            margin-top: -5px;
-            margin-left: -5px;
-        }
-        /* Point de repère Zenith/Horizon */
-        .zenith { position: absolute; top: 0; left: 50%; transform: translateX(-50%); font-size: 0.8em; color: #555; }
-        .horizon-left { position: absolute; top: 50%; left: 0; transform: translateY(-50%); font-size: 0.8em; color: #555; }
-        .horizon-right { position: absolute; top: 50%; right: 0; transform: translateY(-50%); font-size: 0.8em; color: #555; }
-
         /* Styles Boutons */
         button, select {
             padding: 8px 12px;
@@ -125,30 +79,19 @@
             <div class="data-point"><span class="label">Date Locale</span><span id="date-display">N/A</span></div>
             <div class="data-point"><span class="label">Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
             <div class="data-point"><span class="label">Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
-            <div class="data-point"><span class="label">Heure Minecraft</span><span id="time-minecraft">00:00:00</span></div>
-            <div class="data-point"><span class="label">Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
-            <div class="data-point"><span class="label">Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
+            
             <hr>
-
-            <div class="data-point">
-                <span class="label">Masse (kg)</span>
-                <input type="number" id="mass-input" value="70.000" step="0.001" style="width: 80px;">
-                <select id="mass-preset-select">
-                    <option value="70">Personne (70 kg)</option>
-                    <option value="1500">Voiture (1500 kg)</option>
-                    <option value="0.005">Smartphone (0.005 kg)</option>
-                </select>
-            </div>
-
             <div class="data-point"><span class="label">Gravité Locale (g)</span><span id="gravity-local">9.80665 m/s²</span></div>
-            <div class="data-point"><span class="label">Facteur Kalman Environnement</span><span id="env-factor">Normal (x1.0)</span></div>
             <div class="data-point">
-                <span class="label">Fréquence GPS</span>
-                <select id="freq-select">
-                    <option value="HIGH_FREQ">Haute Fréquence</option>
-                    <option value="LOW_FREQ">Basse Fréquence</option>
+                <span class="label">Facteur Kalman Environnement</span>
+                <select id="env-select">
+                    <option value="NORMAL">Normal</option>
+                    <option value="METAL">Métal (Métro/Tunnel)</option>
+                    <option value="FOREST">Forêt</option>
+                    <option value="CONCRETE">Béton (Souterrain)</option>
                 </select>
             </div>
+            <div class="data-point"><span class="label">Facteurs Appliqués (R/Q)</span><span id="env-factor">Normal (R:x1.0, Q:x1.0)</span></div>
             
             <hr>
             <div class="controls-grid" style="display: flex; flex-wrap: wrap; justify-content: center;">
@@ -164,78 +107,69 @@
         <div class="section">
             <h2>•0‹4 Vitesse & Distance</h2>
             <div class="data-point"><span class="label">Vitesse Stable (EKF)</span><span id="speed-stable">0.00000 km/h</span></div>
-            <div class="data-point"><span class="label">Vitesse Stable (km/s)</span><span id="speed-stable-km-s">0.00000 km/s</span></div>
-            <div class="data-point"><span class="label">Vitesse Stable (m/s | nm/s)</span><span id="speed-stable-ms">0.00 m/s | 0.00e+00 nm/s</span></div>
+            <div class="data-point"><span class="label">Vitesse Stable (m/s)</span><span id="speed-stable-ms">0.00 m/s</span></div>
             <div class="data-point"><span class="label">Vitesse Max (Session)</span><span id="speed-max">0.00000 km/h</span></div>
             <div class="data-point"><span class="label">Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00000 km/h</span></div>
-            <div class="data-point"><span class="label">Vitesse 3D (Inst. GPS Mesure)</span><span id="speed-3d-inst">0.00000 km/h</span></div>
+            <hr>
+            <div class="data-point"><span class="label">Distance Totale (3D)</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
             <div class="data-point"><span class="label">% Vitesse du Son</span><span id="perc-speed-sound">0.00 %</span></div>
             <div class="data-point"><span class="label">% Vitesse de la Lumière (c)</span><span id="perc-speed-c">0.00e+00%</span></div>
             <hr>
-            <div class="data-point"><span class="label">Distance Totale (3D)</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
+            <h3>Distances Cosmiques</h3>
             <div class="data-point"><span class="label">Dist. Cosm. (s-lumière)</span><span id="dist-s-light">0.00e+00 s lumière</span></div>
-            <div class="data-point"><span class="label">Dist. Cosm. (min-lumière)</span><span id="dist-min-light">0.00e+00 min lumière</span></div>
-            <div class="data-point"><span class="label">Dist. Cosm. (h-lumière)</span><span id="dist-h-light">0.00e+00 h lumière</span></div>
-            <div class="data-point"><span class="label">Dist. Cosm. (j-lumière)</span><span id="dist-j-light">0.00e+00 j lumière</span></div>
-            <div class="data-point"><span class="label">Dist. Cosm. (sem-lumière)</span><span id="dist-sem-light">0.00e+00 sem lumière</span></div>
-            <div class="data-point"><span class="label">Dist. Cosm. (mois-lumière)</span><span id="dist-mois-light">0.00e+00 mois lumière</span></div>
             <div class="data-point"><span class="label">Dist. Cosm. (UA / al)</span><span id="dist-au-al">0.00e+00 UA | 0.00e+00 al</span></div>
         </div>
         
         <div class="section">
             <h2>•0–6„1‚5 Vue brute GPS & Physique</h2>
-            <div class="data-point"><span class="label">Latitude Brute</span><span id="latitude">N/A</span></div>
-            <div class="data-point"><span class="label">Longitude Brute</span><span id="longitude">N/A</span></div>
-            <div class="data-point"><span class="label">Altitude GPS (EKF)</span><span id="altitude-gps">N/A</span></div>
             <div class="data-point"><span class="label">Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
-            <div class="data-point"><span class="label">Vitesse Brute GPS (m/s)</span><span id="speed-raw-ms">N/A</span></div>
-            <div class="data-point"><span class="label">Vitesse Verticale (EKF)</span><span id="vertical-speed">N/A</span></div>
+            <div class="data-point"><span class="label">Vitesse 3D (Inst. GPS Mesure)</span><span id="speed-3d-inst">0.00000 km/h</span></div>
+            <div class="data-point"><span class="label">Altitude GPS (EKF)</span><span id="altitude-gps">N/A</span></div>
             <div class="data-point"><span class="label">Statut Sous-sol (Seuil)</span><span id="underground-status">Non</span></div>
-            <div class="data-point"><span class="label">Bruit de Processus R-dyn</span><span id="speed-error-perc">0.00 m² (R dyn)</span></div>
             <hr>
+            
+            <h2>”9Ù9 EKF & Étalonnage</h2>
+            <div class="data-point"><span class="label">Bruit de Mesure GPS (R dyn)</span><span id="speed-error-perc">0.00 m² (R dyn)</span></div>
+            <div class="data-point"><span class="label">Q IMU (StdDev)</span><span id="q-std-dev">N/A</span></div>
+            <div class="data-point"><span class="label">Marge d'Erreur IMU (Coeff)</span><span id="q-perc-factor">N/A</span></div>
+            <div class="data-point"><span class="label">Facteur Q (Rob. Env.)</span><span id="q-mult-env">N/A</span></div>
+            <hr>
+            
             <h2>”9Ù9 Dynamique du Véhicule & Forces</h2>
             <div class="data-point"><span class="label">Accel. Longitudinale (IMU)</span><span id="accel-long">0.000 m/s²</span></div>
             <div class="data-point"><span class="label">Force G (Longitudinale)</span><span id="force-g-long">0.00 G</span></div>
             <div class="data-point"><span class="label">Accel. Verticale (IMU)</span><span id="accel-vertical-imu">0.000 m/s ²</span></div>
             <div class="data-point"><span class="label">Force G (Verticale)</span><span id="force-g-vertical">0.00 G</span></div>
-            <div class="data-point"><span class="label">Force G Max (Record)</span><span id="max-g-force">0.00 G</span></div>
         </div>
 
         <div class="section">
-            <h2>7±7„1‚5 Champs & Énergie (Physique)</h2>
-            <div class="data-point"><span class="label">Énergie Cinétique (J)</span><span id="kinetic-energy">0.00 J</span></div>
-            <div class="data-point"><span class="label">Puissance Mécanique (W)</span><span id="mechanical-power">0.00 W</span></div>
-            <div class="data-point"><span class="label">Force de Coriolis (N)</span><span id="coriolis-force">0.00 N</span></div>
-            <div class="data-point"><span class="label">Champ Magnétique (µT)</span><span id="magnetic-field">N/A</span></div>
-            <hr>
-            <h2>”9³1„1‚5 Météo & Capteurs</h2>
-            <div class="data-point"><span class="label">Température Air</span><span id="temp-air">N/A</span></div>
+            <h2>”9³1„1‚5 Météo & Correction Gracieuse</h2>
             <div class="data-point"><span class="label">Pression Atmosphérique</span><span id="pressure">N/A</span></div>
+            <div class="data-point"><span class="label">Température Air</span><span id="temp-air">N/A</span></div>
             <div class="data-point"><span class="label">Humidité Relative</span><span id="humidity">N/A</span></div>
             <div class="data-point"><span class="label">Point de Rosée</span><span id="dew-point">N/A</span></div>
             <div class="data-point"><span class="label">Vitesse du Vent (m/s)</span><span id="wind-speed-ms">N/A</span></div>
+            <hr>
+            <h2>7±7„1‚5 Champs & Énergie (Physique)</h2>
+            <div class="data-point">
+                <span class="label">Masse (kg)</span>
+                <input type="number" id="mass-input" value="70.000" step="0.001" style="width: 80px;">
+            </div>
+            <div class="data-point"><span class="label">Énergie Cinétique (J)</span><span id="kinetic-energy">0.00 J</span></div>
+            <div class="data-point"><span class="label">Puissance Mécanique (W)</span><span id="mechanical-power">0.00 W</span></div>
         </div>
 
         <div class="section">
             <h2>”9ü0„1‚5 Carte GNSS</h2>
             <div id="mapid">Initialisation de la carte...</div>
             <hr>
-            <h2>8¬2 Soleil & Lune (SunCalc)</h2>
-            <div class="celestial-clock">
-                <div class="zenith">ZENITH (90°)</div>
-                <div class="horizon-left">HORIZON (0°)</div>
-                <div class="horizon-right">HORIZON (0°)</div>
-                <div class="celestial-body" id="sun-element">☀️</div>
-                <div class="celestial-body" id="moon-element">🌙</div>
-            </div>
+            <h2>8¬2 Astro & Temps</h2>
+            <div class="data-point"><span class="label">Heure Minecraft</span><span id="time-minecraft">00:00:00</span></div>
+            <div class="data-point"><span class="label">Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
             <div class="data-point"><span class="label">Élévation du Soleil</span><span id="sun-elevation">N/A</span></div>
-            <div class="data-point"><span class="label">Temps Solaire Moyen Local (LSM)</span><span id="culmination-lsm">N/A</span></div>
-            <div class="data-point"><span class="label">Longitude écliptique du Soleil</span><span id="ecliptic-long">N/A</span></div>
-            <div class="data-point"><span class="label">Équation du Temps (EOT)</span><span id="eot-min">N/A</span></div>
-            <div class="data-point"><span class="label">Midi Solaire Local (UTC)</span><span id="noon-solar">N/A</span></div>
             <div class="data-point"><span class="label">Lune & Phases (%)</span><span id="lunar-phase-perc">N/A</span></div>
         </div>
-
+        
         <div class="section">
             <h2>•0â8 Chimie & Composition</h2>
             <div class="data-point"><span>Taux d'Oxygène (O₂)</span><span id="o2-level">20.9 % vol (Capteur requis)</span></div>
@@ -249,10 +183,5 @@
     </div>
 
     <script src="gnss-dashboard-full.js"></script>
-
-    <script>
-        // Placez ici toute fonction de carte Leaflet qui pourrait dépendre du DOM après le chargement.
-        // Typiquement, la fonction d'initialisation de la carte est appelée dans DOMContentLoaded (part2b-logic.js).
-    </script>
 </body>
                                         </html>
