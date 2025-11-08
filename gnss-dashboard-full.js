@@ -180,11 +180,11 @@ function getKalmanR(acc, alt, P_hPa) {
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     
     return R;
-    }
+        }
 // =================================================================
-// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
-// Contient la logique principale de mise à jour, Astro et DOM.
-// NÉCESSITE gnss-dashboard-part1.js
+// FICHIER JS PARTIE 2A/2B : gnss-dashboard-part2a-astro.js
+// Contient les fonctions de temps, Astro et la logique visuelle.
+// NÉCESSITE gnss-dashboard-part1.js pour les constantes et variables globales.
 // =================================================================
 
 // ===========================================
@@ -202,12 +202,17 @@ function eclipticLongitude(M) {
     return M + C + P + Math.PI;
 }
 
-/** Calcule le Temps Solaire Vrai (TST). */
+/** Calcule le Temps Solaire Vrai (TST). (Inclus les corrections de bug) */
 function getSolarTime(date, lon) {
     if (date === null || lon === null) return { TST: 'N/A', MST: 'N/A', EOT: 'N/D', ECL_LONG: 'N/D' };
     const d = toDays(date);
     const M = solarMeanAnomaly(d); 
-    const L = eclipticLongitude(M); 
+    let L = eclipticLongitude(M); 
+    
+    // Correction Longitude Écliptique (enveloppement 0-360°)
+    let L_wrapped = L % (2 * Math.PI);
+    if (L_wrapped < 0) L_wrapped += 2 * Math.PI;
+
     const epsilon = D2R * (23.4393 - 0.000000356 * d); 
     let alpha = Math.atan2(Math.cos(epsilon) * Math.sin(L), Math.cos(L));
     if (alpha < 0) alpha += 2 * Math.PI; 
@@ -217,7 +222,10 @@ function getSolarTime(date, lon) {
     const mst_offset_ms = lon * dayMs / 360; 
     const mst_ms = (msSinceMidnightUTC + mst_offset_ms + dayMs) % dayMs;
     const eot_ms = eot_min * 60000;
+    
+    // Assure que le TST est toujours dans la plage positive
     const tst_ms = (mst_ms + eot_ms + dayMs) % dayMs; 
+    
     const toTimeString = (ms) => {
         let h = Math.floor(ms / 3600000);
         let m = Math.floor((ms % 3600000) / 60000);
@@ -228,7 +236,7 @@ function getSolarTime(date, lon) {
         TST: toTimeString(tst_ms), 
         MST: toTimeString(mst_ms), 
         EOT: eot_min.toFixed(3),
-        ECL_LONG: (L * R2D).toFixed(2)
+        ECL_LONG: (L_wrapped * R2D).toFixed(2)
     };
 }
 /** Calcule le temps Minecraft et renvoie la chaîne et les ms pour la rotation de l'horloge. */
@@ -256,7 +264,6 @@ function updateAstro(latA, lonA) {
         return;
     }
     
-    // Utilisez SunCalc si disponible (nécessite l'inclusion du script SunCalc)
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
     const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
     const sunTimes = window.SunCalc ? SunCalc.getTimes(now, latA, lonA) : null;
@@ -321,7 +328,12 @@ function updateAstro(latA, lonA) {
             body.classList.add('sky-night');
         }
     }
-}
+                    }
+// =================================================================
+// FICHIER JS PARTIE 2B/2B : gnss-dashboard-part2b-logic.js
+// Contient la logique principale de mise à jour GPS, Contrôles et DOM.
+// NÉCESSITE gnss-dashboard-part1.js ET gnss-dashboard-part2a-astro.js.
+// =================================================================
 
 // ===========================================
 // FONCTIONS DE CONTRÔLE GPS & MÉTÉO 
@@ -492,7 +504,7 @@ function updateDisp(pos) {
     // Calculs d'accélération et distance
     let accel_long = 0;
     if (dt > 0.05) {
-        // *** CALCUL D'ACCÉLÉRATION COHÉRENT : Dérivée de la vitesse EKF lissée ***
+        // Accélération cohérente : Dérivée de la vitesse EKF lissée
         accel_long = (sSpdFE - lastFSpeed) / dt;
     }
     lastFSpeed = sSpdFE;
@@ -612,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (domID === null) {
         domID = setInterval(() => {
-            // L'appel à updateAstro pour l'horloge MC et le fond
+            // L'appel à updateAstro (défini en 2A) pour l'horloge MC et le fond
             if (lPos) updateAstro(lPos.coords.latitude, lPos.coords.longitude);
             else updateAstro(null, null); 
 
