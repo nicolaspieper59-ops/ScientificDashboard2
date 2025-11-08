@@ -1,5 +1,5 @@
 // =================================================================
-// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes, Globales & Utilitaires)
+// FICHIER JS PARTIE 1 : gnss-dashboard-part1.js (Constantes, Globales et Persistance)
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -21,15 +21,16 @@ const DOM_SLOW_UPDATE_MS = 1000;
 const WEATHER_UPDATE_MS = 30000; 
 
 // !!! CLÉ API CRITIQUE !!! : REMPLACEZ VOTRE_CLE_API_OPENWEATHERMAP
+// Le tableau de bord affichera "API CLÉ MANQUANTE" tant que cette clé n'est pas remplacée.
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
 
 // Constantes EKF & ZVU (Zero Velocity Update)
 const MIN_DT = 0.05; // Fréquence d'échantillonnage de l'EKF
 const Q_NOISE = 0.001; // Bruit de processus (m/s²)
+const MIN_SPD = 0.001; // Seuil de vitesse minimale (1 mm/s)
 
 // Seuil plancher théorique pour l'incertitude d'état EKF (P)
 const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; // 5e-5 m² (implémentation du Plancher d'Incertitude EKF)
-const MIN_SPD = 0.001; // Seuil de vitesse minimale (1 mm/s)
 
 // --- VARIABLES GLOBALES (État du Système) ---
 let lat = 0, lon = 0, alt = 0, speed = 0, hdop = 1000, gpsTS = 0;
@@ -38,8 +39,8 @@ let sTime = null, lastTS = 0, lastPos = null, timeMoving = 0;
 let distM = 0;
 let currentGPSMode = 'HIGH_FREQ'; 
 let netherMode = false;
-let G_ACC_LOCAL = G_ACC; // Gravité locale (utilisée par handleDeviceMotion)
-let mass = 70.0; // Masse par défaut (kg)
+let G_ACC_LOCAL = G_ACC; 
+let mass = 70.0; 
 
 // --- VARIABLES EKF (Filtre de Kalman Étendu) ---
 let kSpd = 0;       // Vitesse stable EKF (m/s)
@@ -54,7 +55,7 @@ let maxGForce = 0;  // G-Force Max (G) - Initialisée à 0
 let latestLinearAccelMagnitude = 0;
 let latestAccelX = 0, latestAccelY = 0, latestAccelZ = 0;
 
-// --- VARIABLES RECORDS DE PRÉCISION ---
+// --- VARIABLES RECORDS DE PRÉCISION (Persistance) ---
 let P_RECORDS = {
     max_kUncert_min: 1000, // Incertitude horizontale minimale atteinte (m²)
     max_acc_min: 1000,     // Précision GPS brute minimale atteinte (m)
@@ -99,40 +100,28 @@ function loadPrecisionRecords() {
 function savePrecisionRecords() {
     try {
         // Mettre à jour la G-Force max actuelle avant de sauvegarder
-        // Note: totalGForce (IMU) doit mettre à jour maxGForce dans part2.js
         P_RECORDS.max_g_force_max = maxGForce; 
         localStorage.setItem(P_RECORDS_KEY, JSON.stringify(P_RECORDS));
     } catch (e) {
         console.error("Erreur lors de la sauvegarde des records de précision:", e);
     }
-}
+                       }
 // =================================================================
-// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (Logique EKF, Capteurs & API Météo)
+// FICHIER JS PARTIE 2 : gnss-dashboard-part2.js (EKF, Capteurs & Logique Critique)
 // =================================================================
 
-// Les fonctions EKF, setGPSMode, updateDisp, handleDeviceMotion et getWeather sont ici.
-
-/** Simulation de la correction GPS théorique parfaite (Correction Théorique Automatique au Démarrage). */
+/** Simule la correction GPS théorique parfaite (Correction Théorique Automatique au Démarrage). */
 function simulateBestCorrection() {
-    // Correction uniquement si les coordonnées sont connues après le démarrage
     if (lat === 0 && lon === 0) {
-        // Cette initialisation est l'EKF Correction Théorique au Démarrage
-        kUncert = MIN_UNCERT_FLOOR; 
+        // Initialisation à l'incertitude minimale si aucune position n'est connue
+        kUncert = MIN_UNCERT_FLOOR; // Plancher d'Incertitude EKF
         kAltUncert = MIN_UNCERT_FLOOR; 
         return; 
     }
 
-    const IDEAL_ACCURACY = 0.00001; // 0.01 mm
-
+    const IDEAL_ACCURACY = 0.00001; 
     const mockBestCorrectionPos = {
-        coords: {
-            latitude: lat,
-            longitude: lon,
-            altitude: kAlt, 
-            accuracy: IDEAL_ACCURACY, 
-            speed: kSpd, 
-            altitudeAccuracy: IDEAL_ACCURACY
-        },
+        coords: { latitude: lat, longitude: lon, altitude: kAlt, accuracy: IDEAL_ACCURACY, speed: kSpd, altitudeAccuracy: IDEAL_ACCURACY },
         timestamp: new Date().getTime()
     };
 
@@ -141,7 +130,6 @@ function simulateBestCorrection() {
 
     updateDisp(mockBestCorrectionPos); 
     
-    // (Retiré l'alerte pour ne pas bloquer l'interface au démarrage)
     console.log(`Simulateur de Correction Théorique activé : EKF réglé sur l'incertitude minimale (${MIN_UNCERT_FLOOR.toExponential(2)} m²).`);
 }
 
@@ -165,7 +153,7 @@ function continueGPSStart() {
 /** Démarre le GPS et gère l'autorisation des capteurs de mouvement (IMU/iOS). */
 function startGPS() {
     if (wID === null) {
-        // Logique d'autorisation des capteurs IMU (critique pour iOS/Safari)
+        // Logique d'autorisation des capteurs IMU (CRITIQUE pour iOS/Safari)
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
@@ -173,7 +161,7 @@ function startGPS() {
                         continueGPSStart();
                     } else {
                         console.warn("Accès aux capteurs de mouvement refusé. Certaines données seront indisponibles.");
-                        continueGPSStart(); // On lance quand même le GPS
+                        continueGPSStart(); 
                     }
                 })
                 .catch(err => {
@@ -194,12 +182,11 @@ function updateDisp(pos) {
     
     const acc = $('gps-accuracy-override').value !== '0.000000' ? parseFloat($('gps-accuracy-override').value) : pos.coords.accuracy;
 
-    // --- LOGIQUE DE CORRECTION AUTOMATIQUE À LA FIN DE LA DÉRIVE ---
-    const hasGPSFix = acc !== null && acc < 50; // Considère un fix si précision < 50m
-    const wasDrifting = kUncert > 1.0; // Considère une dérive si l'incertitude est > 1m²
+    // --- LOGIQUE DE CORRECTION AUTOMATIQUE À LA FIN DE LA DÉRIVE (ZVU) ---
+    const hasGPSFix = acc !== null && acc < 50; 
+    const wasDrifting = kUncert > 1.0; 
 
     if (wasDrifting && hasGPSFix) {
-        // Correction Automatique de Dérive GPS
         console.log("Correction automatique déclenchée : Signal GPS revenu après dérive.");
         
         // Caler la position EKF sur la nouvelle mesure GPS
@@ -224,9 +211,6 @@ function updateDisp(pos) {
     lastTS = nowTS;
 
     // --- EKF (Simplified 1D Speed/Position Filter) ---
-    // (Le reste de l'EKF complet serait ici, utilisant Q_NOISE et kUncert)
-    
-    // Simplification EKF pour la vitesse (EKF Speed)
     let kR = acc * acc * getEnvironmentFactor(); // Bruit de mesure
     let kGain = kUncert / (kUncert + kR);
     kSpd = kSpd + kGain * (speed - kSpd);
@@ -240,23 +224,24 @@ function updateDisp(pos) {
 
     // G-Force Max (longitudinale)
     const currentGForceLong = Math.abs(accel_long / G_ACC); 
-    if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; // Mise à jour du record de G-Force Max
+    if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; // Mise à jour du record
 
     // --- MISE À JOUR DOM & nm/s ---
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(4)} km/h`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
 
-    // Affichage de la Vitesse avec la précision nm/s
+    // Affichage de la Vitesse avec la précision nm/s (CORRIGÉ)
     $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1e6).toFixed(0)} µm/s | ${(sSpdFE * 1e9).toFixed(0)} nm/s`; 
     
+    // Affichage de la G-Force Max
     $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G | Max: ${maxGForce.toFixed(2)} G`;
 
     // --- MISE À JOUR DES RECORDS DE PRÉCISION ---
     if (acc !== null && acc < P_RECORDS.max_acc_min) {
-        P_RECORDS.max_acc_min = acc;
+        P_RECORDS.max_acc_min = acc; // Record de Précision GPS Brute
     }
     if (kUncert < P_RECORDS.max_kUncert_min) {
-        P_RECORDS.max_kUncert_min = kUncert;
+        P_RECORDS.max_kUncert_min = kUncert; // Record d'Incertitude EKF
     }
     
     // Logique de distance et de mouvement
@@ -278,8 +263,6 @@ function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
     const accel = event.accelerationIncludingGravity;
 
-    latestAccelX = accel.x || 0;
-    latestAccelY = accel.y || 0;
     latestAccelZ = accel.z || 0;
     
     // Accélération linéaire sans la gravité
@@ -291,7 +274,6 @@ function handleDeviceMotion(event) {
     }
     
     // Mise à jour de la G-Force Max totale (IMU)
-    // Note: Utilise latestLinearAccelMagnitude pour la G-Force liée au mouvement (si disponible)
     const totalGForce = latestLinearAccelMagnitude / G_ACC_LOCAL; 
 
     if (totalGForce > maxGForce) {
@@ -315,35 +297,32 @@ function getWeather() {
         .then(response => response.json())
         .then(data => {
             if (data.main) {
-                // ... (Logique de mise à jour des éléments DOM Météo)
                 $('temp-air').textContent = `${data.main.temp.toFixed(1)} °C`;
                 $('pressure').textContent = `${data.main.pressure} hPa`;
                 $('humidity').textContent = `${data.main.humidity} %`;
-                // ... (autres mises à jour)
             }
         })
         .catch(err => {
             console.error("Erreur de récupération Météo:", err);
             $('temp-air').textContent = "API ERREUR";
         });
-        }
+}
 // =================================================================
 // FICHIER JS PARTIE 3 : gnss-dashboard-part3.js (Astro, Événements & Initialisation)
 // =================================================================
-
-// Les fonctions updateAstro, updateMinecraftClock, syncH et tous les addEventListener sont ici.
 
 function updateAstro(latitude, longitude) {
     if (typeof SunCalc === 'undefined') return;
     const now = getCDate();
     const sunTimes = SunCalc.getTimes(now, latitude, longitude);
     const moonIllumination = SunCalc.getMoonIllumination(now);
-    const moonPhaseName = getMoonPhaseName(moonIllumination.phase);
 
-    // ... (Logique de mise à jour des éléments DOM Astro)
+    // ... (Logique de calcul TST et autres affichages astro)
+
+    const moonPhaseName = getMoonPhaseName(moonIllumination.phase);
+    $('moon-phase-display').textContent = moonPhaseName; 
     $('sun-elevation').textContent = `${(sunTimes.solarAngle * R2D).toFixed(2)} °`;
     $('noon-solar').textContent = sunTimes.solarNoon ? sunTimes.solarNoon.toLocaleTimeString() : 'N/D';
-    $('moon-phase-display').textContent = moonPhaseName; // AJOUT DE LA PHASE DE LA LUNE
 }
 
 function getMoonPhaseName(phase) {
@@ -357,14 +336,13 @@ function getMoonPhaseName(phase) {
     return 'Dernier Croissant';
 }
 
-function updateMinecraftClock(tstTimeMs) {
-    // ... (Logique de rotation de l'horloge)
-    // Placeholder for visual updates
-    $('time-minecraft').textContent = new Date(tstTimeMs).toTimeString().slice(0, 8);
+function syncH() {
+    // Fonction de synchronisation de l'heure (non détaillée ici)
 }
 
-function syncH() {
-    // ... (Logique de synchronisation de l'heure NTP)
+function updateMinecraftClock(tstTimeMs) {
+    // Fonction d'affichage de l'horloge (non détaillée ici)
+    $('time-minecraft').textContent = new Date(tstTimeMs).toTimeString().slice(0, 8);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -373,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
     simulateBestCorrection(); // Correction Théorique Automatique au Démarrage
 
     // --- Événements GPS/Capteurs IMU ---
-    // Initialisation du listener IMU (nécessite l'autorisation dans startGPS sur mobile)
+    // Le listener IMU est nécessaire pour maxGForce
     if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', handleDeviceMotion, true);
     } else {
@@ -381,9 +359,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } 
 
     // --- Initialisation des intervalles ---
-    syncH(); // Démarrage de la synchronisation de l'heure
+    syncH(); 
     startGPS(); // Démarrage initial du GPS (inclut l'autorisation IMU)
-    getWeather(); // Premier appel Météo
+    getWeather(); 
 
     // Intervalle lent pour les mises à jour DOM et Astro/Météo
     domID = setInterval(() => {
@@ -426,8 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (confirm("Êtes-vous sûr de vouloir tout réinitialiser? (Distance, Max, Kalman)")) { 
             distM = 0; maxSpd = 0; maxGForce = 0; // Réinitialisation de la G-Force Max
             kSpd = 0; kUncert = MIN_UNCERT_FLOOR; kAlt = 0; kAltUncert = MIN_UNCERT_FLOOR; timeMoving = 0; lastFSpeed = 0;
-            savePrecisionRecords(); // Sauvegarder les records à zéro (si le record max n'est pas en mémoire)
-            // if (tracePolyline) tracePolyline.setLatLngs([]); // Assurez-vous que cette fonction est dans la partie Leaflet/Map
+            savePrecisionRecords(); // Sauvegarder l'état réinitialisé
         } 
     });
 
