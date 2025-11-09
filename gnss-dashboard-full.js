@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER FINAL ET COMPLET : gnss-dashboard-full.js
-// Intègre EKF stable, ZVU, Accélération corrigée, Fréquence Max, Horloge Minecraft.
+// Vitesse corrigée : Favorise les capteurs/EKF interne, GPS utilisé pour la dérive lente (Q_NOISE très faible).
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -21,7 +21,7 @@ const MC_START_OFFSET_MS = 6 * 3600 * 1000;
 // Constantes GPS et EKF
 const KMH_MS = 3.6; 
 const MIN_DT = 0.05; // Temps minimal pour éviter les divisions par zéro
-const Q_NOISE = 0.001; // Bruit de processus EKF (bas = très stable)
+const Q_NOISE = 0.0001; // <<< MODIFIÉ : Très faible pour favoriser la stabilité interne (capteurs) et décourager la dépendance GPS.
 const MIN_SPD = 0.001; // Seuil pour ZVU (Zero Velocity Update)
 const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; 
 const ALT_TH = -50; 
@@ -137,7 +137,7 @@ function updateDisp(pos) {
     const dt = (now.getTime() - lastTS) / 1000;
     lastTS = now.getTime();
     
-    if (dt < MIN_DT) return; // Évite la vitesse bizarre due à des DT trop petits
+    if (dt < MIN_DT) return; 
 
     // --- Calcul Vitesse Brute ---
     let speedRaw;
@@ -151,9 +151,12 @@ function updateDisp(pos) {
     const g_dynamic = calculateLocalGravity(currentAlt);
     
     // --- EKF (Filtre de Kalman pour la vitesse 2D) ---
+    // kR est l'incertitude de la mesure (GPS). Elle est désormais relative au Q_NOISE.
     let kR = getKalmanR(acc); 
     let kGain = kUncert / (kUncert + kR);
     kSpd = kSpd + kGain * (speedRaw - kSpd); 
+    // La faible valeur de Q_NOISE signifie que kUncert ne croît que très lentement, 
+    // ce qui maintient kGain très faible, forçant le filtre à ne corriger la vitesse que très lentement.
     kUncert = (1 - kGain) * kUncert + Q_NOISE * dt; 
     kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); 
     
@@ -166,7 +169,7 @@ function updateDisp(pos) {
     let sSpdFE = Math.abs(kSpd);
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // ACCÉLÉRATION CORRIGÉE : Dérivée de la vitesse filtrée (pour la stabilité)
+    // ACCÉLÉRATION CORRIGÉE : Dérivée de la vitesse filtrée (très stable maintenant)
     const accel_ekf = (dt > MIN_DT) ? (sSpdFE - lastFSpeed) / dt : 0;
     const accel_long = accel_ekf; 
     
@@ -239,7 +242,6 @@ function handleDeviceMotion(event) {
     
     const linearAccel = event.acceleration;
     if (linearAccel) {
-        // Affichage de l'accélération linéaire brute (vibrations)
         const latestLinearAccelMagnitude = Math.sqrt(linearAccel.x*linearAccel.x + linearAccel.y*linearAccel.y + linearAccel.z*linearAccel.z);
         if ($('accel-imu-raw')) {
              $('accel-imu-raw').textContent = `${latestLinearAccelMagnitude.toFixed(3)} m/s²`;
@@ -255,7 +257,6 @@ function handleDeviceMotion(event) {
 }
 
 function continueGPSStart() {
-    // Configuration pour demander la fréquence la plus élevée : enableHighAccuracy: true et maximumAge: 0
     const opts = { enableHighAccuracy: currentGPSMode === 'HIGH_FREQ', timeout: 5000, maximumAge: 0 }; 
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     wID = navigator.geolocation.watchPosition(updateDisp, (error) => {
@@ -272,7 +273,6 @@ function requestIMUPermissionAndStart() {
         DeviceOrientationEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
-                    // Ajout du listener IMU pour la fréquence maximale disponible
                     window.addEventListener('devicemotion', handleDeviceMotion, true);
                 }
                 continueGPSStart(); 
@@ -310,7 +310,7 @@ function stopGPS() {
 let map = null;
 let marker = null;
 
-function getEOT(date) { /* ... (Fonction Équation du Temps) ... */
+function getEOT(date) { 
     const J = date.getTime() / 86400000 + 2440587.5; 
     const n = J - 2451545.0;
     const L = (280.460 + 0.98564736 * n) % 360;
@@ -327,7 +327,7 @@ function updateAstro(latitude, longitude) {
 
     const now = getCDate();
 
-    // HORLOGE MINECRAFT (Correction complète)
+    // HORLOGE MINECRAFT 
     const totalMsToday = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
     let msSinceMcStart = (totalMsToday - MC_START_OFFSET_MS) % REAL_DAY_MS;
     if (msSinceMcStart < 0) msSinceMcStart += REAL_DAY_MS;
@@ -347,7 +347,6 @@ function updateAstro(latitude, longitude) {
     let clockRotation = (mcTimeMs / MC_DAY_MS) * 360; 
     const sunEl = $('sun-element');
     if (sunEl) sunEl.style.transform = `rotate(${clockRotation - 90}deg)`; 
-    // FIN HORLOGE MINECRAFT
 
     const pos = SunCalc.getPosition(now, latitude, longitude);
     const moonIllumination = SunCalc.getMoonIllumination(now);
@@ -433,7 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     weatherID = setInterval(getWeather, 30000); 
 
-    $('toggle-gps-btn').addEventListener('click', () => wID === null ? startGPS() : stopGPS());
+    $('toggle-gps-btn').addEventListener('click', () => wID === null ? startGPS() : stopGPS() );
     $('emergency-stop-btn').addEventListener('click', () => {
         emergencyStopActive = !emergencyStopActive;
         $('emergency-stop-btn').textContent = emergencyStopActive ? '🛑 Arrêt d\'urgence: ACTIF 🔴' : '🛑 Arrêt d\'urgence: INACTIF 🟢';
