@@ -20,16 +20,20 @@ const MC_START_OFFSET_MS = 6 * 3600 * 1000;
 // Constantes GPS et EKF
 const KMH_MS = 3.6; 
 const MIN_DT = 0.05; 
-const Q_NOISE = 0.0002; // Bruit du processus EKF (optimisé pour la marche)
+const Q_NOISE_MIN = 0.0001; // Bruit minimal pour le modèle IMU (Haute confiance)
+const Q_NOISE_MAX = 0.0005; // Bruit maximal (Faible confiance)
+let Q_NOISE = Q_NOISE_MIN; // Variable dynamique
 const MIN_SPD = 0.001; 
-const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; 
+const MIN_UNCERT_FLOOR = Q_NOISE_MIN * MIN_DT; 
 const ALT_TH = -50; 
 const R_E = 6371000; 
 const G_CONST = 6.67430e-11; 
 const M_EARTH = 5.972e24; 
 
 const MAX_GPS_ACCURACY_FOR_USE = 50.0; 
-const SIGMA_DRIFT_THRESHOLD = 3.0; 
+const KUNCERT_MAX = 0.05; // Seuil d'incertitude élevé pour l'amortissement
+const KUNCERT_FACTOR_MIN = 0.75; // Amortissement minimal appliqué à la vitesse EKF
+const SMOOTHING_TIME_CONSTANT = 0.2; // Constante de temps pour le filtre passe-bas (0.2s)
 
 // Endpoints
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
@@ -57,6 +61,7 @@ let imuHeading = 0;
 let imuPitch = 0; 
 let imuRoll = 0; 
 let verticalSpeedRaw = 0; 
+let smoothedSpeed = 0; // Vitesse lissée pour l'affichage
 
 // --- PARTIE 3 : FONCTIONS UTILITAIRES ET PERSISTANCE ---
 
@@ -81,19 +86,18 @@ function calculateLocalGravity(altitude) {
     return g_local;
 }
 
-function getKalmanR(accuracy) {
-    // Inutilisé pour la correction de vitesse, conservé pour l'ancienne logique.
+/**
+ * Retourne le facteur de pénalité de la covariance de mesure R basé sur l'environnement.
+ * Plus le facteur est élevé, moins nous faisons confiance au signal GPS brut.
+ */
+function getKalmanRFactor() {
     const env = $('environment-select').value;
-    let factor = 1.0;
-    let basePenalty = 1.25; 
-    
     switch (env) {
-        case 'FOREST': factor = 1.5; break;
-        case 'METAL': factor = 2.5; break;
-        case 'CONCRETE': factor = 3.0; break; 
-        default: factor = 1.0; break;
+        case 'FOREST': return 1.5; // Couverture partielle
+        case 'METAL': return 3.0; // Réflexion forte (multipath)
+        case 'CONCRETE': return 2.0; // Réflexion modérée
+        default: return 1.0; // OPEN (Référence)
     }
-    return accuracy * accuracy * factor * basePenalty; 
 }
 
 function loadPrecisionRecords() {
@@ -162,10 +166,31 @@ function updateDisp(pos) {
         verticalSpeedRaw = 0;
     }
     
+    // =========================================================
+    // GESTION DYNAMIQUE Q_NOISE ET NETHER
+    // =========================================================
+    
+    // a) Ajustement de Q_NOISE (Bruit du Processus EKF)
+    const accuracyPenaltyFactor = Math.min(1.0, pos.coords.accuracy / MAX_GPS_ACCURACY_FOR_USE);
+    Q_NOISE = Q_NOISE_MIN + (Q_NOISE_MAX - Q_NOISE_MIN) * accuracyPenaltyFactor;
+    
+    // b) Définition des constantes physiques selon le mode Nether
+    let currentSpeedSound = SPEED_SOUND;
+    let currentSpeedLight = C_L;
+
+    if (netherMode) {
+        currentSpeedSound = SPEED_SOUND * NETHER_RATIO;
+        currentSpeedLight = C_L * NETHER_RATIO; 
+        Q_NOISE = Math.min(Q_NOISE_MAX, Q_NOISE * 1.5);
+    }
+    // =========================================================
+
     // --- Détermination de la validité de la position GPS ---
     let gpsPositionValid = false;
-
-    if (acc < MAX_GPS_ACCURACY_FOR_USE && lat !== 0 && lon !== 0) {
+    const rFactor = getKalmanRFactor(); // Facteur de pénalité basé sur l'environnement
+    
+    // Validation stricte : la précision GPS est pénalisée par le facteur d'environnement
+    if (acc < MAX_GPS_ACCURACY_FOR_USE * rFactor && lat !== 0 && lon !== 0) {
         gpsPositionValid = true;
     }
 
@@ -173,7 +198,7 @@ function updateDisp(pos) {
     
     // 1. Prédiction (utilise l'IMU)
     const predictedSpd = kSpd + latestIMULinearAccel * dt; 
-    kUncert = kUncert + Q_NOISE * dt; 
+    kUncert = kUncert + Q_NOISE * dt; // Utilisation de Q_NOISE dynamique
     
     const predictedSpdPositive = Math.max(0, predictedSpd); 
     
@@ -195,6 +220,17 @@ function updateDisp(pos) {
     // --- ACCÉLÉRATION HORIZONTALE (EKF Stable) ---
     let sSpdHorizFE = Math.abs(kSpd); 
     if (sSpdHorizFE > maxSpd) maxSpd = sSpdHorizFE; 
+    
+    // =========================================================
+    // ÉTALONNAGE EN FONCTION DE KUNCERT
+    // =========================================================
+    let uncertFactor = 1.0;
+    if (kUncert > MIN_UNCERT_FLOOR) {
+        const normalizedUncert = Math.min(1, (kUncert - MIN_UNCERT_FLOOR) / (KUNCERT_MAX - MIN_UNCERT_FLOOR));
+        uncertFactor = 1.0 - (normalizedUncert * (1.0 - KUNCERT_FACTOR_MIN));
+    }
+    sSpdHorizFE *= uncertFactor; // Amortissement de la vitesse brute EKF
+    // =========================================================
     
     const accel_ekf = (dt > MIN_DT) ? (sSpdHorizFE - lastFSpeed) / dt : 0;
     const accel_long = accel_ekf; 
@@ -245,8 +281,17 @@ function updateDisp(pos) {
     
     // --- CALCUL VITESSE 3D STABLE ---
     const sSpdFE_3D = Math.sqrt(sSpdHorizFE * sSpdHorizFE + verticalSpeedRaw * verticalSpeedRaw);
+    
+    // =========================================================
+    // LISSAGE TEMPorel (< 1s)
+    // =========================================================
+    const alpha = dt / (SMOOTHING_TIME_CONSTANT + dt);
+    smoothedSpeed = (alpha * sSpdFE_3D) + ((1 - alpha) * smoothedSpeed);
+    const finalDisplaySpeed = smoothedSpeed;
+    // =========================================================
 
     // Calcul de la distance 3D totale
+    // On utilise la vitesse non-lissée (sSpdFE_3D) pour ne pas perdre de mesure
     if (lastPos && sSpdFE_3D > MIN_SPD) { 
         const d_3d = sSpdFE_3D * dt; 
         distM += d_3d; 
@@ -258,17 +303,17 @@ function updateDisp(pos) {
 
     // --- MISE À JOUR DOM ---
     
-    $('speed-stable').textContent = `${(sSpdFE_3D * KMH_MS).toFixed(4)} km/h (3D)`;
+    $('speed-stable').textContent = `${(finalDisplaySpeed * KMH_MS).toFixed(4)} km/h (3D)`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
-    $('speed-stable-ms').textContent = `${sSpdFE_3D.toFixed(3)} m/s (3D)`; 
+    $('speed-stable-ms').textContent = `${finalDisplaySpeed.toFixed(3)} m/s (3D)`; 
 
     $('distance-total-km').textContent = `${(distM/1000).toFixed(3)} km | ${distM.toFixed(2)} m (3D)`;
     
-    $('perc-speed-c').textContent = `${(sSpdFE_3D / C_L * 100).toExponential(2)}%`;
-    $('perc-speed-sound').textContent = `${(sSpdFE_3D / SPEED_SOUND * 100).toFixed(2)}%`;
+    $('perc-speed-c').textContent = `${(finalDisplaySpeed / currentSpeedLight * 100).toExponential(2)}%`;
+    $('perc-speed-sound').textContent = `${(finalDisplaySpeed / currentSpeedSound * 100).toFixed(2)}%`;
 
-    $('kalman-uncert').textContent = `${kUncert.toFixed(5)} m² (Horiz.)`;
-    $('kalman-r-dyn').textContent = `DR Mode (IMU)`; 
+    $('kalman-uncert').textContent = `${kUncert.toFixed(5)} m² (Horiz.) | Q: ${Q_NOISE.toExponential(2)}`;
+    $('kalman-r-dyn').textContent = `DR Mode (IMU) | R-Factor: ${rFactor.toFixed(1)}`; 
     $('accel-long').textContent = `${(accel_long).toFixed(3)} m/s ²`; 
     $('force-g-long').textContent = `${(accel_long / g_dynamic).toFixed(2)} G | Max: ${maxGForce.toFixed(2)} G`;
     $('vertical-speed').textContent = `${verticalSpeedRaw.toFixed(2)} m/s`;
@@ -290,9 +335,9 @@ function updateDisp(pos) {
     if (lat !== 0 && lon !== 0) updateMap(lat, lon); 
     
     const mass = parseFloat($('mass-input').value) || 70;
-    $('kinetic-energy').textContent = `${(0.5 * mass * sSpdFE_3D * sSpdFE_3D).toFixed(2)} J`; 
-    $('mechanical-power').textContent = `${(mass * accel_long * sSpdHorizFE).toFixed(2)} W`; 
-}
+    $('kinetic-energy').textContent = `${(0.5 * mass * finalDisplaySpeed * finalDisplaySpeed).toFixed(2)} J`; 
+    $('mechanical-power').textContent = `${(mass * accel_long * finalDisplaySpeed).toFixed(2)} W`; 
+                                                                }
 // =================================================================
 // BLOC 2/2 : FONCTIONS SECONDAIRES (ASTRO/MÉTÉO/CARTE) & INITIALISATION
 // =================================================================
