@@ -20,8 +20,8 @@ const MC_START_OFFSET_MS = 6 * 3600 * 1000;
 // Constantes GPS et EKF
 const KMH_MS = 3.6; 
 const MIN_DT = 0.05; 
-const Q_NOISE_MIN_BASE = 0.0001; // Bruit minimal de base
-const Q_NOISE_MAX = 0.0005; // Bruit maximal (Faible confiance)
+const Q_NOISE_MIN_BASE = 0.0001; 
+const Q_NOISE_MAX = 0.0005; 
 let Q_NOISE = Q_NOISE_MAX; 
 const MIN_SPD = 0.001; 
 const MIN_UNCERT_FLOOR = Q_NOISE_MIN_BASE * MIN_DT; 
@@ -32,8 +32,12 @@ const M_EARTH = 5.972e24;
 
 const MAX_GPS_ACCURACY_FOR_USE = 50.0; 
 const KUNCERT_MAX = 0.05; 
-const KUNCERT_FACTOR_MIN = 0.85; // Amortissement minimal appliqué (Réactivité EKF)
-const SMOOTHING_TIME_CONSTANT = 0.1; // Lissage réduit (Réactivité d'affichage)
+const KUNCERT_FACTOR_MIN = 0.85; 
+const SMOOTHING_TIME_CONSTANT = 0.1; 
+
+// NOUVELLES CONSTANTES DE CLAMPING POUR ÉVITER LA DÉRIVE DE VITESSE
+const MAX_IMU_ACCEL_INTEGRATION = 30.0; // Limite d'accélération pour l'intégration (environ 3G)
+const MAX_EKF_SPEED = 41.7; // Limite max de vitesse EKF (environ 150 km/h)
 
 // Endpoints
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
@@ -87,14 +91,10 @@ function calculateLocalGravity(altitude) {
     return g_local;
 }
 
-/**
- * Retourne le facteur de pénalité de la covariance de mesure R basé sur l'environnement ET la fréquence GPS.
- */
 function getKalmanRFactor() {
     const env = $('environment-select').value;
     let rFactor = 1.0;
 
-    // Pénalité basée sur l'environnement
     switch (env) {
         case 'FOREST': rFactor = 1.5; break; 
         case 'METAL': rFactor = 3.0; break; 
@@ -102,30 +102,23 @@ function getKalmanRFactor() {
         default: rFactor = 1.0; 
     }
 
-    // AJUSTEMENT CRITIQUE POUR LA HAUTE FRÉQUENCE
     if (currentGPSMode === 'HIGH_FREQ') {
-        // Augmente R, disant à l'EKF : "Fais moins confiance à cette mesure GPS rapide, elle est probablement bruité."
         rFactor *= 1.2; 
     }
     
     return rFactor;
 }
 
-
-/**
- * Retourne un facteur de modification pour le Bruit du Modèle EKF (Q) basé sur l'environnement.
- */
 function getKalmanQNoiseFactor() {
     const env = $('environment-select').value;
     switch (env) {
-        case 'OPEN': return 0.7; // Moins de bruit IMU supposé
+        case 'OPEN': return 0.7; 
         case 'FOREST': return 1.0; 
         case 'CONCRETE': return 1.2; 
         case 'METAL': return 1.5; 
         default: return 1.0; 
     }
 }
-
 
 function loadPrecisionRecords() {
     try {
@@ -155,14 +148,12 @@ function updateDisp(pos) {
 
     const acc = pos.coords.accuracy; 
     
-    // --- MISE À JOUR DES POSITIONS ET TEMPS ---
     const gpsLat = pos.coords.latitude; 
     const gpsLon = pos.coords.longitude;
     const currentAlt = pos.coords.altitude; 
-    
     const now = getCDate();
     
-    // Initialisation au premier signal valide
+    // Initialisation
     if (lat === 0 && lon === 0) {
         if (acc < MAX_GPS_ACCURACY_FOR_USE && gpsLat !== null && gpsLon !== null) {
             lat = gpsLat;
@@ -184,18 +175,15 @@ function updateDisp(pos) {
 
     const g_dynamic = calculateLocalGravity(currentAlt);
     
-    // --- CALCUL VITESSE VERTICALE (Altitude) ---
     if (currentAlt !== null && lastAlt !== 0 && dt > 0) {
         verticalSpeedRaw = (currentAlt - lastAlt) / dt;
     } else {
         verticalSpeedRaw = 0;
     }
     
-    // --- GESTION DYNAMIQUE Q_NOISE ET NETHER ---
     const accuracyPenaltyFactor = Math.min(1.0, pos.coords.accuracy / MAX_GPS_ACCURACY_FOR_USE);
     const envQFactor = getKalmanQNoiseFactor();
     
-    // Q_NOISE adapte le bruit du modèle
     Q_NOISE = Q_NOISE_MIN_BASE * envQFactor + (Q_NOISE_MAX - Q_NOISE_MIN_BASE) * accuracyPenaltyFactor;
     Q_NOISE = Math.min(Q_NOISE_MAX, Q_NOISE); 
     
@@ -208,30 +196,64 @@ function updateDisp(pos) {
         Q_NOISE = Math.min(Q_NOISE_MAX, Q_NOISE * 1.5);
     }
 
-    // --- Détermination de la validité de la position GPS ---
     let gpsPositionValid = false;
-    const rFactor = getKalmanRFactor(); // Utilisation du R-Factor ajusté selon la fréquence
+    const rFactor = getKalmanRFactor(); 
     
     if (acc < MAX_GPS_ACCURACY_FOR_USE * rFactor && lat !== 0 && lon !== 0) {
         gpsPositionValid = true;
     }
 
-    // --- EKF (IMU-Only avec ZVU) ---
-    const predictedSpd = kSpd + latestIMULinearAccel * dt; 
-    kUncert = kUncert + Q_NOISE * dt; 
-    const predictedSpdPositive = Math.max(0, predictedSpd); 
-    kSpd = predictedSpdPositive;
+    // =====================================================================
+    // --- NOUVELLE LOGIQUE EKF (PRÉVENTION DE LA DÉRIVE) ---
+    // =====================================================================
+
+    // --- EKF: ÉTAPE DE PRÉDICTION (Modèle IMU) ---
     
-    // ZVU (Zero Velocity Update)
-    if (latestIMULinearAccel < 0.05) { 
-         kSpd = 0;
-         kUncert = MIN_UNCERT_FLOOR;
+    // 🛡️ CLAMPING DE L'ACCÉLÉRATION IMU POUR ÉVITER L'INTÉGRATION DE BRUIT EXTRÊME
+    const clampedAccel = Math.min(latestIMULinearAccel, MAX_IMU_ACCEL_INTEGRATION);
+    
+    // 1. Mise à jour de l'état (vitesse) et de la covariance (incertitude) par le modèle (IMU)
+    kSpd = kSpd + clampedAccel * dt; 
+    kUncert = kUncert + Q_NOISE * dt; 
+    
+    // ZVU (Zero Velocity Update) : Si l'accélération pure est négligeable, la vitesse est zéro
+    if (clampedAccel < 0.05) { 
+        kSpd = 0;
+        kUncert = MIN_UNCERT_FLOOR;
     }
-    // ZVU ÉTALONNAGE
-    if (kSpd < 0.05) { 
-        kSpd = 0; 
-        kUncert = MIN_UNCERT_FLOOR; 
+
+    // --- EKF: ÉTAPE DE CORRECTION (Mesure GPS de Vitesse) ---
+    if (pos.coords.speed !== null && !isNaN(pos.coords.speed) && gpsPositionValid) {
+        
+        const measuredSpd = pos.coords.speed;
+        
+        const R_MEASUREMENT_BASE = Math.max(1.0, pos.coords.accuracy);
+        const R_MEASUREMENT = Math.pow(R_MEASUREMENT_BASE, 2) * rFactor; 
+
+        // 1. Innovation
+        const innovation = measuredSpd - kSpd; 
+        
+        // 2. Innovation Covariance
+        const innovationCovariance = kUncert + R_MEASUREMENT; 
+        
+        // 3. Gain de Kalman
+        const kalmanGain = kUncert / innovationCovariance;
+        
+        // 4. Mise à jour de l'état (vitesse)
+        kSpd = kSpd + kalmanGain * innovation;
+        
+        // 5. Mise à jour de la covariance (incertitude)
+        kUncert = (1 - kalmanGain) * kUncert;
     }
+    
+    // 🛑 SÉCURITÉ FINALE : CLAMPING DE LA VITESSE EKF
+    kSpd = Math.max(0, kSpd);
+    kSpd = Math.min(kSpd, MAX_EKF_SPEED); // Empêche la vitesse > 150 km/h
+    kUncert = Math.max(MIN_UNCERT_FLOOR, kUncert);
+
+    // =====================================================================
+    // --- FIN LOGIQUE EKF ---
+    // =====================================================================
     
     // --- ACCÉLÉRATION HORIZONTALE (EKF Stable) ---
     let sSpdHorizFE = Math.abs(kSpd); 
@@ -251,11 +273,11 @@ function updateDisp(pos) {
     
     lastFSpeed = sSpdHorizFE; 
 
+    // ... (Le reste de la fonction updateDisp et la mise à jour du DOM sont inchangés)
+    
     const currentGForceLong = Math.abs(accel_long / g_dynamic); 
     if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; 
 
-    // --- LOGIQUE DE MISE À JOUR DE LA POSITION (CORRECTION DE DÉRIVE GPS + DR) ---
-    
     const env = $('environment-select').value;
     const trustIMUHeading = (env === 'OPEN' || env === 'FOREST');
     let headingSource = 'N/A'; 
@@ -272,7 +294,6 @@ function updateDisp(pos) {
         lastPos = { latitude: lat, longitude: lon };
     }
     
-    // 2. Dead Reckoning
     if (!gpsPositionValid && sSpdHorizFE > MIN_SPD && lastPos && dt > 0) {
         
         if (imuHeading !== 0 && trustIMUHeading) {
@@ -297,15 +318,12 @@ function updateDisp(pos) {
         lastPos = { latitude: lat, longitude: lon };
     }
     
-    // --- CALCUL VITESSE 3D STABLE ---
     const sSpdFE_3D = Math.sqrt(sSpdHorizFE * sSpdHorizFE + verticalSpeedRaw * verticalSpeedRaw);
     
-    // LISSAGE TEMPOREL (pour l'affichage)
     const alpha = dt / (SMOOTHING_TIME_CONSTANT + dt);
     smoothedSpeed = (alpha * sSpdFE_3D) + ((1 - alpha) * smoothedSpeed);
     const finalDisplaySpeed = smoothedSpeed;
 
-    // Calcul de la distance 3D totale
     if (lastPos && sSpdFE_3D > MIN_SPD) { 
         const d_3d = sSpdFE_3D * dt; 
         distM += d_3d; 
@@ -317,12 +335,10 @@ function updateDisp(pos) {
 
     // --- MISE À JOUR DOM ---
     
-    // Vitesse (Utilise finalDisplaySpeed)
     $('speed-stable').textContent = `${(finalDisplaySpeed * KMH_MS).toFixed(4)} km/h (3D)`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
     $('speed-stable-ms').textContent = `${finalDisplaySpeed.toFixed(3)} m/s (3D)`; 
 
-    // Localisation & Temps
     $('distance-total-km').textContent = `${(distM/1000).toFixed(3)} km | ${distM.toFixed(2)} m (3D)`;
     $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
     $('latitude').textContent = lat.toFixed(6);
@@ -332,22 +348,17 @@ function updateDisp(pos) {
     $('underground-status').textContent = currentAlt !== null && currentAlt < ALT_TH ? 'OUI' : 'Non';
     $('vertical-speed').textContent = `${verticalSpeedRaw.toFixed(2)} m/s`;
     
-    // Accélération & G-Forces
     $('accel-long').textContent = `${(accel_long).toFixed(3)} m/s ²`; 
     $('force-g-long').textContent = `${(accel_long / g_dynamic).toFixed(2)} G | Max: ${maxGForce.toFixed(2)} G`;
     
-    // Diagnostics EKF
     $('kalman-uncert').textContent = `${kUncert.toFixed(5)} m² (Horiz.) | Q: ${Q_NOISE.toExponential(2)}`;
     $('kalman-r-dyn').textContent = `DR Mode (IMU) | R-Factor: ${rFactor.toFixed(1)}`; 
     
-    // Cap (Heading)
     $('current-heading').textContent = `${lastHeading.toFixed(1)} ° (${headingSource})`;
     
-    // Vitesse Cosmique
     $('perc-speed-c').textContent = `${(finalDisplaySpeed / currentSpeedLight * 100).toExponential(2)}%`;
     $('perc-speed-sound').textContent = `${(finalDisplaySpeed / currentSpeedSound * 100).toFixed(2)}%`;
     
-    // Énergie & Puissance (CORRIGÉ : Assure que les variables sont utilisées)
     const mass = parseFloat($('mass-input').value) || 70;
     const kineticEnergy = 0.5 * mass * finalDisplaySpeed * finalDisplaySpeed;
     const mechanicalPower = mass * accel_long * finalDisplaySpeed;
@@ -358,7 +369,6 @@ function updateDisp(pos) {
     savePrecisionRecords();
     if (lat !== 0 && lon !== 0) updateMap(lat, lon); 
     }
-// Note: Le BLOC 2/2 reste inchangé, car seule la fonction getKalmanQNoiseFactor a été ajoutée au BLOC 1.
 // =================================================================
 // BLOC 2/2 : FONCTIONS SECONDAIRES (ASTRO/MÉTÉO/CARTE) & INITIALISATION
 // =================================================================
