@@ -1,6 +1,6 @@
 // =================================================================
-// FICHIER FINAL ET COMPLET : gnss-dashboard-full.js
-// Vitesse corrigée V3 : Intégration de la prédiction IMU lorsque le GPS est absent ou de mauvaise qualité.
+// FICHIER FINAL ET COMPLET : gnss-dashboard-full.js (V9)
+// Fusion GNSS/IMU avec EKF optimisé pour la marche et Cap Dynamique.
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -21,7 +21,7 @@ const MC_START_OFFSET_MS = 6 * 3600 * 1000;
 // Constantes GPS et EKF
 const KMH_MS = 3.6; 
 const MIN_DT = 0.05; 
-const Q_NOISE = 0.0001; 
+const Q_NOISE = 0.0002; // Bruit du processus EKF (optimisé pour la marche)
 const MIN_SPD = 0.001; 
 const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; 
 const ALT_TH = -50; 
@@ -29,7 +29,8 @@ const R_E = 6371000;
 const G_CONST = 6.67430e-11; 
 const M_EARTH = 5.972e24; 
 
-const MAX_GPS_ACCURACY_FOR_USE = 50.0; // Seuil de précision GPS (en mètres) au-delà duquel la mesure est rejetée.
+const MAX_GPS_ACCURACY_FOR_USE = 50.0; 
+const SIGMA_DRIFT_THRESHOLD = 3.0; 
 
 // Endpoints
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
@@ -51,10 +52,11 @@ let G_ACC_LOCAL = G_ACC_STD;
 let serverOffset = 0; 
 const P_RECORDS_KEY = 'gnss_precision_records'; 
 
-// <<< NOUVELLE VARIABLE : Stocke la dernière accélération IMU horizontale pour l'intégration
 let latestIMULinearAccel = 0; 
+let lastHeading = 0; 
+let imuHeading = 0; // Cap IMU brut
 
-// --- PARTIE 3 : FONCTIONS UTILITAIRES ET PERSISTANCE (inchangé) ---
+// --- PARTIE 3 : FONCTIONS UTILITAIRES ET PERSISTANCE ---
 
 function toReadableScientific(num) {
     if (num === 0 || isNaN(num) || Math.abs(num) < 1e-6) return "0.00e+00";
@@ -95,13 +97,17 @@ function calculateLocalGravity(altitude) {
 function getKalmanR(accuracy) {
     const env = $('environment-select').value;
     let factor = 1.0;
+    
+    // Pénalise la mesure GPS pour donner plus de poids au modèle IMU/EKF à basse vitesse
+    let basePenalty = 1.25; 
+    
     switch (env) {
         case 'FOREST': factor = 1.5; break;
         case 'METAL': factor = 2.5; break;
         case 'CONCRETE': factor = 3.0; break; 
         default: factor = 1.0; break;
     }
-    return accuracy * accuracy * factor; 
+    return accuracy * accuracy * factor * basePenalty; 
 }
 
 function loadPrecisionRecords() {
@@ -122,7 +128,7 @@ function savePrecisionRecords() {
     } catch (e) { console.error("Erreur de sauvegarde des records:", e); }
 }
 
-// --- PARTIE 4 : GESTIONNAIRE EKF ET GPS (Modifié) ---
+// --- PARTIE 4 : GESTIONNAIRE EKF ET GPS ---
 
 /** Handler des données GPS et du filtre EKF. */
 function updateDisp(pos) {
@@ -131,8 +137,8 @@ function updateDisp(pos) {
     const acc = pos.coords.accuracy; 
     
     // --- MISE À JOUR DES POSITIONS ET TEMPS ---
-    lat = pos.coords.latitude; 
-    lon = pos.coords.longitude;
+    const gpsLat = pos.coords.latitude; 
+    const gpsLon = pos.coords.longitude;
     const currentAlt = pos.coords.altitude; 
     alt = currentAlt; 
     
@@ -149,60 +155,72 @@ function updateDisp(pos) {
     // --- Calcul Vitesse Brute (Mesure GPS pour la correction) ---
     let speedRaw = 0;
     let gpsMeasurementValid = false;
+    let gpsPositionValid = false;
 
-    // Priorité 1: Vitesse OS/GPS (la plus fiable en mode GPS)
-    if (pos.coords.speed !== null && pos.coords.speed >= 0 && acc < MAX_GPS_ACCURACY_FOR_USE) {
+    if (acc < MAX_GPS_ACCURACY_FOR_USE && lat !== 0 && lon !== 0) {
+        gpsPositionValid = true;
+    }
+
+    if (pos.coords.speed !== null && pos.coords.speed >= 0 && gpsPositionValid) {
         speedRaw = pos.coords.speed;
         gpsMeasurementValid = true;
     } 
-    // Priorité 2: Vitesse calculée entre deux points (en cas d'absence de speed, mais bonne précision)
-    else if (lastPos && dt > 0 && acc < MAX_GPS_ACCURACY_FOR_USE) {
-        const d_horiz_raw = distanceCalc(lastPos.latitude, lastPos.longitude, lat, lon);
+    else if (lastPos && dt > 0 && gpsPositionValid) {
+        const d_horiz_raw = distanceCalc(lastPos.latitude, lastPos.longitude, gpsLat, gpsLon);
         speedRaw = d_horiz_raw / dt;
         gpsMeasurementValid = true;
     }
     
     // --- EKF (Filtre de Kalman pour la vitesse 2D) ---
     
-    // 1. Prédiction (mise à jour de l'état kSpd basé sur la dernière accélération IMU)
-    // C'est le Dead Reckoning (Navigation à l'estime)
-    const predictedSpd = kSpd + latestIMULinearAccel * dt;
-    // L'incertitude du Dead Reckoning augmente très vite : Q_NOISE est pour la dérive de l'EKF et non la dérive IMU
-    kUncert = kUncert + Q_NOISE * dt; // On laisse Q_NOISE faible pour la correction lente, mais on intègre l'accélération
-
+    // 1. Prédiction (utilise l'IMU)
+    const predictedSpd = kSpd + latestIMULinearAccel * dt; 
+    kUncert = kUncert + Q_NOISE * dt; 
+    
+    const predictedSpdPositive = Math.max(0, predictedSpd); 
+    
     if (gpsMeasurementValid) {
-        // 2. Correction GPS (Utilisation normale)
         let kR = getKalmanR(acc); 
-        let kGain = kUncert / (kUncert + kR);
-        kSpd = predictedSpd + kGain * (speedRaw - predictedSpd); 
-        kUncert = (1 - kGain) * kUncert; // L'incertitude est réduite par la mesure GPS
-        kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); 
-    } else {
-        // 2. Correction IMU (Mode Dead Reckoning pur)
-        // La nouvelle vitesse est la vitesse prédite par l'IMU. L'incertitude continue d'augmenter lentement.
-        kSpd = predictedSpd;
-        // La vitesse doit être limitée, car l'IMU peut dériver rapidement
-        if (kSpd < 0) kSpd = 0; 
+
+        // --- DÉTECTION DE DÉRIVE / OUTLIER (Innovation Check) ---
+        const totalUncertainty = kUncert + kR;
+        const innovation = speedRaw - predictedSpdPositive;
         
-        // Si l'IMU indique que l'on est immobile, on force le ZVU pour éviter une dérive de l'EKF.
-        if (latestIMULinearAccel < 0.05) { // Si accélération très faible
+        if (Math.abs(innovation) > SIGMA_DRIFT_THRESHOLD * Math.sqrt(totalUncertainty)) {
+             console.warn(`[EKF] Dérive/Anomalie détectée: Mesure GPS rejetée.`);
+             gpsMeasurementValid = false; 
+        }
+        
+        if (gpsMeasurementValid) {
+            // 2. Correction GPS (Utilisation normale)
+            let kGain = kUncert / totalUncertainty;
+            kSpd = predictedSpdPositive + kGain * innovation; 
+            kUncert = (1 - kGain) * kUncert; 
+            kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); 
+        }
+    } 
+    
+    if (!gpsMeasurementValid) {
+        // 2. Dead Reckoning (mode de dérive sans correction)
+        kSpd = predictedSpdPositive;
+        
+        // ZVU basé sur l'accélération IMU si en Dead Reckoning (arrêt réaliste)
+        if (latestIMULinearAccel < 0.05) { 
              kSpd = 0;
              kUncert = MIN_UNCERT_FLOOR;
         }
     }
     
-    // --- ZVU ÉTALONNAGE (Anti-dérive) ---
-    // On conserve le ZVU basé sur le GPS/OS pour l'arrêt forcé si le signal est bon et speedRaw est proche de zéro.
-    // En mode Dead Reckoning, nous utilisons le seuil d'accélération IMU pour le ZVU.
-    if (gpsMeasurementValid && speedRaw < MIN_SPD * 5 && kSpd < MIN_SPD * 2) { 
+    // --- ZVU ÉTALONNAGE (Nettoyage à l'arrêt) ---
+    if (kSpd < 0.05) { 
         kSpd = 0; 
+        kUncert = MIN_UNCERT_FLOOR; 
     }
     
     // --- ACCÉLÉRATION HORIZONTALE (EKF Stable) ---
     let sSpdFE = Math.abs(kSpd);
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // ACCÉLÉRATION CORRIGÉE : Dérivée de la vitesse filtrée (stable)
     const accel_ekf = (dt > MIN_DT) ? (sSpdFE - lastFSpeed) / dt : 0;
     const accel_long = accel_ekf; 
     
@@ -211,12 +229,47 @@ function updateDisp(pos) {
     const currentGForceLong = Math.abs(accel_long / g_dynamic); 
     if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; 
 
-    // --- CALCUL VITESSE VERTICALE et DISTANCE (Inchangé) ---
-    let verticalSpeedRaw = 0;
-    if (currentAlt !== null && lastAlt !== 0 && dt > 0) {
-        verticalSpeedRaw = (currentAlt - lastAlt) / dt;
+    // --- LOGIQUE DE MISE À JOUR DE LA POSITION (DR AMÉLIORÉ AVEC CONFIANCE CAP) ---
+    
+    const env = $('environment-select').value;
+    // Confiance Dynamique : On ne fait confiance à l'IMU que dans un environnement non métallique/béton
+    const trustIMUHeading = (env === 'OPEN' || env === 'FOREST');
+
+    if (gpsPositionValid) {
+        // 1. Cap GPS (Priorité absolue)
+        if (pos.coords.heading !== null && pos.coords.heading >= 0) {
+             lastHeading = pos.coords.heading; 
+        }
+        lat = gpsLat;
+        lon = gpsLon;
+        lastPos = { latitude: lat, longitude: lon };
     }
     
+    // 2. Cap IMU conditionnel (Si GPS perdu ET on fait confiance à l'IMU)
+    else if (!gpsPositionValid && imuHeading !== 0 && trustIMUHeading) {
+        lastHeading = imuHeading; 
+    }
+    // Si pas de confiance IMU, lastHeading conserve sa dernière valeur (cap constant).
+    
+    // Dead Reckoning : Intégration de la vitesse pour estimer la position
+    if (!gpsPositionValid && sSpdFE > MIN_SPD && lastPos && dt > 0) {
+        const d_horiz_ekf = sSpdFE * dt;
+        
+        const bearingRad = lastHeading * D2R; 
+        
+        const d_lat_m = d_horiz_ekf * Math.cos(bearingRad);
+        const d_lon_m = d_horiz_ekf * Math.sin(bearingRad);
+        
+        const d_lat_deg = d_lat_m / R_E * R2D;
+        const d_lon_deg = d_lon_m / (R_E * Math.cos(lat * D2R)) * R2D;
+        
+        lat += d_lat_deg;
+        lon += d_lon_deg;
+        
+        lastPos = { latitude: lat, longitude: lon };
+    }
+    
+    // Calcul de la distance 3D totale (utilise la vitesse filtrée)
     if (lastPos && sSpdFE > MIN_SPD) { 
         const d_horiz_ekf = sSpdFE * dt;
         let d_vert = (verticalSpeedRaw) * dt;
@@ -226,9 +279,8 @@ function updateDisp(pos) {
     } 
     
     if (currentAlt !== null) lastAlt = currentAlt; 
-    lastPos = { latitude: lat, longitude: lon };
-
-    // --- MISE À JOUR DOM (Inchangé) ---
+    
+    // --- MISE À JOUR DOM ---
     
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(4)} km/h`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
@@ -238,7 +290,7 @@ function updateDisp(pos) {
     $('perc-speed-sound').textContent = `${(sSpdFE / SPEED_SOUND * 100).toFixed(2)}%`;
 
     $('kalman-uncert').textContent = `${kUncert.toFixed(5)} m²`;
-    $('kalman-r-dyn').textContent = `${gpsMeasurementValid ? getKalmanR(acc).toFixed(5) : 'IMU Mode'} m²`;
+    $('kalman-r-dyn').textContent = `${gpsMeasurementValid ? getKalmanR(acc).toFixed(5) : 'DR Mode'} m²`;
     $('accel-long').textContent = `${(accel_long).toFixed(3)} m/s ²`; 
     $('force-g-long').textContent = `${(accel_long / g_dynamic).toFixed(2)} G | Max: ${maxGForce.toFixed(2)} G`;
     $('vertical-speed').textContent = `${verticalSpeedRaw.toFixed(2)} m/s`;
@@ -264,9 +316,26 @@ function updateDisp(pos) {
     $('mechanical-power').textContent = `${(mass * accel_long * sSpdFE).toFixed(2)} W`;
 }
 
-// --- PARTIE 5 : GESTIONNAIRES IMU ET DÉMARRAGE (Modifié) ---
+// --- PARTIE 5 & 6 : GESTION DES CAPTEURS ET INITIALISATION ---
 
-/** Handler des données IMU (accéléromètre) pour les vibrations et l'accélération verticale corrigée. */
+function handleDeviceOrientation(event) {
+    if (emergencyStopActive) return;
+
+    let heading = null;
+    if (event.alpha !== null) {
+        heading = event.alpha; 
+    } else if (event.webkitCompassHeading !== null) {
+        heading = event.webkitCompassHeading;
+    }
+
+    if (heading !== null) {
+        // Conversion pour obtenir l'azimut du nord magnétique
+        imuHeading = (360 - heading) % 360; 
+        if ($('imu-heading')) $('imu-heading').textContent = `${imuHeading.toFixed(1)} °`;
+    }
+}
+
+/** Handler des données IMU (accéléromètre) */
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
 
@@ -275,16 +344,14 @@ function handleDeviceMotion(event) {
     
     const linearAccel = event.acceleration;
     if (linearAccel) {
-        // Calcule la magnitude de l'accélération linéaire pour l'intégration EKF
         const latestLinearAccelMagnitude = Math.sqrt(linearAccel.x*linearAccel.x + linearAccel.y*linearAccel.y + linearAccel.z*linearAccel.z);
-        latestIMULinearAccel = latestLinearAccelMagnitude; // <<< STOCKAGE DE L'ACCÉLÉRATION
+        latestIMULinearAccel = latestLinearAccelMagnitude; 
         
         if ($('accel-imu-raw')) {
              $('accel-imu-raw').textContent = `${latestLinearAccelMagnitude.toFixed(3)} m/s²`;
         }
     }
     
-    // ACCÉLÉRATION VERTICALE CORRIGÉE (Reste la même)
     const latestAccelZ = accel.z || 0; 
     const accelVerticalCorrigee = latestAccelZ - g_dynamic;
 
@@ -297,8 +364,6 @@ function continueGPSStart() {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     wID = navigator.geolocation.watchPosition(updateDisp, (error) => {
         console.warn(`ERREUR GPS(${error.code}): ${error.message}`);
-        // Une erreur GPS (comme le timeout ou la précision trop faible) ne stoppe plus le dashboard,
-        // car l'IMU prend le relais.
     }, opts);
     if ($('freq-select')) $('freq-select').value = currentGPSMode; 
 }
@@ -309,16 +374,20 @@ function requestIMUPermissionAndStart() {
             .then(permissionState => {
                 if (permissionState === 'granted') {
                     window.addEventListener('devicemotion', handleDeviceMotion, true);
+                    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
                 }
                 continueGPSStart(); 
             })
             .catch(err => {
-                console.error("Erreur d'autorisation DeviceMotion:", err);
+                console.error("Erreur d'autorisation DeviceMotion/Orientation:", err);
                 continueGPSStart(); 
             });
     } else {
         if (window.DeviceMotionEvent) {
              window.addEventListener('devicemotion', handleDeviceMotion, true);
+        }
+        if (window.DeviceOrientationEvent) { 
+             window.addEventListener('deviceorientation', handleDeviceOrientation, true);
         }
         continueGPSStart();
     }
@@ -340,19 +409,20 @@ function stopGPS() {
     $('toggle-gps-btn').style.backgroundColor = '#28a745';
 }
 
-// --- PARTIE 6 : UI, ASTRO, MÉTÉO ET INITIALISATION (Inchangé) ---
-
 let map = null;
 let marker = null;
 
+// --- FONCTIONS SECONDAIRES (Astro, Météo, Carte, Horloge) ---
+
 function getEOT(date) { 
+    // ... (Logique EOT)
     const J = date.getTime() / 86400000 + 2440587.5; 
     const n = J - 2451545.0;
     const L = (280.460 + 0.98564736 * n) % 360;
     const g = (357.528 + 0.98560030 * n) % 360;
     const lambda = L + 1.915 * Math.sin(g * D2R) + 0.020 * Math.sin(2 * g * D2R);
     const epsilon = 23.439 - 0.0000004 * n;
-    const RA = Math.atan2(Math.sin(lambda * D2R) * Math.cos(epsilon * D2R), Math.cos(lambda * D2R)) * R2D;
+    const RA = Math.atan2(Math.sin(lambda * D2R) * Math.cos(epsilon * D2R) , Math.cos(lambda * D2R)) * R2D;
     const EOT = L - RA;
     return EOT * 4; 
 }
@@ -362,6 +432,7 @@ function updateAstro(latitude, longitude) {
 
     const now = getCDate();
 
+    // Calcul de l'heure Minecraft
     const totalMsToday = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
     let msSinceMcStart = (totalMsToday - MC_START_OFFSET_MS) % REAL_DAY_MS;
     if (msSinceMcStart < 0) msSinceMcStart += REAL_DAY_MS;
@@ -457,7 +528,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = getCDate();
         if (now) {
             $('local-time').textContent = now.toLocaleTimeString();
-            $('date-display').textContent = now.toLocaleDateString();
+            // Note: l'élément 'date-display' n'est pas dans le HTML fourni, mais on le garde pour la logique
+            // $('date-display').textContent = now.toLocaleDateString();
             $('time-elapsed').textContent = sTime ? ((now.getTime() - sTime.getTime()) / 1000).toFixed(2) + ' s' : '0.00 s';
             $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
         }
@@ -466,7 +538,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     weatherID = setInterval(getWeather, 30000); 
 
+    // Écouteurs d'événements des boutons/sélecteurs
     $('toggle-gps-btn').addEventListener('click', () => wID === null ? startGPS() : stopGPS() );
+    
     $('emergency-stop-btn').addEventListener('click', () => {
         emergencyStopActive = !emergencyStopActive;
         $('emergency-stop-btn').textContent = emergencyStopActive ? '🛑 Arrêt d\'urgence: ACTIF 🔴' : '🛑 Arrêt d\'urgence: INACTIF 🟢';
@@ -493,5 +567,9 @@ document.addEventListener('DOMContentLoaded', () => {
             stopGPS();
             startGPS();
         }
+    });
+    
+    $('environment-select').addEventListener('change', () => {
+        // La simple sélection met à jour R dans getKalmanR()
     });
 });
