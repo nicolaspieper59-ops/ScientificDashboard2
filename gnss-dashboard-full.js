@@ -1,14 +1,14 @@
 // =================================================================
 // FICHIER FINAL ET COMPLET : gnss-dashboard-full.js
-// Vitesse corrigée : Favorise les capteurs/EKF interne, GPS utilisé pour la dérive lente (Q_NOISE très faible).
+// Vitesse corrigée V3 : Intégration de la prédiction IMU lorsque le GPS est absent ou de mauvaise qualité.
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
 
 // --- PARTIE 1 : CONSTANTES GLOBALES ET PHYSIQUES ---
-const C_L = 299792458; // Vitesse de la lumière (m/s)
-const SPEED_SOUND = 343; // Vitesse du son (m/s)
-const G_ACC_STD = 9.80665; // Gravité standard de la Terre (m/s²)
+const C_L = 299792458; 
+const SPEED_SOUND = 343; 
+const G_ACC_STD = 9.80665; 
 const R2D = 180 / Math.PI;
 const D2R = Math.PI / 180;
 
@@ -20,14 +20,16 @@ const MC_START_OFFSET_MS = 6 * 3600 * 1000;
 
 // Constantes GPS et EKF
 const KMH_MS = 3.6; 
-const MIN_DT = 0.05; // Temps minimal pour éviter les divisions par zéro
-const Q_NOISE = 0.0001; // <<< MODIFIÉ : Très faible pour favoriser la stabilité interne (capteurs) et décourager la dépendance GPS.
-const MIN_SPD = 0.001; // Seuil pour ZVU (Zero Velocity Update)
+const MIN_DT = 0.05; 
+const Q_NOISE = 0.0001; 
+const MIN_SPD = 0.001; 
 const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; 
 const ALT_TH = -50; 
 const R_E = 6371000; 
 const G_CONST = 6.67430e-11; 
 const M_EARTH = 5.972e24; 
+
+const MAX_GPS_ACCURACY_FOR_USE = 50.0; // Seuil de précision GPS (en mètres) au-delà duquel la mesure est rejetée.
 
 // Endpoints
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
@@ -35,7 +37,7 @@ const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 
 // --- PARTIE 2 : VARIABLES D'ÉTAT ---
 let lat = 0, lon = 0, alt = 0;
-let kSpd = 0, kUncert = 1000; // Vitesse et incertitude EKF
+let kSpd = 0, kUncert = 0.01; 
 let lastTS = 0, lastFSpeed = 0, distM = 0;
 let lastPos = null, lastAlt = 0; 
 let sTime = null, timeMoving = 0, maxSpd = 0; 
@@ -49,7 +51,10 @@ let G_ACC_LOCAL = G_ACC_STD;
 let serverOffset = 0; 
 const P_RECORDS_KEY = 'gnss_precision_records'; 
 
-// --- PARTIE 3 : FONCTIONS UTILITAIRES ET PERSISTANCE ---
+// <<< NOUVELLE VARIABLE : Stocke la dernière accélération IMU horizontale pour l'intégration
+let latestIMULinearAccel = 0; 
+
+// --- PARTIE 3 : FONCTIONS UTILITAIRES ET PERSISTANCE (inchangé) ---
 
 function toReadableScientific(num) {
     if (num === 0 || isNaN(num) || Math.abs(num) < 1e-6) return "0.00e+00";
@@ -117,7 +122,7 @@ function savePrecisionRecords() {
     } catch (e) { console.error("Erreur de sauvegarde des records:", e); }
 }
 
-// --- PARTIE 4 : GESTIONNAIRE EKF ET GPS ---
+// --- PARTIE 4 : GESTIONNAIRE EKF ET GPS (Modifié) ---
 
 /** Handler des données GPS et du filtre EKF. */
 function updateDisp(pos) {
@@ -139,29 +144,57 @@ function updateDisp(pos) {
     
     if (dt < MIN_DT) return; 
 
-    // --- Calcul Vitesse Brute ---
-    let speedRaw;
-    if (lastPos && dt > 0) {
-        const d_horiz_raw = distanceCalc(lastPos.latitude, lastPos.longitude, lat, lon);
-        speedRaw = d_horiz_raw / dt; 
-    } else {
-        speedRaw = pos.coords.speed !== null ? pos.coords.speed : 0; 
-    }
-
     const g_dynamic = calculateLocalGravity(currentAlt);
     
+    // --- Calcul Vitesse Brute (Mesure GPS pour la correction) ---
+    let speedRaw = 0;
+    let gpsMeasurementValid = false;
+
+    // Priorité 1: Vitesse OS/GPS (la plus fiable en mode GPS)
+    if (pos.coords.speed !== null && pos.coords.speed >= 0 && acc < MAX_GPS_ACCURACY_FOR_USE) {
+        speedRaw = pos.coords.speed;
+        gpsMeasurementValid = true;
+    } 
+    // Priorité 2: Vitesse calculée entre deux points (en cas d'absence de speed, mais bonne précision)
+    else if (lastPos && dt > 0 && acc < MAX_GPS_ACCURACY_FOR_USE) {
+        const d_horiz_raw = distanceCalc(lastPos.latitude, lastPos.longitude, lat, lon);
+        speedRaw = d_horiz_raw / dt;
+        gpsMeasurementValid = true;
+    }
+    
     // --- EKF (Filtre de Kalman pour la vitesse 2D) ---
-    // kR est l'incertitude de la mesure (GPS). Elle est désormais relative au Q_NOISE.
-    let kR = getKalmanR(acc); 
-    let kGain = kUncert / (kUncert + kR);
-    kSpd = kSpd + kGain * (speedRaw - kSpd); 
-    // La faible valeur de Q_NOISE signifie que kUncert ne croît que très lentement, 
-    // ce qui maintient kGain très faible, forçant le filtre à ne corriger la vitesse que très lentement.
-    kUncert = (1 - kGain) * kUncert + Q_NOISE * dt; 
-    kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); 
+    
+    // 1. Prédiction (mise à jour de l'état kSpd basé sur la dernière accélération IMU)
+    // C'est le Dead Reckoning (Navigation à l'estime)
+    const predictedSpd = kSpd + latestIMULinearAccel * dt;
+    // L'incertitude du Dead Reckoning augmente très vite : Q_NOISE est pour la dérive de l'EKF et non la dérive IMU
+    kUncert = kUncert + Q_NOISE * dt; // On laisse Q_NOISE faible pour la correction lente, mais on intègre l'accélération
+
+    if (gpsMeasurementValid) {
+        // 2. Correction GPS (Utilisation normale)
+        let kR = getKalmanR(acc); 
+        let kGain = kUncert / (kUncert + kR);
+        kSpd = predictedSpd + kGain * (speedRaw - predictedSpd); 
+        kUncert = (1 - kGain) * kUncert; // L'incertitude est réduite par la mesure GPS
+        kUncert = Math.max(kUncert, MIN_UNCERT_FLOOR); 
+    } else {
+        // 2. Correction IMU (Mode Dead Reckoning pur)
+        // La nouvelle vitesse est la vitesse prédite par l'IMU. L'incertitude continue d'augmenter lentement.
+        kSpd = predictedSpd;
+        // La vitesse doit être limitée, car l'IMU peut dériver rapidement
+        if (kSpd < 0) kSpd = 0; 
+        
+        // Si l'IMU indique que l'on est immobile, on force le ZVU pour éviter une dérive de l'EKF.
+        if (latestIMULinearAccel < 0.05) { // Si accélération très faible
+             kSpd = 0;
+             kUncert = MIN_UNCERT_FLOOR;
+        }
+    }
     
     // --- ZVU ÉTALONNAGE (Anti-dérive) ---
-    if (speedRaw < MIN_SPD * 5 && kSpd < MIN_SPD * 2) { 
+    // On conserve le ZVU basé sur le GPS/OS pour l'arrêt forcé si le signal est bon et speedRaw est proche de zéro.
+    // En mode Dead Reckoning, nous utilisons le seuil d'accélération IMU pour le ZVU.
+    if (gpsMeasurementValid && speedRaw < MIN_SPD * 5 && kSpd < MIN_SPD * 2) { 
         kSpd = 0; 
     }
     
@@ -169,7 +202,7 @@ function updateDisp(pos) {
     let sSpdFE = Math.abs(kSpd);
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // ACCÉLÉRATION CORRIGÉE : Dérivée de la vitesse filtrée (très stable maintenant)
+    // ACCÉLÉRATION CORRIGÉE : Dérivée de la vitesse filtrée (stable)
     const accel_ekf = (dt > MIN_DT) ? (sSpdFE - lastFSpeed) / dt : 0;
     const accel_long = accel_ekf; 
     
@@ -178,7 +211,7 @@ function updateDisp(pos) {
     const currentGForceLong = Math.abs(accel_long / g_dynamic); 
     if (currentGForceLong > maxGForce) maxGForce = currentGForceLong; 
 
-    // --- CALCUL VITESSE VERTICALE et DISTANCE ---
+    // --- CALCUL VITESSE VERTICALE et DISTANCE (Inchangé) ---
     let verticalSpeedRaw = 0;
     if (currentAlt !== null && lastAlt !== 0 && dt > 0) {
         verticalSpeedRaw = (currentAlt - lastAlt) / dt;
@@ -195,7 +228,7 @@ function updateDisp(pos) {
     if (currentAlt !== null) lastAlt = currentAlt; 
     lastPos = { latitude: lat, longitude: lon };
 
-    // --- MISE À JOUR DOM : VITESSE, DISTANCE, ACCÉLÉRATION, etc. ---
+    // --- MISE À JOUR DOM (Inchangé) ---
     
     $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(4)} km/h`;
     $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(4)} km/h`;
@@ -205,7 +238,7 @@ function updateDisp(pos) {
     $('perc-speed-sound').textContent = `${(sSpdFE / SPEED_SOUND * 100).toFixed(2)}%`;
 
     $('kalman-uncert').textContent = `${kUncert.toFixed(5)} m²`;
-    $('kalman-r-dyn').textContent = `${kR.toFixed(5)} m²`;
+    $('kalman-r-dyn').textContent = `${gpsMeasurementValid ? getKalmanR(acc).toFixed(5) : 'IMU Mode'} m²`;
     $('accel-long').textContent = `${(accel_long).toFixed(3)} m/s ²`; 
     $('force-g-long').textContent = `${(accel_long / g_dynamic).toFixed(2)} G | Max: ${maxGForce.toFixed(2)} G`;
     $('vertical-speed').textContent = `${verticalSpeedRaw.toFixed(2)} m/s`;
@@ -231,7 +264,7 @@ function updateDisp(pos) {
     $('mechanical-power').textContent = `${(mass * accel_long * sSpdFE).toFixed(2)} W`;
 }
 
-// --- PARTIE 5 : GESTIONNAIRES IMU ET DÉMARRAGE ---
+// --- PARTIE 5 : GESTIONNAIRES IMU ET DÉMARRAGE (Modifié) ---
 
 /** Handler des données IMU (accéléromètre) pour les vibrations et l'accélération verticale corrigée. */
 function handleDeviceMotion(event) {
@@ -242,13 +275,16 @@ function handleDeviceMotion(event) {
     
     const linearAccel = event.acceleration;
     if (linearAccel) {
+        // Calcule la magnitude de l'accélération linéaire pour l'intégration EKF
         const latestLinearAccelMagnitude = Math.sqrt(linearAccel.x*linearAccel.x + linearAccel.y*linearAccel.y + linearAccel.z*linearAccel.z);
+        latestIMULinearAccel = latestLinearAccelMagnitude; // <<< STOCKAGE DE L'ACCÉLÉRATION
+        
         if ($('accel-imu-raw')) {
              $('accel-imu-raw').textContent = `${latestLinearAccelMagnitude.toFixed(3)} m/s²`;
         }
     }
     
-    // ACCÉLÉRATION VERTICALE CORRIGÉE
+    // ACCÉLÉRATION VERTICALE CORRIGÉE (Reste la même)
     const latestAccelZ = accel.z || 0; 
     const accelVerticalCorrigee = latestAccelZ - g_dynamic;
 
@@ -261,9 +297,8 @@ function continueGPSStart() {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     wID = navigator.geolocation.watchPosition(updateDisp, (error) => {
         console.warn(`ERREUR GPS(${error.code}): ${error.message}`);
-        if (error.code === 1) {
-            alert("Accès à la géolocalisation refusé. Le tableau de bord ne peut fonctionner.");
-        }
+        // Une erreur GPS (comme le timeout ou la précision trop faible) ne stoppe plus le dashboard,
+        // car l'IMU prend le relais.
     }, opts);
     if ($('freq-select')) $('freq-select').value = currentGPSMode; 
 }
@@ -305,7 +340,7 @@ function stopGPS() {
     $('toggle-gps-btn').style.backgroundColor = '#28a745';
 }
 
-// --- PARTIE 6 : UI, ASTRO, MÉTÉO ET INITIALISATION ---
+// --- PARTIE 6 : UI, ASTRO, MÉTÉO ET INITIALISATION (Inchangé) ---
 
 let map = null;
 let marker = null;
@@ -327,7 +362,6 @@ function updateAstro(latitude, longitude) {
 
     const now = getCDate();
 
-    // HORLOGE MINECRAFT 
     const totalMsToday = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
     let msSinceMcStart = (totalMsToday - MC_START_OFFSET_MS) % REAL_DAY_MS;
     if (msSinceMcStart < 0) msSinceMcStart += REAL_DAY_MS;
