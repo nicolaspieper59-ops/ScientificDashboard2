@@ -1,6 +1,5 @@
 // =================================================================
-// FICHIER FINAL ET COMPLET : gnss-dashboard-full.js (V10.1 - STABLE)
-// Correction : Gestion des permissions IMU et mise à jour DOM ('mc-time').
+// BLOC 1/2 : CŒUR DU SYSTÈME (EKF, VARIABLES D'ÉTAT, CAPTEURS)
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -294,6 +293,9 @@ function updateDisp(pos) {
     $('kinetic-energy').textContent = `${(0.5 * mass * sSpdFE_3D * sSpdFE_3D).toFixed(2)} J`; 
     $('mechanical-power').textContent = `${(mass * accel_long * sSpdHorizFE).toFixed(2)} W`; 
 }
+// =================================================================
+// BLOC 2/2 : FONCTIONS SECONDAIRES (ASTRO/MÉTÉO/CARTE) & INITIALISATION
+// =================================================================
 
 // --- FONCTIONS SECONDAIRES (Astro, Météo, Carte, Horloge) ---
 
@@ -330,7 +332,6 @@ function updateAstro(latitude, longitude) {
 
     const mcTimeStr = `${mcHoursDisplay.toString().padStart(2, '0')}:${mcMinutesDisplay.toString().padStart(2, '0')}:${mcSecondsDisplay.toString().padStart(2, '0')}`;
     
-    // Correction: Assurer que 'mc-time' est mis à jour
     if ($('mc-time')) $('mc-time').textContent = mcTimeStr;
 
     let clockRotation = (mcTimeMs / MC_DAY_MS) * 360; 
@@ -359,8 +360,6 @@ function updateAstro(latitude, longitude) {
         $('tst').textContent = `N/A (SunCalc)`;
     }
 }
-
-// ... (fonctions getWeather, initMap, updateMap, syncH inchangées)
 
 function getWeather() {
     if (lat === 0 || lon === 0) return;
@@ -412,7 +411,7 @@ function syncH() {
         });
 }
 
-// --- GESTION DES CAPTEURS ET INITIALISATION (CORRECTION 3D INTÉGRÉE) ---
+// --- GESTION DES CAPTEURS IMU (Partie 5) ---
 
 function handleDeviceOrientation(event) {
     if (emergencyStopActive) return;
@@ -519,34 +518,17 @@ function requestIMUPermissionAndStart() {
             })
             .catch(err => {
                 console.error("Erreur d'autorisation DeviceMotion/Orientation:", err);
-                continueGPSStart(); // Tente de démarrer le GPS même si l'IMU échoue
+                continueGPSStart(); 
             });
     } else {
         // Logique pour les navigateurs plus anciens ou Android/Chrome où la permission est implicite
         if (window.DeviceMotionEvent) {
-             window.addEventListener('devicemotion', hand
-                                     if (window.DeviceOrientationEvent) { 
+             window.addEventListener('devicemotion', handleDeviceMotion, true);
+        }
+        if (window.DeviceOrientationEvent) { 
              window.addEventListener('deviceorientation', handleDeviceOrientation, true);
         }
         continueGPSStart();
-            function requestIMUPermissionAndStart() {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // Logique de permission pour iOS 13+ et certains navigateurs Android
-        DeviceOrientationEvent.requestPermission()
-            .then(permissionState => {
-                if (permissionState === 'granted') {
-                    window.addEventListener('devicemotion', handleDeviceMotion, true);
-                    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
-                } else {
-                    console.warn("Permission DeviceOrientation/Motion refusée. Les données IMU ne seront pas utilisées.");
-                }
-                continueGPSStart(); 
-            })
-            .catch(err => {
-                console.error("Erreur d'autorisation DeviceMotion/Orientation:", err);
-                continueGPSStart(); // Tente de démarrer le GPS même si l'IMU échoue
-    
-                                     
     }
 }
 
@@ -573,6 +555,8 @@ function stopGPS() {
     }
 }
 
+// --- PARTIE 6 : INITIALISATION DU DOM (EventListener) ---
+
 document.addEventListener('DOMContentLoaded', () => {
     loadPrecisionRecords();
     initMap();
@@ -587,7 +571,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if ($('time-moving')) $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
         }
         
-        // Mise à jour Astro seulement si la position initiale a été fixée
         if (lat !== 0 && lon !== 0 && typeof SunCalc !== 'undefined') updateAstro(lat, lon); 
     }, 1000); 
     
