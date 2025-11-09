@@ -20,11 +20,11 @@ const MC_START_OFFSET_MS = 6 * 3600 * 1000;
 // Constantes GPS et EKF
 const KMH_MS = 3.6; 
 const MIN_DT = 0.05; 
-const Q_NOISE_MIN = 0.0001; // Bruit minimal pour le modèle IMU (Haute confiance)
+const Q_NOISE_MIN_BASE = 0.0001; // Bruit minimal de base
 const Q_NOISE_MAX = 0.0005; // Bruit maximal (Faible confiance)
-let Q_NOISE = Q_NOISE_MIN; // Variable dynamique
+let Q_NOISE = Q_NOISE_MAX; // Initialisation
 const MIN_SPD = 0.001; 
-const MIN_UNCERT_FLOOR = Q_NOISE_MIN * MIN_DT; 
+const MIN_UNCERT_FLOOR = Q_NOISE_MIN_BASE * MIN_DT; 
 const ALT_TH = -50; 
 const R_E = 6371000; 
 const G_CONST = 6.67430e-11; 
@@ -32,8 +32,8 @@ const M_EARTH = 5.972e24;
 
 const MAX_GPS_ACCURACY_FOR_USE = 50.0; 
 const KUNCERT_MAX = 0.05; // Seuil d'incertitude élevé pour l'amortissement
-const KUNCERT_FACTOR_MIN = 0.75; // Amortissement minimal appliqué à la vitesse EKF
-const SMOOTHING_TIME_CONSTANT = 0.2; // Constante de temps pour le filtre passe-bas (0.2s)
+const KUNCERT_FACTOR_MIN = 0.85; // Amortissement minimal appliqué (Réactivité EKF)
+const SMOOTHING_TIME_CONSTANT = 0.1; // Constante de temps pour le filtre passe-bas (Réactivité d'affichage)
 
 // Endpoints
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
@@ -46,7 +46,7 @@ let lastTS = 0, lastFSpeed = 0, distM = 0;
 let lastPos = null, lastAlt = 0; 
 let sTime = null, timeMoving = 0, maxSpd = 0; 
 let maxGForce = 0;
-let maxGForceLat = 0; // G-Force Latérale Max
+let maxGForceLat = 0;
 let wID = null, domID = null, weatherID = null;
 
 let currentGPSMode = 'HIGH_FREQ'; 
@@ -99,6 +99,21 @@ function getKalmanRFactor() {
         default: return 1.0; 
     }
 }
+
+/**
+ * Retourne un facteur de modification pour le Bruit du Modèle EKF (Q) basé sur l'environnement.
+ */
+function getKalmanQNoiseFactor() {
+    const env = $('environment-select').value;
+    switch (env) {
+        case 'OPEN': return 0.7; // Moins de bruit IMU supposé
+        case 'FOREST': return 1.0; 
+        case 'CONCRETE': return 1.2; 
+        case 'METAL': return 1.5; 
+        default: return 1.0; 
+    }
+}
+
 
 function loadPrecisionRecords() {
     try {
@@ -166,7 +181,12 @@ function updateDisp(pos) {
     
     // --- GESTION DYNAMIQUE Q_NOISE ET NETHER ---
     const accuracyPenaltyFactor = Math.min(1.0, pos.coords.accuracy / MAX_GPS_ACCURACY_FOR_USE);
-    Q_NOISE = Q_NOISE_MIN + (Q_NOISE_MAX - Q_NOISE_MIN) * accuracyPenaltyFactor;
+    const envQFactor = getKalmanQNoiseFactor();
+    
+    // Q_NOISE adapte le bruit du modèle : il est faible de base, augmenté si l'IMU est bruité (envQFactor)
+    // et augmenté si la précision GPS est mauvaise (accuracyPenaltyFactor).
+    Q_NOISE = Q_NOISE_MIN_BASE * envQFactor + (Q_NOISE_MAX - Q_NOISE_MIN_BASE) * accuracyPenaltyFactor;
+    Q_NOISE = Math.min(Q_NOISE_MAX, Q_NOISE); 
     
     let currentSpeedSound = SPEED_SOUND;
     let currentSpeedLight = C_L;
@@ -214,10 +234,10 @@ function updateDisp(pos) {
     }
     sSpdHorizFE *= uncertFactor; 
     
+    // Calcul d'accélération
     const accel_ekf = (dt > MIN_DT) ? (sSpdHorizFE - lastFSpeed) / dt : 0;
     const accel_long = accel_ekf; 
     
-    // lastFSpeed suit la vitesse EKF non lissée pour une mesure d'accélération réactive.
     lastFSpeed = sSpdHorizFE; 
 
     const currentGForceLong = Math.abs(accel_long / g_dynamic); 
@@ -227,10 +247,9 @@ function updateDisp(pos) {
     
     const env = $('environment-select').value;
     const trustIMUHeading = (env === 'OPEN' || env === 'FOREST');
-    let headingSource = 'N/A'; // Source du Cap
+    let headingSource = 'N/A'; 
 
     if (gpsPositionValid) {
-        // 1. CORRECTION DE DÉRIVE GPS
         if (pos.coords.heading !== null && pos.coords.heading >= 0) {
              lastHeading = pos.coords.heading; 
              headingSource = 'GPS';
@@ -245,7 +264,6 @@ function updateDisp(pos) {
     // 2. Dead Reckoning
     if (!gpsPositionValid && sSpdHorizFE > MIN_SPD && lastPos && dt > 0) {
         
-        // Cap IMU conditionnel
         if (imuHeading !== 0 && trustIMUHeading) {
             lastHeading = imuHeading; 
             headingSource = 'IMU (DR)';
@@ -271,12 +289,12 @@ function updateDisp(pos) {
     // --- CALCUL VITESSE 3D STABLE ---
     const sSpdFE_3D = Math.sqrt(sSpdHorizFE * sSpdHorizFE + verticalSpeedRaw * verticalSpeedRaw);
     
-    // LISSAGE TEMPOREL (< 1s) : Assure que la vitesse affichée est fluide et basée sur EKF
+    // LISSAGE TEMPOREL (pour l'affichage)
     const alpha = dt / (SMOOTHING_TIME_CONSTANT + dt);
     smoothedSpeed = (alpha * sSpdFE_3D) + ((1 - alpha) * smoothedSpeed);
     const finalDisplaySpeed = smoothedSpeed;
 
-    // Calcul de la distance 3D totale (utilise la vitesse EKF non lissée pour la précision)
+    // Calcul de la distance 3D totale
     if (lastPos && sSpdFE_3D > MIN_SPD) { 
         const d_3d = sSpdFE_3D * dt; 
         distM += d_3d; 
@@ -330,7 +348,8 @@ function updateDisp(pos) {
     
     savePrecisionRecords();
     if (lat !== 0 && lon !== 0) updateMap(lat, lon); 
-    }
+}
+// Note: Le BLOC 2/2 reste inchangé, car seule la fonction getKalmanQNoiseFactor a été ajoutée au BLOC 1.
 // =================================================================
 // BLOC 2/2 : FONCTIONS SECONDAIRES (ASTRO/MÉTÉO/CARTE) & INITIALISATION
 // =================================================================
@@ -670,4 +689,14 @@ document.addEventListener('DOMContentLoaded', () => {
             startGPS();
         }
     });
+
+    const envSelect = $('environment-select');
+    if (envSelect) envSelect.addEventListener('change', () => {
+        // Le changement d'environnement impacte Q et R et sera pris en compte
+        // lors du prochain cycle updateDisp via getKalmanRFactor et getKalmanQNoiseFactor.
+        console.log(`Environnement changé à: ${envSelect.value}`);
+    });
+    
+    // Démarrage initial
+    startGPS();
 });
