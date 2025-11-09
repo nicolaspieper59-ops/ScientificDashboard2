@@ -460,7 +460,6 @@ let map = null;
 let marker = null;
 
 // --- FONCTIONS SECONDAIRES (Astro, Météo, Carte, Horloge) ---
-        // --- FONCTIONS SECONDAIRES (Astro, Météo, Carte, Horloge) ---
 
 function getEOT(date) { 
     // Équation du Temps (Approximation)
@@ -536,4 +535,4 @@ function updateAstro(latitude, longitude) {
         $('tst').textContent = `N/A (SunCalc)`;
         // Vous pourriez également vouloir mettre à jour les éléments DOM des phases de la Lune ici si SunCalc n'est pas dispo
     }
-}
+            }
