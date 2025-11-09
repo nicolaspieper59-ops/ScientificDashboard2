@@ -476,3 +476,236 @@ function handleDeviceMotion(event) {
 }
 
 // ... (Le reste du Bloc 2/2 est inchangé : handleDeviceMotion, initMap, DOMContentLoaded, etc.)
+// =================================================================
+// BLOC 2/2 : SUITE DES FONCTIONS SECONDAIRES & INITIALISATION
+// (Le code IMU, y compris handleDeviceMotion, se trouve juste avant cette partie)
+// =================================================================
+
+// --- FONCTIONS SECONDAIRES (Astro, Météo, Carte, Horloge) ---
+
+// Équation du temps (Approximation pour la correction solaire)
+function getEOT(date) {
+    const dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+    const B = (2 * Math.PI / 365) * (dayOfYear - 81);
+    return 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B); // en minutes
+}
+
+function updateAstro() {
+    // Calcul de l'heure solaire locale
+    if (lat !== 0 && lon !== 0) {
+        const now = getCDate();
+        const eotMinutes = getEOT(now);
+        const timeZoneOffset = now.getTimezoneOffset(); // Décalage local en minutes
+        
+        // Correction de la longitude pour obtenir l'heure solaire
+        const solarTimeMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60 + eotMinutes + (lon * 4) + timeZoneOffset;
+        
+        const hours = Math.floor((solarTimeMinutes / 60) % 24);
+        const minutes = Math.floor(solarTimeMinutes % 60);
+
+        $('solar-time').textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+}
+
+function getWeather() {
+    if (lat === 0 || lon === 0) return;
+
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OWM_API_KEY}&units=metric&lang=fr`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.main) {
+                $('temp-air').textContent = `${data.main.temp.toFixed(1)} °C`;
+                $('pressure-baro').textContent = `${data.main.pressure} hPa`;
+                $('humidity-air').textContent = `${data.main.humidity} %`;
+            }
+            if (data.wind) {
+                $('wind-speed').textContent = `${(data.wind.speed * KMH_MS).toFixed(1)} km/h`;
+                $('wind-dir').textContent = `${data.wind.deg}°`;
+            }
+            if (data.weather && data.weather.length > 0) {
+                $('weather-status').textContent = data.weather[0].description;
+            }
+        })
+        .catch(error => {
+            console.error("Erreur de récupération météo:", error);
+            $('weather-status').textContent = 'Météo indisponible';
+        });
+}
+
+// Fonction de synchronisation de l'heure serveur (pour la précision temporelle)
+function syncH() {
+    fetch(SERVER_TIME_ENDPOINT)
+        .then(response => response.json())
+        .then(data => {
+            const serverTime = new Date(data.utc_datetime);
+            const localTime = new Date();
+            serverOffset = serverTime.getTime() - localTime.getTime();
+            $('clock-utc').textContent = serverTime.toUTCString().slice(17, 25);
+            console.log(`Synchronisation horaire effectuée. Décalage: ${serverOffset} ms`);
+        })
+        .catch(error => {
+            console.error("Erreur de synchronisation horaire:", error);
+            $('clock-utc').textContent = 'UTC: N/A';
+        });
+}
+
+// --- GESTION GPS & IMU (Initialisation et Boucles) ---
+
+function startGPS() {
+    if (wID) return;
+
+    const options = {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+    };
+
+    wID = navigator.geolocation.watchPosition(updateDisp, (error) => {
+        console.error('Erreur GPS:', error);
+        $('gps-precision').textContent = `Erreur: ${error.code}`;
+    }, options);
+    
+    // Démarrage des boucles de mise à jour DOM et Météo/Astro
+    domID = setInterval(updateAstro, 5000); 
+    weatherID = setInterval(getWeather, 300000); // Mise à jour météo toutes les 5 minutes
+    
+    // Tentative de synchronisation horaire au démarrage
+    syncH(); 
+    
+    // Tentative de démarrage des capteurs IMU (si non démarré par permission)
+    if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+    }
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', handleDeviceMotion, true);
+    }
+}
+
+function stopGPS() {
+    if (wID) {
+        navigator.geolocation.clearWatch(wID);
+        wID = null;
+    }
+    if (domID) clearInterval(domID);
+    if (weatherID) clearInterval(weatherID);
+    
+    // Arrêt des écouteurs IMU
+    if (window.DeviceOrientationEvent) {
+        window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
+    }
+    if (window.DeviceMotionEvent) {
+        window.removeEventListener('devicemotion', handleDeviceMotion, true);
+    }
+
+    emergencyStopActive = true;
+    $('emergency-stop').textContent = 'RESTART';
+    $('emergency-stop').classList.add('error');
+}
+
+function requestIMUPermissionAndStart() {
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+            .then(response => {
+                if (response === 'granted') {
+                    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+                    window.addEventListener('devicemotion', handleDeviceMotion, true);
+                    continueGPSStart();
+                } else {
+                    alert("Permission IMU refusée. Le dashboard fonctionnera sans accélération ni cap.");
+                    continueGPSStart();
+                }
+            })
+            .catch(error => {
+                console.error("Erreur de permission IMU:", error);
+                continueGPSStart();
+            });
+    } else {
+        // Navigateurs ne nécessitant pas de demande explicite (ex: Android)
+        continueGPSStart();
+    }
+}
+
+function continueGPSStart() {
+    // Tentative de démarrer le GPS après la permission IMU (ou si non nécessaire)
+    startGPS();
+}
+
+// --- GESTION ÉVÉNEMENTS & DOM (Carte) ---
+
+let map;
+let marker;
+
+function initMap() {
+    // Initialise Google Maps (remplacer par votre implémentation si nécessaire)
+    const mapElement = document.getElementById('map');
+    if (!mapElement) return;
+    
+    map = new google.maps.Map(mapElement, {
+        center: { lat: 0, lng: 0 },
+        zoom: 2,
+        mapTypeId: 'satellite'
+    });
+    
+    marker = new google.maps.Marker({
+        position: { lat: 0, lng: 0 },
+        map: map,
+        title: 'Position Actuelle'
+    });
+}
+
+function updateMap(lat, lon) {
+    if (!map || !marker) return;
+    
+    const newLatLng = new google.maps.LatLng(lat, lon);
+    marker.setPosition(newLatLng);
+    map.setCenter(newLatLng);
+    
+    // Ajustement dynamique du zoom en fonction de la vitesse (simple approximation)
+    const currentSpeedKmH = kSpd * KMH_MS;
+    let newZoom = 15;
+    if (currentSpeedKmH > 100) newZoom = 13;
+    else if (currentSpeedKmH > 300) newZoom = 10;
+    
+    map.setZoom(newZoom);
+}
+
+// --- POINT D'ENTRÉE ---
+
+document.addEventListener('DOMContentLoaded', (event) => {
+    // Boutons de contrôle
+    $('start-gnss').addEventListener('click', requestIMUPermissionAndStart);
+    $('emergency-stop').addEventListener('click', () => {
+        if (emergencyStopActive) {
+            emergencyStopActive = false;
+            $('emergency-stop').textContent = 'STOP';
+            $('emergency-stop').classList.remove('error');
+            requestIMUPermissionAndStart(); // Redémarrer l'ensemble
+        } else {
+            stopGPS();
+        }
+    });
+    
+    // Toggle Nether Mode
+    $('nether-mode-toggle').addEventListener('change', (e) => {
+        netherMode = e.target.checked;
+        $('mode-display').textContent = netherMode ? 'NETHER' : 'OVERWORLD';
+    });
+
+    // Reset Max Speed/G-Force
+    $('reset-metrics').addEventListener('click', () => {
+        maxSpd = 0;
+        maxGForce = 0;
+        maxGForceLat = 0;
+        distM = 0;
+        timeMoving = 0;
+        savePrecisionRecords();
+    });
+
+    // Chargement des records locaux
+    loadPrecisionRecords();
+
+    // Initialisation de la carte après le chargement du DOM
+    initMap(); 
+});
