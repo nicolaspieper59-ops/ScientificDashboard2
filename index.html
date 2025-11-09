@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS/IMU Dashboard (Projet EKF)</title>
+    <title>GNSS/IMU Dashboard (EKF Ultimate)</title>
+    
     <style>
         body {
             font-family: 'Consolas', monospace;
@@ -58,7 +59,7 @@
             border: 3px solid #ff00ff;
             box-shadow: 0 0 30px #ff00ff;
         }
-        button, select {
+        button, select, input[type="number"] {
             padding: 8px 12px;
             background-color: #00ff00;
             color: #0d0d0d;
@@ -68,6 +69,7 @@
             font-weight: bold;
             width: 100%;
             margin-top: 5px;
+            box-sizing: border-box;
         }
         button:hover {
             background-color: #33ff33;
@@ -83,12 +85,17 @@
             margin-top: 15px;
             border: 1px solid #00ff00;
         }
+        label {
+            display: block;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
     </style>
     </head>
 <body>
 
     <div class="container">
-        <h1>GNSS/IMU Dead Reckoning Dashboard</h1>
+        <h1>GNSS/IMU Dead Reckoning Dashboard - EKF ULTIME</h1>
         
         <div class="speed-display">
             VITESSE ACTUELLE: <span id="speed-stable">0.0000 km/h (3D)</span>
@@ -105,38 +112,37 @@
                 <p>Lon: <span id="longitude">N/A</span></p>
                 <p>Alt (GPS): <span id="altitude-gps">N/A</span></p>
                 <p>Précision: <span id="gps-precision">N/A</span></p>
-                <p>Distance: <span id="distance-total-km">0.000 km</span></p>
+                <p>Distance Totale: <span id="distance-total-km">0.000 km</span></p>
                 <p>Tps Mouvement: <span id="time-moving">0.00 s</span></p>
             </div>
 
             <div class="stat-box">
                 <h2>⚡ IMU / Accélération</h2>
                 <p>Accel (long): <span id="accel-long">0.000 m/s ²</span></p>
-                <p>Force G (long): <span id="force-g-long">0.00 G</span></p>
-                <p>Force G (lat): <span id="force-g-lat">0.00 G</span></p>
-                <p>Accel Brute (IMU): <span id="accel-imu-raw">0.000 m/s²</span></p>
-                <p>Accel Filtrée: <span id="accel-linear-corrected">0.000 m/s² (Filtré)</span></p>
+                <p>Force G (Max): <span id="force-g-max">0.00 G</span></p>
+                <p>Accel Filtrée (EKF): <span id="accel-linear-corrected">0.000 m/s²</span></p>
                 <p>Vitesse Vert: <span id="vertical-speed">0.00 m/s</span></p>
+                <p>Pitch/Roll: <span id="pitch-angle">0.0 °</span> / <span id="roll-angle">0.0 °</span></p>
             </div>
             
             <div class="stat-box">
                 <h2>🔭 EKF / Navigation</h2>
                 <p>Incertitude (P): <span id="kalman-uncert">0.00000 m²</span></p>
-                <p>Bruit Q: <span id="kalman-r-dyn">DR Mode (IMU)</span></p>
-                <p>Cap (Hdg): <span id="current-heading">0.0 °</span></p>
-                <p>Pitch/Roll: <span id="pitch-angle">0.0 °</span> / <span id="roll-angle">0.0 °</span></p>
+                <p>Bruit Q (IMU): <span id="kalman-q-dyn">0.0000</span></p>
                 <p>Mode : <span id="mode-display">OVERWORLD</span> | Souterrain: <span id="underground-status">Non</span></p>
                 <p>Gravité Loc: <span id="gravity-calculated">X:0.00, Y:0.00, Z:0.00</span></p>
+                <p>Heure Solaire: <span id="solar-time">N/A</span></p>
+                <p>UTC: <span id="clock-utc">N/A</span></p>
             </div>
             
             <div class="stat-box">
                 <h2>🚀 Physique & Records</h2>
-                <p>Énergie Cinétique: <span id="kinetic-energy">0.00 J</span> (Masse: <input type="number" id="mass-input" value="70" style="width: 50px;"> kg)</p>
+                <label for="mass-input">Masse Totale (kg):</label>
+                <input type="number" id="mass-input" value="70" style="width: 100%; margin-top: 0;">
+                <p>Énergie Cinétique: <span id="kinetic-energy">0.00 J</span></p>
                 <p>Puissance Méc.: <span id="mechanical-power">0.00 W</span></p>
                 <p>% Vitesse Son: <span id="perc-speed-sound">0.00%</span></p>
                 <p>% Vitesse C: <span id="perc-speed-c">0.00e+00%</span></p>
-                <p>Heure Solaire: <span id="solar-time">N/A</span></p>
-                <p>UTC: <span id="clock-utc">N/A</span></p>
             </div>
             
             <div class="stat-box">
@@ -159,9 +165,10 @@
                 <button id="start-gnss">DÉMARRER GNSS/IMU</button>
                 <button id="emergency-stop">STOP</button>
                 <button id="reset-metrics">RESET Métriques</button>
-                <label for="nether-mode-toggle" style="display: block; margin-top: 10px;">
+                <label for="nether-mode-toggle" style="margin-top: 15px;">
                     <input type="checkbox" id="nether-mode-toggle"> Mode Nether (1/8)
                 </label>
+                <button id="sync-time" style="margin-top: 15px;">SYNC Heure (NTP)</button>
             </div>
         </div>
 
@@ -170,10 +177,12 @@
     </div>
 
     <script>
-        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.min.js"></script>
     <script src="gnss-dashboard-full.js"></script>
+        
+        // ... Code du BLOC 2/2 ...
     </script>
 
 </body>
-                                  </html>
+    </html>
