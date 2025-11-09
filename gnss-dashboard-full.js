@@ -513,7 +513,6 @@ function initMap() {
     }).addTo(map);
     marker = L.marker([0, 0]).addTo(map).bindPopup("Position Actuelle");
 }
-                     // ... (Suite de la fonction updateMap)
 function updateMap(latitude, longitude) {
     if (map) {
         map.setView([latitude, longitude], map.getZoom() < 12 ? 12 : map.getZoom());
@@ -540,25 +539,17 @@ document.addEventListener('DOMContentLoaded', () => {
     initMap();
     syncH(); 
     
-    // Boucle de mise à jour DOM/Temps
+    // Boucle de mise à jour DOM/Temps (toutes les secondes)
     domID = setInterval(() => {
         const now = getCDate();
         if (now) {
             $('local-time').textContent = now.toLocaleTimeString();
-            // L'élément 'date-display' n'existe pas dans le HTML fourni.
             // $('date-display').textContent = now.toLocaleDateString();
             $('time-elapsed').textContent = sTime ? ((now.getTime() - sTime.getTime()) / 1000).toFixed(2) + ' s' : '0.00 s';
             $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
-            
-            // Mise à jour des distances cosmiques
-            const distLightSeconds = distM / C_L;
-            $('distance-light-s').textContent = `${toReadableScientific(distLightSeconds)} s lumière`;
-            const distAU = distM / 149597870700;
-            const distLightYears = distM / 9.461e15;
-            $('distance-cosmic').textContent = `${toReadableScientific(distAU)} UA | ${toReadableScientific(distLightYears)} al`;
         }
         
-        // La fonction updateAstro dépend de SunCalc, qui doit être chargé via <script>
+        // SunCalc doit être chargé pour cette fonction
         if (lat !== 0 && lon !== 0 && typeof SunCalc !== 'undefined') updateAstro(lat, lon); 
     }, 1000); 
     
@@ -584,7 +575,6 @@ document.addEventListener('DOMContentLoaded', () => {
     $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; });
     $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; maxGForce = 0; savePrecisionRecords(); });
     
-    // Assuming a dark mode toggle button exists
     const toggleModeBtn = $('toggle-mode-btn');
     if (toggleModeBtn) {
         toggleModeBtn.addEventListener('click', () => {
