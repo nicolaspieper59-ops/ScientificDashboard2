@@ -22,7 +22,7 @@ const KMH_MS = 3.6;
 const MIN_DT = 0.05; 
 const Q_NOISE_MIN_BASE = 0.0001; // Bruit minimal de base
 const Q_NOISE_MAX = 0.0005; // Bruit maximal (Faible confiance)
-let Q_NOISE = Q_NOISE_MAX; // Initialisation
+let Q_NOISE = Q_NOISE_MAX; 
 const MIN_SPD = 0.001; 
 const MIN_UNCERT_FLOOR = Q_NOISE_MIN_BASE * MIN_DT; 
 const ALT_TH = -50; 
@@ -31,9 +31,9 @@ const G_CONST = 6.67430e-11;
 const M_EARTH = 5.972e24; 
 
 const MAX_GPS_ACCURACY_FOR_USE = 50.0; 
-const KUNCERT_MAX = 0.05; // Seuil d'incertitude élevé pour l'amortissement
+const KUNCERT_MAX = 0.05; 
 const KUNCERT_FACTOR_MIN = 0.85; // Amortissement minimal appliqué (Réactivité EKF)
-const SMOOTHING_TIME_CONSTANT = 0.1; // Constante de temps pour le filtre passe-bas (Réactivité d'affichage)
+const SMOOTHING_TIME_CONSTANT = 0.1; // Lissage réduit (Réactivité d'affichage)
 
 // Endpoints
 const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
@@ -88,17 +88,29 @@ function calculateLocalGravity(altitude) {
 }
 
 /**
- * Retourne le facteur de pénalité de la covariance de mesure R basé sur l'environnement.
+ * Retourne le facteur de pénalité de la covariance de mesure R basé sur l'environnement ET la fréquence GPS.
  */
 function getKalmanRFactor() {
     const env = $('environment-select').value;
+    let rFactor = 1.0;
+
+    // Pénalité basée sur l'environnement
     switch (env) {
-        case 'FOREST': return 1.5; 
-        case 'METAL': return 3.0; 
-        case 'CONCRETE': return 2.0; 
-        default: return 1.0; 
+        case 'FOREST': rFactor = 1.5; break; 
+        case 'METAL': rFactor = 3.0; break; 
+        case 'CONCRETE': rFactor = 2.0; break; 
+        default: rFactor = 1.0; 
     }
+
+    // AJUSTEMENT CRITIQUE POUR LA HAUTE FRÉQUENCE
+    if (currentGPSMode === 'HIGH_FREQ') {
+        // Augmente R, disant à l'EKF : "Fais moins confiance à cette mesure GPS rapide, elle est probablement bruité."
+        rFactor *= 1.2; 
+    }
+    
+    return rFactor;
 }
+
 
 /**
  * Retourne un facteur de modification pour le Bruit du Modèle EKF (Q) basé sur l'environnement.
@@ -183,8 +195,7 @@ function updateDisp(pos) {
     const accuracyPenaltyFactor = Math.min(1.0, pos.coords.accuracy / MAX_GPS_ACCURACY_FOR_USE);
     const envQFactor = getKalmanQNoiseFactor();
     
-    // Q_NOISE adapte le bruit du modèle : il est faible de base, augmenté si l'IMU est bruité (envQFactor)
-    // et augmenté si la précision GPS est mauvaise (accuracyPenaltyFactor).
+    // Q_NOISE adapte le bruit du modèle
     Q_NOISE = Q_NOISE_MIN_BASE * envQFactor + (Q_NOISE_MAX - Q_NOISE_MIN_BASE) * accuracyPenaltyFactor;
     Q_NOISE = Math.min(Q_NOISE_MAX, Q_NOISE); 
     
@@ -199,7 +210,7 @@ function updateDisp(pos) {
 
     // --- Détermination de la validité de la position GPS ---
     let gpsPositionValid = false;
-    const rFactor = getKalmanRFactor(); 
+    const rFactor = getKalmanRFactor(); // Utilisation du R-Factor ajusté selon la fréquence
     
     if (acc < MAX_GPS_ACCURACY_FOR_USE * rFactor && lat !== 0 && lon !== 0) {
         gpsPositionValid = true;
@@ -335,20 +346,18 @@ function updateDisp(pos) {
     // Vitesse Cosmique
     $('perc-speed-c').textContent = `${(finalDisplaySpeed / currentSpeedLight * 100).toExponential(2)}%`;
     $('perc-speed-sound').textContent = `${(finalDisplaySpeed / currentSpeedSound * 100).toFixed(2)}%`;
-    const distLightSeconds = distM / C_L;
-    $('distance-light-s').textContent = `${toReadableScientific(distLightSeconds)} s lumière`;
-    const distAU = distM / 149597870700;
-    const distLightYears = distM / 9.461e15;
-    $('distance-cosmic').textContent = `${toReadableScientific(distAU)} UA | ${toReadableScientific(distLightYears)} al`;
     
-    // Énergie & Puissance
+    // Énergie & Puissance (CORRIGÉ : Assure que les variables sont utilisées)
     const mass = parseFloat($('mass-input').value) || 70;
-    $('kinetic-energy').textContent = `${(0.5 * mass * finalDisplaySpeed * finalDisplaySpeed).toFixed(2)} J`; 
-    $('mechanical-power').textContent = `${(mass * accel_long * finalDisplaySpeed).toFixed(2)} W`; 
+    const kineticEnergy = 0.5 * mass * finalDisplaySpeed * finalDisplaySpeed;
+    const mechanicalPower = mass * accel_long * finalDisplaySpeed;
+
+    $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`; 
+    $('mechanical-power').textContent = `${mechanicalPower.toFixed(2)} W`; 
     
     savePrecisionRecords();
     if (lat !== 0 && lon !== 0) updateMap(lat, lon); 
-}
+    }
 // Note: Le BLOC 2/2 reste inchangé, car seule la fonction getKalmanQNoiseFactor a été ajoutée au BLOC 1.
 // =================================================================
 // BLOC 2/2 : FONCTIONS SECONDAIRES (ASTRO/MÉTÉO/CARTE) & INITIALISATION
