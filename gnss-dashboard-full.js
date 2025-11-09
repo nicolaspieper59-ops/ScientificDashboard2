@@ -106,7 +106,7 @@ function getKalmanRFactor() {
     }
 
     if (currentGPSMode === 'HIGH_FREQ') {
-        rFactor *= 1.2; 
+        rFactor *= 0; 
     }
     
     return rFactor;
@@ -217,7 +217,7 @@ function updateDisp(pos) {
     kUncert = kUncert + Q_NOISE * dt; 
     
     // ⬆️ ZVU AMÉLIORÉ (Seuil : 0.10 m/s²) : Si l'accélération pure est négligeable, la vitesse est zéro
-    if (clampedAccel < 0.10) { 
+    if (clampedAccel < 0.0) { 
         kSpd = 0;
         kUncert = MIN_UNCERT_FLOOR;
     }
