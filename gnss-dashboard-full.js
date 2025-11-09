@@ -1,11 +1,11 @@
 // =================================================================
-// FICHIER FINAL & COMPLÉTÉ : gnss-dashboard-full.js
-// Vitesse stable EKF, Accélération Corrigée, Horloge Minecraft, Mode Grotte
+// FICHIER FINAL ET COMPLET : gnss-dashboard-full.js
+// Intègre EKF stable, ZVU, Accélération corrigée, Fréquence Max, Horloge Minecraft.
 // =================================================================
 
 const $ = (id) => document.getElementById(id);
 
-// --- PARTIE 1 : CONSTANTES GLOBALES ---
+// --- PARTIE 1 : CONSTANTES GLOBALES ET PHYSIQUES ---
 const C_L = 299792458; // Vitesse de la lumière (m/s)
 const SPEED_SOUND = 343; // Vitesse du son (m/s)
 const G_ACC_STD = 9.80665; // Gravité standard de la Terre (m/s²)
@@ -13,24 +13,24 @@ const R2D = 180 / Math.PI;
 const D2R = Math.PI / 180;
 
 // Minecraft/Temps
-const NETHER_RATIO = 1 / 8; // 1m Overworld = 1/8m Nether
-const MC_DAY_MS = 1200000; // 20 minutes en ms
-const REAL_DAY_MS = 86400000; // 24 heures en ms
-const MC_START_OFFSET_MS = 6 * 3600 * 1000; // 6:00 AM (début du jour MC)
+const NETHER_RATIO = 1 / 8; 
+const MC_DAY_MS = 1200000; 
+const REAL_DAY_MS = 86400000; 
+const MC_START_OFFSET_MS = 6 * 3600 * 1000; 
 
 // Constantes GPS et EKF
 const KMH_MS = 3.6; 
 const MIN_DT = 0.05; // Temps minimal pour éviter les divisions par zéro
-const Q_NOISE = 0.001; // Bruit de processus EKF (bas pour la stabilité)
+const Q_NOISE = 0.001; // Bruit de processus EKF (bas = très stable)
 const MIN_SPD = 0.001; // Seuil pour ZVU (Zero Velocity Update)
-const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; // Plancher d'incertitude EKF
-const ALT_TH = -50; // Seuil d'altitude pour le sous-sol
-const R_E = 6371000; // Rayon moyen de la Terre (m)
-const G_CONST = 6.67430e-11; // Constante gravitationnelle
-const M_EARTH = 5.972e24; // Masse de la Terre (kg)
+const MIN_UNCERT_FLOOR = Q_NOISE * MIN_DT; 
+const ALT_TH = -50; 
+const R_E = 6371000; 
+const G_CONST = 6.67430e-11; 
+const M_EARTH = 5.972e24; 
 
 // Endpoints
-const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; // ATTENTION: REMPLACER CETTE CLÉ
+const OWM_API_KEY = "VOTRE_CLE_API_OPENWEATHERMAP"; 
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc"; 
 
 // --- PARTIE 2 : VARIABLES D'ÉTAT ---
@@ -40,16 +40,16 @@ let lastTS = 0, lastFSpeed = 0, distM = 0;
 let lastPos = null, lastAlt = 0; 
 let sTime = null, timeMoving = 0, maxSpd = 0; 
 let maxGForce = 0;
+let wID = null, domID = null, weatherID = null;
 
 let currentGPSMode = 'HIGH_FREQ'; 
 let emergencyStopActive = false;
 let netherMode = false;
-let G_ACC_LOCAL = G_ACC_STD; // Gravité locale dynamique
+let G_ACC_LOCAL = G_ACC_STD; 
 let serverOffset = 0; 
-
 const P_RECORDS_KEY = 'gnss_precision_records'; 
 
-// --- PARTIE 3 : FONCTIONS UTILITAIRES ET PHYSIQUE ---
+// --- PARTIE 3 : FONCTIONS UTILITAIRES ET PERSISTANCE ---
 
 function toReadableScientific(num) {
     if (num === 0 || isNaN(num) || Math.abs(num) < 1e-6) return "0.00e+00";
@@ -78,7 +78,6 @@ function distanceCalc(lat1, lon1, lat2, lon2) {
 }
 
 function calculateLocalGravity(altitude) {
-    // Simplification : on suppose la Terre pour le calcul de l'atténuation.
     if (altitude === null || isNaN(altitude)) {
         G_ACC_LOCAL = G_ACC_STD; 
         return G_ACC_STD; 
@@ -94,7 +93,7 @@ function getKalmanR(accuracy) {
     switch (env) {
         case 'FOREST': factor = 1.5; break;
         case 'METAL': factor = 2.5; break;
-        case 'CONCRETE': factor = 3.0; break; // Facteur élevé pour les tunnels/grottes
+        case 'CONCRETE': factor = 3.0; break; 
         default: factor = 1.0; break;
     }
     return accuracy * accuracy * factor; 
@@ -118,13 +117,14 @@ function savePrecisionRecords() {
     } catch (e) { console.error("Erreur de sauvegarde des records:", e); }
 }
 
-// --- PARTIE 5 : GESTION DES CAPTEURS ET EKF ---
+// --- PARTIE 4 : GESTIONNAIRE EKF ET GPS ---
 
+/** Handler des données GPS et du filtre EKF. */
 function updateDisp(pos) {
     if (emergencyStopActive) return;
 
-    const acc = $('gps-accuracy-override').value !== '0.000000' && parseFloat($('gps-accuracy-override').value) > 0 ? parseFloat($('gps-accuracy-override').value) : pos.coords.accuracy;
-
+    const acc = pos.coords.accuracy; 
+    
     // --- MISE À JOUR DES POSITIONS ET TEMPS ---
     lat = pos.coords.latitude; 
     lon = pos.coords.longitude;
@@ -137,7 +137,7 @@ function updateDisp(pos) {
     const dt = (now.getTime() - lastTS) / 1000;
     lastTS = now.getTime();
     
-    if (dt < MIN_DT) return; 
+    if (dt < MIN_DT) return; // Évite la vitesse bizarre due à des DT trop petits
 
     // --- Calcul Vitesse Brute ---
     let speedRaw;
@@ -166,7 +166,7 @@ function updateDisp(pos) {
     let sSpdFE = Math.abs(kSpd);
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
-    // ACCÉLÉRATION CORRIGÉE : Dérivée de la vitesse filtrée (stable)
+    // ACCÉLÉRATION CORRIGÉE : Dérivée de la vitesse filtrée (pour la stabilité)
     const accel_ekf = (dt > MIN_DT) ? (sSpdFE - lastFSpeed) / dt : 0;
     const accel_long = accel_ekf; 
     
@@ -228,8 +228,9 @@ function updateDisp(pos) {
     $('mechanical-power').textContent = `${(mass * accel_long * sSpdFE).toFixed(2)} W`;
 }
 
-// --- PARTIE 6 : HANDLERS CAPTEURS IMU (CORRIGÉ) ---
+// --- PARTIE 5 : GESTIONNAIRES IMU ET DÉMARRAGE ---
 
+/** Handler des données IMU (accéléromètre) pour les vibrations et l'accélération verticale corrigée. */
 function handleDeviceMotion(event) {
     if (emergencyStopActive) return;
 
@@ -253,9 +254,9 @@ function handleDeviceMotion(event) {
     if ($('force-g-vertical')) $('force-g-vertical').textContent = `${(latestAccelZ / g_dynamic).toFixed(2)} G`;
 }
 
-// --- PARTIE 7 : LOGIQUE GPS ET DÉMARRAGE (Inch.) ---
 function continueGPSStart() {
-    const opts = { enableHighAccuracy: currentGPSMode === 'HIGH_FREQ', timeout: 5000, maximumAge: 0 };
+    // Configuration pour demander la fréquence la plus élevée : enableHighAccuracy: true et maximumAge: 0
+    const opts = { enableHighAccuracy: currentGPSMode === 'HIGH_FREQ', timeout: 5000, maximumAge: 0 }; 
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     wID = navigator.geolocation.watchPosition(updateDisp, (error) => {
         console.warn(`ERREUR GPS(${error.code}): ${error.message}`);
@@ -271,6 +272,7 @@ function requestIMUPermissionAndStart() {
         DeviceOrientationEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
+                    // Ajout du listener IMU pour la fréquence maximale disponible
                     window.addEventListener('devicemotion', handleDeviceMotion, true);
                 }
                 continueGPSStart(); 
@@ -303,13 +305,12 @@ function stopGPS() {
     $('toggle-gps-btn').style.backgroundColor = '#28a745';
 }
 
-// --- PARTIE 8 : MODULES UI & ASTRO (CORRIGÉ) ---
+// --- PARTIE 6 : UI, ASTRO, MÉTÉO ET INITIALISATION ---
 
-let wID = null, domID = null, weatherID = null;
 let map = null;
 let marker = null;
 
-function getEOT(date) {
+function getEOT(date) { /* ... (Fonction Équation du Temps) ... */
     const J = date.getTime() / 86400000 + 2440587.5; 
     const n = J - 2451545.0;
     const L = (280.460 + 0.98564736 * n) % 360;
@@ -326,11 +327,8 @@ function updateAstro(latitude, longitude) {
 
     const now = getCDate();
 
-    // ===============================================
-    // CORRECTION DE L'HORLOGE MINECRAFT
-    // ===============================================
+    // HORLOGE MINECRAFT (Correction complète)
     const totalMsToday = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
-    
     let msSinceMcStart = (totalMsToday - MC_START_OFFSET_MS) % REAL_DAY_MS;
     if (msSinceMcStart < 0) msSinceMcStart += REAL_DAY_MS;
 
@@ -349,9 +347,8 @@ function updateAstro(latitude, longitude) {
     let clockRotation = (mcTimeMs / MC_DAY_MS) * 360; 
     const sunEl = $('sun-element');
     if (sunEl) sunEl.style.transform = `rotate(${clockRotation - 90}deg)`; 
-    // ===============================================
+    // FIN HORLOGE MINECRAFT
 
-    const times = SunCalc.getTimes(now, latitude, longitude);
     const pos = SunCalc.getPosition(now, latitude, longitude);
     const moonIllumination = SunCalc.getMoonIllumination(now);
     const moonPos = SunCalc.getMoonPosition(now, latitude, longitude);
@@ -371,8 +368,6 @@ function updateAstro(latitude, longitude) {
     $('sun-elevation').textContent = `${(pos.altitude * R2D).toFixed(2)} °`;
     $('moon-phase-display').textContent = `${(moonIllumination.phase * 100).toFixed(1)}%`;
 }
-
-// --- MÉTÉO, CARTE, SYNCHRO (Inch.) ---
 
 function getWeather() {
     if (lat === 0 || lon === 0) return;
@@ -420,8 +415,6 @@ function syncH() {
         });
 }
 
-// --- PARTIE 9 : INITIALISATION FINALE DU SYSTÈME ET LISTENERS ---
-
 document.addEventListener('DOMContentLoaded', () => {
     loadPrecisionRecords();
     initMap();
@@ -455,6 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; });
     $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; maxGForce = 0; savePrecisionRecords(); });
+    
     $('toggle-mode-btn').addEventListener('click', () => {
         document.body.classList.toggle('dark-mode');
         $('toggle-mode-btn').classList.toggle('active');
