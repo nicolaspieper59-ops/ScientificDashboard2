@@ -14,23 +14,24 @@ const R_AIR = 287.05;
 const GAMMA_AIR = 1.4;
 const P_SEA_hPa = 1013.25;
 const DOM_SLOW_UPDATE_MS = 1000;
+const IMU_FREQUENCY_MS = 50; // NOUVEAU: 20 Hz pour la boucle IMU
 
 // --- Constantes du Filtre de Kalman & ZUPT ---
 const MAX_ACC = 20;       // Seuil de perte de signal GPS (m)
 const R_MIN = 0.001;
-const R_MAX = 100000.0;   // Facteur R très élevé pour le Dead Reckoning
+const R_MAX = 100000.0;   
 const Q_BASE_NOISE = 0.05;
 const IMU_ACCEL_NOISE_FACTOR = 0.5; 
 const ZUPT_RAW_THRESHOLD = 0.5; 
 const ZUPT_ACCEL_THRESHOLD = 0.5;
 const ZUPT_ACCEL_THRESHOLD_IMU = 0.05; 
 const ACCURACY_NOISE_FACTOR = 3.0; // FACTEUR MDS : Déplacement minimal réel
-const DT_MAX_STEP = 0.5; // CORRIGÉ: Pas de temps maximum pour le micro-stepping de l'EKF (0.5s)
 
 // --- Variables d'État Globales ---
 let wID = null;
 let domID = null;
-let lastUpdate = 0;
+let imuUpdateID = null; // NOUVEAU: ID pour la boucle de mise à jour IMU
+let lastIMUUpdate = 0; // NOUVEAU: Dernier temps de mise à jour IMU/Prediction
 let lPos = {};
 let kSpd = 0;
 let kAlt = null;
@@ -43,8 +44,10 @@ let kAltFilter;
 let currentTempC = 17.3;
 let currentPressurehPa = 1015;
 let currentHumidity = 72;
+let lastGPSPos = null; // NOUVEAU: Stocke la dernière position GPS brute
 
 // --- Instanciation des Filtres ---
+// MODIFIÉ: Le filtre EKF est maintenant adapté au mode Prediction/Correction
 let kFilter = createKalmanFilter(Q_BASE_NOISE, R_MAX); 
 kAltFilter = createSimpleKalmanFilter(0.1, R_MIN);
 
@@ -63,8 +66,10 @@ function createSimpleKalmanFilter(Q, R) {
 function createKalmanFilter(initialQ, initialR) {
     let X = [[0], [0]]; // État: [position, vitesse]
     let P = [[initialR, 0], [0, initialR]]; // Covariance de l'erreur
-    return function(Z, dt, R_new, U_accel_sensor) {
-        // 1. DÉFINITION DYNAMIQUE DE Q (Bruit du Modèle / IMU Trust)
+    
+    // MODIFIÉ: Ajout de isPredictionOnly pour séparer la logique
+    return function(Z, dt, R_new, U_accel_sensor, isPredictionOnly = false) { 
+        // 1. DÉFINITION DYNAMIQUE DE Q 
         const Q_dt_factor = Math.min(1.0, 1.0 / (dt * 10)); 
         const Q_noise = Q_BASE_NOISE * Q_dt_factor + (Math.abs(U_accel_sensor) * IMU_ACCEL_NOISE_FACTOR);
         const Q_matrix = [[0.001, 0], [0, Q_noise * Q_noise]]; 
@@ -82,8 +87,13 @@ function createKalmanFilter(initialQ, initialR) {
         
         P_pred[0][0] += Q_matrix[0][0]; P_pred[1][1] += Q_matrix[1][1];
         P = P_pred;
+
+        if (isPredictionOnly) {
+             kSpd = X[1][0];
+             return { speed: X[1][0], Q_used: Q_noise, R_used: R_new };
+        }
         
-        // Mise à jour de la Mesure
+        // Mise à jour de la Mesure (Correction/Update Step)
         const R_new_matrix = [[R_new, 0], [0, R_new]];
         const Y = Z - X[1][0]; 
         const S = P[1][1] + R_new_matrix[1][1]; 
@@ -95,7 +105,7 @@ function createKalmanFilter(initialQ, initialR) {
         P[1][0] = P[1][0] - K[1][0] * P[1][0]; P[1][1] = P[1][1] - K[1][0] * P[1][1];
 
         kSpd = X[1][0];
-        return { speed: X[1][0], Q_used: Q_noise };
+        return { speed: X[1][0], Q_used: Q_noise, R_used: R_new };
     }
 }
 
@@ -105,6 +115,8 @@ function createKalmanFilter(initialQ, initialR) {
 // ====================================================================
 
 // --- Fonctions Météo et GPS ---
+// ... (Fonctions getVirtualTemperature, getBarometricAltitude, etc. inchangées) ...
+
 function getVirtualTemperature(T_C, HR_percent, P_hPa) {
     if (!P_hPa || !T_C || !HR_percent) return T_C + 273.15;
     const T_K = T_C + 273.15;
@@ -118,7 +130,6 @@ function getBarometricAltitude(P_hPa, Tv_K) {
     if (P_hPa === null || isNaN(P_hPa)) return null;
     const exponent = (GAMMA_AIR - 1) / GAMMA_AIR;
     const alt = ((R_AIR * Tv_K) / (G * exponent)) * (1 - Math.pow(P_hPa / P_SEA_hPa, exponent));
-    // Correction pour éviter les altitudes baro légèrement négatives au niveau de la mer
     return Math.max(0.0, alt); 
 }
 function getSpeedOfSound(T_C) { return 331.3 * Math.sqrt(1 + T_C / 273.15); }
@@ -137,8 +148,13 @@ function getLocalSiderealTime(date, longitudeDeg) {
 }
 function startGPS() {
     if (wID === null) {
-        wID = navigator.geolocation.watchPosition(updateDisp, handleError, { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 });
+        // Le GPS continue de fonctionner à basse fréquence pour la CORRECTION.
+        wID = navigator.geolocation.watchPosition(updateGPSCorrection, handleError, { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 });
         $('gps-pause-button').textContent = '⏸️ PAUSE GPS';
+    }
+    if (imuUpdateID === null) {
+        // NOUVEAU: Démarrage de la boucle IMU haute fréquence
+        imuUpdateID = setInterval(updateIMUPrediction, IMU_FREQUENCY_MS);
     }
 }
 function stopGPS() {
@@ -146,34 +162,57 @@ function stopGPS() {
         navigator.geolocation.clearWatch(wID); wID = null;
         $('gps-pause-button').textContent = '▶️ MARCHE GPS';
     }
+    if (imuUpdateID !== null) {
+        clearInterval(imuUpdateID); imuUpdateID = null;
+    }
 }
 function handleError(error) { console.warn(`GPS ERROR: ${error.code}: ${error.message}`); }
 
-// --- LOGIQUE DE FUSION PRINCIPALE AVEC MICRO-STEPPING (updateDisp) ---
-function updateDisp(pos) {
+
+// --- NOUVEAU: LOGIQUE DE PRÉDICTION IMU HAUTE FRÉQUENCE (20 Hz) ---
+function updateIMUPrediction() {
     if (emergencyStopActive || wID === null) return;
-    
+
     const now = new Date();
     const time = now.getTime();
-    const dt_raw = (time - lastUpdate) / 1000;
+    if (lastIMUUpdate === 0) lastIMUUpdate = time;
     
-    // Correction de robustesse: Limite dt max à 60s pour la prédiction sans le cap
-    const DT_MAX_GUARD = 60;
-    const dt_safe = (dt_raw > 0 && dt_raw < DT_MAX_GUARD) ? dt_raw : 0.001;
-    lastUpdate = time;
+    const dt_imu = (time - lastIMUUpdate) / 1000;
+    
+    // Correction de robustesse: Le dt_imu doit être minuscule
+    const dt = (dt_imu > 0 && dt_imu < 1) ? dt_imu : IMU_FREQUENCY_MS / 1000; 
+    
+    lastIMUUpdate = time;
 
+    // ÉTAPE 1: Prédiction du nouvel état (sans correction)
+    // On utilise R_MAX (confiance minimale) car c'est une pure prédiction
+    const kalmanResult = kFilter(kSpd, dt, R_MAX, imuAccel, true); 
+    
+    // Mise à jour de la distance avec la vitesse prédite
+    const sSpdFE = kalmanResult.speed < ZUPT_RAW_THRESHOLD * 0.5 ? 0 : kalmanResult.speed;
+    if (totalDistance > 1000000) totalDistance = 0; // Guard contre les débordements
+    if (sSpdFE > 0.01) totalDistance += sSpdFE * dt;
+    
+    // Mise à jour du DOM à haute fréquence
+    updateDOMHighFrequency(dt, kalmanResult.Q_used, kalmanResult.R_used, now, lastGPSPos);
+}
+
+
+// --- MODIFIÉ: LOGIQUE DE CORRECTION GPS BASSE FRÉQUENCE (updateGPSCorrection) ---
+function updateGPSCorrection(pos) {
+    // ÉTAPE 2: La mesure GPS corrige l'état prédit par l'IMU.
+    if (emergencyStopActive || wID === null) return;
+    
+    lastGPSPos = pos;
+    const now = new Date();
+    const time = now.getTime();
     const { latitude: latRaw, longitude: lonRaw, altitude: altRaw, accuracy: accRaw } = pos.coords;
-    
-    // Calculs Météo/Altitude
-    const Tv_K = getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
-    const altBaro = getBarometricAltitude(currentPressurehPa, Tv_K); 
-    if (kAlt === null && altRaw !== null) kAlt = altRaw;
-    const altToFilter = (altBaro !== null && altRaw === null) ? altBaro : altRaw;
-    if (altToFilter !== null) kAlt = kAltFilter(altToFilter, pos.coords.altitudeAccuracy || R_MIN, dt_safe); 
 
-    // CALCUL DE VITESSE BRUTE (spd3D_raw)
+    // CALCUL DE VITESSE BRUTE GPS (spd3D_raw)
     let spd3D_raw = 0;
+    let dt_gps_raw = 0.05; // Utilise dt de l'IMU pour le calcul de vitesse GPS si possible
     if (lPos.time && time > lPos.time) {
+        dt_gps_raw = (time - lPos.time) / 1000;
         const R = 6371e3;
         const dLat = (latRaw - lPos.lat) * D2R; const dLon = (lonRaw - lPos.lon) * D2R;
         const a = Math.sin(dLat / 2) ** 2 + Math.cos(lPos.lat * D2R) * Math.cos(latRaw * D2R) * Math.sin(dLon / 2) ** 2;
@@ -181,88 +220,49 @@ function updateDisp(pos) {
         const dist2D = R * c;
         const alt_delta = (kAlt || altRaw || 0) - (lPos.kAlt || 0);
         const dist3D = Math.sqrt(dist2D ** 2 + alt_delta ** 2);
-        // Utilisation de dt_safe pour calculer la vitesse brute
-        spd3D_raw = dist3D / dt_safe; 
-        if (spd3D_raw > 1000) spd3D_raw = 0;
+        spd3D_raw = dist3D / dt_gps_raw;
     }
     
     const R_dyn = getKalmanR(accRaw);
     let isSignalLost = (accRaw > MAX_ACC);
-    let spd_kalman_input, R_kalman_input, R_corr;   
-    let accel_sensor_input = imuAccel; 
-    let lat = latRaw, lon = lonRaw;
-    let ZUPT_DYNAMIC_THRESHOLD;
-
+    let spd_kalman_input, R_corr;   
+    let ZUPT_DYNAMIC_THRESHOLD = 0;
+    
+    // 1. DÉTERMINATION DU MODE
     if (!isSignalLost) {
-        // --- MODE FUSION GPS/IMU : SEUIL MDS DYNAMIQUE ---
-        ZUPT_DYNAMIC_THRESHOLD = ACCURACY_NOISE_FACTOR * accRaw / dt_safe; 
-        const ZUPT_THRESHOLD_DYNAMIC = Math.max(ZUPT_RAW_THRESHOLD, ZUPT_DYNAMIC_THRESHOLD); 
-        const accel_long_provisional = (spd3D_raw - (lPos?.speedMS_3D || 0)) / dt_safe;
-        
-        const isGpsPlausiblyStopped = (spd3D_raw < ZUPT_THRESHOLD_DYNAMIC && Math.abs(accel_long_provisional) < ZUPT_ACCEL_THRESHOLD); 
+        ZUPT_DYNAMIC_THRESHOLD = ACCURACY_NOISE_FACTOR * accRaw / 0.05; // Utilise dt IMU
+        const isGpsPlausiblyStopped = (spd3D_raw < ZUPT_DYNAMIC_THRESHOLD); 
         
         if (isGpsPlausiblyStopped) { 
-            spd_kalman_input = 0.0;     R_kalman_input = R_MIN;     
+            spd_kalman_input = 0.0;     R_corr = R_MIN;     
             $('zupt-active').textContent = 'Oui (GPS/Dynamique)';
         } else {
-            spd_kalman_input = spd3D_raw; R_kalman_input = R_dyn;       
+            spd_kalman_input = spd3D_raw; R_corr = R_dyn;       
             $('zupt-active').textContent = 'Non';
         }
-        R_corr = R_kalman_input;
-        
     } else {
-        // --- MODE DEAD RECKONING AIDE PAR IMU ---
-        const isImuStopped = imuAccel < ZUPT_ACCEL_THRESHOLD_IMU; 
-        if (isImuStopped) {
-            spd_kalman_input = 0.0;     R_kalman_input = R_MIN;     
-            $('zupt-active').textContent = 'Oui (IMU/Seuil)';
-        } else {
-            // En DR, la mesure est la prédiction elle-même, mais avec une incertitude maximale
-            spd_kalman_input = kSpd; 
-            R_kalman_input = R_MAX; 
-            $('zupt-active').textContent = 'Non';
-        }
-        R_corr = R_MAX; // La correction finale est basée sur la confiance maximale
-        ZUPT_DYNAMIC_THRESHOLD = 0;
+        // DR mode
+        spd_kalman_input = kSpd; 
+        R_corr = R_MAX; 
+        $('zupt-active').textContent = 'Non';
     }
 
-    // =================================================================
-    // CORRECTION MAJEURE: MICRO-STEPPING EKF (Utilise IMU à Haute Fréquence)
-    // =================================================================
-    let kalmanResult = { speed: kSpd, Q_used: Q_BASE_NOISE };
-    const micro_steps = Math.ceil(dt_safe / DT_MAX_STEP);
-    const dt_step = dt_safe / micro_steps; // Le pas de temps pour chaque itération
-
-    for (let i = 0; i < micro_steps; i++) {
-        const isLastStep = (i === micro_steps - 1);
-        
-        if (isLastStep) {
-            // Dernière étape: Correction de l'état avec la mesure GPS/ZUPT (spd_kalman_input, R_corr)
-            kalmanResult = kFilter(spd_kalman_input, dt_step, R_corr, accel_sensor_input); 
-        } else {
-            // Étapes intermédiaires: Pure Prédiction (Dead Reckoning) avec l'IMU
-            // On force R_MAX (confiance minimale) et l'état prédit comme "mesure"
-            kalmanResult = kFilter(kSpd, dt_step, R_MAX, accel_sensor_input); 
-        }
-    }
+    // 2. CORRECTION DE L'ÉTAT EKF
+    // dt est 0.001 pour la correction, car l'IMU s'est déjà chargé de la propagation temporelle
+    const kalmanResult = kFilter(spd_kalman_input, 0.001, R_corr, imuAccel, false); 
     
-    const fSpd = kalmanResult.speed;
-    const Q_used = kalmanResult.Q_used;
-    
-    // Réinitialisation de la vitesse si elle est sous le seuil de mouvement
-    const sSpdFE = fSpd < ZUPT_RAW_THRESHOLD * 0.5 ? 0 : fSpd;
+    // 3. Mise à jour de l'état global (seulement les données GPS)
+    const Tv_K = getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
+    const altBaro = getBarometricAltitude(currentPressurehPa, Tv_K); 
+    if (kAlt === null && altRaw !== null) kAlt = altRaw;
+    const altToFilter = (altBaro !== null && altRaw === null) ? altBaro : altRaw;
+    if (altToFilter !== null) kAlt = kAltFilter(altToFilter, pos.coords.altitudeAccuracy || R_MIN, dt_gps_raw); 
 
-    // Mise à jour de l'état global et distance
-    // CORRIGÉ: Réinitialisation robuste de la distance en cas de corruption détectée
-    if (totalDistance > 100000) { 
-        totalDistance = 0; 
-    }
-    if (sSpdFE > 0.01) totalDistance += sSpdFE * dt_safe;
-    lPos = { lat, lon, time, kAlt, speedMS_3D: fSpd };
+    // Mise à jour de la dernière position GPS brute
+    lPos = { lat: latRaw, lon: lonRaw, time, kAlt, speedMS_3D: kSpd };
 
-    // Mise à jour du DOM
-    updateDOMData(lat, lon, kAlt, sSpdFE, dt_safe, Q_used, R_corr, altBaro, now, accRaw, ZUPT_DYNAMIC_THRESHOLD);
-    updateAstro(lat, lon, kAlt, now);
+    // Mise à jour du DOM qui dépend de GPS (accuracy, MDS)
+    updateDOMHighFrequency(dt_gps_raw, kalmanResult.Q_used, R_corr, now, pos);
 }
 
 
@@ -280,38 +280,57 @@ function msToHMS(ms) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function updateDOMData(lat, lon, kAlt, sSpdFE, dt, Q_used, R_kalman_input, altBaro, now, accRaw, MDS_DYNAMIC) {
+// NOUVEAU: Fonction de mise à jour DOM qui s'exécute à haute fréquence
+function updateDOMHighFrequency(dt, Q_used, R_kalman_input, now, pos) {
+    // Si pos est null, on utilise les dernières données connues (mode prediction)
+    const lat = pos?.coords?.latitude || lPos.lat || 'N/A';
+    const lon = pos?.coords?.longitude || lPos.lon || 'N/A';
+    const accRaw = pos?.coords?.accuracy || MAX_ACC + 1;
+    const sSpdFE = kSpd < ZUPT_RAW_THRESHOLD * 0.5 ? 0 : kSpd;
     const sSpdKMH = sSpdFE * 3.6;
+    
     const Tv_K = getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
     const C_S_TRUE = getSpeedOfSound(currentTempC);
     const airDensity = getAirDensity(currentPressurehPa, Tv_K);
     const frostPoint = getFrostPoint(currentTempC, currentHumidity);
 
     // Position & Vitesse
-    $('current-lat').textContent = lat.toFixed(6);
-    $('current-lon').textContent = lon.toFixed(6);
+    if (lat !== 'N/A') {
+        $('current-lat').textContent = lat.toFixed(6);
+        $('current-lon').textContent = lon.toFixed(6);
+    }
     $('altitude-gps').textContent = kAlt !== null ? `${kAlt.toFixed(2)} m` : 'N/A';
-    // L'altitude Baro est calculée (ne sera plus 150.00 m fixe si la correction est active)
-    $('altitude-baro').textContent = altBaro !== null ? `${altBaro.toFixed(2)} m` : 'N/A'; 
     $('stable-speed').textContent = `${sSpdFE.toFixed(3)} m/s`;
     $('current-speed').textContent = `${sSpdKMH.toFixed(1)} km/h`;
     $('distance-total-km').textContent = `${(totalDistance / 1000).toFixed(3)} km`;
-    $('accuracy-raw').textContent = `${accRaw.toFixed(1)} m`;
     
     // IMU & Kalman
     $('accel-imu').textContent = imuAccel.toFixed(3);
     $('kalman-q-noise').textContent = Q_used.toFixed(3);
-    $('kalman-r-factor').textContent = R_kalman_input.toFixed(3);
+    // Le facteur R est toujours mis à jour pour refléter la dernière confiance
+    $('kalman-r-factor').textContent = R_kalman_input.toFixed(3); 
+    
+    // CORRIGÉ: dt et Fréquence reflètent maintenant la boucle IMU (20Hz)
     $('gnss-frequency').textContent = (1 / dt).toFixed(1);
     $('update-time-dt').textContent = dt.toFixed(3);
+    
     $('gps-status').textContent = accRaw > MAX_ACC ? '⚠️ GPS Perdu (DR)' : '✅ GPS OK';
-    $('mds-dynamic').textContent = MDS_DYNAMIC > 0 ? MDS_DYNAMIC.toFixed(3) : 'N/A (DR)';
+    
+    if (pos) { // Mises à jour spécifiques au GPS
+        $('accuracy-raw').textContent = `${accRaw.toFixed(1)} m`;
+        const MDS_DYNAMIC = ACCURACY_NOISE_FACTOR * accRaw / dt;
+        $('mds-dynamic').textContent = MDS_DYNAMIC.toFixed(3);
+    } else if ($('mds-dynamic').textContent !== 'N/A (DR)') {
+         $('mds-dynamic').textContent = 'N/A (IMU Pred)';
+    }
 
-    // Météo & Chimie 
+
+    // Météo & Chimie (Mise à jour lente ou correction du Baro)
+    const altBaro = getBarometricAltitude(currentPressurehPa, Tv_K); 
+    $('altitude-baro').textContent = altBaro !== null ? `${altBaro.toFixed(2)} m` : 'N/A'; 
     $('temp-c').textContent = currentTempC.toFixed(1);
     $('pressure-hpa').textContent = currentPressurehPa.toFixed(2);
     $('humidity-perc').textContent = currentHumidity.toFixed(0);
-    // Les valeurs météo sont maintenant calculées (plus N/A)
     $('frost-point').textContent = frostPoint.toFixed(1); 
     $('speed-of-sound').textContent = C_S_TRUE.toFixed(2);
     $('air-density').textContent = airDensity.toFixed(3);
@@ -321,15 +340,15 @@ function updateDOMData(lat, lon, kAlt, sSpdFE, dt, Q_used, R_kalman_input, altBa
     $('perc-speed-sound').textContent = `${(sSpdFE / C_S_TRUE * 100).toFixed(2)} %`;
 }
 
+
 function updateAstro(lat, lon, kAlt, now) {
-    // Mise à jour de l'heure sidérale
+    // ... (Fonctions updateAstro et updateClockVisualization inchangées) ...
     const LST_h = getLocalSiderealTime(now, lon);
     const LST_hms = msToHMS((LST_h % 24) * 3600000);
     $('local-sidereal-time').textContent = LST_hms;
 
     updateClockVisualization(lat, lon, kAlt, now);
 
-    // Astro Times (Nécessite SunCalc)
     if (typeof SunCalc !== 'undefined') {
         const sunTimes = SunCalc.getTimes(now, lat, lon);
         if (sunTimes.sunrise) {
@@ -339,7 +358,6 @@ function updateAstro(lat, lon, kAlt, now) {
 }
 
 function updateClockVisualization(lat, lon, kAlt, now) {
-    // Nécessite SunCalc
     if (typeof SunCalc === 'undefined') return; 
     
     const sunPos = SunCalc.getPosition(now, lat, lon);
@@ -394,7 +412,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.accelerationIncludingGravity) {
             const { x, y, z } = event.accelerationIncludingGravity;
             const accelMag = Math.sqrt(x*x + y*y + z*z);
-            // Stocke l'accélération linéaire pour l'EKF
             imuAccel = Math.abs(accelMag - G); 
         }
     });
@@ -406,10 +423,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString('fr-FR');
             if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
             
-            if (wID !== null && lPos.lat) {
-                updateAstro(lPos.lat, lPos.lon, kAlt, now);
-            } else {
-                 updateAstro(43.296, 5.370, 0, now); // Position par défaut si GPS inactif (Marseille)
+            const currentLat = lPos.lat || 43.296;
+            const currentLon = lPos.lon || 5.370;
+
+            updateAstro(currentLat, currentLon, kAlt, now);
+            
+            if (wID === null) {
+                 // Mise à jour de l'affichage à vitesse nulle si le GPS est en pause
+                 updateDOMHighFrequency(1.0, Q_BASE_NOISE, R_MAX, now, null);
             }
 
         }, DOM_SLOW_UPDATE_MS); 
