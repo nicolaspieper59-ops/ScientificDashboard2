@@ -26,7 +26,7 @@ const ZUPT_ACCEL_THRESHOLD = 0.5;
 const ZUPT_ACCEL_THRESHOLD_IMU = 0.05; 
 const ACCURACY_NOISE_FACTOR = 3.0; // FACTEUR MDS : Déplacement minimal réel
 
-// --- Variables d'État Globales (CORRIGÉ : totalDistance initialisé à 0) ---
+// --- Variables d'État Globales ---
 let wID = null;
 let domID = null;
 let lastUpdate = 0;
@@ -35,7 +35,7 @@ let kSpd = 0;
 let kAlt = null;
 let emergencyStopActive = false;
 let imuAccel = 0.0; 
-let totalDistance = 0; // CORRIGÉ : Assure une initialisation correcte
+let totalDistance = 0; 
 let kAltFilter;
 
 // Placeholders Météo (à remplacer par API)
@@ -103,7 +103,7 @@ function createKalmanFilter(initialQ, initialR) {
 // BLOC 2/3 : GESTION DES CAPTEURS, MÉTÉO & LOGIQUE DE FUSION (~80 Lignes)
 // ====================================================================
 
-// --- Fonctions Météo et GPS (Fonctions Scientifiques Complètes) ---
+// --- Fonctions Météo et GPS (Correction de robustesse altitude baro) ---
 function getVirtualTemperature(T_C, HR_percent, P_hPa) {
     if (!P_hPa || !T_C || !HR_percent) return T_C + 273.15;
     const T_K = T_C + 273.15;
@@ -113,11 +113,12 @@ function getVirtualTemperature(T_C, HR_percent, P_hPa) {
     const r = (0.622 * Pv_Pa) / (P_hPa * 100 - Pv_Pa);
     return T_K * (1 + 0.61 * r);
 }
-function getBarometricAltitude(P_hPa, Tv_K) {
+function getBarometricAltitude(P_hPa, Tv_K) { 
     if (P_hPa === null || isNaN(P_hPa)) return null;
     const exponent = (GAMMA_AIR - 1) / GAMMA_AIR;
     const alt = ((R_AIR * Tv_K) / (G * exponent)) * (1 - Math.pow(P_hPa / P_SEA_hPa, exponent));
-    return alt;
+    // CORRIGÉ: Limite les petites valeurs négatives à zéro pour l'affichage (near sea level)
+    return Math.max(0.0, alt); 
 }
 function getSpeedOfSound(T_C) { return 331.3 * Math.sqrt(1 + T_C / 273.15); }
 function getAirDensity(P_hPa, Tv_K) { return (P_hPa * 100) / (R_AIR * Tv_K); }
@@ -147,23 +148,24 @@ function stopGPS() {
 }
 function handleError(error) { console.warn(`GPS ERROR: ${error.code}: ${error.message}`); }
 
-// --- LOGIQUE DE FUSION PRINCIPALE ---
+// --- LOGIQUE DE FUSION PRINCIPALE (updateDisp) ---
 function updateDisp(pos) {
     if (emergencyStopActive || wID === null) return;
     
     const now = new Date();
     const time = now.getTime();
-    // Correction nécessaire dans BLOC 2/3 (updateDisp)
-const dt_raw = (time - lastUpdate) / 1000;
-// Si dt est trop grand (e.g., > 5s), il est corrompu. On le remplace par une petite valeur.
-const dt = (dt_raw > 0 && dt_raw < 5) ? dt_raw : 0.001; 
-lastUpdate = time;
+    const dt_raw = (time - lastUpdate) / 1000;
+    
+    // CORRIGÉ: Limite le dt à une plage physique pour éviter les débordements (dt_safe)
+    const dt = (dt_raw > 0 && dt_raw < 5) ? dt_raw : 0.001; 
+    lastUpdate = time;
 
     const { latitude: latRaw, longitude: lonRaw, altitude: altRaw, accuracy: accRaw } = pos.coords;
     
     // Calculs Météo/Altitude
     const Tv_K = getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
-    const altBaro = getBarometricAltitude(currentPressurehPa, Tv_K);
+    // altBaro utilise maintenant la fonction corrigée (limite à 0)
+    const altBaro = getBarometricAltitude(currentPressurehPa, Tv_K); 
     if (kAlt === null && altRaw !== null) kAlt = altRaw;
     const altToFilter = (altBaro !== null && altRaw === null) ? altBaro : altRaw;
     if (altToFilter !== null) kAlt = kAltFilter(altToFilter, pos.coords.altitudeAccuracy || R_MIN, dt); 
@@ -273,7 +275,7 @@ function updateDOMData(lat, lon, kAlt, sSpdFE, dt, Q_used, R_kalman_input, altBa
     $('update-time-dt').textContent = dt.toFixed(3);
     $('gps-status').textContent = accRaw > MAX_ACC ? '⚠️ GPS Perdu (DR)' : '✅ GPS OK';
 
-    // Météo & Chimie (Maintenant complet)
+    // Météo & Chimie 
     $('temp-c').textContent = currentTempC.toFixed(1);
     $('pressure-hpa').textContent = currentPressurehPa.toFixed(2);
     $('humidity-perc').textContent = currentHumidity.toFixed(0);
@@ -378,6 +380,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
         }, DOM_SLOW_UPDATE_MS); 
     }
-    
-    // startGPS(); // Décommentez pour un démarrage automatique
 });
