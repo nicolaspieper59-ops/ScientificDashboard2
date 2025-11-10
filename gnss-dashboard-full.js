@@ -153,8 +153,11 @@ function updateDisp(pos) {
     
     const now = new Date();
     const time = now.getTime();
-    const dt = (time - lastUpdate) / 1000 || 0.001;
-    lastUpdate = time;
+    // Correction nécessaire dans BLOC 2/3 (updateDisp)
+const dt_raw = (time - lastUpdate) / 1000;
+// Si dt est trop grand (e.g., > 5s), il est corrompu. On le remplace par une petite valeur.
+const dt = (dt_raw > 0 && dt_raw < 5) ? dt_raw : 0.001; 
+lastUpdate = time;
 
     const { latitude: latRaw, longitude: lonRaw, altitude: altRaw, accuracy: accRaw } = pos.coords;
     
