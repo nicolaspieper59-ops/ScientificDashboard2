@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard •0‹4 (FINAL)</title>
+    <title>GNSS SpaceTime Dashboard (FINAL)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
           integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
@@ -13,22 +13,76 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
-        /* Styles adaptés */
-        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; transition: background-color 0.8s, color 0.8s; }
-        .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
-        .section { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); transition: background-color 0.3s, box-shadow 0.3s; }
-        .section h2 { margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; font-size: 1.2em; }
-        .data-point { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #eee; }
-        .data-point span:first-child { font-weight: bold; color: #555; }
+        /* Styles de base pour la lisibilité et la réactivité */
+        body { 
+            font-family: 'Arial', sans-serif; 
+            margin: 0; padding: 0; 
+            background-color: #f4f4f4; 
+            color: #333; 
+            transition: background-color 0.8s, color 0.8s; 
+        }
+        .dashboard-container { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 20px; 
+            padding: 20px; 
+        }
+        .section { 
+            background-color: #fff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            transition: background-color 0.3s, box-shadow 0.3s; 
+        }
+        .section h2 { 
+            margin-top: 0; 
+            border-bottom: 2px solid #ddd; 
+            padding-bottom: 10px; 
+            font-size: 1.2em; 
+        }
+        .data-point { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 5px 0; 
+            border-bottom: 1px dotted #eee; 
+        }
+        .data-point span:first-child { 
+            font-weight: bold; 
+            color: #555; 
+        }
         
         /* Contrôles */
-        .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
-        .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
-        .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
-        .control-input-full input, .control-input-full select { width: 98%; padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
-        button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .controls-grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 10px; 
+            margin-top: 10px; 
+        }
+        .control-input-full { 
+            grid-column: 1 / -1; 
+            margin-top: 5px; 
+        }
+        .control-input-full label { 
+            display: block; 
+            font-size: 0.9em; 
+            margin-bottom: 3px; 
+        }
+        .control-input-full input, .control-input-full select { 
+            width: 98%; 
+            padding: 5px; 
+            border-radius: 4px; 
+            border: 1px solid #ccc; 
+        }
+        button, select { 
+            padding: 8px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-weight: bold; 
+        }
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: #dc3545; color: white; }
+        #emergency-stop-btn.active { animation: pulse-red 1s infinite alternate; }
         
         /* Conteneur pour la carte et l'horloge */
         #map-container { height: 400px; width: 100%; border-radius: 8px; margin-top: 15px; }
@@ -40,26 +94,32 @@
             padding-top: 10px;
         }
         
-        /* --- Styles de l'Horloge Astro --- */
+        /* --- Styles de l'Horloge Astro (Dynamique) --- */
         #minecraft-clock {
             width: 90px;
             height: 90px;
             position: relative;
             border: 3px solid #333; 
             overflow: hidden;
-            background-color: #303040; 
+            background-color: transparent; /* Défaut transparent pour que la couleur de classe prenne le relais */
             border-radius: 50%; 
+            transition: background-color 0.8s, border-color 0.8s;
+            z-index: 0;
         }
         
-        #minecraft-clock::before { 
-            content: ''; 
-            position: absolute; 
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #87ceeb; 
-            transition: background-color 0.5s, opacity 0.5s;
-            z-index: 1;
+        /* Couleurs de fond dynamiques de l'horloge */
+        #minecraft-clock.sky-day { 
+            background-color: #87ceeb; /* Bleu ciel jour */
         }
-        
+        #minecraft-clock.sky-sunset { 
+            background-color: #ff8c00; /* Orange coucher de soleil */
+        }
+        #minecraft-clock.sky-night, #minecraft-clock.sky-night-light { 
+            background-color: #121220; /* Bleu nuit sombre */
+            border-color: #303040; /* Bordure plus sombre la nuit */
+        }
+
+        /* Positionnement Soleil/Lune */
         .sun-element {
             position: absolute;
             width: 100%; height: 100%;
@@ -75,7 +135,6 @@
             font-size: 1.2em; 
             transform: translateY(-50%); 
         }
-
         .sun-icon { color: #ffdd00; text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
         .moon-icon { color: #f0f0f0; text-shadow: 0 0 5px rgba(200, 200, 255, 0.3); }
 
@@ -102,6 +161,11 @@
             color: #bdbdbd; 
         }
         body.dark-mode .clock-display, body.sky-night .clock-display { color: #aaa; }
+        
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            100% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+        }
     </style>
     <script src="https://unpkg.com/suncalc@1.8.0/suncalc.js"></script>
 </head>
@@ -115,7 +179,7 @@
             <div class="data-point"><span>Date Locale</span><span id="date-display">N/A</span></div> 
             <div class="data-point"><span>Temps écoulé (Session)</span><span id="time-elapsed">0.00 s</span></div>
             <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
-            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-minecraft">00:00:00</span></div> 
+            <div class="data-point"><span>Heure Minecraft</span><span id="time-minecraft">00:00:00</span></div> 
             <div class="data-point"><span>Mode Nether (1:8)</span><span id="mode-nether">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>Masse (kg)</span><span id="mass-display">70.000 kg</span></div>
             
@@ -131,7 +195,7 @@
             <hr>
             
             <div class="controls-grid">
-                <button id="toggle-gps-btn"> 7œ4„1‚5 MARCHE GPS</button>
+                <button id="toggle-gps-btn">▶️ MARCHE GPS</button>
                 <select id="freq-select"><option value="HIGH_FREQ">Haute Fréquence</option><option value="LOW_FREQ">Basse Fréquence</option></select>
                 <button id="emergency-stop-btn">•0“5 Arrêt d'urgence: INACTIF •0 4</button>
                 <button id="toggle-mode-btn">”9±7 Mode Nuit</button>
@@ -148,10 +212,10 @@
                 <div class="control-input-full">
                     <label for="environment-select">Facteur Kalman Environnement :</label>
                     <select id="environment-select">
-                        <option value="NORMAL">Normal (x1.0)</option>
-                        <option value="FOREST">Forêt (x1.5)</option>
-                        <option value="CONCRETE">Grotte/Tunnel (x3.0)</option>
-                        <option value="METAL">Métal/Bâtiment (x2.5)</option>
+                        <option value="NORMAL">NORMAL (x1.0)</option>
+                        <option value="FOREST">FORÊT (x2.5)</option>
+                        <option value="CONCRETE">CONCRÈTE (x7.0)</option>
+                        <option value="METAL">MÉTAL (x5.0)</option>
                     </select>
                 </div>
             </div>
@@ -182,7 +246,7 @@
             <h2>•0–6„1‚5 Vue brute GPS & Physique</h2>
             <div class="data-point"><span>Latitude Brute</span><span id="latitude">N/A</span></div>
             <div class="data-point"><span>Longitude Brute</span><span id="longitude">N/A</span></div>
-            <div class="data-point"><span>Altitude GPS</span><span id="altitude-gps">N/A</span></div>
+            <div class="data-point"><span>Altitude GPS (Filtrée)</span><span id="altitude-gps">N/A</span></div>
             <div class="data-point"><span>Précision GPS (EPE)</span><span id="gps-precision">N/A</span></div>
             <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">N/A</span></div>
             <div class="data-point"><span>Cap (Direction)</span><span id="heading-display">N/A</span></div>
@@ -241,19 +305,21 @@
 
             <div class="data-point"><span>Date</span><span id="date-display-astro">N/A</span></div> 
             <div class="data-point"><span>Altitude Soleil</span><span id="sun-altitude">-- °</span></div>
-            <div class="data-point"><span>Azimut Soleil</span><span id="sun-azimuth">-- °</span></div>
-            
-            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
+            <div class="data-point"><span>Azimut Soleil</span><span id="sun-azimuth">-- ° (S-O)</span></div>
+            <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="time-solar-true">N/A</span></div>
             <div class="data-point"><span>Altitude Lune</span><span id="moon-altitude">-- °</span></div>
-            <div class="data-point"><span>Azimut Lune</span><span id="moon-azimuth">-- °</span></div>
-            <div class="data-point"><span>Illumination Lune (%)</span><span id="moon-illum-fraction">N/A</span></div>
+            <div class="data-point"><span>Azimut Lune</span><span id="moon-azimuth">-- ° (S-O)</span></div>
+            <div class="data-point"><span>Illumination Lune (%)</span><span id="moon-illum-fraction">-- %</span></div>
             <div class="data-point"><span>Phase Lune</span><span id="moon-phase-name">N/A</span></div>
-            <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="lsm">N/D</span></div> 
-            <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/D</span></div> 
+            <div class="data-point"><span>Lever/Coucher Lune</span><span id="moon-times">N/D</span></div> 
+
+            <hr>
             
+            <div class="data-point"><span>Temps Solaire Moyen Local (LSM)</span><span id="culmination-lsm">N/D</span></div> 
+            <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/D</span></div> 
             <div class="data-point"><span>Durée du Jour Solaire</span><span id="day-duration">N/A</span></div> 
             <div class="data-point"><span>Longitude écliptique du Soleil</span><span id="ecliptic-long">-- °</span></div> 
-            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/D min</span></div> 
+            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot-min">N/D min</span></div> 
             
             <hr>
 
@@ -278,7 +344,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
 
-<script src="gnss-dashboard-full.js"></script>
+<script src="gnss-dashboard-full.js"></script> 
 
 </body>
     </html>
