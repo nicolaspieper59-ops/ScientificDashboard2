@@ -33,14 +33,19 @@ let lastMapUpdate = 0;
 const MAP_UPDATE_INTERVAL = 3000; // Rafraîchir la vue carte toutes les 3 sec si en mouvement
 
 // --- PARAMÈTRES DU FILTRE DE KALMAN (VITESSE) ---
-const Q_NOISE = 0.05;       // Bruit de processus (incertitude du modèle de mouvement)
+const Q_NOISE = 0.1;        // Bruit de processus (incertitude du modèle de mouvement). (ANCIEN : 0.05)
 const R_MIN = 0.01;         // Bruit de mesure minimum (GPS parfait)
-const R_MAX = 50.0;         // Bruit de mesure maximum (GPS très bruité)
+// R_MAX est augmenté pour accepter une précision GPS (Acc) jusqu'à ~22 m (√500).
+const R_MAX = 500.0;        // Bruit de mesure maximum réaliste. (ANCIEN : 50.0)
 const MAX_ACC = 200;        // Précision max (m) avant de passer en "Estimation Seule"
 const MIN_SPD = 0.05;       // Vitesse minimale pour être considéré "en mouvement"
 const ALT_TH = -50;         // Seuil d'altitude pour détection "Sous-sol"
 const MAX_PLAUSIBLE_ACCEL = 20.0; // Accélération max (m/s²) pour filtrage des "spikes"
-const NETHER_RATIO = 8.0; // Ratio pour le mode Nether/Ailleurs
+const NETHER_RATIO = 8.0;   // Ratio pour le mode Nether/Ailleurs
+
+// --- NOUVEAUX SEUILS POUR ZUPT (Zero Velocity Update) ---
+const ZUPT_RAW_THRESHOLD = 1.0;     // Vitesse brute max (m/s) pour suspecter l'arrêt.
+const ZUPT_ACCEL_THRESHOLD = 0.5;   // Accélération max (m/s²) pour suspecter l'arrêt.
 
 // --- PARAMÈTRES EKF (ALTITUDE) ---
 const Q_ALT_NOISE = 0.1;
