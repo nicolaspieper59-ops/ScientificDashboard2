@@ -1,10 +1,9 @@
 // =================================================================
-// FICHIER JS PARTIE 1/2 : gnss-dashboard-part1.js
-// Contient constantes, variables d'état, UTC/NTP et Kalman.
+// FICHIER JS PARTIE 1/3 : gnss-dashboard-part1.js
+// Contient constantes, variables d'état, UTC/NTP et Helpers.
 // =================================================================
 
 // --- CLÉS D'API & PROXY VERCEL ---
-// NOTE: L'URL du proxy Vercel est essentielle pour contourner les problèmes CORS avec l'API OpenWeatherMap.
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app"; 
 const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc"; 
@@ -27,9 +26,10 @@ const GPS_OPTS = {
 };
 
 // PARAMÈTRES AVANCÉS DU FILTRE DE KALMAN (Horizontal/Vitesse 3D)
-const Q_NOISE = 0.01;       
-const R_MIN = 0.05, R_MAX = 50.0; 
-// Vitesse minimale pour le mouvement (0.05 m/s = 0.18 km/h)
+// Q_NOISE AUGMENTÉ pour améliorer la réactivité aux accélérations/décélérations
+const Q_NOISE = 0.05;       
+// R_MIN DIMINUÉ pour donner plus de confiance aux précisions très faibles
+const R_MIN = 0.01, R_MAX = 50.0; 
 const MAX_ACC = 200, MIN_SPD = 0.05, ALT_TH = -50; 
 const NETHER_RATIO = 8; 
 
@@ -41,17 +41,15 @@ const Q_ALT_NOISE = 0.1; // Bruit de processus de l'altitude
 const R_ALT_MIN = 0.1;  // Erreur de mesure minimale de l'altitude
 
 // PARAMÈTRES DE LISSAGE HYBRIDE (DAMPENING)
-// Amortissement de vitesse/distance commence à cette précision (confiance totale)
 const ACC_DAMPEN_LOW = 5.0; 
-// Amortissement de vitesse/distance est total (vitesse forcée à 0) au-delà de cette précision
 const ACC_DAMPEN_HIGH = 50.0; 
 
-// FACTEURS ENVIRONNEMENTAUX POUR LA CORRECTION KALMAN
+// FACTEURS ENVIRONNEMENTAUX POUR LA CORRECTION KALMAN (Rendue plus agressive)
 const ENVIRONMENT_FACTORS = {
     'NORMAL': { R_MULT: 1.0 },
-    'METAL': { R_MULT: 2.5 },      
-    'FOREST': { R_MULT: 1.5 },     
-    'CONCRETE': { R_MULT: 3.0 },   
+    'METAL': { R_MULT: 5.0 },      
+    'FOREST': { R_MULT: 2.5 },     
+    'CONCRETE': { R_MULT: 7.0 },   
 };
 const DOM_SLOW_UPDATE_MS = 1000; 
 
@@ -62,8 +60,8 @@ let kSpd = 0, kUncert = 1000;
 let timeMoving = 0; 
 let lServH = null, lLocH = null; 
 let lastFSpeed = 0; 
-let kAlt = null;      // Altitude filtrée par Kalman
-let kAltUncert = 10;  // Incertitude de l'altitude
+let kAlt = null;      
+let kAltUncert = 10;  
 
 let currentGPSMode = 'HIGH_FREQ'; 
 let emergencyStopActive = false;
@@ -110,7 +108,6 @@ async function syncH() {
 
         lServH = serverTimestamp + latencyOffset; 
         lLocH = performance.now(); 
-        console.log(`Synchronisation UTC Atomique réussie. Latence corrigée: ${latencyOffset.toFixed(1)} ms.`);
 
     } catch (error) {
         console.warn("Échec de la synchronisation. Utilisation de l'horloge locale.", error);
@@ -126,16 +123,30 @@ function getCDate() {
     const offsetSinceSync = performance.now() - lLocH;
     return new Date(lServH + offsetSinceSync); 
 }
+// =================================================================
+// FIN FICHIER JS PARTIE 1/3 : gnss-dashboard-part1.js
+// =================================================================
+// =================================================================
+// FICHIER JS PARTIE 2/3 : gnss-dashboard-part2.js
+// Contient les filtres de Kalman, l'Astro, les Controles et la Météo.
+// NÉCESSITE gnss-dashboard-part1.js
+// =================================================================
 
 // ===========================================
 // FILTRE DE KALMAN & FACTEUR R
 // ===========================================
 
-/** Applique le filtre de Kalman à la vitesse 3D. */
-function kFilter(nSpd, dt, R_dyn) {
+/** Applique le filtre de Kalman à la vitesse 3D en utilisant l'accélération pour la prédiction. */
+function kFilter(nSpd, dt, R_dyn, accel_input = 0) { 
     if (dt === 0 || dt > 5) return kSpd; 
     const R = R_dyn ?? R_MAX, Q = Q_NOISE * dt; 
-    let pSpd = kSpd, pUnc = kUncert + Q; 
+
+    // Prédiction améliorée: Vitesse précédente + (Accélération * temps)
+    // Cela améliore la réactivité aux décélérations/accélérations (meilleure harmonie).
+    let pSpd = kSpd + accel_input * dt; 
+    let pUnc = kUncert + Q; 
+
+    // Correction
     let K = pUnc / (pUnc + R); 
     kSpd = pSpd + K * (nSpd - pSpd); 
     kUncert = (1 - K) * pUnc; 
@@ -145,20 +156,13 @@ function kFilter(nSpd, dt, R_dyn) {
 /** Applique le filtre de Kalman à l'Altitude. */
 function kFilterAltitude(nAlt, acc, dt) {
     if (nAlt === null) return kAlt;
-    
-    // R est basé sur la précision GPS (acc), mais avec un minimum R_ALT_MIN
     const R = Math.max(R_ALT_MIN, acc); 
     const Q = Q_ALT_NOISE * dt; 
-    
-    // Prédiction
     let pAlt = kAlt === null ? nAlt : kAlt; 
     let pUnc = kAltUncert + Q; 
-    
-    // Correction
     const K = pUnc / (pUnc + R); 
     kAlt = pAlt + K * (nAlt - pAlt); 
     kAltUncert = (1 - K) * pUnc; 
-    
     return kAlt;
 }
 
@@ -169,26 +173,20 @@ function getKalmanR(acc, alt, P_hPa) {
     
     const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT;
     
+    // Si la pression est disponible, elle affecte R
     if (P_hPa !== null) {
         const pressureFactor = 1.0 + (1013.25 - P_hPa) / 1013.25 * 0.1;
         R *= Math.max(1.0, pressureFactor);
     }
     
+    // Facteur environnemental (simule la dégradation du signal)
     R *= envFactor;
     if (alt < ALT_TH) { R *= 2.0; } 
 
     R = Math.max(R_MIN, Math.min(R_MAX, R));
     
     return R;
-    }
-// =================================================================
-// FIN FICHIER JS PARTIE 1/2 : gnss-dashboard-part1.js
-// =================================================================
-// =================================================================
-// FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
-// Contient la logique principale de mise à jour, Astro et DOM.
-// NÉCESSITE gnss-dashboard-part1.js
-// =================================================================
+}
 
 // ===========================================
 // FONCTIONS ASTRO & TEMPS
@@ -271,19 +269,11 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
     // 1. Mise à jour de la position du Soleil
     if (sunPos) {
         const altDeg = sunPos.altitude * R2D;
-        // Azimut (du Sud vers l'Ouest) -> Rotation (du Nord dans le sens horaire)
         const aziDeg = (sunPos.azimuth * R2D + 180) % 360; 
-
         sunEl.style.transform = `rotate(${aziDeg}deg)`;
-        
-        // Altitude: 90 deg (Zénith) -> Centre, 0 deg (Horizon) -> Bord
         const radialPercent = Math.min(50, Math.max(0, 50 * (90 - altDeg) / 90));
         const altitudeOffsetPercent = 50 - radialPercent; 
-        
-        // Ceci déplace l'icône du bord (haut) vers le centre (bas) dans la direction de la rotation
         sunIcon.style.transform = `translateY(calc(-50% + ${altitudeOffsetPercent}%) )`; 
-        
-        // La Lune/Soleil est visible si son altitude est supérieure à l'horizon (avec correction de réfraction pour le Soleil: -0.83°)
         sunEl.style.display = altDeg > -0.83 ? 'flex' : 'none'; 
     } else {
         sunEl.style.display = 'none';
@@ -293,15 +283,10 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
     if (moonPos) {
         const altDeg = moonPos.altitude * R2D;
         const aziDeg = (moonPos.azimuth * R2D + 180) % 360; 
-
         moonEl.style.transform = `rotate(${aziDeg}deg)`;
-        
-        // Altitude
         const radialPercent = Math.min(50, Math.max(0, 50 * (90 - altDeg) / 90));
         const altitudeOffsetPercent = 50 - radialPercent; 
-        
         moonIcon.style.transform = `translateY(calc(-50% + ${altitudeOffsetPercent}%) )`;
-        
         moonEl.style.display = altDeg > 0 ? 'flex' : 'none';
     } else {
         moonEl.style.display = 'none';
@@ -313,15 +298,11 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
 
     if (sunTimes) {
         const nowMs = now.getTime();
-        
         let bodyClass;
-        // Jours (entre la fin du lever et le début du coucher)
         if (nowMs >= sunTimes.sunriseEnd.getTime() && nowMs < sunTimes.sunsetStart.getTime()) {
             bodyClass = 'sky-day';
-        // Nuit (avant l'aube ou après le crépuscule)
         } else if (nowMs >= sunTimes.dusk.getTime() || nowMs < sunTimes.dawn.getTime()) {
             bodyClass = 'sky-night';
-        // Crépuscule/Aube
         } else {
             bodyClass = 'sky-sunset';
         }
@@ -345,7 +326,6 @@ function updateAstro(latA, lonA) {
         return;
     }
     
-    // Utilisez SunCalc si disponible (nécessite l'inclusion du script SunCalc)
     const sunPos = window.SunCalc ? SunCalc.getPosition(now, latA, lonA) : null;
     const moonIllum = window.SunCalc ? SunCalc.getMoonIllumination(now) : null;
     const moonPos = window.SunCalc ? SunCalc.getMoonPosition(now, latA, lonA) : null;
@@ -374,13 +354,11 @@ function updateAstro(latA, lonA) {
     if ($('moon-illum-fraction')) $('moon-illum-fraction').textContent = moonIllum ? `${(moonIllum.fraction * 100).toFixed(1)} %` : 'N/A';
     if ($('moon-phase-name')) $('moon-phase-name').textContent = moonIllum ? getMoonPhaseName(moonIllum.phase) : 'N/A';
     
-    // Mise à jour de l'horloge visuelle et du fond
     if (window.SunCalc && sunPos && moonPos) {
         updateClockVisualization(now, sunPos, moonPos, sunTimes);
     } else if ($('clock-status')) {
         $('clock-status').textContent = 'Initialisation TST...';
     }
-    // --- FIN NOUVELLES DONNÉES ASTRO ---
 
     if ($('culmination-lsm')) $('culmination-lsm').textContent = solarTimes.MST;
     if ($('noon-solar')) $('noon-solar').textContent = sunTimes && sunTimes.solarNoon ? sunTimes.solarNoon.toLocaleTimeString() : 'N/D';
@@ -461,7 +439,6 @@ function handleErr(err) {
 async function fetchWeather(latA, lonA) {
     lastP_hPa = null; lastT_K = null; lastH_perc = null; 
     
-    // Vérifie si le proxy Vercel est en place (l'URL est définie dans part1.js)
     if (!latA || !lonA || PROXY_BASE_URL.includes('scientific-dashboard2')) {
         if ($('env-factor')) $('env-factor').textContent = `${selectedEnvironment} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT})`;
         return; 
@@ -486,7 +463,14 @@ async function fetchWeather(latA, lonA) {
         console.error("Échec de la récupération des données météo:", error);
     }
 }
-
+// =================================================================
+// FIN FICHIER JS PARTIE 2/3 : gnss-dashboard-part2.js
+// =================================================================
+// =================================================================
+// FICHIER JS PARTIE 3/3 : gnss-dashboard-part3.js
+// Contient la boucle principale de mise à jour GPS et l'initialisation DOM.
+// NÉCESSITE gnss-dashboard-part1.js et gnss-dashboard-part2.js
+// =================================================================
 
 // ===========================================
 // FONCTION PRINCIPALE DE MISE À JOUR GPS 
@@ -495,28 +479,38 @@ async function fetchWeather(latA, lonA) {
 function updateDisp(pos) {
     if (emergencyStopActive) return;
 
-    lat = pos.coords.latitude; lon = pos.coords.longitude;
+    // Récupération des données brutes
+    let currentLat = pos.coords.latitude, currentLon = pos.coords.longitude;
     const alt = pos.coords.altitude, acc = pos.coords.accuracy;
     const spd = pos.coords.speed;
     const cTimePos = pos.timestamp; // Heure de la mesure GPS
 
     const now = getCDate(); 
-    if (now === null) { updateAstro(lat, lon); return; } 
+    if (now === null) { updateAstro(currentLat, currentLon); return; } 
 
     if (sTime === null) { sTime = now.getTime(); distMStartOffset = distM; }
     
-    if (acc > MAX_ACC) { 
-        if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Trop Imprécis)`; 
-        if (lPos === null) lPos = pos; return; 
-    }
+    // --- DÉBUT LOGIQUE NAVIGATION MORTE / HARMONIE ---
+    let isSignalLost = false;
+    let kAlt_new = kAlt; // Initialisation par défaut pour la perte de signal
     
+    if (acc > MAX_ACC) { 
+        if ($('gps-precision')) $('gps-precision').textContent = `❌ ${acc.toFixed(0)} m (Signal Perdu/Trop Imprécis)`; 
+        isSignalLost = true;
+        // Si signal perdu, on conserve la dernière position connue pour le calcul dt
+        if (lPos === null) lPos = pos; 
+        currentLat = lat; currentLon = lon; // Utiliser les dernières coordonnées fiables
+    } else {
+        // Mettre à jour les coordonnées globales si le signal est bon
+        lat = currentLat; lon = currentLon;
+        // 1. FILTRAGE DE L'ALTITUDE (via Kalman) - Seulement si le signal est bon
+        kAlt_new = kFilterAltitude(alt, acc, dt);
+    }
+
     let spdH = spd ?? 0;
     let spdV = 0; 
     const dt = lPos ? (cTimePos - lPos.timestamp) / 1000 : MIN_DT;
 
-    // 1. FILTRAGE DE L'ALTITUDE (via Kalman)
-    const kAlt_new = kFilterAltitude(alt, acc, dt);
-    
     // 2. CALCUL DE LA VITESSE VERTICALE FILTRÉE
     if (lPos && lPos.kAlt_old !== undefined && dt > MIN_DT && alt !== null) {
         spdV = (kAlt_new - lPos.kAlt_old) / dt;
@@ -526,27 +520,21 @@ function updateDisp(pos) {
     
     // 3. CALCUL DE LA VITESSE HORIZONTALE BRUTE
     if (lPos && dt > 0.05) { 
-        const dH = dist(lPos.coords.latitude, lPos.coords.longitude, lat, lon); 
+        const dH = dist(lPos.coords.latitude, lPos.coords.longitude, currentLat, currentLon); 
         spdH = dH / dt; 
     } else if (spd !== null) {
         spdH = spd;
     }
     
-    // 4. LOGIQUE HYBRIDE D'AMORTISSEMENT 3D BASÉE SUR LA PRÉCISION (ACC)
+    // 4. LOGIQUE HYBRIDE D'AMORTISSEMENT 3D
     let dampen_factor = 1.0;
-    
     if (acc > ACC_DAMPEN_LOW) {
         const acc_range = ACC_DAMPEN_HIGH - ACC_DAMPEN_LOW;
         const current_excess = acc - ACC_DAMPEN_LOW;
-        
-        // Facteur de 1.0 (à ACC_DAMPEN_LOW) à 0.0 (à ACC_DAMPEN_HIGH)
         dampen_factor = 1.0 - Math.min(1.0, current_excess / acc_range);
-        
-        // Applique l'amortissement aux DEUX composantes de vitesse
         spdH *= dampen_factor;
         spdV *= dampen_factor; 
     }
-    
     let spd3D = Math.sqrt(spdH ** 2 + spdV ** 2);
 
     // 5. CORRECTION ANTI-SPIKE DE VITESSE
@@ -555,9 +543,7 @@ function updateDisp(pos) {
         const accelSpike = Math.abs(spd3D - lastRawSpd) / dt;
         
         if (accelSpike > MAX_PLAUSIBLE_ACCEL) {
-            console.warn(`Spike détecté: ${accelSpike.toFixed(2)} m/s². Correction appliquée.`);
             const maxPlausibleChange = MAX_PLAUSIBLE_ACCEL * dt;
-            // Cap la nouvelle vitesse à la valeur maximale plausible
             if (spd3D > lastRawSpd) {
                 spd3D = lastRawSpd + maxPlausibleChange;
             } else {
@@ -566,11 +552,36 @@ function updateDisp(pos) {
         }
     }
 
-    // 6. FILTRE DE KALMAN FINAL (Stabilité temporelle)
-    const R_dyn = getKalmanR(acc, alt, lastP_hPa); 
-    // sSpdFE sera 0 si la vitesse filtrée est inférieure à MIN_SPD (0.05 m/s)
-    const fSpd = kFilter(spd3D, dt, R_dyn), sSpdFE = fSpd < MIN_SPD ? 0 : fSpd;
+    // Calcul de l'accélération 3D brute pour la prédiction Kalman (IMU simulé)
+    let raw_accel_3d = 0;
+    if (lPos && lPos.speedMS_3D !== undefined && dt > MIN_DT) {
+        raw_accel_3d = (spd3D - lPos.speedMS_3D) / dt;
+        // Cap l'accélération brute pour éviter d'introduire un bruit trop fort dans la prédiction.
+        raw_accel_3d = Math.min(MAX_PLAUSIBLE_ACCEL, Math.max(-MAX_PLAUSIBLE_ACCEL, raw_accel_3d));
+    }
+
+    // Détermine la vitesse de mesure (nSpd) à fournir au filtre
+    const nSpd = isSignalLost ? kSpd : spd3D; 
     
+    // 6. FILTRE DE KALMAN FINAL (Stabilité temporelle)
+    let R_dyn = getKalmanR(acc, alt, lastP_hPa); 
+    
+    if (isSignalLost) {
+        // Si signal perdu, on augmente R pour que le filtre ignore complètement le GPS
+        R_dyn = R_MAX * 10; 
+        if ($('speed-stable')) $('speed-stable').textContent = `~ ${(kSpd * KMH_MS).toFixed(5)} km/h (ESTIMATION)`; 
+    } else {
+        // Réinitialiser l'affichage si le signal est revenu
+        if ($('speed-stable') && $('speed-stable').textContent.includes('(ESTIMATION)')) {
+            $('speed-stable').textContent = `...`; 
+        }
+    }
+
+    // Appel du filtre avec l'accélération 3D brute pour la prédiction
+    const fSpd = kFilter(nSpd, dt, R_dyn, raw_accel_3d), sSpdFE = fSpd < MIN_SPD ? 0 : fSpd;
+    
+    // --- FIN LOGIQUE NAVIGATION MORTE / HARMONIE ---
+
     // Calculs d'accélération et distance (utilisent sSpdFE, la vitesse la plus stable)
     let accel_long = 0;
     if (dt > 0.05) {
@@ -578,7 +589,6 @@ function updateDisp(pos) {
     }
     lastFSpeed = sSpdFE;
 
-    // La distance est cumulative de la vitesse stable (sSpdFE)
     distM += sSpdFE * dt * (netherMode ? NETHER_RATIO : 1); 
     if (sSpdFE > MIN_SPD) { timeMoving += dt; }
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
@@ -587,7 +597,7 @@ function updateDisp(pos) {
     if ($('latitude')) $('latitude').textContent = lat.toFixed(6);
     if ($('longitude')) $('longitude').textContent = lon.toFixed(6);
     if ($('altitude-gps')) $('altitude-gps').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A';
-    if ($('gps-precision')) $('gps-precision').textContent = `${acc.toFixed(2)} m`; 
+    if ($('gps-precision') && !isSignalLost) $('gps-precision').textContent = `${acc.toFixed(2)} m`; 
     if ($('speed-raw-ms')) $('speed-raw-ms').textContent = `${spd3D.toFixed(2)} m/s`;
     if ($('vertical-speed')) $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
     if ($('underground-status')) $('underground-status').textContent = alt !== null && alt < ALT_TH ? `OUI (< ${ALT_TH}m)` : 'Non';
@@ -595,7 +605,7 @@ function updateDisp(pos) {
     if ($('force-g-long')) $('force-g-long').textContent = `${(accel_long / G_ACC).toFixed(2)} G`;
     if ($('speed-error-perc')) $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`; 
     if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${(spd3D * KMH_MS).toFixed(5)} km/h`; 
-    if ($('speed-stable')) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
+    if ($('speed-stable') && !isSignalLost) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; 
     if ($('speed-stable-ms')) $('speed-stable-ms').textContent = `${sSpdFE.toFixed(2)} m/s | ${(sSpdFE * 1000).toFixed(0)} mm/s`;
     if ($('speed-max')) $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
     if ($('speed-avg-moving')) $('speed-avg-moving').textContent = timeMoving > 1 ? `${(distM / timeMoving * KMH_MS).toFixed(5)} km/h` : '0.00000 km/h';
@@ -610,17 +620,15 @@ function updateDisp(pos) {
         updateDisp.lastWeatherFetch = Date.now();
     }
     
-    // SAUVEGARDE DES VALEURS POUR LA PROCHAINE ITÉRATION
-    lPos = pos; 
-    lPos.speedMS_3D = spd3D; 
-    lPos.timestamp = cTimePos; 
-    lPos.kAlt_old = kAlt_new; 
+    // SAUVEGARDE DES VALEURS POUR LA PROCHAINE ITÉRATION (Seulement si le signal est bon)
+    if (!isSignalLost) {
+        lPos = pos; 
+        lPos.speedMS_3D = spd3D; 
+        lPos.timestamp = cTimePos; 
+        lPos.kAlt_old = kAlt_new; 
+    }
 }
 
-
-// ... (Code des fonctions updateDisp, handleErr, etc.)
-// ... (La suite du code de la fonction updateDisp)
-// ...
 
 // ===========================================
 // INITIALISATION DES ÉVÉNEMENTS DOM
@@ -638,10 +646,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     envSelect.value = selectedEnvironment;
     
-    const envFactorElement = $('environment-select'); // Utilisé pour remplacer l'élément dans le HTML
+    const envFactorElement = $('environment-select');
     if (envFactorElement) {
         const parent = envFactorElement.parentNode;
-        parent.replaceChild(envSelect, envFactorElement); // Remplace le select existant
+        parent.replaceChild(envSelect, envFactorElement);
     }
     
     syncH(); 
@@ -693,5 +701,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 // =================================================================
-// FIN FICHIER JS PARTIE 2/2 : gnss-dashboard-part2.js
+// FIN FICHIER JS PARTIE 3/3 : gnss-dashboard-part3.js
 // =================================================================
