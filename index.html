@@ -214,7 +214,15 @@
 
             <hr>
             <h2><i class="fas fa-balance-scale"></i> IMU & Forces</h2>
-            <div class="data-point"><span>Accélération Linéaire (m/s²)</span><span id="accel-imu">0.00</span></div>
+            <div class="data-point"><span>Accel Lin. X (m/s²)</span><span id="accel-imu-x">0.00</span></div>
+            <div class="data-point"><span>Accel Lin. Y (m/s²)</span><span id="accel-imu-y">0.00</span></div>
+            <div class="data-point"><span>Accel Lin. Z (m/s²)</span><span id="accel-imu-z">0.00</span></div>
+            <div class="data-point"><span>Accélération Linéaire Mag. (m/s²)</span><span id="accel-imu-mag">0.000</span></div> 
+            <hr> 
+            <div class="data-point"><span>Roll (Roulis, $\phi$)</span><span id="imu-roll">0.0</span></div> 
+            <div class="data-point"><span>Pitch (Tangage, $\theta$)</span><span id="imu-pitch">0.0</span></div> 
+            <div class="data-point"><span>Yaw (Cap, $\psi$)</span><span id="imu-yaw">0.0</span></div> 
+
             <div class="data-point"><span>Bruit du Processus Q</span><span id="kalman-q-noise">0.00</span></div>
             <div class="data-point"><span>Statut GNSS/IMU</span><span id="gps-status">INITIALISATION...</span></div>
             <div class="data-point"><span>Mode ZUPT Actif</span><span id="zupt-active">Non</span></div>
@@ -244,4 +252,4 @@
 
     <script src="gnss-dashboard-full.js"></script>
 </body>
-                                                                      </html>
+    </html>
