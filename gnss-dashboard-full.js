@@ -23,10 +23,10 @@ const Q_BASE_NOISE = 0.05;
 const IMU_ACCEL_NOISE_FACTOR = 0.5; 
 const ZUPT_RAW_THRESHOLD = 0.5; 
 const ZUPT_ACCEL_THRESHOLD = 0.5;
-const ZUPT_ACCEL_THRESHOLD_IMU = 0.05; // Seuil IMU pour le bruit minimal réel
-const ACCURACY_NOISE_FACTOR = 3.0; // FACTEUR CLÉ MDS : Déplacement minimal réel
+const ZUPT_ACCEL_THRESHOLD_IMU = 0.05; 
+const ACCURACY_NOISE_FACTOR = 3.0; // FACTEUR MDS : Déplacement minimal réel
 
-// --- Variables d'État Globales ---
+// --- Variables d'État Globales (CORRIGÉ : totalDistance initialisé à 0) ---
 let wID = null;
 let domID = null;
 let lastUpdate = 0;
@@ -35,7 +35,7 @@ let kSpd = 0;
 let kAlt = null;
 let emergencyStopActive = false;
 let imuAccel = 0.0; 
-let totalDistance = 0;
+let totalDistance = 0; // CORRIGÉ : Assure une initialisation correcte
 let kAltFilter;
 
 // Placeholders Météo (à remplacer par API)
@@ -43,7 +43,7 @@ let currentTempC = 17.3;
 let currentPressurehPa = 1015;
 let currentHumidity = 72;
 
-// --- Instanciation des Filtres (déclarée plus tard) ---
+// --- Instanciation des Filtres ---
 let kFilter = createKalmanFilter(Q_BASE_NOISE, R_MAX); 
 kAltFilter = createSimpleKalmanFilter(0.1, R_MIN);
 
@@ -103,15 +103,35 @@ function createKalmanFilter(initialQ, initialR) {
 // BLOC 2/3 : GESTION DES CAPTEURS, MÉTÉO & LOGIQUE DE FUSION (~80 Lignes)
 // ====================================================================
 
-// --- Fonctions Météo et GPS ---
-function getBarometricAltitude(P_hPa, Tv_K) { /* ... (Logique complète dans le fichier JS) ... */
+// --- Fonctions Météo et GPS (Fonctions Scientifiques Complètes) ---
+function getVirtualTemperature(T_C, HR_percent, P_hPa) {
+    if (!P_hPa || !T_C || !HR_percent) return T_C + 273.15;
+    const T_K = T_C + 273.15;
+    const HR = HR_percent / 100;
+    const Pvs_Pa = 611 * Math.exp((17.27 * T_C) / (237.3 + T_C));
+    const Pv_Pa = HR * Pvs_Pa;
+    const r = (0.622 * Pv_Pa) / (P_hPa * 100 - Pv_Pa);
+    return T_K * (1 + 0.61 * r);
+}
+function getBarometricAltitude(P_hPa, Tv_K) {
     if (P_hPa === null || isNaN(P_hPa)) return null;
     const exponent = (GAMMA_AIR - 1) / GAMMA_AIR;
-    return ((R_AIR * Tv_K) / (G * exponent)) * (1 - Math.pow(P_hPa / P_SEA_hPa, exponent));
+    const alt = ((R_AIR * Tv_K) / (G * exponent)) * (1 - Math.pow(P_hPa / P_SEA_hPa, exponent));
+    return alt;
+}
+function getSpeedOfSound(T_C) { return 331.3 * Math.sqrt(1 + T_C / 273.15); }
+function getAirDensity(P_hPa, Tv_K) { return (P_hPa * 100) / (R_AIR * Tv_K); }
+function getFrostPoint(T_C, HR_percent) {
+    const A = 17.27; const B = 237.3;
+    const alpha = (A * T_C) / (B + T_C) + Math.log(HR_percent / 100);
+    return (B * alpha) / (A - alpha);
 }
 function getKalmanR(accRaw) {
     if (accRaw === null || accRaw > MAX_ACC) return R_MAX;
     return Math.max(R_MIN, accRaw * accRaw);
+}
+function getLocalSiderealTime(date, longitudeDeg) {
+    return ((date.getUTCHours() + longitudeDeg / 15.0) % 24);
 }
 function startGPS() {
     if (wID === null) {
@@ -127,7 +147,7 @@ function stopGPS() {
 }
 function handleError(error) { console.warn(`GPS ERROR: ${error.code}: ${error.message}`); }
 
-// --- LOGIQUE DE FUSION PRINCIPALE (updateDisp) ---
+// --- LOGIQUE DE FUSION PRINCIPALE ---
 function updateDisp(pos) {
     if (emergencyStopActive || wID === null) return;
     
@@ -138,9 +158,9 @@ function updateDisp(pos) {
 
     const { latitude: latRaw, longitude: lonRaw, altitude: altRaw, accuracy: accRaw } = pos.coords;
     
-    // Calculs Météo/Altitude (simplifiés ici pour la taille, complets dans la version réelle)
-    const Tv_K = 290.4; // getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
-    const altBaro = 150; // getBarometricAltitude(currentPressurehPa, Tv_K);
+    // Calculs Météo/Altitude
+    const Tv_K = getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
+    const altBaro = getBarometricAltitude(currentPressurehPa, Tv_K);
     if (kAlt === null && altRaw !== null) kAlt = altRaw;
     const altToFilter = (altBaro !== null && altRaw === null) ? altBaro : altRaw;
     if (altToFilter !== null) kAlt = kAltFilter(altToFilter, pos.coords.altitudeAccuracy || R_MIN, dt); 
@@ -167,7 +187,7 @@ function updateDisp(pos) {
 
     if (!isSignalLost) {
         // --- MODE FUSION GPS/IMU : SEUIL MDS DYNAMIQUE ---
-        const MDS_DYNAMIC = ACCURACY_NOISE_FACTOR * accRaw / dt; // Seuil Minimal Réel
+        const MDS_DYNAMIC = ACCURACY_NOISE_FACTOR * accRaw / dt; 
         const ZUPT_THRESHOLD_DYNAMIC = Math.max(ZUPT_RAW_THRESHOLD, MDS_DYNAMIC); 
         const accel_long_provisional = (spd3D_raw - (lPos?.speedMS_3D || 0)) / dt;
         
@@ -216,6 +236,7 @@ function updateDisp(pos) {
 // ====================================================================
 
 function $(id) { return document.getElementById(id); }
+
 function msToHMS(ms) {
     const totalSeconds = Math.floor(ms / 1000);
     const h = Math.floor(totalSeconds / 3600);
@@ -226,8 +247,11 @@ function msToHMS(ms) {
 
 function updateDOMData(lat, lon, kAlt, sSpdFE, dt, Q_used, R_kalman_input, altBaro, now, accRaw) {
     const sSpdKMH = sSpdFE * 3.6;
-    const C_S_TRUE = 343; // Vitesse du son simulée
-    
+    const Tv_K = getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
+    const C_S_TRUE = getSpeedOfSound(currentTempC);
+    const airDensity = getAirDensity(currentPressurehPa, Tv_K);
+    const frostPoint = getFrostPoint(currentTempC, currentHumidity);
+
     // Position & Vitesse
     $('current-lat').textContent = lat.toFixed(6);
     $('current-lon').textContent = lon.toFixed(6);
@@ -246,11 +270,13 @@ function updateDOMData(lat, lon, kAlt, sSpdFE, dt, Q_used, R_kalman_input, altBa
     $('update-time-dt').textContent = dt.toFixed(3);
     $('gps-status').textContent = accRaw > MAX_ACC ? '⚠️ GPS Perdu (DR)' : '✅ GPS OK';
 
-    // Météo & Chimie (Utilisation des placeholders)
+    // Météo & Chimie (Maintenant complet)
     $('temp-c').textContent = currentTempC.toFixed(1);
     $('pressure-hpa').textContent = currentPressurehPa.toFixed(2);
     $('humidity-perc').textContent = currentHumidity.toFixed(0);
+    $('frost-point').textContent = frostPoint.toFixed(1);
     $('speed-of-sound').textContent = C_S_TRUE.toFixed(2);
+    $('air-density').textContent = airDensity.toFixed(3);
     
     // Rapports de Vitesse
     $('perc-speed-light').textContent = `${(sSpdFE / 299792458 * 100).toExponential(2)} %`;
@@ -258,20 +284,24 @@ function updateDOMData(lat, lon, kAlt, sSpdFE, dt, Q_used, R_kalman_input, altBa
 }
 
 function updateAstro(lat, lon, kAlt, now) {
-    const LST_h = 14.5; // getLocalSiderealTime(now, lon); (Simulé)
+    // Mise à jour de l'heure sidérale
+    const LST_h = getLocalSiderealTime(now, lon);
     const LST_hms = msToHMS((LST_h % 24) * 3600000);
     $('local-sidereal-time').textContent = LST_hms;
 
     updateClockVisualization(lat, lon, kAlt, now);
 
-    // Astro Times
+    // Astro Times (Nécessite SunCalc)
     if (typeof SunCalc !== 'undefined') {
         const sunTimes = SunCalc.getTimes(now, lat, lon);
-        if (sunTimes.sunrise) $('sunrise-tst').textContent = `↑ ${sunTimes.sunrise.toLocaleTimeString('fr-FR')} / ↓ ${sunTimes.sunset.toLocaleTimeString('fr-FR')} (Local)`;
+        if (sunTimes.sunrise) {
+            $('sunrise-tst').textContent = `↑ ${sunTimes.sunrise.toLocaleTimeString('fr-FR')} / ↓ ${sunTimes.sunset.toLocaleTimeString('fr-FR')} (Local)`;
+        }
     }
 }
 
 function updateClockVisualization(lat, lon, kAlt, now) {
+    // Nécessite SunCalc
     if (typeof SunCalc === 'undefined') return; 
     
     const sunPos = SunCalc.getPosition(now, lat, lon);
@@ -304,14 +334,20 @@ function updateClockVisualization(lat, lon, kAlt, now) {
 
 // --- Événements et Démarrage ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Écouteurs Boutons
-    $('gps-pause-button').addEventListener('click', () => { wID === null ? startGPS() : stopGPS(); });
+    // Écouteurs GPS/Pause
+    $('gps-pause-button').addEventListener('click', () => {
+        wID === null ? startGPS() : stopGPS();
+    });
+    
+    // Écouteur Rayons X
     const toggleXrayButton = $('toggle-xray');
     const clockContainer = $('clock-container');
     if (toggleXrayButton && clockContainer) {
         toggleXrayButton.addEventListener('click', () => {
             const isXray = clockContainer.classList.toggle('xray-mode');
-            toggleXrayButton.innerHTML = isXray ? '<i class="fas fa-eye"></i> Astro Rayons X: ON' : '<i class="fas fa-eye-slash"></i> Astro Rayons X: OFF';
+            toggleXrayButton.innerHTML = isXray ? 
+                '<i class="fas fa-eye"></i> Astro Rayons X: ON' : 
+                '<i class="fas fa-eye-slash"></i> Astro Rayons X: OFF';
         });
     }
     
@@ -334,9 +370,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (wID !== null && lPos.lat) {
                 updateAstro(lPos.lat, lPos.lon, kAlt, now);
             } else {
-                 updateAstro(43.296, 5.370, 0, now); // Position par défaut si GPS inactif
+                 updateAstro(43.296, 5.370, 0, now); // Position par défaut si GPS inactif (Marseille)
             }
 
         }, DOM_SLOW_UPDATE_MS); 
     }
+    
+    // startGPS(); // Décommentez pour un démarrage automatique
 });
