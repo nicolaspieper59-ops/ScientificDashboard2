@@ -796,4 +796,179 @@ function updateDisp(pos) {
     if ($('distance-light-h')) $('distance-light-h').textContent = `${(distM / C_L / 3600).toExponential(2)} h`;
     if ($('distance-light-day')) $('distance-light-day').textContent = `${(distM / C_L / 86400).toExponential(2)} jours`;
     if ($('distance-light-week')) $('distance-light-week').textContent = `${(distM / C_L / 604800).toExponential(2)} sem`;
-    if ($('distance-light-month')) $('distance-light-month').textContent = `$
+    if ($('distance-light-month')) $('distance-light-month').textContent = `${(distM / C_L / 2629800).toExponential(2)} mois`; // Mois moyen
+    if ($('distance-cosmic')) $('distance-cosmic').textContent = `${(distM / 149597870700).toExponential(2)} UA | ${(distM / 9460730472580800).toExponential(2)} al`;
+    
+    // Section GPS & Physique
+    if ($('latitude')) $('latitude').textContent = `${lat.toFixed(6)} °`;
+    if ($('longitude')) $('longitude').textContent = `${lon.toFixed(6)} °`;
+    if ($('altitude-gps')) $('altitude-gps').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A';
+    if ($('speed-raw-ms')) $('speed-raw-ms').textContent = `${spd3D_raw.toFixed(3)} m/s`;
+    if ($('heading-display')) $('heading-display').textContent = headingRaw !== null ? `${headingRaw.toFixed(1)} °` : 'N/A';
+
+    // Statut dynamique (corrigé)
+    const altStatusTxt = alt !== null && alt < ALT_TH ? `OUI (< ${ALT_TH}m)` : 'Non';
+    if ($('underground-status')) {
+        $('underground-status').textContent = `${altStatusTxt} (${modeStatus} | Acc: ${acc.toFixed(1)}m | R: ${R_dyn.toExponential(1)})`;
+    }
+    
+    // Section Dynamique
+    if ($('gravity-local')) $('gravity-local').textContent = `${local_g.toFixed(5)} m/s²`;
+    if ($('accel-long')) $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
+    if ($('force-g-long')) $('force-g-long').textContent = G_ACC > 0.1 ? `${(accel_long / local_g).toFixed(2)} G` : '0.00 G';
+    if ($('vertical-speed')) $('vertical-speed').textContent = `${spdV.toFixed(2)} m/s`;
+    
+    // Section Champs & Énergie
+    if ($('kinetic-energy')) $('kinetic-energy').textContent = `${kineticEnergy.toFixed(2)} J`;
+    if ($('mechanical-power')) $('mechanical-power').textContent = `${mechanicalPower.toFixed(2)} W`;
+    if ($('coriolis-force')) $('coriolis-force').textContent = `${coriolis_force.toExponential(2)} N`;
+
+    // Section Kalman
+    if ($('kalman-uncert')) $('kalman-uncert').textContent = `${kUncert.toFixed(3)} m²/s² (P)`;
+    if ($('speed-error-perc')) $('speed-error-perc').textContent = `${R_dyn.toFixed(3)} m² (R dyn)`;
+    
+    // SAUVEGARDE DES VALEURS POUR LA PROCHAINE ITÉRATION
+    lPos = pos; 
+    lPos.speedMS_3D = spd3D_raw; // Sauvegarde la vitesse brute pour le prochain calcul de spike
+    lPos.timestamp = cTimePos; 
+    lPos.kAlt_old = kAlt_new; 
+}
+
+
+// ===========================================
+// INITIALISATION DES ÉVÉNEMENTS DOM
+// ===========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // Initialisation de la carte Leaflet
+    initMap(); 
+
+    // Écouteur pour l'input de masse
+    const massInput = $('mass-input'); // Doit exister dans l'HTML
+    if (massInput) {
+        massInput.addEventListener('input', () => { 
+            currentMass = parseFloat(massInput.value) || 70.0; 
+            if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+        });
+        currentMass = parseFloat(massInput.value); // Init au chargement
+        if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+    }
+
+    // Écouteur pour le sélecteur de Corps Céleste
+    if ($('celestial-body-select')) {
+        $('celestial-body-select').addEventListener('change', (e) => { 
+            updateCelestialBody(e.target.value); 
+        });
+    }
+
+    // Écouteurs pour la Gravité Artificielle (Rotation)
+    const updateRotation = () => {
+        rotationRadius = parseFloat($('rotation-radius')?.value) || 100;
+        angularVelocity = parseFloat($('angular-velocity')?.value) || 0;
+        if (currentCelestialBody === 'ROTATING') {
+            updateCelestialBody('ROTATING'); // Recalculer la gravité artificielle
+        }
+    };
+    if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
+    if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
+
+    // Écouteurs pour les contrôles EKF
+    if ($('environment-select')) {
+        $('environment-select').addEventListener('change', (e) => { 
+            if (emergencyStopActive) return;
+            selectedEnvironment = e.target.value; 
+            if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`; 
+        });
+        // Init affichage
+        if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`;
+    }
+    
+    if ($('gps-accuracy-override')) {
+        $('gps-accuracy-override').addEventListener('change', (e) => {
+            gpsAccuracyOverride = parseFloat(e.target.value) || 0.0;
+        });
+    }
+
+    // Contrôles d'état (Marche/Arrêt GPS)
+    if ($('toggle-gps-btn')) {
+        $('toggle-gps-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return;
+            wID === null ? startGPS() : stopGPS(); 
+        });
+    }
+    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => setGPSMode(e.target.value));
+
+    // Contrôles d'arrêt et de réinitialisation
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').addEventListener('click', () => { 
+            if (!emergencyStopActive) { emergencyStop(); } else { resumeSystem(); }
+        });
+    }
+    
+    // Mode Nether (si le bouton existe encore)
+    if ($('nether-toggle-btn')) {
+        $('nether-toggle-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            netherMode = !netherMode; 
+            if ($('mode-nether')) $('mode-nether').textContent = netherMode ? `ACTIVÉ (1:${NETHER_RATIO}) 🔥` : "DÉSACTIVÉ (1:1)"; 
+        });
+    }
+    
+    if ($('reset-dist-btn')) {
+        $('reset-dist-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            distM = 0; distMStartOffset = 0; timeMoving = 0; 
+            if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`; 
+            if ($('speed-avg-moving')) $('speed-avg-moving').textContent = `0.00000 km/h`; 
+            if ($('time-moving')) $('time-moving').textContent = `0.00 s`; 
+        });
+    }
+    
+    if ($('reset-max-btn')) {
+        $('reset-max-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            maxSpd = 0; 
+            if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`; 
+        });
+    }
+    
+    if ($('reset-all-btn')) {
+        $('reset-all-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            if (confirm("Réinitialiser toutes les données de session ?")) { 
+                distM = 0; maxSpd = 0; distMStartOffset = 0; 
+                kSpd = 0; kUncert = 1000; 
+                timeMoving = 0; 
+                kAlt = null; kAltUncert = 10;
+                lPos = null; sTime = null;
+            } 
+        });
+    }
+    
+    // Contrôle du mode Nuit/Jour
+    if ($('toggle-mode-btn')) {
+        $('toggle-mode-btn').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+        });
+    }
+    
+    // --- DÉMARRAGE DU SYSTÈME ---
+    syncH(); // Synchro heure
+    updateCelestialBody(currentCelestialBody); // Init gravité
+    startGPS(); // Démarrage du GPS
+
+    // Boucle de mise à jour lente (Astro/Météo)
+    if (domID === null) {
+        domID = setInterval(() => {
+            const currentLat = lat || 43.296; // Fallback Marseille
+            const currentLon = lon || 5.370;
+            updateAstro(currentLat, currentLon);
+            
+            // Ne fetch la météo que si on a une position GPS réelle
+            if (lat && lon && !emergencyStopActive) {
+                fetchWeather(lat, lon);
+            }
+        }, DOM_SLOW_UPDATE_MS); 
+    }
+});
