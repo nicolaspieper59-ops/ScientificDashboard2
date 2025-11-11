@@ -289,4 +289,3 @@ document.addEventListener('DOMContentLoaded', () => {
     // Boucle de mise à jour lente (Astro/Météo/Horloge)
     // ... (Logique de la boucle lente omise) ...
 });
-.
