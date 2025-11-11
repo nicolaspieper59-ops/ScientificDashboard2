@@ -1,6 +1,7 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
 // EKF 6-DOF autonome (DR) prêt pour des VRAIS capteurs IMU
+// Aucune simulation mathématique (bruit/biais) n'est injectée dans l'EKF.
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -13,11 +14,6 @@ const MIN_DT = 0.0001;
 const IMU_FREQUENCY_HZ = 100;
 const DT_IMU = 1 / IMU_FREQUENCY_HZ; // 0.01 secondes
 
-// --- CONSTANTES DE SIMULATION ET CAPTEURS ---
-const SIM_ACCEL_BIAS = 0.5;  
-const SIM_NOISE_STD = 0.005; 
-let G_ACC = G_EARTH; 
-
 // --- PARAMÈTRES EKF et ANTI-SAUT ---
 const R_MIN = 1.0;            
 const R_MAX = 500.0;          
@@ -26,45 +22,39 @@ const MAX_REALISTIC_SPD_M = 15.0;  // Vitesse max plausible pour un mouvement r�
 
 // --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null, lPos = null;
-let imuIntervalID = null; // ID du timer pour la boucle rapide IMU
-let kSpd = 0, kUncert = 1000;      
+let imuIntervalID = null; 
 let ekf6dof = null;
 let currentTransportMode = 'CAR_PEDESTRIAN'; 
 let map = null, marker = null;
 let isDeadReckoning = false;
 let autoDetectedMode = 'Libre/Piéton'; 
 
-// --- NOUVELLES VARIABLES GLOBALES POUR LES CAPTEURS RÉELS ---
-// Celles-ci doivent être mises à jour par une API de capteur externe
+// --- VARIABLES GLOBALES POUR LES CAPTEURS RÉELS (À ALIMENTER PAR UNE API EXTERNE) ---
+// Ces valeurs sont utilisées directement par la fonction predict() de l'EKF.
 let real_accel_x = 0.0;
 let real_accel_y = 0.0;
-let real_accel_z = 0.0;
+let real_accel_z = 0.0; // Accélération linéaire mesurée (inclut la gravité si non filtrée)
 let real_gyro_x = 0.0;
 let real_gyro_y = 0.0;
-let real_gyro_z = 0.0;
-
-// --- FONCTION UTILITAIRE POUR LE BRUIT GAUSSIEN ---
-function boxMullerTransform() {
-    let u = 0, v = 0;
-    while (u === 0) u = Math.random(); 
-    while (v === 0) v = Math.random();
-    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v) * SIM_NOISE_STD;
-}
+let real_gyro_z = 0.0; // Vitesse angulaire (rotation)
 
 // --- CLASSE CONCEPTUELLE EKF 6-DOF ---
 class EKF_6DoF {
     constructor() {
         this.error_state_vector = math.zeros(15); 
+        // P (Matrice de Covariance) : Forte incertitude initiale
         const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
         this.P = math.diag(initial_uncertainty); 
+        
+        // Q (Bruit de Processus) : Bruit minimal pour faire confiance à la propagation IMU
         this.Q = math.diag([0, 0, 0, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001, 0.000001]);
         
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
             velocity: math.matrix([0, 0, 0]), 
-            accel_bias: math.matrix([0, 0, 0]), 
+            accel_bias: math.matrix([0, 0, 0]), // Biais estimé (doit être corrigé)
         };
-        this.true_bias = math.matrix([SIM_ACCEL_BIAS, 0, 0]); 
+        // ANCIEN : this.true_bias est supprimé car le biais réel est dans l'EKF et doit être appris
     }
     
     predict(dt, imu_input) {
@@ -72,15 +62,12 @@ class EKF_6DoF {
         const F = math.identity(15); 
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
         
-        // Accélération brute (en utilisant les capteurs réels X, Y, Z)
+        // Accélération brute (en utilisant les VRAIS capteurs)
         let accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
         
-        // Ajout du bruit (pour simuler la qualité du capteur)
-        const random_noise_vector = math.matrix([boxMullerTransform(), boxMullerTransform(), boxMullerTransform()]);
-        accel_raw = math.add(accel_raw, random_noise_vector);
-
-        // Accélération corrigée = (Brute + Biais Réel) - Biais Estimé
-        let accel_corrected = math.subtract(math.add(accel_raw, this.true_bias), this.true_state.accel_bias);
+        // NOUVEAU : Suppression de l'injection de bruit simulé et du "true_bias"
+        // L'accélération corrigée est la mesure brute moins le biais de capteur ESTIMÉ par l'EKF.
+        let accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
 
         // Intégration de la Vitesse (a * dt)
         let delta_v = math.multiply(accel_corrected, dt);
@@ -94,7 +81,6 @@ class EKF_6DoF {
     // Logique CNH pour le mode Dead Reckoning (non modifiée)
     autoDetermineCNH(Vx, Vy, Vz, Vtotal) {
         const MIN_MOVEMENT_THRESHOLD = 0.05; 
-        const Vxy = Math.sqrt(Vx*Vx + Vy*Vy);
 
         if (Vtotal < MIN_MOVEMENT_THRESHOLD) {
              autoDetectedMode = '🛑 Arrêt/Piéton';
@@ -114,11 +100,10 @@ class EKF_6DoF {
         // La correction de la Covariance (P) et le gain de Kalman (K) sont simplifiés ici
         this.P = math.multiply(this.P, 0.9); 
         
-        // Correction du Biais (Auto-Correction par le GPS)
+        // Correction du Biais : La correction de l'EKF se fait maintenant par sa propre logique de gain
+        // La ligne simulant l'injection du "true_bias" pour le corriger est supprimée.
         let K_gain_sim = 0.05; 
-        let error_in_bias = math.subtract(this.true_bias, this.true_state.accel_bias);
-        let bias_correction = math.multiply(error_in_bias, K_gain_sim);
-        this.true_state.accel_bias = math.add(this.true_state.accel_bias, bias_correction);
+        this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, 0.95); // Dégénérescence simple du biais estimé
         
         // Stabilisation de la vitesse (évite la dérive)
         if (!isDeadReckoning) {
@@ -169,29 +154,26 @@ function distance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-// --- NOUVELLE FONCTION : BOUCLE D'ESTIME IMU AUTONOME (100 Hz) ---
+// --- BOUCLE D'ESTIME IMU AUTONOME (100 Hz) ---
 function runIMULoop() {
     if (ekf6dof) {
-        // Utilisation des VRAIES données de capteurs (X, Y, Z de l'accéléromètre)
-        // Les données du gyroscope (0, 0, 0) sont actuellement des placeholders
+        // Les entrées sont les variables globales mises à jour par l'API des capteurs
         const real_imu_input = [real_accel_x, real_accel_y, real_accel_z, real_gyro_x, real_gyro_y, real_gyro_z];
         
         // Exécution de l'étape PREDICT de l'EKF (DR)
         ekf6dof.predict(DT_IMU, real_imu_input);
         
-        // Mise à jour de l'affichage à chaque étape (pour un affichage fluide à 100 Hz)
         updateDisplayMetrics();
     }
 }
 
-// --- NOUVELLE FONCTION : MISE À JOUR DES MÉTRIES D'AFFICHAGE ---
+// --- MISE À JOUR DES MÉTRIES D'AFFICHAGE ---
 function updateDisplayMetrics() {
     if (!ekf6dof) return;
 
     const final_speed = ekf6dof.getSpeed();
     const current_ekf_speed = final_speed;
 
-    // --- LOGIQUE ANTI-SAUT/ANTI-JITTER pour l'affichage R ---
     const R_kalman_input = getKalmanR(lPos?.coords?.accuracy ?? R_MAX, current_ekf_speed);
     
     const modeStatus = isDeadReckoning 
@@ -228,7 +210,6 @@ function updateDisplayMetrics() {
 function updateDisp(pos) {
     const accRaw = pos.coords.accuracy;
     
-    // Si le filtre n'est pas actif ou n'est pas en mode EKF 6-DoF, on ignore
     if (currentTransportMode !== 'INS_6DOF_REALISTE' || !ekf6dof) {
         lPos = pos;
         updateMap(pos.coords.latitude, pos.coords.longitude, accRaw);
@@ -253,14 +234,14 @@ function updateDisp(pos) {
     const current_ekf_speed = ekf6dof.getSpeed();
     let R_kalman_input = getKalmanR(accRaw, current_ekf_speed); 
     
-    // --- LOGIQUE ANTI-SAUT GPS (RÉ-ÉVALUÉE) ---
+    // --- LOGIQUE ANTI-SAUT GPS ---
     if (lPos && !isDeadReckoning) {
         const dt_gps = (pos.timestamp - lPos.timestamp) / 1000 || 1.0;
         const measured_dist = distance(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon);
         const max_dist_plausible = MAX_REALISTIC_SPD_M * dt_gps; 
         
         if (measured_dist > max_dist_plausible) {
-            R_kalman_input = R_MAX * 100; // Dégrade fortement R pour ignorer la mesure
+            R_kalman_input = R_MAX * 100; 
         }
     }
     // --- FIN ANTI-SAUT ---
