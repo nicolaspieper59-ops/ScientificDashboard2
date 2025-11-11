@@ -9,7 +9,10 @@
 // --- Constantes de Conversion & Temps (inchangées) ---
 const R2D = 180 / Math.PI;
 const D2R = Math.PI / 180;
-// ... (autres constantes physiques)
+const G = 9.80665; 
+const R_AIR = 287.05;
+const GAMMA_AIR = 1.4;
+const P_SEA_hPa = 1013.25;
 const DOM_SLOW_UPDATE_MS = 1000;
 const IMU_FREQUENCY_MS = 50; 
 
@@ -17,37 +20,75 @@ const IMU_FREQUENCY_MS = 50;
 const MAX_ACC = 20;       
 const R_MIN = 0.001;
 const R_MAX = 100000.0;   
-// MODIFIÉ: Bruit de base réduit pour la stabilité
 const Q_BASE_NOISE = 0.03; 
-// MODIFIÉ: Facteur de bruit accru pour une meilleure réaction à l'accélération/décélération
-const IMU_ACCEL_NOISE_FACTOR = 0.8; 
+// MODIFIÉ: Facteur de bruit réduit (car on soustrait maintenant le biais)
+const IMU_ACCEL_NOISE_FACTOR = 0.5; 
 const ZUPT_RAW_THRESHOLD = 0.5; 
 const ACCURACY_NOISE_FACTOR = 3.0; 
 const MIN_DISPLAY_SPEED_MS = 0.0001; 
-// MODIFIÉ: Seuil ZUPT IMU abaissé
 const IMU_ZUPT_THRESHOLD = 0.05; 
 
-// --- Variables d'État Globales (inchangées) ---
-// ... 
+// --- Variables d'État Globales ---
+let wID = null;
+let domID = null;
+let imuUpdateID = null; 
+let lastIMUUpdate = 0; 
+let lPos = {};
+let kSpd = 0;
+let kAlt = null;
+let emergencyStopActive = false;
+let totalDistance = 0; 
+let kAltFilter;
+let lastGPSPos = null; 
 
-// NOUVEAU: Correction pour la Magnitude d'Accélération Corrigée
-let corrected_Accel_Mag = 0.0;
+// NOUVEAU: Variables d'estimation du Biais (pour la dérive en DR)
+let imu_bias_est = 0.0;
+let imu_bias_count = 0;
 
-// ... (Le reste du BLOC 1/3, y compris createKalmanFilter, est inchangé)
+// Données IMU 3D et Attitude
+let imuData = { x: 0.0, y: 0.0, z: 0.0 }; 
+let attitude = { roll: 0.0, pitch: 0.0, yaw: 0.0 }; 
+let NED_Accel_Mag = 0.0; 
+let corrected_Accel_Mag = 0.0; // Accélération nette pour l'EKF
+
+// Variables de Manège (Manège rotatif)
+let rotationRadius = 10.0; 
+let angularVelocity = 0.0; 
+let centrifugalAccel = 0.0;
+let coriolisForce = 0.0; 
+
+// Placeholders Météo (inchangés)
+let currentTempC = 17.3;
+let currentPressurehPa = 1015;
+let currentHumidity = 72;
+
+// --- Instanciation des Filtres (inchangée) ---
+let kFilter = createKalmanFilter(Q_BASE_NOISE, R_MAX); 
+kAltFilter = createSimpleKalmanFilter(0.1, R_MIN);
+
+// --- Fonctions de Filtrage (inchangées) ---
+function createSimpleKalmanFilter(Q, R) {
+    let X = 0; let P = R; 
+    return function(Z, R_new, dt) {
+        let P_pred = P + Q * dt;
+        let K = P_pred / (P_pred + R_new);
+        X = X + K * (Z - X);
+        P = (1 - K) * P_pred;
+        return X;
+    }
+}
 
 function createKalmanFilter(initialQ, initialR) {
-    let X = [[0], [0]]; // État: [position, vitesse]
-    let P = [[initialR, 0], [0, initialR]]; // Covariance de l'erreur
+    let X = [[0], [0]]; 
+    let P = [[initialR, 0], [0, initialR]]; 
     
-    // U_accel_sensor est maintenant la magnitude CORRIGÉE (corrected_Accel_Mag)
     return function(Z, dt, R_new, U_accel_sensor, isPredictionOnly = false) { 
         // 1. DÉFINITION DYNAMIQUE DE Q 
         const Q_dt_factor = Math.min(1.0, 1.0 / (dt * 10)); 
-        // Q_noise utilise la MAGNITUDE de l'accélération CORRIGÉE pour définir le bruit
         const Q_noise = Q_BASE_NOISE * Q_dt_factor + (Math.abs(U_accel_sensor) * IMU_ACCEL_NOISE_FACTOR); 
         const Q_matrix = [[0.001, 0], [0, Q_noise * Q_noise]]; 
         
-        // ... (Reste de la prédiction et mise à jour inchangée)
+        // Prédiction (X_k = F * X_{k-1} + B * U)
         const F = [[1, dt], [0, 1]];
         const B = [[0.5 * dt * dt], [dt]]; 
         const U = [[U_accel_sensor]]; 
@@ -87,7 +128,61 @@ function createKalmanFilter(initialQ, initialR) {
 // BLOC 2/3 : GESTION DES CAPTEURS, MÉTÉO & LOGIQUE DE FUSION 
 // ====================================================================
 
-// ... (Fonctions utilitaires et GPS inchangées) ...
+// --- Fonctions utilitaires (omises) ---
+function getVirtualTemperature(T_C, HR_percent, P_hPa) { 
+    if (!P_hPa || !T_C || !HR_percent) return T_C + 273.15;
+    const T_K = T_C + 273.15;
+    const HR = HR_percent / 100;
+    const Pvs_Pa = 611 * Math.exp((17.27 * T_C) / (237.3 + T_C));
+    const Pv_Pa = HR * Pvs_Pa;
+    const r = (0.622 * Pv_Pa) / (P_hPa * 100 - Pv_Pa);
+    return T_K * (1 + 0.61 * r);
+}
+function getBarometricAltitude(P_hPa, Tv_K) { 
+    if (P_hPa === null || isNaN(P_hPa)) return null;
+    const exponent = (GAMMA_AIR - 1) / GAMMA_AIR;
+    const alt = ((R_AIR * Tv_K) / (G * exponent)) * (1 - Math.pow(P_hPa / P_SEA_hPa, exponent));
+    return Math.max(0.0, alt); 
+}
+function getSpeedOfSound(T_C) { return 331.3 * Math.sqrt(1 + T_C / 273.15); }
+function getAirDensity(P_hPa, Tv_K) { return (P_hPa * 100) / (R_AIR * Tv_K); }
+function getFrostPoint(T_C, HR_percent) {
+    const A = 17.27; const B = 237.3;
+    const alpha = (A * T_C) / (B + T_C) + Math.log(HR_percent / 100);
+    return (B * alpha) / (A - alpha);
+}
+function getKalmanR(accRaw) {
+    if (accRaw === null || accRaw > MAX_ACC) return R_MAX;
+    return Math.max(R_MIN, accRaw * accRaw);
+}
+function getLocalSiderealTime(date, longitudeDeg) {
+    return ((date.getUTCHours() + longitudeDeg / 15.0) % 24);
+}
+
+function startGPS() {
+    // NOUVEAU: Réinitialisation du Bias IMU au démarrage du GPS
+    imu_bias_est = 0.0;
+    imu_bias_count = 0;
+    
+    if (wID === null) {
+        wID = navigator.geolocation.watchPosition(updateGPSCorrection, handleError, { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 });
+        $('gps-pause-button').textContent = '⏸️ PAUSE GPS';
+    }
+    if (imuUpdateID === null) {
+        imuUpdateID = setInterval(updateIMUPrediction, IMU_FREQUENCY_MS);
+    }
+}
+function stopGPS() {
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID); wID = null;
+        $('gps-pause-button').textContent = '▶️ MARCHE GPS';
+    }
+    if (imuUpdateID !== null) {
+        clearInterval(imuUpdateID); imuUpdateID = null;
+    }
+}
+function handleError(error) { console.warn(`GPS ERROR: ${error.code}: ${error.message}`); }
+
 
 // --- LOGIQUE DE PRÉDICTION IMU HAUTE FRÉQUENCE (20 Hz) ---
 function updateIMUPrediction() {
@@ -109,21 +204,27 @@ function updateIMUPrediction() {
     centrifugalAccel = rotationRadius * (angularVelocity ** 2);
     coriolisForce = 2 * angularVelocity * Math.abs(kSpd); 
 
-    // 2. CORRECTION DE LA MAGNITUDE IMU (Inchangée par rapport à l'étape précédente)
-    corrected_Accel_Mag = NED_Accel_Mag;
+    // 2. CORRECTION DE LA MAGNITUDE IMU
     
-    if (corrected_Accel_Mag >= centrifugalAccel) {
-        corrected_Accel_Mag -= centrifugalAccel;
+    // Étape A : Soustraction de l'Accélération Centrifuge (Force non-linéaire)
+    let net_Accel_Mag = NED_Accel_Mag; 
+    if (net_Accel_Mag >= centrifugalAccel) {
+        net_Accel_Mag -= centrifugalAccel;
     } else {
-        corrected_Accel_Mag = Q_BASE_NOISE; 
+        net_Accel_Mag = Q_BASE_NOISE; 
     }
+    
+    // Étape B : Soustraction du Biais Estimé (Correction essentielle contre la dérive)
+    // L'accélération d'entrée pour l'EKF est l'accélération nette moins le biais du capteur.
+    corrected_Accel_Mag = Math.max(0.0, net_Accel_Mag - imu_bias_est);
+
 
     // 3. LOGIQUE ZUPT et PRÉDICTION
     let kalmanResult;
     let R_corr = R_MAX; 
 
     if (wID === null) { 
-        // Mode DR (GPS Pausé) - Utilisation du ZUPT basé sur la MAGNITUDE CORRIGÉE
+        // Mode DR (GPS Pausé)
         
         if (corrected_Accel_Mag < IMU_ZUPT_THRESHOLD) {
             // ZUPT Actif : Correction forcée à Vitesse = 0 avec haute confiance
@@ -131,11 +232,20 @@ function updateIMUPrediction() {
             R_corr = R_MIN;
             $('gps-status').textContent = '✅ DR - ZUPT ON (IMU)';
             $('zupt-active').textContent = 'Oui (IMU/DR)';
+            
+            // NOUVEAU: Accumulation du Bias (la valeur nette restante est le bias)
+            // Moyenne mobile simple : imu_bias_est est l'accélération résiduelle
+            imu_bias_est = (imu_bias_est * imu_bias_count + net_Accel_Mag) / (imu_bias_count + 1);
+            imu_bias_count++;
+            
         } else {
-            // Mouvement détecté : Prediction pure EKF (U = Accel_corrigée)
+            // Mouvement détecté : Prediction pure EKF
             kalmanResult = kFilter(kSpd, dt, R_MAX, corrected_Accel_Mag, true);
             $('gps-status').textContent = '⚠️ DR - PRÉDICTION IMU';
             $('zupt-active').textContent = 'Non';
+            
+            // NOUVEAU: Reset du compteur de bias
+            imu_bias_count = 0;
         }
     } else {
         // GPS Actif - On ne fait que la prédiction. Correction dans updateGPSCorrection.
@@ -151,6 +261,7 @@ function updateIMUPrediction() {
     if (totalDistance > 1000000) totalDistance = 0; 
     if (sSpdFE > MIN_DISPLAY_SPEED_MS) totalDistance += sSpdFE * dt;
     
+    // Mise à jour du DOM à haute fréquence
     updateDOMHighFrequency(dt, kalmanResult.Q_used, R_corr, now, lastGPSPos);
 }
 
@@ -186,7 +297,6 @@ function updateGPSCorrection(pos) {
     
     // 1. DÉTERMINATION DU MODE
     if (!isSignalLost) {
-        // Signal GPS OK : Correction du filtre
         ZUPT_DYNAMIC_THRESHOLD = ACCURACY_NOISE_FACTOR * accRaw / 0.05; 
         const isGpsPlausiblyStopped = (spd3D_raw < ZUPT_DYNAMIC_THRESHOLD); 
         
@@ -200,7 +310,6 @@ function updateGPSCorrection(pos) {
             $('gps-status').textContent = '✅ GPS OK';
         }
     } else {
-        // Signal perdu. On sort, la boucle IMU gère le DR/ZUPT IMU
         $('gps-status').textContent = '⚠️ GPS Perdu (DR)';
         return; 
     }
@@ -225,33 +334,75 @@ function updateGPSCorrection(pos) {
 // BLOC 3/3 : MISE À JOUR DU DOM, ASTRO & ÉVÉNEMENTS 
 // ====================================================================
 
-// ... (Fonctions du DOM et Listeners inchangés) ...
+function $(id) { return document.getElementById(id); }
+function msToHMS(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 function updateDOMHighFrequency(dt, Q_used, R_kalman_input, now, pos) {
-    // ... (Début de fonction inchangé) ...
+    const lat = pos?.coords?.latitude || lPos.lat || 43.284563; 
+    const lon = pos?.coords?.longitude || lPos.lon || 5.358657;
+    const accRaw = pos?.coords?.accuracy || MAX_ACC + 1;
     
     const sSpdAbs = Math.abs(kSpd);
     const sSpdFE = sSpdAbs < MIN_DISPLAY_SPEED_MS ? 0 : sSpdAbs;
     const sSpdKMH = sSpdFE * 3.6;
     
-    // ... (Calculs Météo/Chimie inchangés) ...
+    const Tv_K = getVirtualTemperature(currentTempC, currentHumidity, currentPressurehPa);
+    const C_S_TRUE = getSpeedOfSound(currentTempC);
+    const airDensity = getAirDensity(currentPressurehPa, Tv_K);
+    const frostPoint = getFrostPoint(currentTempC, currentHumidity);
 
-    // IMU & Forces (Accélération 3D & Attitude)
+    // Position & Vitesse
+    $('current-lat').textContent = lat.toFixed(6);
+    $('current-lon').textContent = lon.toFixed(6);
+    $('altitude-gps').textContent = kAlt !== null ? `${kAlt.toFixed(2)} m` : 'N/A';
+    $('stable-speed').textContent = `${sSpdFE.toFixed(3)} m/s`; 
+    $('current-speed').textContent = `${sSpdKMH.toFixed(1)} km/h`;
+    $('distance-total-km').textContent = `${(totalDistance / 1000).toFixed(3)} km`;
+    
+    // IMU & Forces
     $('accel-imu-x').textContent = imuData.x.toFixed(3);
     $('accel-imu-y').textContent = imuData.y.toFixed(3);
     $('accel-imu-z').textContent = imuData.z.toFixed(3);
-    
-    // Affiche l'accélération Corrigée pour l'EKF
     $('accel-imu-mag').textContent = corrected_Accel_Mag.toFixed(3); 
     
-    // ... (Affichage des forces et autres data points inchangés) ...
+    // Affichage des forces simulées
+    $('centrifugal-accel').textContent = centrifugalAccel.toFixed(3);
+    $('coriolis-force').textContent = coriolisForce.toFixed(3); 
+
+    $('imu-roll').textContent = attitude.roll.toFixed(1) + '°';
+    $('imu-pitch').textContent = attitude.pitch.toFixed(1) + '°';
+    $('imu-yaw').textContent = attitude.yaw.toFixed(1) + '°';
+
+    // Affichage des paramètres du filtre
     $('kalman-q-noise').textContent = Q_used.toFixed(3);
     $('kalman-r-factor').textContent = R_kalman_input.toFixed(3); 
-    // ... (Fin de fonction inchangée) ...
-}
+    // NOUVEAU: Affichage du Biais Estimé
+    if ($('imu-bias-est')) $('imu-bias-est').textContent = imu_bias_est.toFixed(4);
 
-// ... (Fin du code) ...
-// Météo & Chimie
+    // Fréquence IMU
+    $('gnss-frequency').textContent = (1 / dt).toFixed(1);
+    $('update-time-dt').textContent = dt.toFixed(3);
+    
+    if (!$('gps-status').textContent.includes('GPS') && !$('gps-status').textContent.includes('DR')) {
+        $('gps-status').textContent = 'INITIALISATION...';
+    }
+    
+    if (pos) { 
+        $('accuracy-raw').textContent = `${accRaw.toFixed(1)} m`;
+        const MDS_DYNAMIC = ACCURACY_NOISE_FACTOR * accRaw / dt;
+        $('mds-dynamic').textContent = MDS_DYNAMIC.toFixed(3);
+    } else {
+         $('mds-dynamic').textContent = 'N/A (IMU Pred)';
+         $('accuracy-raw').textContent = 'N/A';
+    }
+
+    // Météo & Chimie (omises pour concision)
     const altBaro = getBarometricAltitude(currentPressurehPa, Tv_K); 
     $('altitude-baro').textContent = altBaro !== null ? `${altBaro.toFixed(2)} m` : 'N/A'; 
     $('temp-c').textContent = currentTempC.toFixed(1);
@@ -261,77 +412,44 @@ function updateDOMHighFrequency(dt, Q_used, R_kalman_input, now, pos) {
     $('speed-of-sound').textContent = C_S_TRUE.toFixed(2);
     $('air-density').textContent = airDensity.toFixed(3);
     
-    // Rapports de Vitesse
     $('perc-speed-light').textContent = `${(sSpdFE / 299792458 * 100).toExponential(2)} %`;
     $('perc-speed-sound').textContent = `${(sSpdFE / C_S_TRUE * 100).toFixed(2)} %`;
 }
 
 
-function updateAstro(lat, lon, kAlt, now) {
-    const LST_h = getLocalSiderealTime(now, lon);
-    const LST_hms = msToHMS((LST_h % 24) * 3600000);
-    $('local-sidereal-time').textContent = LST_hms;
+function updateAstro(lat, lon, kAlt, now) { /* ... (Code omis) */ }
+function updateClockVisualization(lat, lon, kAlt, now) { /* ... (Code omis) */ }
 
-    updateClockVisualization(lat, lon, kAlt, now);
-    // (SunCalc integration omise pour concision)
-}
-
-function updateClockVisualization(lat, lon, kAlt, now) {
-    // (Implémentation omise pour concision)
-}
-
-// --- Événements et Démarrage ---
+// --- Événements et Démarrage (omises pour concision) ---
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Écouteur GPS/Pause
     $('gps-pause-button').addEventListener('click', () => {
         wID === null ? startGPS() : stopGPS();
     });
     
-    // Écouteur Rayons X (omise pour concision)
-    const toggleXrayButton = $('toggle-xray');
-    const clockContainer = $('clock-container');
-    if (toggleXrayButton && clockContainer) {
-        toggleXrayButton.addEventListener('click', () => {
-            const isXray = clockContainer.classList.toggle('xray-mode');
-            toggleXrayButton.innerHTML = isXray ? 
-                '<i class="fas fa-eye"></i> Astro Rayons X: ON' : 
-                '<i class="fas fa-eye-slash"></i> Astro Rayons X: OFF';
-        });
-    }
+    // ... (Attitude et DeviceMotion Events) ...
 
-    // NOUVEAU: Écouteur d'Attitude (Roll, Pitch, Yaw)
     if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', (event) => {
-            // alpha (Yaw/Cap): rotation autour de Z, beta (Pitch/Tangage): rotation autour de X, gamma (Roll/Roulis): rotation autour de Y
             attitude.yaw = event.alpha || 0; 
             attitude.pitch = event.beta || 0; 
             attitude.roll = event.gamma || 0;
         });
     }
 
-    // MODIFIÉ: Écouteur IMU (Accélération Linéaire 3D)
     window.addEventListener('devicemotion', (event) => {
-        // La propriété 'acceleration' fournit l'accélération linéaire (sans la gravité) dans le référentiel du dispositif. C'est l'idéal.
         const a_lin = event.acceleration; 
         
         if (a_lin) {
-            imuData.x = a_lin.x;
-            imuData.y = a_lin.y;
-            imuData.z = a_lin.z;
-            
-            // Calcul de la magnitude 3D pour l'entrée de l'EKF 1D de vitesse
+            imuData.x = a_lin.x; imuData.y = a_lin.y; imuData.z = a_lin.z;
             NED_Accel_Mag = Math.sqrt(a_lin.x**2 + a_lin.y**2 + a_lin.z**2);
         } else if (event.accelerationIncludingGravity) {
-            // Fallback (Moins précis): Si acceleration (linéaire) n'est pas disponible, 
-            // on utilise l'approximation de la magnitude brute moins la gravité.
             const { x, y, z } = event.accelerationIncludingGravity;
             const accelMag = Math.sqrt(x*x + y*y + z*z);
             NED_Accel_Mag = Math.abs(accelMag - G); 
         }
     });
 
-    // Démarrage de la boucle DOM lente (Horloge/Astro)
     if (domID === null) {
         domID = setInterval(() => {
             const now = new Date();
@@ -350,4 +468,3 @@ document.addEventListener('DOMContentLoaded', () => {
         }, DOM_SLOW_UPDATE_MS); 
     }
 });
-            
