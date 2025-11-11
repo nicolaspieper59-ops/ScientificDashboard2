@@ -321,6 +321,35 @@ document.addEventListener('DOMContentLoaded', () => {
         stopGPS(); 
         ekf6dof = null;
         setTransportModeParameters(e.target.value);
+        // --- AJOUTER CE BLOC DANS gnss-dashboard-full.js (à la fin du DOMContentLoaded) ---
+
+// Fonction pour démarrer l'écoute des capteurs
+function startIMUSensors() {
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', (event) => {
+            const acc = event.accelerationIncludingGravity || event.acceleration;
+            const rot = event.rotationRate;
+            
+            // Mise à jour des variables globales
+            real_accel_x = acc.x ?? 0.0;
+            real_accel_y = acc.y ?? 0.0;
+            real_accel_z = acc.z ?? 0.0; 
+            
+            real_gyro_x = rot.alpha ?? 0.0; 
+            real_gyro_y = rot.beta ?? 0.0;
+            real_gyro_z = rot.gamma ?? 0.0;
+            
+            // Si l'accélération est non nulle, cela confirme que ça fonctionne.
+        });
+        console.log("DeviceMotion Listener activé.");
+    } else {
+        console.warn("DeviceMotion API non supportée ou non autorisée.");
+    }
+}
+
+// Lancement automatique du listener IMU au démarrage
+startIMUSensors();
+// --- FIN DU BLOC À AJOUTER ---
     });
 
     // Initialisation des paramètres EKF
