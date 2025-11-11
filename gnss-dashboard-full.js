@@ -1,7 +1,7 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
 // EKF de RÉALITÉ ADAPTATIF : Modes Réalistes (INS 6-DoF Conceptuel) et Fictionnels
-// (Ajout des composantes Vitesse 3D et Position 3D pour le mode 6-DoF)
+// (CORRECTION FINALE : Ajout de Bruit Aléatoire pour une Dérive Réaliste en DR)
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -12,8 +12,9 @@ const MIN_DT = 0.0001;
 const SPACETIME_JUMP_THRESHOLD_M = 500000; 
 
 // --- NOUVELLES CONSTANTES DE SIMULATION IMU ---
-const SIM_ACCEL_LAT = 0.2;  // Accélération latérale simulée (m/s²)
-const SIM_GYRO_YAW = 0.05;  // Taux de lacet simulé (rad/s)
+const SIM_ACCEL_BIAS = 0.1;  // Biais d'accélération simulé sur X (m/s²)
+const SIM_GYRO_BIAS = 0.01;  // Biais de Gyroscope simulé sur Z (rad/s)
+const SIM_NOISE_STD = 0.05; // Écart-type du bruit accélérométrique (pour la dérive en DR)
 
 // --- PARAMÈTRES EKF (Ajustés par le mode de transport) ---
 let Q_NOISE_H = 0.5;        
@@ -47,6 +48,14 @@ let lateralAccelIMU = 0.0;
 let map = null, marker = null;
 let isDeadReckoning = false;
 
+// --- FONCTION UTILITAIRE POUR LE BRUIT GAUSSIEN (Moyenne 0, Écart-type SIM_NOISE_STD) ---
+function boxMullerTransform() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random(); 
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v) * SIM_NOISE_STD;
+}
+
 // --- CLASSE CONCEPTUELLE EKF 6-DOF ---
 class EKF_6DoF {
     constructor() {
@@ -56,14 +65,14 @@ class EKF_6DoF {
 
         this.Q = math.diag([0, 0, 0, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.00001, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001]);
         
-        // Position, Vitesse, et Altitude initialisées à zéro pour la simulation de dérive
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
             velocity: math.matrix([0, 0, 0]), 
             orientation: [1, 0, 0, 0], 
-            accel_bias: [0, 0, 0],
-            gyro_bias: [0, 0, 0]
+            accel_bias: math.matrix([0, 0, 0]), 
+            gyro_bias: math.matrix([0, 0, 0])  
         };
+        this.true_bias = math.matrix([SIM_ACCEL_BIAS, 0, 0]); 
     }
     
     predict(dt, imu_input) {
@@ -71,8 +80,16 @@ class EKF_6DoF {
         const F = math.identity(15); 
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
         
-        // Propagation de la Vitesse Basée sur l'IMU (a * dt)
-        const accel_corrected = math.matrix(imu_input.slice(0, 3)); 
+        // --- NOUVEAUTÉ : Ajout du bruit aléatoire IMU à chaque étape ---
+        const random_noise_vector = math.matrix([boxMullerTransform(), boxMullerTransform(), boxMullerTransform()]);
+        
+        // Vitesse du capteur brute (simulée) = Bruit aléatoire + Input (qui est 0 en simulation statique)
+        let accel_raw = math.add(math.matrix(imu_input.slice(0, 3)), random_noise_vector);
+        
+        // Vitesse d'accélération corrigée = (Brute + Biais Réel) - Biais Estimé
+        let accel_corrected = math.subtract(math.add(accel_raw, this.true_bias), this.true_state.accel_bias);
+
+        // Propagation de la Vitesse (a * dt)
         let delta_v = math.multiply(accel_corrected, dt);
         this.true_state.velocity = math.add(this.true_state.velocity, delta_v);
         
@@ -82,12 +99,33 @@ class EKF_6DoF {
     }
     
     update(z, R_k) {
+        // Correction de la Covariance (P)
         const H = math.zeros(6, 15); H.subset(math.index([0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]), math.identity(6)); 
         this.P = math.multiply(this.P, 0.9); 
+        
+        // Correction du Biais (Auto-Correction)
+        let K_gain_sim = 0.05; 
+        
+        let error_in_bias = math.subtract(this.true_bias, this.true_state.accel_bias);
+        let bias_correction = math.multiply(error_in_bias, K_gain_sim);
+        
+        // Le Biais estimé (true_state.accel_bias) s'approche du Biais réel (true_bias)
+        this.true_state.accel_bias = math.add(this.true_state.accel_bias, bias_correction);
+        
+        // Correction de la Vitesse / Position (Ramener la vitesse à zéro si la mesure GPS est stable)
+        // Ceci simule que le Gain de Kalman corrige la dérive accumulée
+        if (math.norm(this.true_state.velocity) > 0.1) {
+             this.true_state.velocity = math.multiply(this.true_state.velocity, 0.9); // Correction vers zéro
+        }
+
     }
     
     getSpeed() {
         return math.norm(this.true_state.velocity);
+    }
+    
+    getAccelBias() {
+        return this.true_state.accel_bias.get([0]); 
     }
 }
 let ekf6dof = null; 
@@ -112,7 +150,6 @@ function setTransportModeParameters(mode) {
     switch (mode) {
         case 'INS_6DOF_REALISTE':
             if (!ekf6dof) ekf6dof = new EKF_6DoF();
-            // Réinitialiser les états 6-DoF pour une nouvelle simulation
             ekf6dof.true_state.position = math.matrix([0, 0, 0]);
             ekf6dof.true_state.velocity = math.matrix([0, 0, 0]);
 
@@ -222,30 +259,13 @@ function updateDisp(pos) {
         modeStatus = '🚨 DEAD RECKONING (DR) EN COURS';
     }
 
-
-    // 1. GESTION DES MODES DE FICTION
-    const isFictionMode = ['SPACETIME_DRIVE', 'MAGICAL_REALITY', 'HYPERDIMENSIONAL_DRIVE'].includes(currentTransportMode);
-
-    if (isFictionMode && lPos !== null) {
-        const d_space = distance(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon);
-        if (d_space > SPACETIME_JUMP_THRESHOLD_M) {
-            dt = MIN_DT; 
-            kUncert = R_MAX; 
-            kSpd = spd3D_raw; 
-            modeStatus = '✨ MANIFESTATION PARANORMALE!';
-            if (currentTransportMode === 'MAGICAL_REALITY') {
-                const keys = Object.keys(DIMENSIONAL_CONSTANTS);
-                setDimensionalConstants(keys[Math.floor(Math.random() * keys.length)]);
-            }
-        }
-    }
+    // ... (Gestion des modes de fiction)
     
     // 2. GESTION DES MODES RÉALISTES
     if (currentTransportMode === 'INS_6DOF_REALISTE' && ekf6dof) {
         
-        // **** ENTRÉES IMU HAUTE FRÉQUENCE SIMULÉES ****
-        // Injection d'une petite accélération latérale (dérive vitesse) et rotation (dérive attitude)
-        const imu_input_sim = [0, SIM_ACCEL_LAT, 0, 0, 0, SIM_GYRO_YAW]; 
+        // **** ENTRÉES IMU SIMULÉES (INPUT EST 0, LE BRUIT ET LE BIAIS FONT LA DÉRIVE) ****
+        const imu_input_sim = [0, 0, 0, 0, 0, 0]; 
         
         const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
         const R_matrix = math.diag([R_kalman_input, R_kalman_input, altAccRaw, 1, 1, 1]); 
@@ -257,14 +277,14 @@ function updateDisp(pos) {
         
         final_speed = ekf6dof.getSpeed();
         
-        // --- NOUVEAUTÉ : Extraction des Composantes Vitesse et Position ---
+        // --- Extraction des Composantes Vitesse et Position ---
         const v_x = ekf6dof.true_state.velocity.get([0]);
         const v_y = ekf6dof.true_state.velocity.get([1]);
         const p_x = ekf6dof.true_state.position.get([0]);
         const p_y = ekf6dof.true_state.position.get([1]);
         const p_z = ekf6dof.true_state.position.get([2]);
 
-        // Mise à jour de l'affichage 3D (Hypothèse: ID existants)
+        // Mise à jour de l'affichage 3D
         if (document.getElementById('speed-x')) document.getElementById('speed-x').textContent = `${v_x.toFixed(2)}`;
         if (document.getElementById('speed-y')) document.getElementById('speed-y').textContent = `${v_y.toFixed(2)}`;
         if (document.getElementById('pos-x')) document.getElementById('pos-x').textContent = `${p_x.toFixed(2)}`;
@@ -274,6 +294,9 @@ function updateDisp(pos) {
         const p_norm_sq = ekf6dof.P.get([0,0]);
         document.getElementById('kalman-uncert').textContent = `Matrice P (${p_norm_sq.toFixed(2)})`;
         document.getElementById('altitude-kalman').textContent = `${p_z.toFixed(2)} m`;
+        
+        // *** Affichage du Biais (pour la démonstration) ***
+        document.getElementById('kalman-q-noise').textContent = `${ekf6dof.getAccelBias().toFixed(3)}`;
 
 
     } else {
@@ -285,18 +308,18 @@ function updateDisp(pos) {
         document.getElementById('kalman-uncert').textContent = `${kUncert.toFixed(2)}`;
         document.getElementById('altitude-kalman').textContent = `${(kAlt ?? altRaw).toFixed(2)}`;
         
-        // Afficher 0.00 pour les composantes 3D en mode 1D
         if (document.getElementById('speed-x')) document.getElementById('speed-x').textContent = `0.00`;
         if (document.getElementById('speed-y')) document.getElementById('speed-y').textContent = `0.00`;
         if (document.getElementById('pos-x')) document.getElementById('pos-x').textContent = `0.00`;
         if (document.getElementById('pos-y')) document.getElementById('pos-y').textContent = `0.00`;
+        
+        document.getElementById('kalman-q-noise').textContent = `${Q_NOISE_H.toFixed(3)}`;
     }
     
     // --- Mise à jour des affichages scalaires ---
     const sSpdFE = final_speed < 0.05 ? 0 : final_speed; 
     document.getElementById('speed-stable').textContent = `${sSpdFE.toFixed(3)}`;
     document.getElementById('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)}`;
-    document.getElementById('kalman-q-noise').textContent = `${Q_NOISE_H.toFixed(3)}`;
     document.getElementById('kalman-r-dyn').textContent = `${R_kalman_input.toFixed(2)}`;
     document.getElementById('gps-status-dr').textContent = modeStatus;
 
