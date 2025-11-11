@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
-// EKF 6-DOF avec DAMPING/DRAG FORT et CONVERGENCE VITESSE GPS ULTRA-AGRESSIVE (R=0.001)
+// EKF 6-DOF avec DRAG, CORRECTION 3D et CONVERGENCE VITESSE GPS ULTRA-AGRESSIVE
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -17,8 +17,8 @@ const R_MIN = 1.0;
 const R_MAX = 500.0;          
 const R_SLOW_SPEED_FACTOR = 100.0; 
 const MAX_REALISTIC_SPD_M = 15.0;  
-const R_V_VERTICAL_UNCERTAINTY = 100.0; 
-const DRAG_COEFFICIENT = 0.05; // Coefficient de traînée fort pour le damping
+const R_V_VERTICAL_UNCERTAINTY = 100.0; // Incertitude élevée sur la vitesse verticale du GPS
+const DRAG_COEFFICIENT = 0.05; // Facteur clé : Coefficient de traînée pour un retour rapide à 0 m/s
 
 // --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null, lPos = null;
@@ -44,7 +44,8 @@ class EKF_6DoF {
         const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
         this.P = math.diag(initial_uncertainty); 
         
-        this.Q = math.diag([0, 0, 0, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001, 0.000001]);
+        // Q: Bruit de Processus (Légèrement plus de bruit sur le biais pour la réactivité)
+        this.Q = math.diag([0, 0, 0, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.00005, 0.00005, 0.000001, 0.000001, 0.000001, 0.000001]);
         
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
@@ -59,9 +60,10 @@ class EKF_6DoF {
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
         
         let accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
+        // 1. Correction du biais estimé
         let accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
 
-        // --- MODIFICATION CLÉ : FORCE DE TRAÎNÉE (DAMPING) ---
+        // 2. FORCE DE TRAÎNÉE (DAMPING) : Assure que la vitesse s'annule rapidement
         let drag_force = math.multiply(this.true_state.velocity, -DRAG_COEFFICIENT);
         let total_acceleration = math.add(accel_corrected, drag_force);
         
@@ -74,15 +76,17 @@ class EKF_6DoF {
         this.true_state.position = math.add(this.true_state.position, delta_p);
     }
     
-    // Logique CNH (Contrainte Non-Holonomique)
+    // Logique CNH (Contrainte Non-Holonomique) pour le mode Dead Reckoning
     autoDetermineCNH(Vx, Vy, Vz, Vtotal) {
         const MIN_MOVEMENT_THRESHOLD = 0.05; 
         const DRAG_FACTOR_STOP = 0.01; 
+        const DRAG_FACTOR_FREE = 0.999; // Laisse l'IMU et le Drag faire le travail
 
         if (Vtotal < MIN_MOVEMENT_THRESHOLD) {
              autoDetectedMode = '🛑 Arrêt/Zero-Velocity';
+             // Force la vitesse proche de 0
              this.true_state.velocity = math.multiply(this.true_state.velocity, DRAG_FACTOR_STOP); 
-             return { Vx_corr: 0.01, Vy_corr: 0.01, Vz_corr: 0.01 }; 
+             return { Vx_corr: DRAG_FACTOR_STOP, Vy_corr: DRAG_FACTOR_STOP, Vz_corr: DRAG_FACTOR_STOP }; 
         }
         
         if (Math.abs(Vz) > Vtotal * 0.8) {
@@ -91,19 +95,15 @@ class EKF_6DoF {
         }
 
         autoDetectedMode = '🚁 Libre/Drone/Piéton';
-        return { Vx_corr: 0.99, Vy_corr: 0.99, Vz_corr: 0.99 }; 
+        // En mouvement, ne pas freiner manuellement, laisser le Drag factor faire son travail
+        return { Vx_corr: DRAG_FACTOR_FREE, Vy_corr: DRAG_FACTOR_FREE, Vz_corr: DRAG_FACTOR_FREE }; 
     }
 
     update(z, R_k, isDeadReckoning) {
+        // Réduction de l'incertitude globale (P) et du biais pour une meilleure stabilité
         this.P = math.multiply(this.P, 0.9); 
         const BIAS_STABILITY_FACTOR = isDeadReckoning ? 0.99 : 0.95; 
         this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, BIAS_STABILITY_FACTOR); 
-        
-        if (!isDeadReckoning) {
-             if (math.norm(this.true_state.velocity) > 0.1) {
-                 this.true_state.velocity = math.multiply(this.true_state.velocity, 0.998); 
-             }
-        }
         
         // Application des CNH
         const Vx = this.true_state.velocity.get([0]);
@@ -147,6 +147,7 @@ function distance(lat1, lon1, lat2, lon2) {
 
 // --- LISTENER IMU (SANS BOUCLE) ---
 function imuMotionHandler(event) {
+    // Utilisation de event.acceleration (accélération linéaire)
     const acc = event.acceleration; 
     const rot = event.rotationRate;
     
@@ -222,7 +223,7 @@ function updateDisplayMetrics() {
     document.getElementById('kalman-q-noise').textContent = `${ekf6dof.getAccelBias().toFixed(3)}`;
 }
 
-// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (Correction 3D) ---
+// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (Correction 3D et Étalonnage Agressif) ---
 function updateDisp(pos) {
     const accRaw = pos.coords.accuracy;
     
@@ -240,6 +241,7 @@ function updateDisp(pos) {
 
     const cLat = pos.coords.latitude;
     const cLon = pos.coords.longitude;
+    // 3. Correction d'Altitude
     const altRaw = pos.coords.altitude || 0.0;
     const altAccRaw = pos.coords.altitudeAccuracy || 10.0; 
     const spd3D_raw = pos.coords.speed || 0.0; 
@@ -247,7 +249,7 @@ function updateDisp(pos) {
     const current_ekf_speed = ekf6dof.getSpeed();
     let R_kalman_input = getKalmanR(accRaw, current_ekf_speed); 
     
-    // --- LOGIQUE ANTI-SAUT GPS ---
+    // --- LOGIQUE ANTI-SAUT GPS (Anti-saut) ---
     if (lPos && !isDeadReckoning) {
         const dt_gps = (pos.timestamp - lPos.timestamp) / 1000 || 1.0;
         const measured_dist = distance(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon);
@@ -258,7 +260,7 @@ function updateDisp(pos) {
         }
     }
     
-    // --- ÉTALONNAGE DYNAMIQUE DE LA VITESSE (CONVERGENCE AGRESSIVE) ---
+    // --- ÉTALONNAGE DYNAMIQUE DE LA VITESSE (Convergence Agressive) ---
     let R_speed_factor = 1.0; 
     const speed_difference = Math.abs(current_ekf_speed - spd3D_raw);
     const SPEED_TOLERANCE = 2.0; 
@@ -268,12 +270,14 @@ function updateDisp(pos) {
         R_speed_factor = 100.0; 
     } else {
         // GPS fiable (cohérent) : Correction EXTRÊMEMENT agressive.
+        // Force la convergence de la vitesse EKF vers la vitesse GPS.
         R_speed_factor = 0.001; 
     }
 
     // Exécution de l'étape UPDATE (Correction 6D par la mesure GPS)
     const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
     
+    // Matrice R : Fiabilité de la mesure
     const R_matrix = math.diag([
         R_kalman_input,             // R - Pos X (Lat)
         R_kalman_input,             // R - Pos Y (Lon)
