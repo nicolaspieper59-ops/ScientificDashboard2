@@ -1,142 +1,144 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
-// BLOC 1/2 : Constantes, Kalman & Fonctions de Correction Avancées
+// EKF de RÉALITÉ ADAPTATIF : Modes Réalistes (INS 6-DoF Conceptuel) et Fictionnels
 // =================================================================
 
-// --- CLÉS D'API & PROXY VERCEL ---
-const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
-const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
-const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
-
-// --- CONSTANTES PHYSIQUES ET MATHÉMATIQUES ---
+// --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const KMH_MS = 3.6;         
-const G = 9.80665;          
-const R_AIR = 287.058;      
+const G_EARTH = 9.80665;    
+const MIN_DT = 0.0001;      // Temps minimal pour éviter division par zéro
+const SPACETIME_JUMP_THRESHOLD_M = 500000; 
 
-// --- CONSTANTES DE CONFIGURATION SYSTÈME ---
-const MIN_DT = 0.01; 
-const GPS_OPTS = {
-    HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
-    LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
+// --- PARAMÈTRES EKF (Ajustés par le mode de transport) ---
+let Q_NOISE_H = 0.1;        
+let Q_NOISE_V = 0.01;       
+let R_MIN = 0.01;           
+let R_MAX = 500.0;          
+let G_NULL_FACTOR = 1.0;    // Facteur d'annulation d'inertie (0.0 pour l'OVNI/Magie)
+let R_SLOW_SPEED_FACTOR = 100.0; 
+let AIRCRAFT_GPS_DEGRADE_THRESHOLD = 50.0; 
+let AIRCRAFT_DEGRADE_R_FACTOR = 5000.0;   
+
+// --- CONSTANTES PHYSIQUES ET FICTIONNELLES ---
+const DIMENSIONAL_CONSTANTS = {
+    'STANDARD': { G: G_EARTH, AIR_DENSITY: 1.225 },
+    'HYPER_SPACE': { G: 0.0, AIR_DENSITY: 0.0 }, 
+    'CARTOON': { G: 0.1, AIR_DENSITY: 1.2 },        
+    'MAGICAL_AURA': { G: 0.5, AIR_DENSITY: 0.5 } 
 };
-const DOM_SLOW_UPDATE_MS = 1000; 
-const IMU_FREQUENCY_MS = 50;      
+let G_ACC = G_EARTH; 
 
-// --- PARAMÈTRES DU FILTRE DE KALMAN (VITESSE) ---
-const Q_NOISE = 0.1;        
-const R_MIN = 0.01;         
-const R_MAX = 500.0;        
-const MAX_ACC = 200;        
-const MIN_SPD = 0.05;       
-
-// --- NOUVEAUX SEUILS POUR IMU/ZUPT AVANCÉ ---
-const ZUPT_RAW_THRESHOLD = 1.0;     
-const IMU_ZUPT_THRESHOLD = 0.05;    
-const Q_BIAS_ACCEL_FACTOR = 0.5;    
-const BIAS_EMA_ALPHA = 0.05;        
-const R_ACCEL_DAMPING_FACTOR = 1.0; 
-const R_SLOW_SPEED_FACTOR = 100.0;  // Facteur pour le Soft Constraint
-
-// --- DONNÉES CÉLESTES/GRAVITÉ ---
-const CELESTIAL_DATA = { 
-    'EARTH': { G: 9.80665, R: 6371000, name: 'Terre' },
-    'MOON': { G: 1.62, R: 1737400, name: 'Lune' }
-};
-let G_ACC = CELESTIAL_DATA['EARTH'].G; 
-let R_ALT_CENTER_REF = CELESTIAL_DATA['EARTH'].R;
-
-// --- VARIABLES D'ÉTAT (Globales) ---
-let wID = null, domID = null, imuUpdateID = null;
-let lPos = null, lat = null, lon = null, sTime = null;
-let distM = 0, maxSpd = 0;
+// --- VARIABLES D'ÉTAT GLOBALES (pour le EKF 1D) ---
+let wID = null, lPos = null;
 let kSpd = 0, kUncert = 1000;      
-let kAlt = null, kAltUncert = 10;  
-
-let lastIMUUpdate = 0;
-let rawAccelWithGrav = { x: 0.0, y: 0.0, z: 0.0 }; 
+let kAlt = null, kAltUncert = 10;   
+let kVSpeed = 0;                    
+let currentTransportMode = 'CAR_PEDESTRIAN'; 
+let rawAccelWithGrav = { x: 0.0, y: 0.0, z: 0.0 };
 let attitude = { roll: 0.0, pitch: 0.0, yaw: 0.0 }; 
-let imu_bias_est = 0.0;             
 let corrected_Accel_Mag = 0.0;      
-let centrifugalAccel = 0.0; 
-let NED_Accel_Mag_RAW = 0.0;        
+let lateralAccelIMU = 0.0; 
+let map = null, marker = null;
 
-let emergencyStopActive = false;
-let currentCelestialBody = 'EARTH';
-let currentGPSMode = 'HIGH_FREQ'; 
-let currentMass = 70.0;
-let R_FACTOR_RATIO = 1.0;
-let map, marker, circle;
-let lastP_hPa = 1013.25, lastT_K = 290.45;
-let lastFSpeed = 0;
+// --- CLASSE CONCEPTUELLE EKF 6-DOF ---
+class EKF_6DoF {
+    constructor() {
+        // État du filtre d'erreur (15x1)
+        this.error_state_vector = math.zeros(15); 
+        const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
+        this.P = math.diag(initial_uncertainty); // Covariance (15x15)
 
-// --- FONCTIONS UTILITAIRES ---
-const $ = id => document.getElementById(id);
-
-// Fonctions utilitaires simulées (assumées existantes dans l'implémentation complète)
-const getCDate = () => { return new Date(); };
-const dist = (lat1, lon1, lat2, lon2) => { return 0; };
-const getKalmanR = (accRaw) => { return Math.min(R_MAX, Math.max(R_MIN, accRaw * accRaw)); };
-const updateCelestialBody = (body) => { 
-    const data = CELESTIAL_DATA[body];
-    G_ACC = data.G;
-    R_ALT_CENTER_REF = data.R;
-};
-function kFilterAltitude(altRaw, R_alt, dt) { return altRaw; }
-function initMap() { /* ... */ }
-function updateMap(lat, lon, acc) { /* ... */ }
-function updateAstro(lat, lon) { /* ... */ }
-function syncH() { /* ... */ }
-function fetchWeather(lat, lon) { /* ... */ }
-
-
-// Compensation de Gravité (Attitude)
-function getGravityCompensatedAccel(rawAccel, attitude) {
-    const G_current = G_ACC; 
-    const pitchRad = attitude.pitch * D2R; 
-    const gravityProjectionOnY = G_current * Math.sin(pitchRad);
-    const linearAccelY = rawAccel.y - gravityProjectionOnY;
-    return Math.abs(linearAccelY);
-}
-
-// Correction Centrifuge et Biais EMA
-function getCorrectedAccel(rawAccel, attitude, dt) {
-    const trueAccelMag = getGravityCompensatedAccel(rawAccel, attitude); 
-
-    const local_r = parseFloat($('rotation-radius')?.value) || 100;
-    const local_w = parseFloat($('angular-velocity')?.value) || 0;
-    centrifugalAccel = local_r * (local_w ** 2);
+        // Q simplifié pour le mode réaliste
+        this.Q = math.diag([0, 0, 0, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.00001, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001]);
+        
+        // État réel (non-linéaire) - Position, Vitesse, Quaternion
+        this.true_state = {
+            position: math.matrix([0, 0, 0]), 
+            velocity: math.matrix([0, 0, 0]), 
+            orientation: [1, 0, 0, 0], 
+            accel_bias: [0, 0, 0],
+            gyro_bias: [0, 0, 0]
+        };
+        console.log("EKF 6-DoF initialisé. Utilise mathjs.");
+    }
     
-    let net_Accel_Mag = trueAccelMag;
-    if (net_Accel_Mag >= centrifugalAccel) {
-        net_Accel_Mag -= centrifugalAccel;
-    } else {
-        net_Accel_Mag = 0.0;
+    // --- METHODES PRINCIPALES (Squelette Logique) ---
+    predict(dt, imu_input) {
+        // En mode réel, F et la propagation du true_state seraient calculées ici.
+        // P_k = F * P_{k-1} * F^T + Q
+        // true_state_k = f(true_state_{k-1}, imu_input)
+        const F = math.identity(15); // Placeholder F
+        this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
     }
-
-    if (net_Accel_Mag < IMU_ZUPT_THRESHOLD) {
-        if (imu_bias_est === 0.0) {
-             imu_bias_est = net_Accel_Mag;
-        } else {
-            imu_bias_est = (BIAS_EMA_ALPHA * net_Accel_Mag) + ((1 - BIAS_EMA_ALPHA) * imu_bias_est);
-        }
-        return 0.0; 
-    } else {
-        return Math.max(0.0, net_Accel_Mag - imu_bias_est);
+    
+    update(z, R_k) {
+        // Correction de l'état avec la mesure GPS (z)
+        const H = math.zeros(6, 15); H.subset(math.index([0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]), math.identity(6)); // Simplifié H (mesure p, v)
+        // K = P * H^T * inv(H * P * H^T + R)
+        // ... calcul du Gain de Kalman K ...
+        // P = (I - K * H) * P
+        // this.true_state est corrigé.
+    }
+    
+    // Renvoie la vitesse 3D pour l'affichage
+    getSpeed() {
+        return math.norm(this.true_state.velocity);
     }
 }
+let ekf6dof = null; // Instance globale pour le 6-DoF
 
+// --- FONCTIONS DE GESTION DES MODES ET DES CONSTANTES ---
+function setDimensionalConstants(dimension) {
+    const data = DIMENSIONAL_CONSTANTS[dimension];
+    if (data) G_ACC = data.G; 
+    document.getElementById('nhc-status').textContent = `Gravité Locale: ${G_ACC.toFixed(2)} m/s²`;
+}
 
-/**
- * Filtre de Kalman 1D pour la vitesse
- */
+function setTransportModeParameters(mode) {
+    currentTransportMode = mode;
+    
+    // Réinitialisation de base
+    Q_NOISE_H = 0.1; Q_NOISE_V = 0.01; R_SLOW_SPEED_FACTOR = 100.0; G_NULL_FACTOR = 1.0; 
+    setDimensionalConstants('STANDARD'); 
+    let status_text = 'INACTIF';
+
+    switch (mode) {
+        case 'INS_6DOF_REALISTE':
+            if (!ekf6dof) ekf6dof = new EKF_6DoF(); // Créer l'instance 6-DoF
+            status_text = '✅ EKF 6-DoF ACTIF (Conceptuel)';
+            break;
+        case 'TRAIN_METRO': Q_NOISE_H = 0.05; R_SLOW_SPEED_FACTOR = 200.0; status_text = 'ACTIF (Rail/NHC)'; break;
+        case 'AIRCRAFT': R_SLOW_SPEED_FACTOR = 10.0; Q_NOISE_V = 0.001; Q_NOISE_H = 0.08; status_text = 'ACTIF (Aéronef/NHC)'; break;
+        
+        // --- Modes Fiction ---
+        case 'CARTOON_PHYSICS': G_NULL_FACTOR = 0.5; Q_NOISE_H = 50.0; Q_NOISE_V = 50.0; setDimensionalConstants('CARTOON'); status_text = '🤪 LOIS CARTOON (G=0.1)'; break;
+        case 'SPACETIME_DRIVE': G_NULL_FACTOR = 0.001; Q_NOISE_H = 10000.0; Q_NOISE_V = 10000.0; status_text = '⚡️ VOYAGE TEMPOREL (Δt Ignoré)'; break;
+        case 'MAGICAL_REALITY': G_NULL_FACTOR = 0.0; Q_NOISE_H = 100000.0; Q_NOISE_V = 100000.0; R_MIN = 0.0001; setDimensionalConstants('MAGICAL_AURA'); status_text = '✨ MAGICAL REALITY (Observation Pure)'; break;
+        case 'HYPERDIMENSIONAL_DRIVE': G_NULL_FACTOR = 0.0; Q_NOISE_H = 50000.0; Q_NOISE_V = 50000.0; setDimensionalConstants('HYPER_SPACE'); status_text = '🚀 HYPER-ESPACE (Vitesse Lumière+)'; break;
+        
+        case 'CAR_PEDESTRIAN':
+        default: break;
+    }
+    document.getElementById('nhc-status').textContent = `Contraintes de Mouvement: ${status_text}`;
+}
+
+// --- EKF 1D (pour les modes non 6-DoF) ---
 function kFilter(nSpd, dt, R_dyn, accel_input = 0) {
     if (dt === 0 || dt > 5) return kSpd; 
     
-    const Q_accel_noise = Q_NOISE + Math.abs(accel_input) * Q_BIAS_ACCEL_FACTOR; 
+    // Application de la G-Nullification
+    const effective_accel_input = accel_input * G_NULL_FACTOR; 
+    
+    let Q_accel_noise = Q_NOISE_H + Math.abs(effective_accel_input) * 0.5; 
+    
+    // Contrainte Latérale Avion
+    if (currentTransportMode === 'AIRCRAFT' && Math.abs(lateralAccelIMU) < 0.5) Q_accel_noise *= 0.1;
+    
     const R = R_dyn ?? R_MAX, Q = Q_accel_noise * dt * dt; 
     
-    let pSpd = kSpd + (accel_input * dt); 
+    // Prédiction et Correction
+    let pSpd = kSpd + (effective_accel_input * dt); 
     let pUnc = kUncert + Q; 
 
     let K = pUnc / (pUnc + R); 
@@ -146,217 +148,176 @@ function kFilter(nSpd, dt, R_dyn, accel_input = 0) {
     return kSpd;
 }
 
+function kFilterAltitude(altRaw, R_alt_raw, dt) { 
+    if (kAlt === null) { kAlt = altRaw; return kAlt; }
+    if (dt === 0 || dt > 5) return kAlt; 
 
-// =================================================================
-// FICHIER JS COMPLET : gnss-dashboard-full.js
-// BLOC 2/2 : Fonctions de Contrôle et Boucles Principales
-// =================================================================
+    const accel_vertical_raw = rawAccelWithGrav.z - G_ACC; 
+    const effective_accel_vertical = accel_vertical_raw * G_NULL_FACTOR;
 
-function startGPS() {
-    const options = (currentGPSMode === 'HIGH_FREQ') ? GPS_OPTS.HIGH_FREQ : GPS_OPTS.LOW_FREQ;
+    const Q_V_current = Q_NOISE_V * dt * dt * 0.1; 
+    const R_alt = R_alt_raw * R_alt_raw; 
+
+    // Prédiction
+    let pAlt = kAlt + (kVSpeed * dt) + (0.5 * effective_accel_vertical * dt * dt); 
+    let pVSpeed = kVSpeed + (effective_accel_vertical * dt); 
     
-    if (wID === null) {
-        // NOTE: 'updateDisp' est appelée par l'API de géolocalisation
-        wID = navigator.geolocation.watchPosition(updateDisp, handleErr, options);
-    }
-    
-    if (imuUpdateID === null) {
-        imuUpdateID = setInterval(updateIMUPrediction, IMU_FREQUENCY_MS);
-    }
-    
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '⏸️ PAUSE GPS/IMU';
+    kAltUncert = kAltUncert + Q_V_current; 
+
+    // Correction
+    let K = kAltUncert / (kAltUncert + R_alt); 
+    kAlt = pAlt + K * (altRaw - pAlt); 
+    kAltUncert = (1 - K) * kAltUncert; 
+    kVSpeed = pVSpeed + K * ((altRaw - pAlt) / dt);
+
+    return kAlt;
 }
 
-function stopGPS(resetButton = true) {
-    if (wID !== null) {
-        navigator.geolocation.clearWatch(wID);
-        wID = null;
-    }
-    if (imuUpdateID !== null) {
-        clearInterval(imuUpdateID);
-        imuUpdateID = null;
-    }
-    if (resetButton && $('toggle-gps-btn')) $('toggle-gps-btn').textContent = '▶️ MARCHE GPS/IMU';
+// --- FONCTIONS UTILITAIRES ---
+function getKalmanR(accRaw) {
+    let R = Math.max(R_MIN, accRaw);
+    // Soft Constraint
+    if (kSpd < 0.5 && corrected_Accel_Mag < 0.05) R = R * R_SLOW_SPEED_FACTOR;
+    return R;
+}
+function distance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // Rayon de la Terre en mètres
+    const dLat = (lat2 - lat1) * D2R;
+    const dLon = (lon2 - lon1) * D2R;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * D2R) * Math.cos(lat2 * D2R) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
 }
 
-function handleErr(error) { console.warn(`GPS ERROR: ${error.code}: ${error.message}`); }
-
-// --- LOGIQUE DE PRÉDICTION IMU HAUTE FRÉQUENCE (20 Hz) ---
-function updateIMUPrediction() {
-    if (emergencyStopActive) return;
-
-    const time = Date.now();
-    if (lastIMUUpdate === 0) lastIMUUpdate = time;
-    
-    const dt_imu = (time - lastIMUUpdate) / 1000;
-    const dt = (dt_imu > 0 && dt_imu < 1) ? dt_imu : IMU_FREQUENCY_MS / 1000; 
-    lastIMUUpdate = time;
-
-    // 1. Calcul de l'accélération corrigée (Attitude, Centrifuge, Biais EMA)
-    corrected_Accel_Mag = getCorrectedAccel(rawAccelWithGrav, attitude, dt); 
-
-    let R_imu_pred = R_MAX;
-    let modeStatus = '';
-    
-    if (wID === null) { 
-        // Mode DR (GPS Pausé)
-        
-        if (corrected_Accel_Mag === 0.0) {
-             // ZUPT Soft Constraint en DR: Confiance maximale dans la prédiction si l'IMU est stable (corrected_Accel_Mag = 0.0)
-             R_imu_pred = R_MIN; 
-             modeStatus = '✅ DR - BIAS ON (Prediction Stabilité)';
-             
-             // Réduction de l'incertitude pour un amortissement rapide
-             if (kSpd < ZUPT_RAW_THRESHOLD) {
-                 kUncert = Math.min(kUncert, R_MIN * 2); 
-             }
-        } else {
-             R_imu_pred = R_MAX; 
-             modeStatus = '⚠️ DR - PRÉDICTION IMU';
-        }
-        
-        // Appliquer la prédiction EKF
-        kFilter(kSpd, dt, R_imu_pred, corrected_Accel_Mag);
-    } else {
-         return; 
-    }
-
-    // Mise à jour des stats DR à haute fréquence (Affichage)
-    const sSpdFE = kSpd < MIN_SPD ? 0 : kSpd; 
-    distM += sSpdFE * dt * R_FACTOR_RATIO;
-    
-    if ($('imu-frequency')) $('imu-frequency').textContent = (1 / dt).toFixed(1);
-    if ($('gps-status-dr')) $('gps-status-dr').textContent = modeStatus;
-    if ($('imu-bias-est')) $('imu-bias-est').textContent = imu_bias_est.toFixed(6);
-    if ($('corrected-accel-mag-comp')) $('corrected-accel-mag-comp').textContent = corrected_Accel_Mag.toFixed(3);
-    if ($('centrifugal-accel')) $('centrifugal-accel').textContent = centrifugalAccel.toFixed(3);
-    if ($('kalman-uncert')) $('kalman-uncert').textContent = kUncert.toFixed(3);
-}
-
-
-// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (updateDisp) ---
+// --- FONCTION PRINCIPALE DE MISE À JOUR GPS ---
 function updateDisp(pos) {
-    if (emergencyStopActive) return;
-
     const cLat = pos.coords.latitude;
     const cLon = pos.coords.longitude;
     const accRaw = pos.coords.accuracy;
     const altRaw = pos.coords.altitude;
+    const altAccRaw = pos.coords.altitudeAccuracy || 1.0;
 
-    // Calculs de dt et spd3D_raw (simulés)
-    const dt = (lPos && pos.timestamp > lPos.timestamp) ? (pos.timestamp - lPos.timestamp) / 1000 : 0.5;
-    let spd3D_raw = pos.coords.speed || 0.0; // Vitesse brute
-
-    let R_dyn = getKalmanR(accRaw); 
-    let spd_kalman_input = spd3D_raw;
-    let R_kalman_input = R_dyn;
-    let modeStatus = '🛰️ FUSION GNSS/IMU';
+    let dt = (lPos && pos.timestamp > lPos.timestamp) ? (pos.timestamp - lPos.timestamp) / 1000 : 0.5;
+    let spd3D_raw = pos.coords.speed || 0.0; 
     
-    // 1. Calcul de l'accélération corrigée IMU (Attitude + Biais)
-    corrected_Accel_Mag = getCorrectedAccel(rawAccelWithGrav, attitude, dt); 
-    let accel_sensor_input = corrected_Accel_Mag; 
+    let R_kalman_input = getKalmanR(accRaw);
+    corrected_Accel_Mag = spd3D_raw > 0 ? 0.1 : 0.0; // Accél. simplifiée
+    
+    let modeStatus = '🛰️ FUSION GNSS/IMU';
+    let final_speed = 0.0;
 
-    // 2. MODIFICATION CLÉ: Soft Constraint / Amortissement de Vitesse Lente
-    const isVeryStable = (
-        spd3D_raw < ZUPT_RAW_THRESHOLD && 
-        accel_sensor_input < IMU_ZUPT_THRESHOLD 
-    );
+    // 1. GESTION DES MODES DE FICTION ET DES SAUTS SPATIO-TEMPORELS
+    const isFictionMode = ['SPACETIME_DRIVE', 'MAGICAL_REALITY', 'HYPERDIMENSIONAL_DRIVE'].includes(currentTransportMode);
 
-    if (R_kalman_input !== R_MIN) { 
-        let modulation_factor = 1.0;
+    if (isFictionMode && lPos !== null) {
+        const d_space = distance(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon);
         
-        if (isVeryStable) {
-            // SOFT CONSTRAINT : Si stable et lent, on amplifie R pour ignorer la mesure GPS (trop bruyée).
-            modulation_factor = R_SLOW_SPEED_FACTOR; 
-            modeStatus = '✅ FUSION (Amortissement Vitesse Lente)';
-        } else {
-            // Modulation pour les manœuvres rapides (Confiance IMU)
-            const accel_factor = Math.min(10.0, accel_sensor_input / 2.0); 
-            modulation_factor = 1.0 + accel_factor * R_ACCEL_DAMPING_FACTOR;
+        if (d_space > SPACETIME_JUMP_THRESHOLD_M) {
+            // Saut Temporel/Dimensionnel détecté
+            dt = MIN_DT; 
+            kUncert = R_MAX; 
+            kSpd = spd3D_raw; 
+            kAlt = altRaw; 
+            modeStatus = '✨ MANIFESTATION PARANORMALE!';
+            
+            // Changement aléatoire de dimension dans le mode MAGICAL_REALITY
+            if (currentTransportMode === 'MAGICAL_REALITY') {
+                const keys = Object.keys(DIMENSIONAL_CONSTANTS);
+                const randomDim = keys[Math.floor(Math.random() * keys.length)];
+                setDimensionalConstants(randomDim);
+            }
         }
-
-        R_kalman_input = R_kalman_input * modulation_factor;
+    }
+    
+    // 2. GESTION DES MODES RÉALISTES
+    if (currentTransportMode === 'AIRCRAFT' && accRaw > AIRCRAFT_GPS_DEGRADE_THRESHOLD) {
+        R_kalman_input *= AIRCRAFT_DEGRADE_R_FACTOR;
+        modeStatus = '⚠️ GPS DÉGRADÉ (Couloir/DR) !';
     }
 
-    // FILTRE DE KALMAN FINAL (Fusion IMU/GNSS)
-    // Utilise la vitesse brute GPS comme mesure, mais le R modulé assure la stabilité
-    // et la fluidité en mouvement lent.
-    const fSpd = kFilter(spd_kalman_input, dt, R_kalman_input, accel_sensor_input); 
-    const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
+    if (currentTransportMode === 'INS_6DOF_REALISTE' && ekf6dof) {
+        // En mode 6-DoF conceptuel, nous simulons les entrées IMU
+        const imu_input_sim = [0, 0, 0, 0, 0, 0]; 
+        const gps_measurement = [cLat, cLon, altRaw, spd3D_raw, 0, 0]; // Simplifié
+        const R_matrix = math.diag([accRaw, accRaw, altAccRaw, 1, 1, 1]); // Matrice de bruit GPS (6x6)
+
+        // Propagation et Correction 6-DoF
+        ekf6dof.predict(dt, imu_input_sim);
+        ekf6dof.update(gps_measurement, R_matrix);
+        
+        final_speed = ekf6dof.getSpeed();
+        // L'affichage de l'altitude, de l'incertitude P, etc. nécessiterait de décoder l'état du 6-DoF.
+
+    } else {
+        // EKF 1D (Modes Simples et Fictionnels)
+        const fSpd = kFilter(spd3D_raw, dt, R_kalman_input, corrected_Accel_Mag); 
+        kAlt = kFilterAltitude(altRaw, altAccRaw, dt); 
+        final_speed = fSpd;
+    }
     
     // --- Mise à jour des affichages ---
-    if ($('speed-stable')) $('speed-stable').textContent = `${sSpdFE.toFixed(3)} m/s`;
-    if ($('current-speed')) $('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)} km/h`;
-    if ($('gps-status-dr')) $('gps-status-dr').textContent = modeStatus;
-    
-    if ($('kalman-r-factor')) $('kalman-r-factor').textContent = R_kalman_input.toFixed(3);
-    if ($('kalman-q-noise')) $('kalman-q-noise').textContent = (Q_NOISE + Math.abs(accel_sensor_input) * Q_BIAS_ACCEL_FACTOR).toFixed(3);
-    if ($('kalman-uncert')) $('kalman-uncert').textContent = kUncert.toFixed(3);
-    
-    // Mise à jour de l'accélération longitudinale (pour l'affichage)
-    if ($('accel-long')) $('accel-long').textContent = accel_sensor_input.toFixed(3) + ' m/s²';
-    if ($('force-g-long')) $('force-g-long').textContent = (accel_sensor_input / G).toFixed(3) + ' G';
-    
+    const sSpdFE = final_speed < 0.05 ? 0 : final_speed; 
+    document.getElementById('speed-stable').textContent = `${sSpdFE.toFixed(3)}`;
+    document.getElementById('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)}`;
+    document.getElementById('altitude-kalman').textContent = `${(kAlt ?? altRaw).toFixed(2)}`;
+    document.getElementById('kalman-uncert').textContent = `${kUncert.toFixed(2)}`;
+    document.getElementById('kalman-q-noise').textContent = `${Q_NOISE_H.toFixed(3)}`;
+    document.getElementById('kalman-r-dyn').textContent = `${R_kalman_input.toFixed(2)}`;
+    document.getElementById('gps-status-dr').textContent = modeStatus;
+
+
     // Sauvegarde de l'état
     lPos = pos;
-    lat = cLat; lon = cLon;
-    kAlt = kFilterAltitude(altRaw, pos.coords.altitudeAccuracy || 1.0, dt);
-    
-    updateMap(lat, lon, accRaw);
+    updateMap(cLat, cLon, accRaw);
 }
 
+// --- GESTION DE LA CARTE (Leaflet) ---
+function initMap() {
+    map = L.map('map').setView([43.2965, 5.37], 13); // Centré sur Marseille
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    marker = L.marker([0, 0]).addTo(map);
+}
+
+function updateMap(lat, lon, acc) {
+    if (map && marker) {
+        marker.setLatLng([lat, lon]);
+        map.setView([lat, lon], map.getZoom() < 13 ? 13 : map.getZoom());
+    }
+}
+
+function startGPS() {
+    wID = navigator.geolocation.watchPosition(updateDisp, (err) => {console.error(err)}, {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+    });
+    document.getElementById('toggle-gps-btn').textContent = "Arrêter la Fusion";
+}
+
+function stopGPS() {
+    if (wID !== null) navigator.geolocation.clearWatch(wID);
+    wID = null;
+    document.getElementById('toggle-gps-btn').textContent = "Démarrer la Fusion (GPS/IMU)";
+}
 
 // --- INITIALISATION DES ÉVÉNEMENTS DOM ---
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
     
-    // Contrôles
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => { wID === null ? startGPS() : stopGPS(); });
-    if ($('reset-system-btn')) $('reset-system-btn').addEventListener('click', () => { window.location.reload(); });
-    if ($('celestial-body')) $('celestial-body').addEventListener('change', (e) => updateCelestialBody(e.target.value));
-
-    // Listeners IMU AVANCÉS (Attitude)
-    if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientation', (event) => {
-            attitude.yaw = event.alpha || 0; 
-            attitude.pitch = event.beta || 0; 
-            attitude.roll = event.gamma || 0;
-            if ($('imu-roll')) $('imu-roll').textContent = attitude.roll.toFixed(1) + ' °';
-            if ($('imu-pitch')) $('imu-pitch').textContent = attitude.pitch.toFixed(1) + ' °';
-            if ($('imu-yaw')) $('imu-yaw').textContent = attitude.yaw.toFixed(1) + ' °';
-        });
-    }
-
-    // Listeners IMU AVANCÉS (Accélération BRUTE avec Gravité)
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', (event) => {
-            const a_grav = event.accelerationIncludingGravity; 
-            
-            if (a_grav) {
-                rawAccelWithGrav.x = a_grav.x;
-                rawAccelWithGrav.y = a_grav.y; // Axe longitudinal
-                rawAccelWithGrav.z = a_grav.z;
-                
-                NED_Accel_Mag_RAW = Math.sqrt(a_grav.x**2 + a_grav.y**2 + a_grav.z**2);
-            }
-        });
-    }
-
-    // --- DÉMARRAGE DU SYSTÈME ---
-    syncH(); 
-    updateCelestialBody(currentCelestialBody); 
-    startGPS();
+    document.getElementById('toggle-gps-btn').addEventListener('click', () => { wID === null ? startGPS() : stopGPS(); });
     
-    // Boucle de mise à jour lente (Astro/Météo/Horloge)
-    // ... (Simulation de la boucle lente)
-    if (domID === null) {
-        domID = setInterval(() => {
-            const now = getCDate();
-            if (now) {
-                if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString('fr-FR');
-                if ($('utc-time')) $('utc-time').textContent = now.toUTCString();
-            }
-        }, DOM_SLOW_UPDATE_MS);
-    }
+    // Listener pour le changement de mode de transport
+    document.getElementById('transport-mode-select').addEventListener('change', (e) => {
+        stopGPS(); // Arrêter la position avant de changer de mode pour réinitialiser l'état
+        kSpd = 0; kUncert = 1000; lPos = null; 
+        ekf6dof = null; // Réinitialiser l'instance 6-DoF
+        setTransportModeParameters(e.target.value);
+    });
+
+    setTransportModeParameters(document.getElementById('transport-mode-select').value); 
 });
