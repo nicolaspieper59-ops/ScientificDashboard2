@@ -7,15 +7,15 @@
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const KMH_MS = 3.6;         
 const G_EARTH = 9.80665;    
-const MIN_DT = 0.0001;      // Temps minimal pour éviter division par zéro
+const MIN_DT = 0.0001;      
 const SPACETIME_JUMP_THRESHOLD_M = 500000; 
 
 // --- PARAMÈTRES EKF (Ajustés par le mode de transport) ---
-let Q_NOISE_H = 0.1;        
-let Q_NOISE_V = 0.01;       
-let R_MIN = 0.01;           
+let Q_NOISE_H = 0.5;        // Ajusté pour un IMU moyen (réaliste)
+let Q_NOISE_V = 0.05;       
+let R_MIN = 1.0;            // Ajusté pour une erreur GPS minimale réaliste (1m)
 let R_MAX = 500.0;          
-let G_NULL_FACTOR = 1.0;    // Facteur d'annulation d'inertie (0.0 pour l'OVNI/Magie)
+let G_NULL_FACTOR = 1.0;    
 let R_SLOW_SPEED_FACTOR = 100.0; 
 let AIRCRAFT_GPS_DEGRADE_THRESHOLD = 50.0; 
 let AIRCRAFT_DEGRADE_R_FACTOR = 5000.0;   
@@ -40,19 +40,17 @@ let attitude = { roll: 0.0, pitch: 0.0, yaw: 0.0 };
 let corrected_Accel_Mag = 0.0;      
 let lateralAccelIMU = 0.0; 
 let map = null, marker = null;
+let isDeadReckoning = false; // Pour la simulation de la coupure GPS
 
 // --- CLASSE CONCEPTUELLE EKF 6-DOF ---
 class EKF_6DoF {
     constructor() {
-        // État du filtre d'erreur (15x1)
         this.error_state_vector = math.zeros(15); 
         const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
         this.P = math.diag(initial_uncertainty); // Covariance (15x15)
 
-        // Q simplifié pour le mode réaliste
         this.Q = math.diag([0, 0, 0, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.00001, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001]);
         
-        // État réel (non-linéaire) - Position, Vitesse, Quaternion
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
             velocity: math.matrix([0, 0, 0]), 
@@ -60,28 +58,22 @@ class EKF_6DoF {
             accel_bias: [0, 0, 0],
             gyro_bias: [0, 0, 0]
         };
-        console.log("EKF 6-DoF initialisé. Utilise mathjs.");
     }
     
-    // --- METHODES PRINCIPALES (Squelette Logique) ---
     predict(dt, imu_input) {
-        // En mode réel, F et la propagation du true_state seraient calculées ici.
-        // P_k = F * P_{k-1} * F^T + Q
-        // true_state_k = f(true_state_{k-1}, imu_input)
+        // Propagation P_k = F * P_{k-1} * F^T + Q
         const F = math.identity(15); // Placeholder F
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
     }
     
     update(z, R_k) {
-        // Correction de l'état avec la mesure GPS (z)
-        const H = math.zeros(6, 15); H.subset(math.index([0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]), math.identity(6)); // Simplifié H (mesure p, v)
-        // K = P * H^T * inv(H * P * H^T + R)
-        // ... calcul du Gain de Kalman K ...
-        // P = (I - K * H) * P
-        // this.true_state est corrigé.
+        // Correction EKF (P = (I - K*H)*P)
+        const H = math.zeros(6, 15); H.subset(math.index([0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]), math.identity(6)); 
+        // NOTE: Le vrai calcul de K et la correction de l'état (P = (I - K*H)*P) nécessiteraient une implémentation complète ici.
+        // On simule une réduction de l'incertitude pour la démonstration.
+        this.P = math.multiply(this.P, 0.9); 
     }
     
-    // Renvoie la vitesse 3D pour l'affichage
     getSpeed() {
         return math.norm(this.true_state.velocity);
     }
@@ -98,14 +90,16 @@ function setDimensionalConstants(dimension) {
 function setTransportModeParameters(mode) {
     currentTransportMode = mode;
     
-    // Réinitialisation de base
-    Q_NOISE_H = 0.1; Q_NOISE_V = 0.01; R_SLOW_SPEED_FACTOR = 100.0; G_NULL_FACTOR = 1.0; 
+    // Réinitialisation aux valeurs standard réalistes (IMU moyen, R_min=1m)
+    Q_NOISE_H = 0.5; Q_NOISE_V = 0.05; R_MIN = 1.0; R_MAX = 500.0;
+    R_SLOW_SPEED_FACTOR = 100.0; G_NULL_FACTOR = 1.0; 
     setDimensionalConstants('STANDARD'); 
     let status_text = 'INACTIF';
+    isDeadReckoning = false;
 
     switch (mode) {
         case 'INS_6DOF_REALISTE':
-            if (!ekf6dof) ekf6dof = new EKF_6DoF(); // Créer l'instance 6-DoF
+            if (!ekf6dof) ekf6dof = new EKF_6DoF();
             status_text = '✅ EKF 6-DoF ACTIF (Conceptuel)';
             break;
         case 'TRAIN_METRO': Q_NOISE_H = 0.05; R_SLOW_SPEED_FACTOR = 200.0; status_text = 'ACTIF (Rail/NHC)'; break;
@@ -127,20 +121,19 @@ function setTransportModeParameters(mode) {
 function kFilter(nSpd, dt, R_dyn, accel_input = 0) {
     if (dt === 0 || dt > 5) return kSpd; 
     
-    // Application de la G-Nullification
     const effective_accel_input = accel_input * G_NULL_FACTOR; 
-    
     let Q_accel_noise = Q_NOISE_H + Math.abs(effective_accel_input) * 0.5; 
     
-    // Contrainte Latérale Avion
-    if (currentTransportMode === 'AIRCRAFT' && Math.abs(lateralAccelIMU) < 0.5) Q_accel_noise *= 0.1;
-    
-    const R = R_dyn ?? R_MAX, Q = Q_accel_noise * dt * dt; 
+    // Si en Dead Reckoning, augmenter le bruit de mesure pour ne pas corriger.
+    const R_eff = isDeadReckoning ? R_MAX * 10 : R_dyn;
+
+    const R = R_eff ?? R_MAX, Q = Q_accel_noise * dt * dt; 
     
     // Prédiction et Correction
     let pSpd = kSpd + (effective_accel_input * dt); 
     let pUnc = kUncert + Q; 
 
+    // Gain de Kalman. Si R_eff est très grand (DR), K est petit.
     let K = pUnc / (pUnc + R); 
     kSpd = pSpd + K * (nSpd - pSpd); 
     kUncert = (1 - K) * pUnc; 
@@ -148,7 +141,7 @@ function kFilter(nSpd, dt, R_dyn, accel_input = 0) {
     return kSpd;
 }
 
-function kFilterAltitude(altRaw, R_alt_raw, dt) { 
+function kFilterAltitude(altRaw, altAccRaw, dt) { 
     if (kAlt === null) { kAlt = altRaw; return kAlt; }
     if (dt === 0 || dt > 5) return kAlt; 
 
@@ -156,15 +149,13 @@ function kFilterAltitude(altRaw, R_alt_raw, dt) {
     const effective_accel_vertical = accel_vertical_raw * G_NULL_FACTOR;
 
     const Q_V_current = Q_NOISE_V * dt * dt * 0.1; 
-    const R_alt = R_alt_raw * R_alt_raw; 
+    const R_alt = isDeadReckoning ? R_MAX * 10 : (altAccRaw * altAccRaw); 
 
-    // Prédiction
     let pAlt = kAlt + (kVSpeed * dt) + (0.5 * effective_accel_vertical * dt * dt); 
     let pVSpeed = kVSpeed + (effective_accel_vertical * dt); 
     
     kAltUncert = kAltUncert + Q_V_current; 
 
-    // Correction
     let K = kAltUncert / (kAltUncert + R_alt); 
     kAlt = pAlt + K * (altRaw - pAlt); 
     kAltUncert = (1 - K) * kAltUncert; 
@@ -176,12 +167,11 @@ function kFilterAltitude(altRaw, R_alt_raw, dt) {
 // --- FONCTIONS UTILITAIRES ---
 function getKalmanR(accRaw) {
     let R = Math.max(R_MIN, accRaw);
-    // Soft Constraint
     if (kSpd < 0.5 && corrected_Accel_Mag < 0.05) R = R * R_SLOW_SPEED_FACTOR;
     return R;
 }
 function distance(lat1, lon1, lat2, lon2) {
-    const R = 6371e3; // Rayon de la Terre en mètres
+    const R = 6371e3; 
     const dLat = (lat2 - lat1) * D2R;
     const dLon = (lon2 - lon1) * D2R;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -208,53 +198,57 @@ function updateDisp(pos) {
     let modeStatus = '🛰️ FUSION GNSS/IMU';
     let final_speed = 0.0;
 
-    // 1. GESTION DES MODES DE FICTION ET DES SAUTS SPATIO-TEMPORELS
+    // Détection de la perte de signal ou de la réacquisition
+    if (accRaw > R_MAX) {
+        isDeadReckoning = true;
+        modeStatus = '🚨 DEAD RECKONING (DR) EN COURS';
+    } else if (isDeadReckoning && accRaw < R_MAX) {
+        isDeadReckoning = false;
+        modeStatus = '✅ SIGNAL RÉTABLI / RECONVERGENCE';
+    } else if (isDeadReckoning) {
+        modeStatus = '🚨 DEAD RECKONING (DR) EN COURS'; // Maintenir le statut DR
+    }
+
+
+    // 1. GESTION DES MODES DE FICTION
     const isFictionMode = ['SPACETIME_DRIVE', 'MAGICAL_REALITY', 'HYPERDIMENSIONAL_DRIVE'].includes(currentTransportMode);
 
     if (isFictionMode && lPos !== null) {
         const d_space = distance(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon);
-        
         if (d_space > SPACETIME_JUMP_THRESHOLD_M) {
-            // Saut Temporel/Dimensionnel détecté
             dt = MIN_DT; 
             kUncert = R_MAX; 
             kSpd = spd3D_raw; 
-            kAlt = altRaw; 
             modeStatus = '✨ MANIFESTATION PARANORMALE!';
-            
-            // Changement aléatoire de dimension dans le mode MAGICAL_REALITY
             if (currentTransportMode === 'MAGICAL_REALITY') {
                 const keys = Object.keys(DIMENSIONAL_CONSTANTS);
-                const randomDim = keys[Math.floor(Math.random() * keys.length)];
-                setDimensionalConstants(randomDim);
+                setDimensionalConstants(keys[Math.floor(Math.random() * keys.length)]);
             }
         }
     }
     
     // 2. GESTION DES MODES RÉALISTES
-    if (currentTransportMode === 'AIRCRAFT' && accRaw > AIRCRAFT_GPS_DEGRADE_THRESHOLD) {
-        R_kalman_input *= AIRCRAFT_DEGRADE_R_FACTOR;
-        modeStatus = '⚠️ GPS DÉGRADÉ (Couloir/DR) !';
-    }
-
     if (currentTransportMode === 'INS_6DOF_REALISTE' && ekf6dof) {
-        // En mode 6-DoF conceptuel, nous simulons les entrées IMU
         const imu_input_sim = [0, 0, 0, 0, 0, 0]; 
-        const gps_measurement = [cLat, cLon, altRaw, spd3D_raw, 0, 0]; // Simplifié
-        const R_matrix = math.diag([accRaw, accRaw, altAccRaw, 1, 1, 1]); // Matrice de bruit GPS (6x6)
+        const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
+        const R_matrix = math.diag([R_kalman_input, R_kalman_input, altAccRaw, 1, 1, 1]); 
 
-        // Propagation et Correction 6-DoF
         ekf6dof.predict(dt, imu_input_sim);
-        ekf6dof.update(gps_measurement, R_matrix);
+        if (!isDeadReckoning) {
+            ekf6dof.update(gps_measurement, R_matrix);
+        }
         
         final_speed = ekf6dof.getSpeed();
-        // L'affichage de l'altitude, de l'incertitude P, etc. nécessiterait de décoder l'état du 6-DoF.
+        // Pour l'affichage, nous devons extraire P (conceptuel)
+        document.getElementById('kalman-uncert').textContent = `Matrice P (${ekf6dof.P.get([0,0]).toFixed(2)})`;
 
     } else {
         // EKF 1D (Modes Simples et Fictionnels)
         const fSpd = kFilter(spd3D_raw, dt, R_kalman_input, corrected_Accel_Mag); 
         kAlt = kFilterAltitude(altRaw, altAccRaw, dt); 
         final_speed = fSpd;
+
+        document.getElementById('kalman-uncert').textContent = `${kUncert.toFixed(2)}`;
     }
     
     // --- Mise à jour des affichages ---
@@ -262,11 +256,9 @@ function updateDisp(pos) {
     document.getElementById('speed-stable').textContent = `${sSpdFE.toFixed(3)}`;
     document.getElementById('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)}`;
     document.getElementById('altitude-kalman').textContent = `${(kAlt ?? altRaw).toFixed(2)}`;
-    document.getElementById('kalman-uncert').textContent = `${kUncert.toFixed(2)}`;
     document.getElementById('kalman-q-noise').textContent = `${Q_NOISE_H.toFixed(3)}`;
     document.getElementById('kalman-r-dyn').textContent = `${R_kalman_input.toFixed(2)}`;
     document.getElementById('gps-status-dr').textContent = modeStatus;
-
 
     // Sauvegarde de l'état
     lPos = pos;
@@ -275,7 +267,7 @@ function updateDisp(pos) {
 
 // --- GESTION DE LA CARTE (Leaflet) ---
 function initMap() {
-    map = L.map('map').setView([43.2965, 5.37], 13); // Centré sur Marseille
+    map = L.map('map').setView([43.2965, 5.37], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -290,7 +282,15 @@ function updateMap(lat, lon, acc) {
 }
 
 function startGPS() {
-    wID = navigator.geolocation.watchPosition(updateDisp, (err) => {console.error(err)}, {
+    wID = navigator.geolocation.watchPosition(updateDisp, (err) => {
+        // En cas d'erreur ou timeout, simuler le Dead Reckoning (DR)
+        if (err.code === 3 || err.code === 2) { 
+            isDeadReckoning = true;
+            document.getElementById('gps-status-dr').textContent = '🚨 ERREUR GPS: Passage en DR';
+        } else {
+            console.error(err);
+        }
+    }, {
         enableHighAccuracy: true,
         timeout: 5000,
         maximumAge: 0
@@ -301,6 +301,7 @@ function startGPS() {
 function stopGPS() {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     wID = null;
+    isDeadReckoning = false;
     document.getElementById('toggle-gps-btn').textContent = "Démarrer la Fusion (GPS/IMU)";
 }
 
@@ -309,13 +310,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
     
-    document.getElementById('toggle-gps-btn').addEventListener('click', () => { wID === null ? startGPS() : stopGPS(); });
+    document.getElementById('toggle-gps-btn').addEventListener('click', () => { 
+        wID === null ? startGPS() : stopGPS(); 
+    });
     
-    // Listener pour le changement de mode de transport
     document.getElementById('transport-mode-select').addEventListener('change', (e) => {
-        stopGPS(); // Arrêter la position avant de changer de mode pour réinitialiser l'état
+        stopGPS(); 
         kSpd = 0; kUncert = 1000; lPos = null; 
-        ekf6dof = null; // Réinitialiser l'instance 6-DoF
+        ekf6dof = null;
         setTransportModeParameters(e.target.value);
     });
 
