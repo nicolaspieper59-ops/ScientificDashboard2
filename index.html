@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tableau de Bord GNSS/IMU (Filtre de Kalman Automatique)</title>
+    <title>Tableau de Bord GNSS/IMU (Filtre de Kalman 6-DoF)</title>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
 
@@ -18,10 +18,11 @@
         .data-item strong { display: block; font-size: 0.9em; color: #555; }
         .value { font-size: 1.4em; font-weight: bold; color: #007bff; }
         #map { height: 400px; border-radius: 8px; margin-top: 20px; }
-        .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
-        .controls button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        .controls select { padding: 10px; border-radius: 5px; }
-        .status-bar { padding: 10px; background-color: #ffc107; color: #333; border-radius: 5px; margin-top: 10px; }
+        .controls { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; margin-bottom: 20px; background: #fff; padding: 15px; border-radius: 8px; }
+        .controls button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
+        .controls button:hover { background-color: #218838; }
+        .controls select { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        .status-bar { padding: 10px; background-color: #ffc107; color: #333; border-radius: 5px; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -33,7 +34,7 @@
         
         <label for="transport-mode-select">Mode de Transport/Physique (Initialisation) :</label>
         <select id="transport-mode-select">
-            <option value="INS_6DOF_REALISTE" selected>INS 6-DoF (Détection Automatique CNH)</option>
+            <option value="INS_6DOF_REALISTE" selected>INS 6-DoF (Filtre de Kalman Étendu)</option>
             <option value="CAR_PEDESTRIAN">Voiture/Piéton (CNH Manuelle simple)</option>
             <option value="TRAIN_METRO">Train/Métro (CNH Manuelle Rail)</option>
             <option value="AIRCRAFT">Aéronef (CNH Manuelle 3D)</option>
@@ -46,7 +47,7 @@
 
     <div class="dashboard">
         <div class="panel">
-            <h2>Sortie EKF (Filtre Kalman)</h2>
+            <h2>Sortie EKF (Fusion Stable)</h2>
             <div class="data-grid">
                 <div class="data-item">
                     <strong>Vitesse Stabilisée (m/s)</strong>
@@ -66,7 +67,7 @@
                 </div>
             </div>
 
-            <h3 style="margin-top: 15px;">Composantes 6-DoF (DR)</h3>
+            <h3 style="margin-top: 15px;">Composantes 6-DoF (Dead Reckoning)</h3>
             <div class="data-grid">
                 <div class="data-item">
                     <strong>Vitesse X (m/s)</strong>
@@ -112,4 +113,4 @@
     <script src="gnss-dashboard-full.js"></script>
 
 </body>
-                </html>
+</html>
