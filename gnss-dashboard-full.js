@@ -1,7 +1,7 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
 // EKF de RÉALITÉ ADAPTATIF : Modes Réalistes (INS 6-DoF Conceptuel) et Fictionnels
-// (Ajout de la simulation IMU haute fréquence dans le 6-DoF)
+// (Ajout des composantes Vitesse 3D et Position 3D pour le mode 6-DoF)
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -56,6 +56,7 @@ class EKF_6DoF {
 
         this.Q = math.diag([0, 0, 0, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.00001, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001]);
         
+        // Position, Vitesse, et Altitude initialisées à zéro pour la simulation de dérive
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
             velocity: math.matrix([0, 0, 0]), 
@@ -243,6 +244,7 @@ function updateDisp(pos) {
     if (currentTransportMode === 'INS_6DOF_REALISTE' && ekf6dof) {
         
         // **** ENTRÉES IMU HAUTE FRÉQUENCE SIMULÉES ****
+        // Injection d'une petite accélération latérale (dérive vitesse) et rotation (dérive attitude)
         const imu_input_sim = [0, SIM_ACCEL_LAT, 0, 0, 0, SIM_GYRO_YAW]; 
         
         const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
@@ -255,10 +257,23 @@ function updateDisp(pos) {
         
         final_speed = ekf6dof.getSpeed();
         
+        // --- NOUVEAUTÉ : Extraction des Composantes Vitesse et Position ---
+        const v_x = ekf6dof.true_state.velocity.get([0]);
+        const v_y = ekf6dof.true_state.velocity.get([1]);
+        const p_x = ekf6dof.true_state.position.get([0]);
+        const p_y = ekf6dof.true_state.position.get([1]);
+        const p_z = ekf6dof.true_state.position.get([2]);
+
+        // Mise à jour de l'affichage 3D (Hypothèse: ID existants)
+        if (document.getElementById('speed-x')) document.getElementById('speed-x').textContent = `${v_x.toFixed(2)}`;
+        if (document.getElementById('speed-y')) document.getElementById('speed-y').textContent = `${v_y.toFixed(2)}`;
+        if (document.getElementById('pos-x')) document.getElementById('pos-x').textContent = `${p_x.toFixed(2)}`;
+        if (document.getElementById('pos-y')) document.getElementById('pos-y').textContent = `${p_y.toFixed(2)}`;
+        
         // Affichage des données 6-DoF
-        const p_norm_sq = ekf6dof.P.get([0,0]); // Utiliser l'incertitude sur la première composante de position
+        const p_norm_sq = ekf6dof.P.get([0,0]);
         document.getElementById('kalman-uncert').textContent = `Matrice P (${p_norm_sq.toFixed(2)})`;
-        document.getElementById('altitude-kalman').textContent = `${ekf6dof.true_state.position.get([2]).toFixed(2)} m`;
+        document.getElementById('altitude-kalman').textContent = `${p_z.toFixed(2)} m`;
 
 
     } else {
@@ -269,9 +284,15 @@ function updateDisp(pos) {
 
         document.getElementById('kalman-uncert').textContent = `${kUncert.toFixed(2)}`;
         document.getElementById('altitude-kalman').textContent = `${(kAlt ?? altRaw).toFixed(2)}`;
+        
+        // Afficher 0.00 pour les composantes 3D en mode 1D
+        if (document.getElementById('speed-x')) document.getElementById('speed-x').textContent = `0.00`;
+        if (document.getElementById('speed-y')) document.getElementById('speed-y').textContent = `0.00`;
+        if (document.getElementById('pos-x')) document.getElementById('pos-x').textContent = `0.00`;
+        if (document.getElementById('pos-y')) document.getElementById('pos-y').textContent = `0.00`;
     }
     
-    // --- Mise à jour des affichages ---
+    // --- Mise à jour des affichages scalaires ---
     const sSpdFE = final_speed < 0.05 ? 0 : final_speed; 
     document.getElementById('speed-stable').textContent = `${sSpdFE.toFixed(3)}`;
     document.getElementById('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)}`;
