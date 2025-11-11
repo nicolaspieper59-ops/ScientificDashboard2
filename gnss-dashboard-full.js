@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
-// EKF 6-DOF (IMU/GNSS) avec CORRECTION 3D et ÉTALONNAGE DYNAMIQUE DE VITESSE
+// EKF 6-DOF avec DAMPING/DRAG FORT et CONVERGENCE VITESSE GPS ULTRA-AGRESSIVE (R=0.001)
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -17,7 +17,8 @@ const R_MIN = 1.0;
 const R_MAX = 500.0;          
 const R_SLOW_SPEED_FACTOR = 100.0; 
 const MAX_REALISTIC_SPD_M = 15.0;  
-const R_V_VERTICAL_UNCERTAINTY = 100.0; // Incertitude élevée sur la vitesse verticale du GPS
+const R_V_VERTICAL_UNCERTAINTY = 100.0; 
+const DRAG_COEFFICIENT = 0.05; // Coefficient de traînée fort pour le damping
 
 // --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null, lPos = null;
@@ -60,8 +61,12 @@ class EKF_6DoF {
         let accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
         let accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
 
+        // --- MODIFICATION CLÉ : FORCE DE TRAÎNÉE (DAMPING) ---
+        let drag_force = math.multiply(this.true_state.velocity, -DRAG_COEFFICIENT);
+        let total_acceleration = math.add(accel_corrected, drag_force);
+        
         // Intégration de la Vitesse (a * dt)
-        let delta_v = math.multiply(accel_corrected, dt);
+        let delta_v = math.multiply(total_acceleration, dt);
         this.true_state.velocity = math.add(this.true_state.velocity, delta_v);
         
         // Intégration de la Position (v * dt)
@@ -69,7 +74,7 @@ class EKF_6DoF {
         this.true_state.position = math.add(this.true_state.position, delta_p);
     }
     
-    // Logique CNH (Contrainte Non-Holonomique) pour le mode Dead Reckoning
+    // Logique CNH (Contrainte Non-Holonomique)
     autoDetermineCNH(Vx, Vy, Vz, Vtotal) {
         const MIN_MOVEMENT_THRESHOLD = 0.05; 
         const DRAG_FACTOR_STOP = 0.01; 
@@ -90,12 +95,10 @@ class EKF_6DoF {
     }
 
     update(z, R_k, isDeadReckoning) {
-        // Correction P et Biais 
         this.P = math.multiply(this.P, 0.9); 
         const BIAS_STABILITY_FACTOR = isDeadReckoning ? 0.99 : 0.95; 
         this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, BIAS_STABILITY_FACTOR); 
         
-        // Stabilisation de la vitesse (évite la dérive)
         if (!isDeadReckoning) {
              if (math.norm(this.true_state.velocity) > 0.1) {
                  this.true_state.velocity = math.multiply(this.true_state.velocity, 0.998); 
@@ -219,7 +222,7 @@ function updateDisplayMetrics() {
     document.getElementById('kalman-q-noise').textContent = `${ekf6dof.getAccelBias().toFixed(3)}`;
 }
 
-// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (CORRECTION 3D ACTIVE) ---
+// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (Correction 3D) ---
 function updateDisp(pos) {
     const accRaw = pos.coords.accuracy;
     
@@ -229,7 +232,6 @@ function updateDisp(pos) {
         return; 
     }
     
-    // Détection de la perte de signal
     if (accRaw > R_MAX) {
         isDeadReckoning = true;
     } else if (isDeadReckoning && accRaw < R_MAX) {
@@ -238,17 +240,14 @@ function updateDisp(pos) {
 
     const cLat = pos.coords.latitude;
     const cLon = pos.coords.longitude;
-    // Correction de l'Altitude
     const altRaw = pos.coords.altitude || 0.0;
-    const altAccRaw = pos.coords.altitudeAccuracy || 10.0; // Utiliser une valeur sûre si non fournie
-    
-    // Vitesse 2D (horizontale) mesurée par le GPS
+    const altAccRaw = pos.coords.altitudeAccuracy || 10.0; 
     const spd3D_raw = pos.coords.speed || 0.0; 
 
     const current_ekf_speed = ekf6dof.getSpeed();
     let R_kalman_input = getKalmanR(accRaw, current_ekf_speed); 
     
-    // --- LOGIQUE ANTI-SAUT GPS (Non-modifiée) ---
+    // --- LOGIQUE ANTI-SAUT GPS ---
     if (lPos && !isDeadReckoning) {
         const dt_gps = (pos.timestamp - lPos.timestamp) / 1000 || 1.0;
         const measured_dist = distance(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon);
@@ -259,23 +258,22 @@ function updateDisp(pos) {
         }
     }
     
-    // --- ÉTALONNAGE DYNAMIQUE DE LA VITESSE (composante horizontale) ---
+    // --- ÉTALONNAGE DYNAMIQUE DE LA VITESSE (CONVERGENCE AGRESSIVE) ---
     let R_speed_factor = 1.0; 
     const speed_difference = Math.abs(current_ekf_speed - spd3D_raw);
     const SPEED_TOLERANCE = 2.0; 
 
     if (speed_difference > SPEED_TOLERANCE) {
-        R_speed_factor = 100.0; // Incertitude élevée si les vitesses divergent
+        // GPS non fiable : Isole le GPS (incertitude très élevée)
+        R_speed_factor = 100.0; 
     } else {
-        R_speed_factor = 0.1;   // Grande confiance si les vitesses sont cohérentes
+        // GPS fiable (cohérent) : Correction EXTRÊMEMENT agressive.
+        R_speed_factor = 0.001; 
     }
 
     // Exécution de l'étape UPDATE (Correction 6D par la mesure GPS)
-    // Le vecteur de mesure Z (6 états: Pos X, Pos Y, Pos Z, Vitesse X, Vitesse Y, Vitesse Z)
-    // Nous utilisons 0 pour Vitesse Y et Z, car l'API fournit souvent uniquement Vitesse 2D.
     const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
     
-    // La matrice R (Fiabilité) pour ces 6 états :
     const R_matrix = math.diag([
         R_kalman_input,             // R - Pos X (Lat)
         R_kalman_input,             // R - Pos Y (Lon)
