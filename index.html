@@ -3,65 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EKF de Réalité Adaptatif (6-DoF & Fiction)</title>
+    <title>Tableau de Bord GNSS/IMU (Filtre de Kalman Automatique)</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
-        .dashboard { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        h1, h2 { color: #0056b3; border-bottom: 2px solid #eee; padding-bottom: 5px; }
-        .control-input-full { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        select, button { padding: 10px; width: 100%; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; margin-top: 5px; }
-        .data-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
-        .data-item { padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa; }
-        .value { font-size: 1.2em; font-weight: bold; color: #d9534f; }
-        #gps-status-dr { font-style: italic; color: #5bc0de; font-weight: bold; margin-top: 10px; }
-        #nhc-status { font-style: italic; color: #333; margin-top: 10px; }
-        #map { height: 300px; background-color: #ccc; margin-top: 20px; border-radius: 4px; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
+        h1 { color: #333; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .data-item strong { display: block; font-size: 0.9em; color: #555; }
+        .value { font-size: 1.4em; font-weight: bold; color: #007bff; }
+        #map { height: 400px; border-radius: 8px; margin-top: 20px; }
+        .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+        .controls button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .controls select { padding: 10px; border-radius: 5px; }
+        .status-bar { padding: 10px; background-color: #ffc107; color: #333; border-radius: 5px; margin-top: 10px; }
     </style>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.3.0/math.min.js"></script>
 </head>
 <body>
-    <div class="dashboard">
-        <h1>🛰️ Filtre EKF de Réalité Adaptatif</h1>
-        
-        <div class="control-input-full">
-            <label for="transport-mode-select">Mode de Navigation</label>
-            <select id="transport-mode-select">
-                <option value="CAR_PEDESTRIAN">1. Réaliste (Voiture/Piéton - 1D Simplifié)</option>
-                <option value="INS_6DOF_REALISTE">2. INS 6-DoF (Conceptuel/Mathématiquement Complet)</option>
-                <option disabled>--- Modes Fiction/Extrêmes ---</option>
-                <option value="AIRCRAFT">3. Avion (Côté Couloir/NHC)</option>
-                <option value="TRAIN_METRO">4. Train/Métro (Contrainte Rail)</option>
-                <option value="CARTOON_PHYSICS">5. Physique de Cartoon (Looney Tunes)</option>
-                <option value="SPACETIME_DRIVE">6. Voyage Temporel / OVNI (Saut Télép.)</option>
-                <option value="MAGICAL_REALITY">7. Magie/Paranormal (Volonté Externe)</option>
-                <option value="HYPERDIMENSIONAL_DRIVE">8. Hyper-Espace / Vitesse Lumière+</option>
-            </select>
-        </div>
-        
-        <button id="toggle-gps-btn">Démarrer la Fusion (GPS/IMU)</button>
-        <p id="gps-status-dr">Statut: Initialisation...</p>
-        <p id="nhc-status">Contraintes de Mouvement: Aucune</p>
 
-        <h2>Données EKF</h2>
-        <div class="data-grid">
-            <div class="data-item">Vitesse EKF (m/s): <span id="speed-stable" class="value">0.000</span></div>
-            <div class="data-item">Vitesse Finale (km/h): <span id="current-speed" class="value">0.00</span></div>
-            <div class="data-item">Altitude EKF (m): <span id="altitude-kalman" class="value">N/A</span></div>
-            <div class="data-item">Incertitude Vitesse (P): <span id="kalman-uncert" class="value">1000.00</span></div>
-            <div class="data-item">Bruit Q (Processus): <span id="kalman-q-noise" class="value">0.100</span></div>
-            <div class="data-item">Facteur R (Mesure): <span id="kalman-r-dyn" class="value">N/A</span></div>
-            <div class="data-item">Vitesse X (m/s): <span id="speed-x" class="value">0.00</span></div>
-            <div class="data-item">Vitesse Y (m/s): <span id="speed-y" class="value">0.00</span></div>
-            <div class="data-item">Position X (m): <span id="pos-x" class="value">0.00</span></div>
-            <div class="data-item">Position Y (m): <span id="pos-y" class="value">0.00</span></div>
-        </div>
+    <h1>🚀 Simulateur de Fusion GNSS/IMU (EKF 6-DoF)</h1>
+
+    <div class="controls">
+        <button id="toggle-gps-btn">Démarrer la Fusion (GPS/IMU)</button>
         
-        <div id="map"></div>
+        <label for="transport-mode-select">Mode de Transport/Physique (Initialisation) :</label>
+        <select id="transport-mode-select">
+            <option value="INS_6DOF_REALISTE" selected>INS 6-DoF (Détection Automatique CNH)</option>
+            <option value="CAR_PEDESTRIAN">Voiture/Piéton (CNH Manuelle simple)</option>
+            <option value="TRAIN_METRO">Train/Métro (CNH Manuelle Rail)</option>
+            <option value="AIRCRAFT">Aéronef (CNH Manuelle 3D)</option>
+            <option value="CARTOON_PHYSICS">Lois Cartoon (G=0.1)</option>
+            <option value="SPACETIME_DRIVE">Voyage Espace-Temps (Vitesse Max)</option>
+        </select>
     </div>
-    
-    <script src="gnss-dashboard-full.js"></script> 
+
+    <div class="status-bar" id="gps-status-dr">Initialisation...</div>
+
+    <div class="dashboard">
+        <div class="panel">
+            <h2>Sortie EKF (Filtre Kalman)</h2>
+            <div class="data-grid">
+                <div class="data-item">
+                    <strong>Vitesse Stabilisée (m/s)</strong>
+                    <span class="value" id="speed-stable">0.00</span>
+                </div>
+                <div class="data-item">
+                    <strong>Vitesse (km/h)</strong>
+                    <span class="value" id="current-speed">0.00</span>
+                </div>
+                <div class="data-item">
+                    <strong>Altitude EKF (m)</strong>
+                    <span class="value" id="altitude-kalman">0.00</span>
+                </div>
+                <div class="data-item">
+                    <strong>Incertitude EKF (P)</strong>
+                    <span class="value" id="kalman-uncert">1000.00</span>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 15px;">Composantes 6-DoF (DR)</h3>
+            <div class="data-grid">
+                <div class="data-item">
+                    <strong>Vitesse X (m/s)</strong>
+                    <span class="value" id="speed-x">0.00</span>
+                </div>
+                <div class="data-item">
+                    <strong>Vitesse Y (m/s)</strong>
+                    <span class="value" id="speed-y">0.00</span>
+                </div>
+                <div class="data-item">
+                    <strong>Pos X (Dérive m)</strong>
+                    <span class="value" id="pos-x">0.00</span>
+                </div>
+                <div class="data-item">
+                    <strong>Pos Y (Dérive m)</strong>
+                    <span class="value" id="pos-y">0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Diagnostics EKF et Contraintes</h2>
+            <div class="data-grid">
+                <div class="data-item">
+                    <strong>Biais Accél. Estimé (Q)</strong>
+                    <span class="value" id="kalman-q-noise">0.000</span>
+                </div>
+                <div class="data-item">
+                    <strong>Fiabilité GPS (R Dyn)</strong>
+                    <span class="value" id="kalman-r-dyn">500.00</span>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 15px;">Statut de la Contrainte</h3>
+            <div class="status-bar" id="nhc-status" style="background-color: #17a2b8; color: white;">Gravité Locale: 9.81 m/s²</div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script src="gnss-dashboard-full.js"></script>
+
 </body>
-</html>
+                </html>
