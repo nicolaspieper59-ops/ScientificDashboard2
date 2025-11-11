@@ -36,7 +36,7 @@ const IMU_ZUPT_THRESHOLD = 0.05;
 const Q_BIAS_ACCEL_FACTOR = 0.5;    
 const BIAS_EMA_ALPHA = 0.05;        
 const R_ACCEL_DAMPING_FACTOR = 1.0; 
-const R_SLOW_SPEED_FACTOR = 100.0;  
+const R_SLOW_SPEED_FACTOR = 100.0;  // Facteur pour le Soft Constraint
 
 // --- DONNÉES CÉLESTES/GRAVITÉ ---
 const CELESTIAL_DATA = { 
@@ -72,9 +72,23 @@ let lastFSpeed = 0;
 
 // --- FONCTIONS UTILITAIRES ---
 const $ = id => document.getElementById(id);
-const dist = (lat1, lon1, lat2, lon2) => { /* ... */ return 0; };
+
+// Fonctions utilitaires simulées (assumées existantes dans l'implémentation complète)
+const getCDate = () => { return new Date(); };
+const dist = (lat1, lon1, lat2, lon2) => { return 0; };
 const getKalmanR = (accRaw) => { return Math.min(R_MAX, Math.max(R_MIN, accRaw * accRaw)); };
-const updateCelestialBody = (body) => { /* ... */ };
+const updateCelestialBody = (body) => { 
+    const data = CELESTIAL_DATA[body];
+    G_ACC = data.G;
+    R_ALT_CENTER_REF = data.R;
+};
+function kFilterAltitude(altRaw, R_alt, dt) { return altRaw; }
+function initMap() { /* ... */ }
+function updateMap(lat, lon, acc) { /* ... */ }
+function updateAstro(lat, lon) { /* ... */ }
+function syncH() { /* ... */ }
+function fetchWeather(lat, lon) { /* ... */ }
+
 
 // Compensation de Gravité (Attitude)
 function getGravityCompensatedAccel(rawAccel, attitude) {
@@ -132,16 +146,40 @@ function kFilter(nSpd, dt, R_dyn, accel_input = 0) {
     return kSpd;
 }
 
-// ... (Fonctions secondaires omises pour la concision) ...
 
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
 // BLOC 2/2 : Fonctions de Contrôle et Boucles Principales
 // =================================================================
 
-function startGPS() { /* ... */ }
-function stopGPS(resetButton = true) { /* ... */ }
-function handleErr(error) { /* ... */ }
+function startGPS() {
+    const options = (currentGPSMode === 'HIGH_FREQ') ? GPS_OPTS.HIGH_FREQ : GPS_OPTS.LOW_FREQ;
+    
+    if (wID === null) {
+        // NOTE: 'updateDisp' est appelée par l'API de géolocalisation
+        wID = navigator.geolocation.watchPosition(updateDisp, handleErr, options);
+    }
+    
+    if (imuUpdateID === null) {
+        imuUpdateID = setInterval(updateIMUPrediction, IMU_FREQUENCY_MS);
+    }
+    
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '⏸️ PAUSE GPS/IMU';
+}
+
+function stopGPS(resetButton = true) {
+    if (wID !== null) {
+        navigator.geolocation.clearWatch(wID);
+        wID = null;
+    }
+    if (imuUpdateID !== null) {
+        clearInterval(imuUpdateID);
+        imuUpdateID = null;
+    }
+    if (resetButton && $('toggle-gps-btn')) $('toggle-gps-btn').textContent = '▶️ MARCHE GPS/IMU';
+}
+
+function handleErr(error) { console.warn(`GPS ERROR: ${error.code}: ${error.message}`); }
 
 // --- LOGIQUE DE PRÉDICTION IMU HAUTE FRÉQUENCE (20 Hz) ---
 function updateIMUPrediction() {
@@ -154,6 +192,7 @@ function updateIMUPrediction() {
     const dt = (dt_imu > 0 && dt_imu < 1) ? dt_imu : IMU_FREQUENCY_MS / 1000; 
     lastIMUUpdate = time;
 
+    // 1. Calcul de l'accélération corrigée (Attitude, Centrifuge, Biais EMA)
     corrected_Accel_Mag = getCorrectedAccel(rawAccelWithGrav, attitude, dt); 
 
     let R_imu_pred = R_MAX;
@@ -162,11 +201,12 @@ function updateIMUPrediction() {
     if (wID === null) { 
         // Mode DR (GPS Pausé)
         
-        // ZUPT Soft Constraint en DR: Confiance maximale dans la prédiction si l'IMU est stable (corrected_Accel_Mag = 0.0)
         if (corrected_Accel_Mag === 0.0) {
+             // ZUPT Soft Constraint en DR: Confiance maximale dans la prédiction si l'IMU est stable (corrected_Accel_Mag = 0.0)
              R_imu_pred = R_MIN; 
              modeStatus = '✅ DR - BIAS ON (Prediction Stabilité)';
              
+             // Réduction de l'incertitude pour un amortissement rapide
              if (kSpd < ZUPT_RAW_THRESHOLD) {
                  kUncert = Math.min(kUncert, R_MIN * 2); 
              }
@@ -175,17 +215,22 @@ function updateIMUPrediction() {
              modeStatus = '⚠️ DR - PRÉDICTION IMU';
         }
         
+        // Appliquer la prédiction EKF
         kFilter(kSpd, dt, R_imu_pred, corrected_Accel_Mag);
     } else {
          return; 
     }
 
-    // ... (Mise à jour des affichages DR) ...
+    // Mise à jour des stats DR à haute fréquence (Affichage)
     const sSpdFE = kSpd < MIN_SPD ? 0 : kSpd; 
     distM += sSpdFE * dt * R_FACTOR_RATIO;
+    
     if ($('imu-frequency')) $('imu-frequency').textContent = (1 / dt).toFixed(1);
     if ($('gps-status-dr')) $('gps-status-dr').textContent = modeStatus;
-    // ...
+    if ($('imu-bias-est')) $('imu-bias-est').textContent = imu_bias_est.toFixed(6);
+    if ($('corrected-accel-mag-comp')) $('corrected-accel-mag-comp').textContent = corrected_Accel_Mag.toFixed(3);
+    if ($('centrifugal-accel')) $('centrifugal-accel').textContent = centrifugalAccel.toFixed(3);
+    if ($('kalman-uncert')) $('kalman-uncert').textContent = kUncert.toFixed(3);
 }
 
 
@@ -193,17 +238,20 @@ function updateIMUPrediction() {
 function updateDisp(pos) {
     if (emergencyStopActive) return;
 
-    // ... (Calculs de dt, spd3D_raw) ...
-    const dt = 0.5; // Exemple
+    const cLat = pos.coords.latitude;
+    const cLon = pos.coords.longitude;
+    const accRaw = pos.coords.accuracy;
+    const altRaw = pos.coords.altitude;
+
+    // Calculs de dt et spd3D_raw (simulés)
+    const dt = (lPos && pos.timestamp > lPos.timestamp) ? (pos.timestamp - lPos.timestamp) / 1000 : 0.5;
     let spd3D_raw = pos.coords.speed || 0.0; // Vitesse brute
-    
-    let R_dyn = getKalmanR(pos.coords.accuracy); 
+
+    let R_dyn = getKalmanR(accRaw); 
     let spd_kalman_input = spd3D_raw;
     let R_kalman_input = R_dyn;
     let modeStatus = '🛰️ FUSION GNSS/IMU';
     
-    // ** ANCIEN ZUPT RIGIDE GPS (VELOCITÉ NULLE FORCÉE) SUPPRIMÉ ICI **
-
     // 1. Calcul de l'accélération corrigée IMU (Attitude + Biais)
     corrected_Accel_Mag = getCorrectedAccel(rawAccelWithGrav, attitude, dt); 
     let accel_sensor_input = corrected_Accel_Mag; 
@@ -218,7 +266,7 @@ function updateDisp(pos) {
         let modulation_factor = 1.0;
         
         if (isVeryStable) {
-            // SOFT CONSTRAINT : Amplification de R pour ignorer la mesure GPS bruyée.
+            // SOFT CONSTRAINT : Si stable et lent, on amplifie R pour ignorer la mesure GPS (trop bruyée).
             modulation_factor = R_SLOW_SPEED_FACTOR; 
             modeStatus = '✅ FUSION (Amortissement Vitesse Lente)';
         } else {
@@ -231,19 +279,33 @@ function updateDisp(pos) {
     }
 
     // FILTRE DE KALMAN FINAL (Fusion IMU/GNSS)
-    // Utilise la vitesse brute GPS (spd_kalman_input) comme mesure, mais avec un R élevé
-    // si la vitesse est faible, ce qui rend le filtre très stable.
+    // Utilise la vitesse brute GPS comme mesure, mais le R modulé assure la stabilité
+    // et la fluidité en mouvement lent.
     const fSpd = kFilter(spd_kalman_input, dt, R_kalman_input, accel_sensor_input); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
     
-    // ... (Mise à jour des affichages) ...
+    // --- Mise à jour des affichages ---
     if ($('speed-stable')) $('speed-stable').textContent = `${sSpdFE.toFixed(3)} m/s`;
     if ($('current-speed')) $('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)} km/h`;
     if ($('gps-status-dr')) $('gps-status-dr').textContent = modeStatus;
+    
     if ($('kalman-r-factor')) $('kalman-r-factor').textContent = R_kalman_input.toFixed(3);
     if ($('kalman-q-noise')) $('kalman-q-noise').textContent = (Q_NOISE + Math.abs(accel_sensor_input) * Q_BIAS_ACCEL_FACTOR).toFixed(3);
     if ($('kalman-uncert')) $('kalman-uncert').textContent = kUncert.toFixed(3);
     
+    // Mise à jour de l'accélération longitudinale (pour l'affichage)
+    if ($('accel-long')) $('accel-long').textContent = accel_sensor_input.toFixed(3) + ' m/s²';
+    if ($('force-g-long')) $('force-g-long').textContent = (accel_sensor_input / G).toFixed(3) + ' G';
+    
+    // Sauvegarde de l'état
+    lPos = pos;
+    lat = cLat; lon = cLon;
+    kAlt = kFilterAltitude(altRaw, pos.coords.altitudeAccuracy || 1.0, dt);
+    
+    updateMap(lat, lon, accRaw);
+}
+
+
 // --- INITIALISATION DES ÉVÉNEMENTS DOM ---
 document.addEventListener('DOMContentLoaded', () => {
     
@@ -254,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('reset-system-btn')) $('reset-system-btn').addEventListener('click', () => { window.location.reload(); });
     if ($('celestial-body')) $('celestial-body').addEventListener('change', (e) => updateCelestialBody(e.target.value));
 
-    // Listeners IMU AVANCÉS
+    // Listeners IMU AVANCÉS (Attitude)
     if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', (event) => {
             attitude.yaw = event.alpha || 0; 
@@ -266,9 +328,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Listeners IMU AVANCÉS (Accélération BRUTE avec Gravité)
     if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', (event) => {
-            // Lecture des composantes BRUTES X, Y, Z (incluant la gravité)
             const a_grav = event.accelerationIncludingGravity; 
             
             if (a_grav) {
@@ -287,5 +349,14 @@ document.addEventListener('DOMContentLoaded', () => {
     startGPS();
     
     // Boucle de mise à jour lente (Astro/Météo/Horloge)
-    // ... (Logique de la boucle lente omise) ...
+    // ... (Simulation de la boucle lente)
+    if (domID === null) {
+        domID = setInterval(() => {
+            const now = getCDate();
+            if (now) {
+                if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+                if ($('utc-time')) $('utc-time').textContent = now.toUTCString();
+            }
+        }, DOM_SLOW_UPDATE_MS);
+    }
 });
