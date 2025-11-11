@@ -1,7 +1,6 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
-// EKF 6-DOF autonome (DR) prêt pour des VRAIS capteurs IMU
-// Aucune simulation mathématique (bruit/biais) n'est injectée dans l'EKF.
+// EKF 6-DOF autonome (DR) réel avec gestion des autorisations capteurs
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -17,32 +16,30 @@ const DT_IMU = 1 / IMU_FREQUENCY_HZ; // 0.01 secondes
 // --- PARAMÈTRES EKF et ANTI-SAUT ---
 const R_MIN = 1.0;            
 const R_MAX = 500.0;          
-const R_SLOW_SPEED_FACTOR = 100.0; // Augmente R à basse vitesse (Anti-Jitter)
-const MAX_REALISTIC_SPD_M = 15.0;  // Vitesse max plausible pour un mouvement réel (Anti-Saut)
+const R_SLOW_SPEED_FACTOR = 100.0; 
+const MAX_REALISTIC_SPD_M = 15.0;  
 
 // --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null, lPos = null;
 let imuIntervalID = null; 
 let ekf6dof = null;
-let currentTransportMode = 'CAR_PEDESTRIAN'; 
+let currentTransportMode = 'INS_6DOF_REALISTE'; 
 let map = null, marker = null;
 let isDeadReckoning = false;
 let autoDetectedMode = 'Libre/Piéton'; 
 
-// --- VARIABLES GLOBALES POUR LES CAPTEURS RÉELS (À ALIMENTER PAR UNE API EXTERNE) ---
-// Ces valeurs sont utilisées directement par la fonction predict() de l'EKF.
+// --- VARIABLES GLOBALES POUR LES CAPTEURS RÉELS (ALIMENTÉES PAR LE LISTENER) ---
 let real_accel_x = 0.0;
 let real_accel_y = 0.0;
-let real_accel_z = 0.0; // Accélération linéaire mesurée (inclut la gravité si non filtrée)
+let real_accel_z = 0.0; 
 let real_gyro_x = 0.0;
 let real_gyro_y = 0.0;
-let real_gyro_z = 0.0; // Vitesse angulaire (rotation)
+let real_gyro_z = 0.0;
 
 // --- CLASSE CONCEPTUELLE EKF 6-DOF ---
 class EKF_6DoF {
     constructor() {
         this.error_state_vector = math.zeros(15); 
-        // P (Matrice de Covariance) : Forte incertitude initiale
         const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
         this.P = math.diag(initial_uncertainty); 
         
@@ -52,9 +49,8 @@ class EKF_6DoF {
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
             velocity: math.matrix([0, 0, 0]), 
-            accel_bias: math.matrix([0, 0, 0]), // Biais estimé (doit être corrigé)
+            accel_bias: math.matrix([0, 0, 0]), 
         };
-        // ANCIEN : this.true_bias est supprimé car le biais réel est dans l'EKF et doit être appris
     }
     
     predict(dt, imu_input) {
@@ -62,11 +58,10 @@ class EKF_6DoF {
         const F = math.identity(15); 
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
         
-        // Accélération brute (en utilisant les VRAIS capteurs)
+        // Accélération brute (VRAIS capteurs)
         let accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
         
-        // NOUVEAU : Suppression de l'injection de bruit simulé et du "true_bias"
-        // L'accélération corrigée est la mesure brute moins le biais de capteur ESTIMÉ par l'EKF.
+        // Accélération corrigée = Mesure brute moins le biais de capteur ESTIMÉ (Aucune simulation)
         let accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
 
         // Intégration de la Vitesse (a * dt)
@@ -97,13 +92,11 @@ class EKF_6DoF {
     }
 
     update(z, R_k, isDeadReckoning) {
-        // La correction de la Covariance (P) et le gain de Kalman (K) sont simplifiés ici
+        // Correction de la Covariance (P)
         this.P = math.multiply(this.P, 0.9); 
         
-        // Correction du Biais : La correction de l'EKF se fait maintenant par sa propre logique de gain
-        // La ligne simulant l'injection du "true_bias" pour le corriger est supprimée.
-        let K_gain_sim = 0.05; 
-        this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, 0.95); // Dégénérescence simple du biais estimé
+        // Dégénérescence simple du biais estimé (pour éviter une croissance infinie sans vraie correction)
+        this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, 0.99); 
         
         // Stabilisation de la vitesse (évite la dérive)
         if (!isDeadReckoning) {
@@ -154,20 +147,46 @@ function distance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
+// --- LISTENER IMU (SANS BOUCLE) ---
+function imuMotionHandler(event) {
+    const acc = event.accelerationIncludingGravity || event.acceleration;
+    const rot = event.rotationRate;
+    
+    // Mise à jour des variables globales pour l'EKF
+    real_accel_x = acc.x ?? 0.0;
+    real_accel_y = acc.y ?? 0.0;
+    real_accel_z = acc.z ?? 0.0; 
+    
+    real_gyro_x = rot.alpha ?? 0.0; 
+    real_gyro_y = rot.beta ?? 0.0;
+    real_gyro_z = rot.gamma ?? 0.0;
+}
+
+function startIMUListeners() {
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', imuMotionHandler);
+    }
+}
+
+function stopIMUListeners() {
+    if (window.DeviceMotionEvent) {
+        window.removeEventListener('devicemotion', imuMotionHandler);
+    }
+}
+
 // --- BOUCLE D'ESTIME IMU AUTONOME (100 Hz) ---
 function runIMULoop() {
     if (ekf6dof) {
-        // Les entrées sont les variables globales mises à jour par l'API des capteurs
+        // Les entrées sont les variables globales mises à jour par le listener IMU (imuMotionHandler)
         const real_imu_input = [real_accel_x, real_accel_y, real_accel_z, real_gyro_x, real_gyro_y, real_gyro_z];
         
-        // Exécution de l'étape PREDICT de l'EKF (DR)
         ekf6dof.predict(DT_IMU, real_imu_input);
         
         updateDisplayMetrics();
     }
 }
 
-// --- MISE À JOUR DES MÉTRIES D'AFFICHAGE ---
+// --- MISE À JOUR DES MÉTRIES D'AFFICHAGE (Peut être appelée à 100Hz) ---
 function updateDisplayMetrics() {
     if (!ekf6dof) return;
 
@@ -180,21 +199,19 @@ function updateDisplayMetrics() {
         ? '🚨 DEAD RECKONING (DR) EN COURS - Mode DR auto: ' + autoDetectedMode
         : '🛰️ FUSION GNSS/IMU';
     
-    // --- Extraction des Composantes ---
+    // --- Extraction et Affichage ---
     const v_x = ekf6dof.true_state.velocity.get([0]);
     const v_y = ekf6dof.true_state.velocity.get([1]);
     const p_x = ekf6dof.true_state.position.get([0]);
     const p_y = ekf6dof.true_state.position.get([1]);
     const p_z = ekf6dof.true_state.position.get([2]);
 
-    // --- Mise à jour des affichages scalaires ---
     const sSpdFE = final_speed < 0.05 ? 0 : final_speed; 
     document.getElementById('speed-stable').textContent = `${sSpdFE.toFixed(3)}`;
     document.getElementById('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)}`;
     document.getElementById('kalman-r-dyn').textContent = `${R_kalman_input.toFixed(2)}`;
     document.getElementById('gps-status-dr').textContent = modeStatus;
     
-    // Mise à jour des données 6-DoF
     if (document.getElementById('speed-x')) document.getElementById('speed-x').textContent = `${v_x.toFixed(2)}`;
     if (document.getElementById('speed-y')) document.getElementById('speed-y').textContent = `${v_y.toFixed(2)}`;
     if (document.getElementById('pos-x')) document.getElementById('pos-x').textContent = `${p_x.toFixed(2)}`;
@@ -223,14 +240,12 @@ function updateDisp(pos) {
         isDeadReckoning = false;
     }
 
-    // Récupération des données GPS pour la mesure (UPDATE)
     const cLat = pos.coords.latitude;
     const cLon = pos.coords.longitude;
     const altRaw = pos.coords.altitude;
     const altAccRaw = pos.coords.altitudeAccuracy || 1.0;
     const spd3D_raw = pos.coords.speed || 0.0; 
 
-    // Calcul de R basé sur la vitesse actuelle de l'EKF
     const current_ekf_speed = ekf6dof.getSpeed();
     let R_kalman_input = getKalmanR(accRaw, current_ekf_speed); 
     
@@ -244,7 +259,6 @@ function updateDisp(pos) {
             R_kalman_input = R_MAX * 100; 
         }
     }
-    // --- FIN ANTI-SAUT ---
     
     // Exécution de l'étape UPDATE (Correction par la mesure GPS)
     const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
@@ -252,7 +266,6 @@ function updateDisp(pos) {
     
     ekf6dof.update(gps_measurement, R_matrix, isDeadReckoning);
 
-    // Mise à jour finale de l'état
     lPos = pos;
     updateMap(cLat, cLon, accRaw);
 }
@@ -273,34 +286,60 @@ function updateMap(lat, lon, acc) {
     }
 }
 
+// --- GESTION DU DÉMARRAGE AVEC AUTORISATION DES CAPTEURS ---
+function requestSensorPermissionAndStart() {
+    
+    const startFusion = () => {
+        // 1. Démarrer le Watcher GPS (UPDATE)
+        wID = navigator.geolocation.watchPosition(updateDisp, (err) => {
+            if (err.code === 3 || err.code === 2) { 
+                isDeadReckoning = true;
+                document.getElementById('gps-status-dr').textContent = '🚨 ERREUR GPS: Passage en DR';
+            } else {
+                console.error(err);
+            }
+        }, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+        });
+
+        // 2. Démarrer la Boucle d'Estime IMU (PREDICTION)
+        if (currentTransportMode === 'INS_6DOF_REALISTE') {
+            startIMUListeners(); 
+            imuIntervalID = setInterval(runIMULoop, DT_IMU * 1000); 
+        }
+        document.getElementById('toggle-gps-btn').textContent = "Arrêter la Fusion";
+    };
+
+    if (currentTransportMode === 'INS_6DOF_REALISTE' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS 13+ et certains navigateurs: demande d'autorisation explicite
+        DeviceOrientationEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    startFusion();
+                } else {
+                    console.error("Autorisation des capteurs refusée.");
+                    alert("Autorisation capteurs refusée. Le mode Dead Reckoning ne fonctionnera pas sans mouvement.");
+                }
+            })
+            .catch(error => console.error("Erreur lors de la demande d'autorisation :", error));
+    } else {
+        // Navigateurs anciens, Android, ou autres où l'accès est implicite
+        startFusion();
+    }
+}
+
 function startGPS() {
     stopGPS(); 
-    
-    // 1. Démarrer le Watcher GPS (Boucle Lente pour l'UPDATE)
-    wID = navigator.geolocation.watchPosition(updateDisp, (err) => {
-        if (err.code === 3 || err.code === 2) { 
-            isDeadReckoning = true;
-            document.getElementById('gps-status-dr').textContent = '🚨 ERREUR GPS: Passage en DR';
-        } else {
-            console.error(err);
-        }
-    }, {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0
-    });
-
-    // 2. Démarrer la Boucle d'Estime IMU (Boucle Rapide 100 Hz pour la PREDICTION)
-    if (currentTransportMode === 'INS_6DOF_REALISTE') {
-        imuIntervalID = setInterval(runIMULoop, DT_IMU * 1000); 
-    }
-
-    document.getElementById('toggle-gps-btn').textContent = "Arrêter la Fusion";
+    requestSensorPermissionAndStart(); 
 }
 
 function stopGPS() {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     if (imuIntervalID !== null) clearInterval(imuIntervalID); 
+    
+    stopIMUListeners(); // Arrêt du listener IMU
     
     wID = null;
     imuIntervalID = null;
@@ -321,38 +360,8 @@ document.addEventListener('DOMContentLoaded', () => {
         stopGPS(); 
         ekf6dof = null;
         setTransportModeParameters(e.target.value);
-        // --- AJOUTER CE BLOC DANS gnss-dashboard-full.js (à la fin du DOMContentLoaded) ---
-
-// Fonction pour démarrer l'écoute des capteurs
-function startIMUSensors() {
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', (event) => {
-            const acc = event.accelerationIncludingGravity || event.acceleration;
-            const rot = event.rotationRate;
-            
-            // Mise à jour des variables globales
-            real_accel_x = acc.x ?? 0.0;
-            real_accel_y = acc.y ?? 0.0;
-            real_accel_z = acc.z ?? 0.0; 
-            
-            real_gyro_x = rot.alpha ?? 0.0; 
-            real_gyro_y = rot.beta ?? 0.0;
-            real_gyro_z = rot.gamma ?? 0.0;
-            
-            // Si l'accélération est non nulle, cela confirme que ça fonctionne.
-        });
-        console.log("DeviceMotion Listener activé.");
-    } else {
-        console.warn("DeviceMotion API non supportée ou non autorisée.");
-    }
-}
-
-// Lancement automatique du listener IMU au démarrage
-startIMUSensors();
-// --- FIN DU BLOC À AJOUTER ---
     });
 
-    // Initialisation des paramètres EKF
     function setTransportModeParameters(mode) {
         currentTransportMode = mode;
         if (mode === 'INS_6DOF_REALISTE') {
