@@ -1,12 +1,11 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
-// EKF 6-DOF autonome (DR) réel avec gestion des autorisations capteurs
+// EKF 6-DOF autonome (DR) avec DÉRIVE MINIMALE (Utilisation de l'accélération sans gravité)
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const KMH_MS = 3.6;         
-const G_EARTH = 9.80665;    
 const MIN_DT = 0.0001;      
 
 // --- CONSTANTES DE FRÉQUENCE IMU (Base du DR Autonome) ---
@@ -28,7 +27,7 @@ let map = null, marker = null;
 let isDeadReckoning = false;
 let autoDetectedMode = 'Libre/Piéton'; 
 
-// --- VARIABLES GLOBALES POUR LES CAPTEURS RÉELS (ALIMENTÉES PAR LE LISTENER) ---
+// --- VARIABLES GLOBALES POUR LES CAPTEURS RÉELS ---
 let real_accel_x = 0.0;
 let real_accel_y = 0.0;
 let real_accel_z = 0.0; 
@@ -43,8 +42,8 @@ class EKF_6DoF {
         const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
         this.P = math.diag(initial_uncertainty); 
         
-        // Q (Bruit de Processus) : Bruit minimal pour faire confiance à la propagation IMU
-        this.Q = math.diag([0, 0, 0, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001, 0.000001]);
+        // Q (Bruit de Processus) : Bruit minimal
+        this.Q = math.diag([0, 0, 0, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001, 0.000001]);
         
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
@@ -58,10 +57,10 @@ class EKF_6DoF {
         const F = math.identity(15); 
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
         
-        // Accélération brute (VRAIS capteurs)
+        // Accélération brute (VRAIS capteurs - on suppose SANS GRAVITÉ ici)
         let accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
         
-        // Accélération corrigée = Mesure brute moins le biais de capteur ESTIMÉ (Aucune simulation)
+        // Accélération corrigée = Mesure brute moins le biais de capteur ESTIMÉ
         let accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
 
         // Intégration de la Vitesse (a * dt)
@@ -73,51 +72,59 @@ class EKF_6DoF {
         this.true_state.position = math.add(this.true_state.position, delta_p);
     }
     
-    // Logique CNH pour le mode Dead Reckoning (non modifiée)
+    // Logique CNH (Contrainte Non-Holonomique) pour le mode Dead Reckoning
     autoDetermineCNH(Vx, Vy, Vz, Vtotal) {
         const MIN_MOVEMENT_THRESHOLD = 0.05; 
+        
+        // *** OPTIMISATION 1: CNH AGRESSIVE À L'ARRÊT (Pour minimiser la dérive) ***
+        const DRAG_FACTOR_STOP = 0.01; // Correction très forte, la vitesse s'annule rapidement
 
         if (Vtotal < MIN_MOVEMENT_THRESHOLD) {
-             autoDetectedMode = '🛑 Arrêt/Piéton';
-             return { Vx_corr: 0.50, Vy_corr: 0.50, Vz_corr: 0.50 }; 
+             autoDetectedMode = '🛑 Arrêt/Zero-Velocity';
+             
+             // Réduction très agressive de la vitesse pour annuler la dérive
+             this.true_state.velocity = math.multiply(this.true_state.velocity, DRAG_FACTOR_STOP); 
+
+             return { Vx_corr: 0.01, Vy_corr: 0.01, Vz_corr: 0.01 }; // Faible propagation du bruit
         }
         
+        // CNH pour le mouvement libre (mouvement vertical)
         if (Math.abs(Vz) > Vtotal * 0.8) {
              autoDetectedMode = '⏫ Ascenseur/Vertical';
-             return { Vx_corr: 0.50, Vy_corr: 0.50, Vz_corr: 0.98 }; 
+             return { Vx_corr: 0.90, Vy_corr: 0.90, Vz_corr: 0.99 }; 
         }
 
         autoDetectedMode = '🚁 Libre/Drone/Piéton';
-        return { Vx_corr: 0.90, Vy_corr: 0.90, Vz_corr: 0.90 }; 
+        return { Vx_corr: 0.95, Vy_corr: 0.95, Vz_corr: 0.95 }; 
     }
 
     update(z, R_k, isDeadReckoning) {
         // Correction de la Covariance (P)
         this.P = math.multiply(this.P, 0.9); 
         
-        // Dégénérescence simple du biais estimé (pour éviter une croissance infinie sans vraie correction)
+        // Dégénérescence simple du biais estimé 
         this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, 0.99); 
         
-        // Stabilisation de la vitesse (évite la dérive)
+        // Stabilisation de la vitesse (évite la dérive) - Moins agressive ici car la CNH gère le cas à l'arrêt
         if (!isDeadReckoning) {
              if (math.norm(this.true_state.velocity) > 0.1) {
-                 this.true_state.velocity = math.multiply(this.true_state.velocity, 0.95); 
+                 this.true_state.velocity = math.multiply(this.true_state.velocity, 0.99); 
              }
         }
         
-        // Application des CNH en mode Dead Reckoning (DR)
-        if (isDeadReckoning) {
-            const Vx = this.true_state.velocity.get([0]);
-            const Vy = this.true_state.velocity.get([1]);
-            const Vz = this.true_state.velocity.get([2]);
-            const Vtotal = math.norm(this.true_state.velocity);
+        // Application des CNH
+        const Vx = this.true_state.velocity.get([0]);
+        const Vy = this.true_state.velocity.get([1]);
+        const Vz = this.true_state.velocity.get([2]);
+        const Vtotal = math.norm(this.true_state.velocity);
 
-            const { Vx_corr, Vy_corr, Vz_corr } = this.autoDetermineCNH(Vx, Vy, Vz, Vtotal);
-            
-            this.true_state.velocity.set([0], Vx * Vx_corr);
-            this.true_state.velocity.set([1], Vy * Vy_corr);
-            this.true_state.velocity.set([2], Vz * Vz_corr);
-        }
+        const { Vx_corr, Vy_corr, Vz_corr } = this.autoDetermineCNH(Vx, Vy, Vz, Vtotal);
+        
+        // Les CNH ne sont appliquées que si le système n'est PAS en Dead Reckoning (il utilise le GPS)
+        // Mais nous les appliquons ici pour minimiser la dérive même sans GPS parfait.
+        this.true_state.velocity.set([0], Vx * Vx_corr);
+        this.true_state.velocity.set([1], Vy * Vy_corr);
+        this.true_state.velocity.set([2], Vz * Vz_corr);
     }
     
     getSpeed() {
@@ -149,13 +156,26 @@ function distance(lat1, lon1, lat2, lon2) {
 
 // --- LISTENER IMU (SANS BOUCLE) ---
 function imuMotionHandler(event) {
-    const acc = event.accelerationIncludingGravity || event.acceleration;
+    // *** OPTIMISATION 2: UTILISER l'accélération SANS GRAVITÉ ***
+    // Cela est crucial. event.acceleration doit être utilisé si disponible, 
+    // sinon nous retombons sur la divergence explosive.
+    const acc = event.acceleration; 
     const rot = event.rotationRate;
     
-    // Mise à jour des variables globales pour l'EKF
-    real_accel_x = acc.x ?? 0.0;
-    real_accel_y = acc.y ?? 0.0;
-    real_accel_z = acc.z ?? 0.0; 
+    // Si acc n'est pas disponible, le navigateur est probablement vieux ou la permission n'est pas complète.
+    if (!acc || acc.x === null) {
+        // En cas d'échec de la lecture sans gravité, le système s'arrête de dériver.
+        // Sinon, le système explose à 9.81 m/s² si l'on prend accelerationIncludingGravity.
+        real_accel_x = 0.0;
+        real_accel_y = 0.0;
+        real_accel_z = 0.0; 
+        console.warn("Accélération sans gravité (event.acceleration) non disponible. DR stoppé pour éviter la divergence.");
+    } else {
+        // Mise à jour des variables globales pour l'EKF
+        real_accel_x = acc.x ?? 0.0;
+        real_accel_y = acc.y ?? 0.0;
+        real_accel_z = acc.z ?? 0.0; 
+    }
     
     real_gyro_x = rot.alpha ?? 0.0; 
     real_gyro_y = rot.beta ?? 0.0;
@@ -177,7 +197,6 @@ function stopIMUListeners() {
 // --- BOUCLE D'ESTIME IMU AUTONOME (100 Hz) ---
 function runIMULoop() {
     if (ekf6dof) {
-        // Les entrées sont les variables globales mises à jour par le listener IMU (imuMotionHandler)
         const real_imu_input = [real_accel_x, real_accel_y, real_accel_z, real_gyro_x, real_gyro_y, real_gyro_z];
         
         ekf6dof.predict(DT_IMU, real_imu_input);
@@ -223,7 +242,7 @@ function updateDisplayMetrics() {
     document.getElementById('kalman-q-noise').textContent = `${ekf6dof.getAccelBias().toFixed(3)}`;
 }
 
-// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (Uniquement l'étape UPDATE) ---
+// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (CORRECTION ACTIVE) ---
 function updateDisp(pos) {
     const accRaw = pos.coords.accuracy;
     
@@ -320,7 +339,7 @@ function requestSensorPermissionAndStart() {
                     startFusion();
                 } else {
                     console.error("Autorisation des capteurs refusée.");
-                    alert("Autorisation capteurs refusée. Le mode Dead Reckoning ne fonctionnera pas sans mouvement.");
+                    alert("Autorisation capteurs refusée. La dérive sera maximale sans mouvement.");
                 }
             })
             .catch(error => console.error("Erreur lors de la demande d'autorisation :", error));
@@ -339,7 +358,7 @@ function stopGPS() {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     if (imuIntervalID !== null) clearInterval(imuIntervalID); 
     
-    stopIMUListeners(); // Arrêt du listener IMU
+    stopIMUListeners(); 
     
     wID = null;
     imuIntervalID = null;
