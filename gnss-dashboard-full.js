@@ -31,13 +31,12 @@ const MAX_ACC = 200;
 const MIN_SPD = 0.05;       
 
 // --- NOUVEAUX SEUILS POUR IMU/ZUPT AVANCÉ ---
-const ZUPT_RAW_THRESHOLD = 1.0;     // Seuil de vitesse brute pour le SOFT CONSTRAINT
-const ZUPT_ACCEL_THRESHOLD = 0.5;   
-const IMU_ZUPT_THRESHOLD = 0.05;    // Seuil d'accélération nette pour l'estimation du biais (EMA)
+const ZUPT_RAW_THRESHOLD = 1.0;     
+const IMU_ZUPT_THRESHOLD = 0.05;    
 const Q_BIAS_ACCEL_FACTOR = 0.5;    
 const BIAS_EMA_ALPHA = 0.05;        
 const R_ACCEL_DAMPING_FACTOR = 1.0; 
-const R_SLOW_SPEED_FACTOR = 100.0;  // NOUVEAU: Facteur d'amplification de R pour le Soft Constraint (Très haut pour ignorer le GPS)
+const R_SLOW_SPEED_FACTOR = 100.0;  
 
 // --- DONNÉES CÉLESTES/GRAVITÉ ---
 const CELESTIAL_DATA = { 
@@ -73,7 +72,7 @@ let lastFSpeed = 0;
 
 // --- FONCTIONS UTILITAIRES ---
 const $ = id => document.getElementById(id);
-const dist = (lat1, lon1, lat2, lon2) => { /* ... (Logique Haversine inchangée) ... */ return 0; };
+const dist = (lat1, lon1, lat2, lon2) => { /* ... */ return 0; };
 const getKalmanR = (accRaw) => { return Math.min(R_MAX, Math.max(R_MIN, accRaw * accRaw)); };
 const updateCelestialBody = (body) => { /* ... */ };
 
@@ -102,16 +101,13 @@ function getCorrectedAccel(rawAccel, attitude, dt) {
     }
 
     if (net_Accel_Mag < IMU_ZUPT_THRESHOLD) {
-        // ZUPT IMU Actif : Mise à jour du biais (EMA)
         if (imu_bias_est === 0.0) {
              imu_bias_est = net_Accel_Mag;
         } else {
             imu_bias_est = (BIAS_EMA_ALPHA * net_Accel_Mag) + ((1 - BIAS_EMA_ALPHA) * imu_bias_est);
         }
-        // Retourne zéro pour la prédiction (car la dérive est déjà capturée par le biais)
         return 0.0; 
     } else {
-        // Mouvement détecté
         return Math.max(0.0, net_Accel_Mag - imu_bias_est);
     }
 }
@@ -126,11 +122,9 @@ function kFilter(nSpd, dt, R_dyn, accel_input = 0) {
     const Q_accel_noise = Q_NOISE + Math.abs(accel_input) * Q_BIAS_ACCEL_FACTOR; 
     const R = R_dyn ?? R_MAX, Q = Q_accel_noise * dt * dt; 
     
-    // PRÉDICTION
     let pSpd = kSpd + (accel_input * dt); 
     let pUnc = kUncert + Q; 
 
-    // CORRECTION
     let K = pUnc / (pUnc + R); 
     kSpd = pSpd + K * (nSpd - pSpd); 
     kUncert = (1 - K) * pUnc; 
@@ -145,7 +139,9 @@ function kFilter(nSpd, dt, R_dyn, accel_input = 0) {
 // BLOC 2/2 : Fonctions de Contrôle et Boucles Principales
 // =================================================================
 
-// ... (Fonctions startGPS, stopGPS, handleErr inchangées) ...
+function startGPS() { /* ... */ }
+function stopGPS(resetButton = true) { /* ... */ }
+function handleErr(error) { /* ... */ }
 
 // --- LOGIQUE DE PRÉDICTION IMU HAUTE FRÉQUENCE (20 Hz) ---
 function updateIMUPrediction() {
@@ -166,32 +162,29 @@ function updateIMUPrediction() {
     if (wID === null) { 
         // Mode DR (GPS Pausé)
         
-        // MODIFICATION CLÉ: Remplacement du ZUPT Forcé par une confiance élevée en la prédiction
+        // ZUPT Soft Constraint en DR: Confiance maximale dans la prédiction si l'IMU est stable (corrected_Accel_Mag = 0.0)
         if (corrected_Accel_Mag === 0.0) {
-             // Si l'IMU corrigée ne détecte AUCUNE accélération (stationnaire ou très lent)
-             R_imu_pred = R_MIN; // Max confiance en la prédiction
+             R_imu_pred = R_MIN; 
              modeStatus = '✅ DR - BIAS ON (Prediction Stabilité)';
              
-             // OPTIMISATION: Réduire l'incertitude si la vitesse est déjà très basse pour un amortissement rapide
              if (kSpd < ZUPT_RAW_THRESHOLD) {
                  kUncert = Math.min(kUncert, R_MIN * 2); 
              }
         } else {
-             // Mouvement IMU détecté
              R_imu_pred = R_MAX; 
              modeStatus = '⚠️ DR - PRÉDICTION IMU';
         }
         
-        // Le kFilter est appelé avec accel_input = 0.0 si corrigée_Accel_Mag = 0, ce qui ralentit naturellement kSpd.
         kFilter(kSpd, dt, R_imu_pred, corrected_Accel_Mag);
     } else {
          return; 
     }
 
-    // ... (Mise à jour des affichages DR inchangée) ...
+    // ... (Mise à jour des affichages DR) ...
     const sSpdFE = kSpd < MIN_SPD ? 0 : kSpd; 
     distM += sSpdFE * dt * R_FACTOR_RATIO;
     if ($('imu-frequency')) $('imu-frequency').textContent = (1 / dt).toFixed(1);
+    if ($('gps-status-dr')) $('gps-status-dr').textContent = modeStatus;
     // ...
 }
 
@@ -200,39 +193,36 @@ function updateIMUPrediction() {
 function updateDisp(pos) {
     if (emergencyStopActive) return;
 
-    const cTimePos = pos.timestamp;
-    let accRaw = pos.coords.accuracy;
-    
     // ... (Calculs de dt, spd3D_raw) ...
     const dt = 0.5; // Exemple
     let spd3D_raw = pos.coords.speed || 0.0; // Vitesse brute
     
-    let R_dyn = getKalmanR(accRaw); 
+    let R_dyn = getKalmanR(pos.coords.accuracy); 
     let spd_kalman_input = spd3D_raw;
     let R_kalman_input = R_dyn;
     let modeStatus = '🛰️ FUSION GNSS/IMU';
     
-    // ANCIEN ZUPT GPS SUPPRIMÉ POUR LA FLUIDITÉ
+    // ** ANCIEN ZUPT RIGIDE GPS (VELOCITÉ NULLE FORCÉE) SUPPRIMÉ ICI **
 
     // 1. Calcul de l'accélération corrigée IMU (Attitude + Biais)
     corrected_Accel_Mag = getCorrectedAccel(rawAccelWithGrav, attitude, dt); 
     let accel_sensor_input = corrected_Accel_Mag; 
 
-    // MODIFICATION CLÉ: Soft Constraint / Amortissement de Vitesse Lente
+    // 2. MODIFICATION CLÉ: Soft Constraint / Amortissement de Vitesse Lente
     const isVeryStable = (
-        spd3D_raw < ZUPT_RAW_THRESHOLD && // Vitesse brute basse
-        accel_sensor_input < IMU_ZUPT_THRESHOLD // Accélération corrigée très basse
+        spd3D_raw < ZUPT_RAW_THRESHOLD && 
+        accel_sensor_input < IMU_ZUPT_THRESHOLD 
     );
 
     if (R_kalman_input !== R_MIN) { 
         let modulation_factor = 1.0;
         
         if (isVeryStable) {
-            // SOFT CONSTRAINT : Si le système est stable et lent, on amplifie R pour ignorer le GPS.
-            modulation_factor = R_SLOW_SPEED_FACTOR; // TRES grand facteur (100.0)
+            // SOFT CONSTRAINT : Amplification de R pour ignorer la mesure GPS bruyée.
+            modulation_factor = R_SLOW_SPEED_FACTOR; 
             modeStatus = '✅ FUSION (Amortissement Vitesse Lente)';
         } else {
-            // Modulation pour les manœuvres rapides (confiance IMU)
+            // Modulation pour les manœuvres rapides (Confiance IMU)
             const accel_factor = Math.min(10.0, accel_sensor_input / 2.0); 
             modulation_factor = 1.0 + accel_factor * R_ACCEL_DAMPING_FACTOR;
         }
@@ -241,33 +231,19 @@ function updateDisp(pos) {
     }
 
     // FILTRE DE KALMAN FINAL (Fusion IMU/GNSS)
+    // Utilise la vitesse brute GPS (spd_kalman_input) comme mesure, mais avec un R élevé
+    // si la vitesse est faible, ce qui rend le filtre très stable.
     const fSpd = kFilter(spd_kalman_input, dt, R_kalman_input, accel_sensor_input); 
     const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
     
-    // ... (Mise à jour des affichages inchangée) ...
-    // ... (Sauvegarde de l'état lPos, lat, lon inchangée) ...
-}
-
-// ... (Fin de l'initialisation DOM inchangée) ...
-// Mise à jour des affichages
+    // ... (Mise à jour des affichages) ...
     if ($('speed-stable')) $('speed-stable').textContent = `${sSpdFE.toFixed(3)} m/s`;
     if ($('current-speed')) $('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)} km/h`;
     if ($('gps-status-dr')) $('gps-status-dr').textContent = modeStatus;
     if ($('kalman-r-factor')) $('kalman-r-factor').textContent = R_kalman_input.toFixed(3);
     if ($('kalman-q-noise')) $('kalman-q-noise').textContent = (Q_NOISE + Math.abs(accel_sensor_input) * Q_BIAS_ACCEL_FACTOR).toFixed(3);
     if ($('kalman-uncert')) $('kalman-uncert').textContent = kUncert.toFixed(3);
-    if ($('corrected-accel-mag-comp')) $('corrected-accel-mag-comp').textContent = corrected_Accel_Mag.toFixed(3);
-    if ($('raw-accel-mag')) $('raw-accel-mag').textContent = NED_Accel_Mag_RAW.toFixed(3);
     
-    // Sauvegarde de l'état
-    lPos = pos;
-    lat = cLat; lon = cLon;
-    kAlt = kFilterAltitude(altRaw, pos.coords.altitudeAccuracy || 1.0, dt);
-    
-    updateMap(lat, lon, accRaw);
-}
-
-
 // --- INITIALISATION DES ÉVÉNEMENTS DOM ---
 document.addEventListener('DOMContentLoaded', () => {
     
@@ -313,4 +289,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // Boucle de mise à jour lente (Astro/Météo/Horloge)
     // ... (Logique de la boucle lente omise) ...
 });
-                
+.
