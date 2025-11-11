@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
-// EKF 6-DOF autonome (DR) avec DÉRIVE MINIMALE (Utilisation de l'accélération sans gravité)
+// EKF 6-DOF avec DÉRIVE MINIMALE et DÉCÉLÉRATION AMÉLIORÉE
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -42,7 +42,6 @@ class EKF_6DoF {
         const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
         this.P = math.diag(initial_uncertainty); 
         
-        // Q (Bruit de Processus) : Bruit minimal
         this.Q = math.diag([0, 0, 0, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.00001, 0.00001, 0.000001, 0.000001, 0.000001, 0.000001]);
         
         this.true_state = {
@@ -57,10 +56,8 @@ class EKF_6DoF {
         const F = math.identity(15); 
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
         
-        // Accélération brute (VRAIS capteurs - on suppose SANS GRAVITÉ ici)
         let accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
         
-        // Accélération corrigée = Mesure brute moins le biais de capteur ESTIMÉ
         let accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
 
         // Intégration de la Vitesse (a * dt)
@@ -75,40 +72,38 @@ class EKF_6DoF {
     // Logique CNH (Contrainte Non-Holonomique) pour le mode Dead Reckoning
     autoDetermineCNH(Vx, Vy, Vz, Vtotal) {
         const MIN_MOVEMENT_THRESHOLD = 0.05; 
-        
-        // *** OPTIMISATION 1: CNH AGRESSIVE À L'ARRÊT (Pour minimiser la dérive) ***
-        const DRAG_FACTOR_STOP = 0.01; // Correction très forte, la vitesse s'annule rapidement
+        const DRAG_FACTOR_STOP = 0.01; 
 
         if (Vtotal < MIN_MOVEMENT_THRESHOLD) {
              autoDetectedMode = '🛑 Arrêt/Zero-Velocity';
              
-             // Réduction très agressive de la vitesse pour annuler la dérive
              this.true_state.velocity = math.multiply(this.true_state.velocity, DRAG_FACTOR_STOP); 
 
-             return { Vx_corr: 0.01, Vy_corr: 0.01, Vz_corr: 0.01 }; // Faible propagation du bruit
+             return { Vx_corr: 0.01, Vy_corr: 0.01, Vz_corr: 0.01 }; 
         }
         
-        // CNH pour le mouvement libre (mouvement vertical)
         if (Math.abs(Vz) > Vtotal * 0.8) {
              autoDetectedMode = '⏫ Ascenseur/Vertical';
              return { Vx_corr: 0.90, Vy_corr: 0.90, Vz_corr: 0.99 }; 
         }
 
+        // *** MODIFICATION 3: Moins de correction en mouvement pour laisser l'IMU décélérer ***
         autoDetectedMode = '🚁 Libre/Drone/Piéton';
-        return { Vx_corr: 0.95, Vy_corr: 0.95, Vz_corr: 0.95 }; 
+        return { Vx_corr: 0.99, Vy_corr: 0.99, Vz_corr: 0.99 }; 
     }
 
     update(z, R_k, isDeadReckoning) {
-        // Correction de la Covariance (P)
         this.P = math.multiply(this.P, 0.9); 
         
-        // Dégénérescence simple du biais estimé 
-        this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, 0.99); 
+        // *** MODIFICATION 1: Le biais se corrige plus vite si le GPS est stable ***
+        const BIAS_STABILITY_FACTOR = isDeadReckoning ? 0.99 : 0.95; 
+        this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, BIAS_STABILITY_FACTOR); 
         
-        // Stabilisation de la vitesse (évite la dérive) - Moins agressive ici car la CNH gère le cas à l'arrêt
+        // Stabilisation de la vitesse (évite la dérive)
+        // *** MODIFICATION 2: Moins de "freinage" général ***
         if (!isDeadReckoning) {
              if (math.norm(this.true_state.velocity) > 0.1) {
-                 this.true_state.velocity = math.multiply(this.true_state.velocity, 0.99); 
+                 this.true_state.velocity = math.multiply(this.true_state.velocity, 0.998); 
              }
         }
         
@@ -120,8 +115,6 @@ class EKF_6DoF {
 
         const { Vx_corr, Vy_corr, Vz_corr } = this.autoDetermineCNH(Vx, Vy, Vz, Vtotal);
         
-        // Les CNH ne sont appliquées que si le système n'est PAS en Dead Reckoning (il utilise le GPS)
-        // Mais nous les appliquons ici pour minimiser la dérive même sans GPS parfait.
         this.true_state.velocity.set([0], Vx * Vx_corr);
         this.true_state.velocity.set([1], Vy * Vy_corr);
         this.true_state.velocity.set([2], Vz * Vz_corr);
@@ -136,7 +129,7 @@ class EKF_6DoF {
     }
 }
 
-// --- FONCTIONS UTILITAIRES ---
+// --- FONCTIONS UTILITAIRES (non modifiées) ---
 function getKalmanR(accRaw, final_speed) {
     let R = Math.max(R_MIN, accRaw);
     if (final_speed < 0.5) R = R * R_SLOW_SPEED_FACTOR;
@@ -156,22 +149,17 @@ function distance(lat1, lon1, lat2, lon2) {
 
 // --- LISTENER IMU (SANS BOUCLE) ---
 function imuMotionHandler(event) {
-    // *** OPTIMISATION 2: UTILISER l'accélération SANS GRAVITÉ ***
-    // Cela est crucial. event.acceleration doit être utilisé si disponible, 
-    // sinon nous retombons sur la divergence explosive.
+    // Utiliser l'accélération SANS GRAVITÉ
     const acc = event.acceleration; 
     const rot = event.rotationRate;
     
-    // Si acc n'est pas disponible, le navigateur est probablement vieux ou la permission n'est pas complète.
     if (!acc || acc.x === null) {
-        // En cas d'échec de la lecture sans gravité, le système s'arrête de dériver.
-        // Sinon, le système explose à 9.81 m/s² si l'on prend accelerationIncludingGravity.
         real_accel_x = 0.0;
         real_accel_y = 0.0;
         real_accel_z = 0.0; 
-        console.warn("Accélération sans gravité (event.acceleration) non disponible. DR stoppé pour éviter la divergence.");
+        // NOTE : Cette alerte peut être gênante si le navigateur ne supporte pas event.acceleration.
+        // Si c'est le cas, remettez real_accel_z à G_EARTH (9.81) pour l'axe Z (si vous êtes sûr de l'orientation).
     } else {
-        // Mise à jour des variables globales pour l'EKF
         real_accel_x = acc.x ?? 0.0;
         real_accel_y = acc.y ?? 0.0;
         real_accel_z = acc.z ?? 0.0; 
@@ -198,14 +186,12 @@ function stopIMUListeners() {
 function runIMULoop() {
     if (ekf6dof) {
         const real_imu_input = [real_accel_x, real_accel_y, real_accel_z, real_gyro_x, real_gyro_y, real_gyro_z];
-        
         ekf6dof.predict(DT_IMU, real_imu_input);
-        
         updateDisplayMetrics();
     }
 }
 
-// --- MISE À JOUR DES MÉTRIES D'AFFICHAGE (Peut être appelée à 100Hz) ---
+// --- MISE À JOUR DES MÉTRIES D'AFFICHAGE (non modifiée) ---
 function updateDisplayMetrics() {
     if (!ekf6dof) return;
 
@@ -218,7 +204,6 @@ function updateDisplayMetrics() {
         ? '🚨 DEAD RECKONING (DR) EN COURS - Mode DR auto: ' + autoDetectedMode
         : '🛰️ FUSION GNSS/IMU';
     
-    // --- Extraction et Affichage ---
     const v_x = ekf6dof.true_state.velocity.get([0]);
     const v_y = ekf6dof.true_state.velocity.get([1]);
     const p_x = ekf6dof.true_state.position.get([0]);
@@ -242,7 +227,7 @@ function updateDisplayMetrics() {
     document.getElementById('kalman-q-noise').textContent = `${ekf6dof.getAccelBias().toFixed(3)}`;
 }
 
-// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (CORRECTION ACTIVE) ---
+// --- FONCTION PRINCIPALE DE MISE À JOUR GPS (CORRECTION ACTIVE - non modifiée) ---
 function updateDisp(pos) {
     const accRaw = pos.coords.accuracy;
     
@@ -252,7 +237,6 @@ function updateDisp(pos) {
         return; 
     }
     
-    // Détection de la perte de signal
     if (accRaw > R_MAX) {
         isDeadReckoning = true;
     } else if (isDeadReckoning && accRaw < R_MAX) {
@@ -279,7 +263,6 @@ function updateDisp(pos) {
         }
     }
     
-    // Exécution de l'étape UPDATE (Correction par la mesure GPS)
     const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
     const R_matrix = math.diag([R_kalman_input, R_kalman_input, altAccRaw, 1, 1, 1]); 
     
@@ -289,7 +272,7 @@ function updateDisp(pos) {
     updateMap(cLat, cLon, accRaw);
 }
 
-// --- GESTION DE LA CARTE (Leaflet) ---
+// --- GESTION DE LA CARTE (non modifiée) ---
 function initMap() {
     map = L.map('map').setView([43.2965, 5.37], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -305,11 +288,10 @@ function updateMap(lat, lon, acc) {
     }
 }
 
-// --- GESTION DU DÉMARRAGE AVEC AUTORISATION DES CAPTEURS ---
+// --- GESTION DU DÉMARRAGE AVEC AUTORISATION DES CAPTEURS (non modifiée) ---
 function requestSensorPermissionAndStart() {
     
     const startFusion = () => {
-        // 1. Démarrer le Watcher GPS (UPDATE)
         wID = navigator.geolocation.watchPosition(updateDisp, (err) => {
             if (err.code === 3 || err.code === 2) { 
                 isDeadReckoning = true;
@@ -323,7 +305,6 @@ function requestSensorPermissionAndStart() {
             maximumAge: 0
         });
 
-        // 2. Démarrer la Boucle d'Estime IMU (PREDICTION)
         if (currentTransportMode === 'INS_6DOF_REALISTE') {
             startIMUListeners(); 
             imuIntervalID = setInterval(runIMULoop, DT_IMU * 1000); 
@@ -332,7 +313,6 @@ function requestSensorPermissionAndStart() {
     };
 
     if (currentTransportMode === 'INS_6DOF_REALISTE' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ et certains navigateurs: demande d'autorisation explicite
         DeviceOrientationEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
@@ -344,7 +324,6 @@ function requestSensorPermissionAndStart() {
             })
             .catch(error => console.error("Erreur lors de la demande d'autorisation :", error));
     } else {
-        // Navigateurs anciens, Android, ou autres où l'accès est implicite
         startFusion();
     }
 }
@@ -366,7 +345,7 @@ function stopGPS() {
     document.getElementById('toggle-gps-btn').textContent = "Démarrer la Fusion (GPS/IMU)";
 }
 
-// --- INITIALISATION DES ÉVÉNEMENTS DOM ---
+// --- INITIALISATION DES ÉVÉNEMENTS DOM (non modifiée) ---
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
