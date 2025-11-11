@@ -3,314 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • EKF Fusion Avancée</title>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
-          crossorigin=""/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
-          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
-          crossorigin="anonymous" referrerpolicy="no-referrer" />
-          
+    <title>EKF de Réalité Adaptatif (6-DoF & Fiction)</title>
     <style>
-        /* --- Configuration Générale --- */
-        :root {
-            --bg-light: #f4f7f6;
-            --bg-dark: #121220;
-            --panel-light: #ffffff;
-            --panel-dark: #1e1e1e;
-            --text-light: #333333;
-            --text-dark: #f0f0f0;
-            --accent: #007bff;
-            --warning: #ffc107;
-            --success: #28a745;
-            --danger: #dc3545;
-            --font-family: 'Arial', sans-serif;
-        }
-
-        body {
-            font-family: var(--font-family);
-            background-color: var(--bg-light);
-            color: var(--text-light);
-            margin: 0;
-            padding: 20px;
-            transition: background-color 0.3s, color 0.3s;
-        }
-        
-        body.dark-mode {
-            background-color: var(--bg-dark);
-            color: var(--text-dark);
-        }
-
-        .dashboard-container {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .main-panel, .side-panel {
-            background-color: var(--panel-light);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.3s, box-shadow 0.3s;
-        }
-        
-        body.dark-mode .main-panel, body.dark-mode .side-panel {
-            background-color: var(--panel-dark);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-
-        h1 {
-            color: var(--accent);
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        h2 {
-            font-size: 1.4em;
-            border-bottom: 2px solid #ccc;
-            padding-bottom: 5px;
-            margin-top: 20px;
-            color: var(--accent);
-        }
-        
-        body.dark-mode h2 {
-            border-bottom-color: #444;
-        }
-
-        /* --- Vitesse & Statut --- */
-        .speed-display {
-            text-align: center;
-            margin: 20px 0;
-            border: 2px solid var(--accent);
-            padding: 15px;
-            border-radius: 8px;
-            background-color: rgba(0, 123, 255, 0.05);
-        }
-
-        #speed-stable {
-            font-size: 3.5em;
-            font-weight: bold;
-            color: var(--accent);
-            display: block;
-        }
-        
-        #current-speed {
-            font-size: 2.5em;
-            color: var(--text-light);
-            display: block;
-        }
-        
-        body.dark-mode #current-speed {
-            color: var(--text-dark);
-        }
-
-        #gps-status-dr {
-            margin-top: 10px;
-            font-weight: bold;
-            color: var(--danger);
-        }
-
-        /* --- Points de Données --- */
-        .data-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        
-        .data-point {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            border-bottom: 1px dashed #ddd;
-        }
-
-        body.dark-mode .data-point {
-            border-bottom-color: #555;
-        }
-        
-        .data-point span:first-child {
-            font-weight: 500;
-        }
-
-        /* --- Contrôles & Entrées --- */
-        .controls {
-            margin-top: 20px;
-        }
-
-        .control-input-full {
-            margin-bottom: 10px;
-        }
-
-        .control-input-full label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-
-        .control-input-full input, .control-input-full select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-            background-color: var(--bg-light);
-            color: var(--text-light);
-        }
-        
-        body.dark-mode .control-input-full input, body.dark-mode .control-input-full select {
-            border-color: #444;
-            background-color: #333;
-            color: var(--text-dark);
-        }
-
-        .btn-group button {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            margin-right: 5px;
-        }
-
-        #toggle-gps-btn {
-            background-color: var(--success);
-            color: white;
-        }
-        
-        #emergency-stop-btn {
-            background-color: var(--danger);
-            color: white;
-        }
-
-        /* --- Carte --- */
-        #map {
-            height: 400px;
-            margin-top: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        /* --- Statut IMU/EKF --- */
-        .filter-status .data-point {
-            font-size: 0.9em;
-        }
-
-        @media (max-width: 900px) {
-            .dashboard-container {
-                grid-template-columns: 1fr;
-            }
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .dashboard { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; border-bottom: 2px solid #eee; padding-bottom: 5px; }
+        .control-input-full { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        select, button { padding: 10px; width: 100%; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; margin-top: 5px; }
+        .data-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
+        .data-item { padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa; }
+        .value { font-size: 1.2em; font-weight: bold; color: #d9534f; }
+        #gps-status-dr { font-style: italic; color: #5bc0de; font-weight: bold; margin-top: 10px; }
+        #map { height: 300px; background-color: #ccc; margin-top: 20px; border-radius: 4px; }
     </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.3.0/math.min.js"></script>
 </head>
 <body>
-
-    <div class="dashboard-container">
+    <div class="dashboard">
+        <h1>🛰️ Filtre EKF de Réalité Adaptatif</h1>
         
-        <div class="main-panel">
-            <h1><i class="fas fa-satellite-dish"></i> GNSS/IMU Fusion EKF</h1>
-            
-            <div class="speed-display">
-                <span id="speed-stable">0.000 m/s</span>
-                <span id="current-speed">0.00 km/h</span>
-                <span id="gps-status-dr">INITIALISATION...</span>
-            </div>
-
-            <div id="map"></div>
-
-            <h2><i class="fas fa-tachometer-alt"></i> Données de Navigation</h2>
-            <div class="data-grid">
-                <div class="data-point"><span>Latitude</span><span id="current-lat">N/A</span></div>
-                <div class="data-point"><span>Longitude</span><span id="current-lon">N/A</span></div>
-                <div class="data-point"><span>Altitude (Fusion)</span><span id="altitude-fusion">N/A</span></div>
-                <div class="data-point"><span>Précision GPS (m)</span><span id="gps-precision">N/A</span></div>
-                <div class="data-point"><span>Vitesse Verticale</span><span id="vertical-speed">0.00 m/s</span></div>
-                <div class="data-point"><span>Accélération Long.</span><span id="accel-long">0.00 m/s²</span></div>
-                <div class="data-point"><span>Force G (Long.)</span><span id="force-g-long">0.00 G</span></div>
-                <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
-                <div class="data-point"><span>Vitesse Max</span><span id="speed-max">0.00 km/h</span></div>
-            </div>
-
-            <hr>
-
-            <h2><i class="fas fa-cogs"></i> Statut du Filtre de Kalman</h2>
-            <div class="data-grid filter-status">
-                <div class="data-point"><span>Bruit Proc. Q</span><span id="kalman-q-noise">0.000</span></div>
-                <div class="data-point"><span>Bruit Mes. R</span><span id="kalman-r-factor">0.000</span></div>
-                <div class="data-point"><span>Incertitude P</span><span id="kalman-uncert">0.000</span></div>
-                <div class="data-point"><span>Taux IMU (Hz)</span><span id="imu-frequency">0.0 Hz</span></div>
-                <div class="data-point"><span>DT Dernier Update</span><span id="update-time-dt">0.000 s</span></div>
-                <div class="data-point"><span>Biais IMU Est.</span><span id="imu-bias-est">0.000000 m/s²</span></div>
-            </div>
-
+        <div class="control-input-full">
+            <label for="transport-mode-select">Mode de Navigation</label>
+            <select id="transport-mode-select">
+                <option value="CAR_PEDESTRIAN">1. Réaliste (Voiture/Piéton - 1D Simplifié)</option>
+                <option value="INS_6DOF_REALISTE">2. INS 6-DoF (Conceptuel/Mathématiquement Complet)</option>
+                <option disabled>--- Modes Fiction/Extrêmes ---</option>
+                <option value="AIRCRAFT">3. Avion (Côté Couloir/NHC)</option>
+                <option value="TRAIN_METRO">4. Train/Métro (Contrainte Rail)</option>
+                <option value="CARTOON_PHYSICS">5. Physique de Cartoon (Looney Tunes)</option>
+                <option value="SPACETIME_DRIVE">6. Voyage Temporel / OVNI (Saut Télép.)</option>
+                <option value="MAGICAL_REALITY">7. Magie/Paranormal (Volonté Externe)</option>
+                <option value="HYPERDIMENSIONAL_DRIVE">8. Hyper-Espace / Vitesse Lumière+</option>
+            </select>
         </div>
+        
+        <button id="toggle-gps-btn">Démarrer la Fusion (GPS/IMU)</button>
+        <p id="gps-status-dr">Statut: Initialisation...</p>
+        <p id="nhc-status">Contraintes de Mouvement: Aucune</p>
 
-        <div class="side-panel">
-
-            <div class="controls">
-                <h2><i class="fas fa-sliders-h"></i> Contrôles Système</h2>
-                <div class="btn-group">
-                    <button id="toggle-gps-btn">▶️ MARCHE GPS/IMU</button>
-                    <button id="emergency-stop-btn">🛑 Arrêt Urgence</button>
-                    <button id="reset-system-btn">🔄 Réinit.</button>
-                </div>
-
-                <div class="control-input-full" style="margin-top: 15px;">
-                    <label for="freq-select">Mode de Fréquence GPS</label>
-                    <select id="freq-select">
-                        <option value="HIGH_FREQ">Haute (Optimale)</option>
-                        <option value="LOW_FREQ">Basse (Économie)</option>
-                    </select>
-                </div>
-                
-                <div class="control-input-full">
-                    <label for="celestial-body">Corps Céleste / Gravité</label>
-                    <select id="celestial-body">
-                        <option value="EARTH">Terre (9.81 m/s²)</option>
-                        <option value="MOON">Lune (1.62 m/s²)</option>
-                        <option value="MARS">Mars (3.71 m/s²)</option>
-                        <option value="ROTATING">Station Spatiale (0 G)</option>
-                    </select>
-                </div>
-            </div>
-
-            <hr>
-
-            <h2><i class="fas fa-drafting-compass"></i> Attitude & Compensation</h2>
-            <div class="data-grid">
-                <div class="data-point"><span>Roulis (Roll)</span><span id="imu-roll">0.0 °</span></div>
-                <div class="data-point"><span>Tangage (Pitch)</span><span id="imu-pitch">0.0 °</span></div>
-                <div class="data-point"><span>Lacet (Yaw)</span><span id="imu-yaw">0.0 °</span></div>
-                <div class="data-point"><span>Accélération (Corrigée)</span><span id="corrected-accel-mag-comp">0.000 m/s²</span></div>
-                <div class="data-point"><span>Accélération Brute</span><span id="raw-accel-mag">0.000 m/s²</span></div>
-                <div class="data-point"><span>Accélération Centrifuge</span><span id="centrifugal-accel">0.000 m/s²</span></div>
-            </div>
-            
-            <div class="control-input-full" style="margin-top: 10px;">
-                <label for="rotation-radius">Rayon Rotation (m)</label>
-                <input type="number" id="rotation-radius" value="100" step="1" min="0">
-            </div>
-            <div class="control-input-full">
-                <label for="angular-velocity">Vitesse Angulaire (ω, rad/s)</label>
-                <input type="number" id="angular-velocity" value="0.0" step="0.0001">
-            </div>
-
-            <hr>
-
-            <h2><i class="fas fa-clock"></i> Temps & Environnement</h2>
-            <div class="data-point"><span>Heure Locale</span><span id="local-time">N/A</span></div>
-            <div class="data-point"><span>Heure UTC</span><span id="utc-time">N/A</span></div>
-            <div class="data-point"><span>Densité de l'Air</span><span id="air-density">N/A</span></div>
-            <div class="data-point"><span>Vitesse du Son</span><span id="speed-of-sound">N/A</span></div>
+        <h2>Données EKF</h2>
+        <div class="data-grid">
+            <div class="data-item">Vitesse EKF (m/s): <span id="speed-stable" class="value">0.000</span></div>
+            <div class="data-item">Vitesse Finale (km/h): <span id="current-speed" class="value">0.00</span></div>
+            <div class="data-item">Altitude EKF (m): <span id="altitude-kalman" class="value">N/A</span></div>
+            <div class="data-item">Incertitude Vitesse (P): <span id="kalman-uncert" class="value">1000.00</span></div>
+            <div class="data-item">Bruit Q (Processus): <span id="kalman-q-noise" class="value">0.100</span></div>
+            <div class="data-item">Facteur R (Mesure): <span id="kalman-r-dyn" class="value">N/A</span></div>
         </div>
+        
+        <div id="map"></div>
     </div>
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20n6aW81z0Y3yT9o2uQo3c9Z/p8+T5G7W+Y1+q5bC15c=" crossorigin=""></script>
-    <script src="gnss-dashboard-full.js"></script>
+    
+    <script src="gnss-dashboard-full.js"></script> 
 </body>
-    </html>
+</html>
