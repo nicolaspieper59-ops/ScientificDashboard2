@@ -1,6 +1,6 @@
 // =================================================================
 // FICHIER JS COMPLET : gnss-dashboard-full.js
-// SOLUTION OPTIMALE AVEC DÉTECTION AUTOMATIQUE DU MODE CNH
+// AVEC LOGIQUE D'ANTI-SAUT GPS INTÉGRÉE
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
@@ -9,11 +9,13 @@ const KMH_MS = 3.6;
 const G_EARTH = 9.80665;    
 const MIN_DT = 0.0001;      
 const SPACETIME_JUMP_THRESHOLD_M = 500000; 
+// NOUVELLE CONSTANTE : Vitesse max plausible pour un mouvement réel anti-saut (m/s)
+const MAX_REALISTIC_SPD_M = 15.0; // Environ 54 km/h. Plus haut pour voiture, plus bas pour piéton.
 
 // --- NOUVELLES CONSTANTES DE SIMULATION IMU ---
-const SIM_ACCEL_BIAS = 0.1;  // Biais d'accélération simulé sur X (m/s²)
-const SIM_GYRO_BIAS = 0.01;  // Biais de Gyroscope simulé sur Z (rad/s)
-const SIM_NOISE_STD = 0.05; // Écart-type du bruit accélérométrique (pour la dérive en DR)
+const SIM_ACCEL_BIAS = 0.5;  
+const SIM_GYRO_BIAS = 0.01;  
+const SIM_NOISE_STD = 0.005; 
 
 // --- PARAMÈTRES EKF (Ajustés par le mode de transport) ---
 let Q_NOISE_H = 0.5;        
@@ -46,7 +48,7 @@ let corrected_Accel_Mag = 0.0;
 let lateralAccelIMU = 0.0; 
 let map = null, marker = null;
 let isDeadReckoning = false;
-let autoDetectedMode = 'Libre/Piéton'; // État pour l'affichage
+let autoDetectedMode = 'Libre/Piéton'; 
 
 // --- FONCTION UTILITAIRE POUR LE BRUIT GAUSSIEN (Moyenne 0, Écart-type SIM_NOISE_STD) ---
 function boxMullerTransform() {
@@ -100,55 +102,43 @@ class EKF_6DoF {
     
     // NOUVELLE LOGIQUE DE DÉTECTION AUTOMATIQUE
     autoDetermineCNH(Vx, Vy, Vz, Vtotal) {
-        // Seuil minimum pour considérer un mouvement réel (anti-bruit)
         const MIN_MOVEMENT_THRESHOLD = 0.05; 
         const Vxy = Math.sqrt(Vx*Vx + Vy*Vy);
 
-        // Si la vitesse totale est très faible, on applique une CNH d'arrêt (Piéton/Voiture)
         if (Vtotal < MIN_MOVEMENT_THRESHOLD) {
              autoDetectedMode = '🛑 Arrêt/Piéton';
-             return { Vx_corr: 0.50, Vy_corr: 0.50, Vz_corr: 0.50 }; // Correction forte pour ramener à zéro
+             return { Vx_corr: 0.50, Vy_corr: 0.50, Vz_corr: 0.50 }; 
         }
 
-        // 1. Détection Rail/Funiculaire (CNH Latérale Extrême)
-        // Si le mouvement horizontal est fort ET la vitesse latérale est négligeable (Vy < 5% de Vxy)
         if (Vxy > MIN_MOVEMENT_THRESHOLD && Math.abs(Vy) < Vxy * 0.05) {
              autoDetectedMode = '🚂 Rail/Funiculaire';
-             return { Vx_corr: 0.98, Vy_corr: 0.10, Vz_corr: 0.98 }; // Vy très agressive (rail), Vz libre
+             return { Vx_corr: 0.98, Vy_corr: 0.10, Vz_corr: 0.98 }; 
         }
         
-        // 2. Détection Ascenseur/Vertical (CNH Horizontale Extrême)
-        // Si le mouvement vertical est prédominant (Vz > 80% de Vtotal)
         if (Math.abs(Vz) > Vtotal * 0.8) {
              autoDetectedMode = '⏫ Ascenseur/Vertical';
-             return { Vx_corr: 0.50, Vy_corr: 0.50, Vz_corr: 0.98 }; // Vx/Vy très agressive (murs), Vz libre
+             return { Vx_corr: 0.50, Vy_corr: 0.50, Vz_corr: 0.98 }; 
         }
 
-        // 3. Mode Libre/Drone/Standard (Correction SLAM/VIO ou Piéton normal)
-        // Si mouvement multi-axes fort (Drone/UAV) ou pas d'indice fort (CNH standard)
         autoDetectedMode = '🚁 Libre/Drone/Piéton';
-        return { Vx_corr: 0.90, Vy_corr: 0.90, Vz_corr: 0.90 }; // Correction uniforme douce (simule SLAM)
+        return { Vx_corr: 0.90, Vy_corr: 0.90, Vz_corr: 0.90 }; 
     }
 
     update(z, R_k, isDeadReckoning) {
-        // Correction de la Covariance (P)
         const H = math.zeros(6, 15); H.subset(math.index([0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]), math.identity(6)); 
         this.P = math.multiply(this.P, 0.9); 
         
-        // Correction du Biais (Auto-Correction)
         let K_gain_sim = 0.05; 
         let error_in_bias = math.subtract(this.true_bias, this.true_state.accel_bias);
         let bias_correction = math.multiply(error_in_bias, K_gain_sim);
         this.true_state.accel_bias = math.add(this.true_state.accel_bias, bias_correction);
         
-        // Correction de la Vitesse (Ramener la vitesse à zéro si la mesure GPS est stable)
         if (!isDeadReckoning) {
              if (math.norm(this.true_state.velocity) > 0.1) {
                  this.true_state.velocity = math.multiply(this.true_state.velocity, 0.95); 
              }
         }
         
-        // **** Logique CNH Automatique en Dead Reckoning (DR) ****
         if (isDeadReckoning) {
             
             const Vx = this.true_state.velocity.get([0]);
@@ -158,7 +148,6 @@ class EKF_6DoF {
 
             const { Vx_corr, Vy_corr, Vz_corr } = this.autoDetermineCNH(Vx, Vy, Vz, Vtotal);
             
-            // Application des CNH/Corrections
             this.true_state.velocity.set([0], Vx * Vx_corr);
             this.true_state.velocity.set([1], Vy * Vy_corr);
             this.true_state.velocity.set([2], Vz * Vz_corr);
@@ -185,7 +174,6 @@ function setDimensionalConstants(dimension) {
 function setTransportModeParameters(mode) {
     currentTransportMode = mode;
     
-    // Réinitialisation aux valeurs standard réalistes
     Q_NOISE_H = 0.5; Q_NOISE_V = 0.05; R_MIN = 1.0; R_MAX = 500.0;
     R_SLOW_SPEED_FACTOR = 100.0; G_NULL_FACTOR = 1.0; 
     setDimensionalConstants('STANDARD'); 
@@ -200,9 +188,8 @@ function setTransportModeParameters(mode) {
             status_text = '✅ EKF 6-DoF ACTIF (Fusion) - Logique DR **AUTOMATIQUE**';
             break;
         case 'TRAIN_METRO': Q_NOISE_H = 0.05; R_SLOW_SPEED_FACTOR = 200.0; status_text = 'ACTIF (Rail/CNH standard 1D)'; break;
-        case 'AIRCRAFT': R_SLOW_SPEED_FACTOR = 10.0; Q_NOISE_V = 0.001; Q_NOISE_H = 0.08; status_text = 'ACTIF (Aéronef/NHC)'; break;
+        case 'AIRCRAFT': R_SLOW_SPEED_FACTOR = 10.0; Q_NOISE_V = 0.001; Q_NOISE_H = 0.08; status_text = 'ACTIF (Aéronef/3D et Grande Vitesse)'; break;
         
-        // --- Modes Fiction ---
         case 'CARTOON_PHYSICS': G_NULL_FACTOR = 0.5; Q_NOISE_H = 50.0; Q_NOISE_V = 50.0; setDimensionalConstants('CARTOON'); status_text = '🤪 LOIS CARTOON (G=0.1)'; break;
         case 'SPACETIME_DRIVE': G_NULL_FACTOR = 0.001; Q_NOISE_H = 10000.0; Q_NOISE_V = 10000.0; status_text = '⚡️ VOYAGE TEMPOREL (Δt Ignoré)'; break;
         case 'MAGICAL_REALITY': G_NULL_FACTOR = 0.0; Q_NOISE_H = 100000.0; Q_NOISE_V = 100000.0; R_MIN = 0.0001; setDimensionalConstants('MAGICAL_AURA'); status_text = '✨ MAGICAL REALITY (Observation Pure)'; break;
@@ -264,6 +251,8 @@ function getKalmanR(accRaw) {
     if (kSpd < 0.5 && corrected_Accel_Mag < 0.05) R = R * R_SLOW_SPEED_FACTOR;
     return R;
 }
+
+// Version de distance de Haversine (précision minimale)
 function distance(lat1, lon1, lat2, lon2) {
     const R = 6371e3; 
     const dLat = (lat2 - lat1) * D2R;
@@ -291,6 +280,21 @@ function updateDisp(pos) {
     
     let modeStatus = '🛰️ FUSION GNSS/IMU';
     let final_speed = 0.0;
+    
+    // **** LOGIQUE ANTI-SAUT GPS (NOUVEAU) ****
+    if (lPos && !isDeadReckoning) {
+        const measured_dist = distance(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon);
+        const max_dist_plausible = MAX_REALISTIC_SPD_M * dt; 
+        
+        // Si la distance parcourue est impossible pour le temps écoulé (saut)
+        if (measured_dist > max_dist_plausible) {
+            // Dégrader la fiabilité GPS (R) très fortement pour forcer le filtre à se fier à l'IMU (DR)
+            R_kalman_input = R_MAX * 100; // Augmenter R à un niveau très élevé
+            modeStatus = `⚠️ Saut GPS Détecté (${measured_dist.toFixed(1)}m). DR Temporaire.`;
+            // Note: isDeadReckoning n'est pas activé, on utilise juste une R très élevée.
+        }
+    }
+    // **** FIN LOGIQUE ANTI-SAUT ****
 
     // Détection de la perte de signal ou de la réacquisition
     if (accRaw > R_MAX) {
@@ -303,19 +307,16 @@ function updateDisp(pos) {
         modeStatus = '🚨 DEAD RECKONING (DR) EN COURS - Mode DR auto: ' + autoDetectedMode;
     }
 
-    // 1. GESTION DES MODES DE FICTION (Omitted for brevity, assuming standard behavior)
-    
     // 2. GESTION DES MODES RÉALISTES
     if (currentTransportMode === 'INS_6DOF_REALISTE' && ekf6dof) {
         
-        // Entrées IMU sont 0, le bruit et le biais causent la dérive
         const imu_input_sim = [0, 0, 0, 0, 0, 0]; 
         
         const gps_measurement = math.matrix([cLat, cLon, altRaw, spd3D_raw, 0, 0]); 
+        // R_kalman_input est maintenant ajusté par l'anti-saut si nécessaire.
         const R_matrix = math.diag([R_kalman_input, R_kalman_input, altAccRaw, 1, 1, 1]); 
 
         ekf6dof.predict(dt, imu_input_sim);
-        // L'appel à update est maintenant sans mode, car la logique est interne
         ekf6dof.update(gps_measurement, R_matrix, isDeadReckoning);
         
         final_speed = ekf6dof.getSpeed();
