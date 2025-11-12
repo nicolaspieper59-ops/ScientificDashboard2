@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EKF GNSS/IMU Fusion Dashboard</title>
+    <title>EKF GNSS/IMU Fusion Dashboard - Multi-Source</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
@@ -36,7 +36,7 @@
 </head>
 <body>
     <header>
-        <h1>Tableau de Bord EKF 6-DoF (GNSS/IMU)</h1>
+        <h1>Tableau de Bord EKF 6-DoF (GNSS/IMU Multi-Source)</h1>
     </header>
 
     <div id="container">
@@ -50,7 +50,7 @@
                 <p>Sélectionnez le mode de transport pour ajuster les paramètres de l'EKF:</p>
                 
                 <select id="transport-mode-select">
-                    <option value="INS_6DOF_REALISTE">INS 6-DoF (Réaliste)</option>
+                    <option value="INS_6DOF_REALISTE">INS 6-DoF (Réalisme de Vitesse)</option>
                     <option value="GPS_BRUT">GPS Brut (Sans EKF)</option>
                 </select>
                 
@@ -106,6 +106,14 @@
                     <div class="metric-item">
                         <span class="metric-label">Vitesse Y (m/s) :</span>
                         <span class="metric-value" id="speed-y">0.00</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Pos. X Rel. (m) :</span>
+                        <span class="metric-value" id="pos-x">0.00</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Pos. Y Rel. (m) :</span>
+                        <span class="metric-value" id="pos-y">0.00</span>
                     </div>
                 </div>
 
