@@ -698,10 +698,10 @@ function updateDisp(pos) {
     if ($('speed-stable')) $('speed-stable').textContent = (sSpdFE * KMH_MS).toFixed(1);
     if ($('speed-stable-ms')) $('speed-stable-ms').textContent = `${sSpdFE.toFixed(2)} m/s`;
     if ($('speed-stable-kms')) $('speed-stable-kms').textContent = `${(sSpdFE / 1000).toExponential(2)} km/s`;
-    if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${(spd3D_raw * KMH_MS).toFixed(1)} km/h`;
+    if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${(spd3D_raw * KMH_MS).toFixed(5)} km/h`;
     if ($('speed-raw-ms')) $('speed-raw-ms').textContent = `${spdRaw.toFixed(2)} m/s`;
-    if ($('speed-max')) $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(1)} km/h`;
-    if ($('speed-avg-moving')) $('speed-avg-moving').textContent = `${(distM / (timeMoving || 1) * KMH_MS).toFixed(1)} km/h`;
+    if ($('speed-max')) $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
+    if ($('speed-avg-moving')) $('speed-avg-moving').textContent = `${(distM / (timeMoving || 1) * KMH_MS).toFixed(5)} km/h`;
     if ($('perc-speed-sound')) $('perc-speed-sound').textContent = `${(sSpdFE / advancedPhysics.speedOfSoundLocal * 100).toFixed(2)} %`;
     if ($('perc-speed-c')) $('perc-speed-c').textContent = `${(sSpdFE / C_L * 100).toExponential(2)} %`;
 
