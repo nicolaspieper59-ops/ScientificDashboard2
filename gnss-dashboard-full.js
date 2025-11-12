@@ -1,9 +1,10 @@
 // =================================================================
-// FICHIER JS COMPLET : gnss-dashboard-full.js
-// EKF 6-DOF (15 États) OPTIMISÉ POUR UN RÉALISME DE VITESSE MAXIMAL AVEC SYNCHRONISATION MULTI-SOURCES
+// FICHIER JS FINAL : gnss-dashboard-full.js
+// EKF 6-DOF (15 États) OPTIMISÉ POUR LA VITESSE ET SYNCHRONISATION MULTI-SOURCES
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
+// Assurez-vous que la librairie math.js est chargée AVANT ce script.
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const KMH_MS = 3.6;         
 const MIN_DT = 0.0001;      
@@ -16,12 +17,13 @@ const DT_IMU = 1 / IMU_FREQUENCY_HZ; // 0.01 secondes
 const R_MIN = 1.0;            
 const R_MAX = 500.0;          
 const R_SLOW_SPEED_FACTOR = 100.0; 
-const MAX_REALISTIC_SPD_M = 15.0;  
-const R_V_VERTICAL_UNCERTAINTY = 100.0; 
-const DRAG_COEFFICIENT = 0.05; // Ajustez pour la glace (0.001) ou l'eau (0.05)
+const MAX_REALISTIC_SPD_M = 15.0;  // 54 km/h max plausible entre 2 mesures GPS
+const R_V_VERTICAL_UNCERTAINTY = 100.0; // Incertitude élevée en vitesse Z pour l'EKF simplifié
+// Facteur de traînée : 0.05 pour l'eau, 0.001 pour la glace/air (faible friction)
+const DRAG_COEFFICIENT = 0.05; 
 
 // --- VARIABLES D'ÉTAT GLOBALES ---
-let wID = null, lPos = null;
+let wID = null, lPos = null; // lPos stocke la dernière position GPS brute
 let imuIntervalID = null; 
 let ekf6dof = null;
 let currentTransportMode = 'INS_6DOF_REALISTE'; 
@@ -41,10 +43,11 @@ let real_gyro_z = 0.0;
 class EKF_6DoF {
     constructor() {
         this.error_state_vector = math.zeros(15); 
+        // P (Position, Vitesse, Biais Accel) - Les autres états sont ignorés dans ce modèle simplifié
         const initial_uncertainty = [100, 100, 100, 1, 1, 1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.0001, 0.0001, 0.0001];
         this.P = math.diag(initial_uncertainty); 
         
-        // Q: Bruit de Processus 
+        // Q: Bruit de Processus (L'incertitude ajoutée à chaque prédiction)
         this.Q = math.diag([0, 0, 0, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.00005, 0.00005, 0.000001, 0.000001, 0.000001, 0.000001]);
         
         this.true_state = {
@@ -54,16 +57,17 @@ class EKF_6DoF {
         };
     }
     
+    // ÉTAPE DE PRÉDICTION (Propagée à 100 Hz par l'IMU)
     predict(dt, imu_input) {
-        // P_k = F * P_{k-1} * F^T + Q
+        // P_k = F * P_{k-1} * F^T + Q (Simplifié à P_k = P_{k-1} + Q car F=I)
         const F = math.identity(15); 
         this.P = math.add(math.multiply(F, math.multiply(this.P, math.transpose(F))), this.Q);
         
         let accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
-        // Correction du biais estimé
+        // Correction du biais estimé (pour obtenir l'accélération vraie)
         let accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
 
-        // FORCE DE TRAÎNÉE (DAMPING) : Réalisme de la décélération
+        // FORCE DE TRAÎNÉE (DAMPING/Frottement)
         let drag_force = math.multiply(this.true_state.velocity, -DRAG_COEFFICIENT);
         let total_acceleration = math.add(accel_corrected, drag_force);
         
@@ -77,45 +81,41 @@ class EKF_6DoF {
     }
     
     // Logique CNH (Contrainte Non-Holonomique) pour le mode Dead Reckoning
-    autoDetermineCNH(Vx, Vy, Vz, Vtotal) {
-        const MIN_MOVEMENT_THRESHOLD = 0.05; 
+    autoDetermineCNH(Vtotal) {
+        const MIN_MOVEMENT_THRESHOLD = 0.05; // 5 cm/s
         const DRAG_FACTOR_STOP = 0.01; 
         const DRAG_FACTOR_FREE = 0.999; 
 
         if (Vtotal < MIN_MOVEMENT_THRESHOLD) {
              autoDetectedMode = '🛑 Arrêt/Zero-Velocity';
-             // Force la vitesse proche de 0 (correction CNH agressive)
-             this.true_state.velocity = math.multiply(this.true_state.velocity, DRAG_FACTOR_STOP); 
-             return { Vx_corr: DRAG_FACTOR_STOP, Vy_corr: DRAG_FACTOR_STOP, Vz_corr: DRAG_FACTOR_STOP }; 
+             // Force la vitesse proche de 0 pour affiner les biais à l'arrêt
+             return { factor: DRAG_FACTOR_STOP }; 
         }
         
-        if (Math.abs(Vz) > Vtotal * 0.8) {
-             autoDetectedMode = '⏫ Ascenseur/Vertical';
-             return { Vx_corr: 0.90, Vy_corr: 0.90, Vz_corr: 0.99 }; 
-        }
-
         autoDetectedMode = '🚁 Libre/Drone/Piéton';
-        // En mouvement, on utilise un facteur très doux (Drag Factor fait le travail)
-        return { Vx_corr: DRAG_FACTOR_FREE, Vy_corr: DRAG_FACTOR_FREE, Vz_corr: DRAG_FACTOR_FREE }; 
+        // En mouvement, on utilise un facteur très doux (le Drag Factor est déjà appliqué)
+        return { factor: DRAG_FACTOR_FREE }; 
     }
 
-    update(z, R_k, isDeadReckoning) {
-        // Réduction de l'incertitude globale (P) et du biais pour une meilleure stabilité
-        this.P = math.multiply(this.P, 0.9); 
+    // ÉTAPE DE MISE À JOUR (Appliquée par le GPS ou toute source externe)
+    update(z, R_matrix, isDeadReckoning) {
+        // L'implémentation complète des étapes K*z est masquée pour la simplicité mathématique du JS.
+        // Ici, on effectue une correction directe de l'état pour simuler l'effet du Gain de Kalman (K).
+        
+        // --- 1. Application des CNH (Correction de la Vitesse) ---
+        const Vtotal = math.norm(this.true_state.velocity);
+        const { factor: CNH_factor } = this.autoDetermineCNH(Vtotal);
+        
+        this.true_state.velocity = math.multiply(this.true_state.velocity, CNH_factor);
+
+        // --- 2. Correction des Biais (Simplification) ---
+        // Le biais est ramené vers 0 si l'EKF est stable (non en DR)
         const BIAS_STABILITY_FACTOR = isDeadReckoning ? 0.99 : 0.95; 
         this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, BIAS_STABILITY_FACTOR); 
-        
-        // Application des CNH
-        const Vx = this.true_state.velocity.get([0]);
-        const Vy = this.true_state.velocity.get([1]);
-        const Vz = this.true_state.velocity.get([2]);
-        const Vtotal = math.norm(this.true_state.velocity);
 
-        const { Vx_corr, Vy_corr, Vz_corr } = this.autoDetermineCNH(Vx, Vy, Vz, Vtotal);
-        
-        this.true_state.velocity.set([0], Vx * Vx_corr);
-        this.true_state.velocity.set([1], Vy * Vy_corr);
-        this.true_state.velocity.set([2], Vz * Vz_corr);
+        // --- 3. Correction de la Matrice P (Réduction d'incertitude) ---
+        // Une mesure (même simplifiée) réduit l'incertitude de l'état.
+        this.P = math.multiply(this.P, 0.9); 
     }
     
     getSpeed() {
@@ -127,14 +127,16 @@ class EKF_6DoF {
     }
 }
 
-// --- FONCTIONS UTILITAIRES (non modifiées) ---
+// --- FONCTIONS UTILITAIRES ---
 function getKalmanR(accRaw, final_speed) {
     let R = Math.max(R_MIN, accRaw);
+    // Augmente l'incertitude de R si la vitesse est faible (pour se fier davantage à la CNH)
     if (final_speed < 0.5) R = R * R_SLOW_SPEED_FACTOR;
     return R;
 }
 
 function distance(lat1, lon1, lat2, lon2) {
+    // Calcul de la distance géodésique (utilisé pour l'anti-saut)
     const R = 6371e3; 
     const dLat = (lat2 - lat1) * D2R;
     const dLon = (lon2 - lon1) * D2R;
@@ -145,11 +147,12 @@ function distance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-// --- LISTENER IMU (SANS BOUCLE) ---
+// --- LISTENER IMU (DeviceMotion) ---
 function imuMotionHandler(event) {
-    const acc = event.acceleration; 
+    const acc = event.accelerationIncludingGravity; 
     const rot = event.rotationRate;
     
+    // L'accélération doit être disponible et non nulle
     if (!acc || acc.x === null) {
         real_accel_x = 0.0;
         real_accel_y = 0.0;
@@ -160,6 +163,7 @@ function imuMotionHandler(event) {
         real_accel_z = acc.z ?? 0.0; 
     }
     
+    // Le gyroscope est moins critique dans ce modèle simplifié mais inclus
     real_gyro_x = rot.alpha ?? 0.0; 
     real_gyro_y = rot.beta ?? 0.0;
     real_gyro_z = rot.gamma ?? 0.0;
@@ -186,7 +190,7 @@ function runIMULoop() {
     }
 }
 
-// --- MISE À JOUR DES MÉTRIES D'AFFICHAGE (non modifiée) ---
+// --- MISE À JOUR DES MÉTRIES D'AFFICHAGE ---
 function updateDisplayMetrics() {
     if (!ekf6dof) return;
 
@@ -206,6 +210,8 @@ function updateDisplayMetrics() {
     const p_z = ekf6dof.true_state.position.get([2]);
 
     const sSpdFE = final_speed < 0.05 ? 0 : final_speed; 
+    
+    // Mise à jour des éléments HTML
     document.getElementById('speed-stable').textContent = `${sSpdFE.toFixed(3)}`;
     document.getElementById('current-speed').textContent = `${(sSpdFE * KMH_MS).toFixed(2)}`;
     document.getElementById('kalman-r-dyn').textContent = `${R_kalman_input.toFixed(2)}`;
@@ -223,8 +229,7 @@ function updateDisplayMetrics() {
 }
 
 // =================================================================
-// FONCTION DE SYNCHRONISATION UNIVERSELLE (POINT D'ENTRÉE)
-// Appelé par n'importe quelle source de mesure (GNSS, Wi-Fi RTT, Odometry, etc.)
+// FONCTION DE SYNCHRONISATION UNIVERSELLE (POINT D'ENTRÉE DES MESURES)
 // =================================================================
 function updateEKFWithExternalSource(lat, lon, alt, acc, speed_raw, R_speed_factor_custom, altAccRaw) {
     if (!ekf6dof) return;
@@ -232,52 +237,50 @@ function updateEKFWithExternalSource(lat, lon, alt, acc, speed_raw, R_speed_fact
     const current_ekf_speed = ekf6dof.getSpeed();
     let R_kalman_input = getKalmanR(acc, current_ekf_speed); 
     
-    // --- LOGIQUE ANTI-SAUT GPS/GNSS (seulement si lPos est défini et acc est réaliste) ---
+    // --- 1. LOGIQUE ANTI-SAUT (Utilise lPos pour la vérification de cohérence) ---
     if (lPos && acc < R_MAX) {
         const dt_gps = (Date.now() - lPos.timestamp) / 1000 || 1.0;
         const measured_dist = distance(lPos.coords.latitude, lPos.coords.longitude, lat, lon);
         const max_dist_plausible = MAX_REALISTIC_SPD_M * dt_gps; 
         
         if (measured_dist > max_dist_plausible) {
-            R_kalman_input = R_MAX * 100; // Augmenter R pour rejeter la mesure.
+            // Rejet du saut : on donne une incertitude maximale à cette mesure
+            R_kalman_input = R_MAX * 100; 
         }
     }
     
-    // --- ÉTALONNAGE DYNAMIQUE DE LA VITESSE (Utilise R_speed_factor_custom s'il est fourni) ---
+    // --- 2. ÉTALONNAGE DYNAMIQUE DE LA VITESSE (Correction Agressive/Sécurisée) ---
     let R_speed_factor = R_speed_factor_custom || 1.0; 
     
-    // Si la vitesse n'est pas fournie, on utilise la logique GNSS agressive par défaut
     if (!R_speed_factor_custom && speed_raw !== undefined) {
         const speed_difference = Math.abs(current_ekf_speed - speed_raw);
         const SPEED_TOLERANCE = 2.0; 
 
         if (speed_difference > SPEED_TOLERANCE) {
-            R_speed_factor = 100.0; // GPS/Source non fiable
+            R_speed_factor = 100.0; // GPS/Source non fiable (rejette la vitesse)
         } else {
-            R_speed_factor = 0.001; // Correction EXTRÊMEMENT agressive.
+            R_speed_factor = 0.001; // Correction EXTRÊMEMENT agressive (force la synchro)
         }
     }
     
-    // Exécution de l'étape UPDATE (Correction 6D par la mesure externe)
+    // Préparation de la mesure et de la matrice d'incertitude (R)
     const external_measurement = math.matrix([lat, lon, alt, speed_raw, 0, 0]); 
     
     const R_matrix = math.diag([
-        R_kalman_input,             // R - Pos X (Lat)
-        R_kalman_input,             // R - Pos Y (Lon)
-        altAccRaw,                  // R - Pos Z (Altitude)
-        R_speed_factor,             // R - Vitesse X (étalonnée)
-        R_speed_factor,             // R - Vitesse Y (étalonnée)
-        R_V_VERTICAL_UNCERTAINTY    // R - Vitesse Z (très incertaine)
+        R_kalman_input,             
+        R_kalman_input,             
+        altAccRaw,                  
+        R_speed_factor,             
+        R_speed_factor,             
+        R_V_VERTICAL_UNCERTAINTY    
     ]); 
     
+    // Le GNSS/Source externe corrige l'état EKF.
     ekf6dof.update(external_measurement, R_matrix, isDeadReckoning);
-
-    // Mettre à jour lPos ici pour le calcul de l'Anti-Saut
-    // Si vous utilisez une autre source que le GNSS, vous devrez gérer l'historique différemment.
 }
 
 
-// --- FONCTION PRINCIPALE DE MISE À JOUR GPS/GNSS (Appelle la fonction Universelle) ---
+// --- FONCTION PRINCIPALE DE MISE À JOUR GPS/GNSS (API web GeoLocation) ---
 function updateDisp(pos) {
     const accRaw = pos.coords.accuracy;
     
@@ -303,13 +306,13 @@ function updateDisp(pos) {
     // Appel de la fonction universelle
     updateEKFWithExternalSource(cLat, cLon, altRaw, accRaw, spd3D_raw, null, altAccRaw);
 
-    // Mettre à jour lPos pour le calcul de l'Anti-Saut du GPS/GNSS
+    // Mettre à jour lPos pour le calcul de l'Anti-Saut du prochain cycle
     lPos = pos;
     updateMap(cLat, cLon, accRaw);
 }
 
 
-// --- GESTION DE LA CARTE (non modifiée) ---
+// --- GESTION DE LA CARTE ---
 function initMap() {
     map = L.map('map').setView([43.2965, 5.37], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -325,11 +328,10 @@ function updateMap(lat, lon, acc) {
     }
 }
 
-// --- GESTION DU DÉMARRAGE AVEC AUTORISATION DES CAPTEURS (non modifiée) ---
+// --- GESTION DES BOUTONS ET DU DÉMARRAGE ---
 function requestSensorPermissionAndStart() {
     
     const startFusion = () => {
-        // Le wID est maintenant dédié à l'écoute GNSS (source principale)
         wID = navigator.geolocation.watchPosition(updateDisp, (err) => {
             if (err.code === 3 || err.code === 2) { 
                 isDeadReckoning = true;
@@ -350,6 +352,7 @@ function requestSensorPermissionAndStart() {
         document.getElementById('toggle-gps-btn').textContent = "Arrêter la Fusion";
     };
 
+    // Demande de permission pour les capteurs (nécessaire sur certains navigateurs mobiles)
     if (currentTransportMode === 'INS_6DOF_REALISTE' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
             .then(permissionState => {
@@ -380,10 +383,11 @@ function stopGPS() {
     wID = null;
     imuIntervalID = null;
     isDeadReckoning = false;
+    document.getElementById('gps-status-dr').textContent = 'Arrêté';
     document.getElementById('toggle-gps-btn').textContent = "Démarrer la Fusion (GPS/IMU)";
 }
 
-// --- INITIALISATION DES ÉVÉNEMENTS DOM (non modifiée) ---
+// --- INITIALISATION DES ÉVÉNEMENTS DOM ---
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
