@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EKF INS 21-États Dashboard - Multi-Source</title>
     
+    <link rel="manifest" href="manifest.json">
+    
     <link rel="stylesheet" href="leaflet.css"/>
     
     <style>
@@ -31,15 +33,11 @@
     </header>
 
     <div id="container">
-        
         <div id="map"></div>
-        
         <div id="controls-metrics">
-            
             <div id="controls">
                 <h2>Contrôles</h2>
                 <p>Sélectionnez le mode de navigation INS :</p>
-                
                 <select id="transport-mode-select">
                     <option value="INS_6DOF_REALISTE">INS 21-États (Dynamique 3D)</option>
                     <option value="GPS_BRUT">GPS Brut (Sans EKF)</option>
@@ -51,68 +49,42 @@
             
             <div id="metrics">
                 <h2>Métriques de l'EKF</h2>
-                
                 <div class="metric-group">
                     <h3>Vitesse & Dynamique</h3>
-                    <div class="metric-item">
-                        <span class="metric-label">Vitesse EKF (km/h) :</span>
-                        <span class="metric-value" id="current-speed">0.00</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Vitesse EKF (m/s) :</span>
-                        <span class="metric-value" id="speed-stable">0.000</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Mode CNH/DR Auto :</span>
-                        <span class="metric-value" id="nhc-status">Mode EKF 1D ou Fictionnel</span>
-                    </div>
+                    <div class="metric-item"><span class="metric-label">Vitesse EKF (km/h) :</span><span class="metric-value" id="current-speed">0.00</span></div>
+                    <div class="metric-item"><span class="metric-label">Vitesse EKF (m/s) :</span><span class="metric-value" id="speed-stable">0.000</span></div>
+                    <div class="metric-item"><span class="metric-label">Mode CNH/DR Auto :</span><span class="metric-value" id="nhc-status">Mode EKF 1D ou Fictionnel</span></div>
                 </div>
-
                 <div class="metric-group">
                     <h3>Position & Correction (3D)</h3>
-                    <div class="metric-item">
-                        <span class="metric-label">Altitude EKF (m) :</span>
-                        <span class="metric-value" id="altitude-kalman">0.00</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Incertitude Pos. EKF ($P_{0,0}$) :</span>
-                        <span class="metric-value" id="kalman-uncert">Matrice P (0.00)</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Fiabilité GPS ($R$) :</span>
-                        <span class="metric-value" id="kalman-r-dyn">0.00</span>
-                    </div>
+                    <div class="metric-item"><span class="metric-label">Altitude EKF (m) :</span><span class="metric-value" id="altitude-kalman">0.00</span></div>
+                    <div class="metric-item"><span class="metric-label">Incertitude Pos. EKF ($P_{0,0}$) :</span><span class="metric-value" id="kalman-uncert">Matrice P (0.00)</span></div>
+                    <div class="metric-item"><span class="metric-label">Fiabilité GPS ($R$) :</span><span class="metric-value" id="kalman-r-dyn">0.00</span></div>
                 </div>
-
                 <div class="metric-group">
                     <h3>Dérive & Biais (INS)</h3>
-                    <div class="metric-item">
-                        <span class="metric-label">Biais Accél. X estimé ($\mathbf{b}_a$) :</span>
-                        <span class="metric-value" id="kalman-q-noise">0.000</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Biais Gyro. X estimé ($\mathbf{b}_g$) :</span>
-                        <span class="metric-value" id="gyro-bias">0.000</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Vitesse X (m/s) :</span>
-                        <span class="metric-value" id="speed-x">0.00</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Vitesse Y (m/s) :</span>
-                        <span class="metric-value" id="speed-y">0.00</span>
-                    </div>
+                    <div class="metric-item"><span class="metric-label">Biais Accél. X estimé ($\mathbf{b}_a$) :</span><span class="metric-value" id="kalman-q-noise">0.000</span></div>
+                    <div class="metric-item"><span class="metric-label">Biais Gyro. X estimé ($\mathbf{b}_g$) :</span><span class="metric-value" id="gyro-bias">0.000</span></div>
+                    <div class="metric-item"><span class="metric-label">Vitesse X (m/s) :</span><span class="metric-value" id="speed-x">0.00</span></div>
+                    <div class="metric-item"><span class="metric-label">Vitesse Y (m/s) :</span><span class="metric-value" id="speed-y">0.00</span></div>
                 </div>
-
             </div>
-            
         </div>
-        
     </div>
 
     <script src="math.min.js"></script> 
     <script src="leaflet.js"></script>
 
     <script src="gnss-dashboard-full.js"></script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => console.log('SW enregistré: ', registration.scope))
+                    .catch(error => console.log('Échec de l\'enregistrement SW: ', error));
+            });
+        }
+    </script>
 </body>
-                            </html>
+</html>
