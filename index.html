@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EKF GNSS/IMU Fusion Dashboard - Multi-Source</title>
+    <title>EKF INS 21-États Dashboard - Multi-Source</title>
     
     <link rel="stylesheet" href="leaflet.css"/>
     
@@ -27,7 +27,7 @@
 </head>
 <body>
     <header>
-        <h1>Tableau de Bord EKF 6-DoF (GNSS/IMU Multi-Source)</h1>
+        <h1>Tableau de Bord EKF INS (21 États) - Dynamique 3D</h1>
     </header>
 
     <div id="container">
@@ -38,14 +38,14 @@
             
             <div id="controls">
                 <h2>Contrôles</h2>
-                <p>Sélectionnez le mode de transport pour ajuster les paramètres de l'EKF:</p>
+                <p>Sélectionnez le mode de navigation INS :</p>
                 
                 <select id="transport-mode-select">
-                    <option value="INS_6DOF_REALISTE">INS 6-DoF (Réalisme de Vitesse)</option>
+                    <option value="INS_6DOF_REALISTE">INS 21-États (Dynamique 3D)</option>
                     <option value="GPS_BRUT">GPS Brut (Sans EKF)</option>
                 </select>
                 
-                <button id="toggle-gps-btn">Démarrer la Fusion (GPS/IMU)</button>
+                <button id="toggle-gps-btn">Démarrer la Fusion (INS/GNSS)</button>
                 <p style="margin-top: 15px;">**Statut :** <span id="gps-status-dr" style="font-weight: bold;">Arrêté</span></p>
             </div>
             
@@ -85,10 +85,14 @@
                 </div>
 
                 <div class="metric-group">
-                    <h3>Dérive & Biais</h3>
+                    <h3>Dérive & Biais (INS)</h3>
                     <div class="metric-item">
-                        <span class="metric-label">Biais Accél. X estimé :</span>
+                        <span class="metric-label">Biais Accél. X estimé ($\mathbf{b}_a$) :</span>
                         <span class="metric-value" id="kalman-q-noise">0.000</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Biais Gyro. X estimé ($\mathbf{b}_g$) :</span>
+                        <span class="metric-value" id="gyro-bias">0.000</span>
                     </div>
                     <div class="metric-item">
                         <span class="metric-label">Vitesse X (m/s) :</span>
@@ -97,14 +101,6 @@
                     <div class="metric-item">
                         <span class="metric-label">Vitesse Y (m/s) :</span>
                         <span class="metric-value" id="speed-y">0.00</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Pos. X Rel. (m) :</span>
-                        <span class="metric-value" id="pos-x">0.00</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Pos. Y Rel. (m) :</span>
-                        <span class="metric-value" id="pos-y">0.00</span>
                     </div>
                 </div>
 
