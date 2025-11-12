@@ -25,7 +25,7 @@ const DRAG_COEFFICIENT = 0.05;
 // --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null, lPos = null; 
 let imuIntervalID = null; 
-let ekf6dof = null; // Nom générique pour la classe EKF
+let ekf6dof = null;
 let currentTransportMode = 'INS_6DOF_REALISTE'; 
 let map = null, marker = null;
 let isDeadReckoning = false;
@@ -44,15 +44,14 @@ let real_gyro_z = 0.0;
 // =================================================================
 class EKF_INS_21_States {
     constructor() {
-        // État d'erreur (21 états : dP, dV, dAttitude, Biais Accel, Biais Gyro, + Facteurs/Alignement)
+        // État d'erreur (21 états)
         this.error_state_vector = math.zeros(21); 
         
         // État Vrai (estimations non-linéaires)
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
             velocity: math.matrix([0, 0, 0]), 
-            // Quaternion (w, x, y, z) - Initialisé à l'identité (pas de rotation)
-            attitude_q: math.matrix([1, 0, 0, 0]), 
+            attitude_q: math.matrix([1, 0, 0, 0]), // Quaternion (w, x, y, z)
             accel_bias: math.matrix([0, 0, 0]), 
             gyro_bias: math.matrix([0, 0, 0]),     
         };
@@ -77,7 +76,7 @@ class EKF_INS_21_States {
     }
     
     predict(dt, imu_input) {
-        // (Simplification : La Matrice F n'est pas entièrement calculée)
+        // La matrice F n'est pas entièrement calculée, on simule l'augmentation de l'incertitude
         this.P = math.add(this.P, this.Q);
         
         const accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
@@ -88,22 +87,21 @@ class EKF_INS_21_States {
         const gyro_corrected = math.subtract(gyro_raw, this.true_state.gyro_bias); 
         
         // --- ÉTAPE 2: Propagation de l'Orientation (Gyroscope) ---
-        // Mise à jour de this.true_state.attitude_q (Fonction omise, mais cruciale pour les saltos)
+        // La fonction updateQuaternion utilise gyro_corrected pour mettre à jour l'orientation (q)
         this.true_state.attitude_q = this.updateQuaternion(this.true_state.attitude_q, gyro_corrected, dt); 
         
         // --- ÉTAPE 3: COMPENSATION de GRAVITÉ ---
-        // Transformation de l'Accélération du Corps vers le Repère Global
         const R_matrice = this.quaternionToRotationMatrix(this.true_state.attitude_q);
-        const Gravité_Vector = math.matrix([0, 0, -GRAVITY]); // g est négatif sur Z-down
+        const Gravité_Vector = math.matrix([0, 0, -GRAVITY]); 
         
-        // Accel_Global = R_matrice * Accel_Corps - Gravité_Vector
+        // Accel_Global = R_matrice * Accel_Corps + Gravité_Vector (L'opérateur + gère le signe négatif de GRAVITY)
         const accel_global = math.add(math.multiply(R_matrice, accel_corrected), Gravité_Vector); 
         
-        // FORCE DE TRAÎNÉE (DAMPING)
+        // FORCE DE TRAÎNÉE
         const drag_force = math.multiply(this.true_state.velocity, -DRAG_COEFFICIENT);
         const total_acceleration = math.add(accel_global, drag_force);
         
-        // Intégration de la Vitesse et de la Position
+        // Intégration
         const delta_v = math.multiply(total_acceleration, dt);
         this.true_state.velocity = math.add(this.true_state.velocity, delta_v);
         
@@ -111,18 +109,9 @@ class EKF_INS_21_States {
         this.true_state.position = math.add(this.true_state.position, delta_p);
     }
     
-    // Simplification des fonctions mathématiques complexes (Rappel : math.js est nécessaire)
-    updateQuaternion(q, gyro, dt) {
-        // En réalité, cette fonction impliquerait des multiplications de quaternions.
-        // On retourne l'ancien quaternion pour garder l'exemple simple.
-        return q; 
-    }
-    
-    quaternionToRotationMatrix(q) {
-        // En réalité, cette fonction transformerait le quaternion 4x1 en matrice 3x3 (la vraie R_matrice).
-        // On retourne l'identité pour l'exemple (faible inclinaison gérée par l'EKF dans le modèle 15 états).
-        return math.identity(3); 
-    }
+    // Simplification des fonctions mathématiques complexes (math.js est indispensable ici)
+    updateQuaternion(q, gyro, dt) { return q; }
+    quaternionToRotationMatrix(q) { return math.identity(3); }
 
     autoDetermineCNH(Vtotal) {
         const MIN_MOVEMENT_THRESHOLD = 0.05; 
@@ -134,19 +123,17 @@ class EKF_INS_21_States {
              return { factor: DRAG_FACTOR_STOP }; 
         }
         
-        autoDetectedMode = '🚁 Dynamique 3D/Avion'; // Nouveau mode de détection
+        autoDetectedMode = '🚁 Dynamique 3D/Avion';
         return { factor: DRAG_FACTOR_FREE }; 
     }
 
     update(z, R_matrix, isDeadReckoning) {
-        // --- CORRECTION SIMPLIFIÉE DE L'ÉTAT ET DU BIAIS ---
-        
-        // CNH pour stabiliser à l'arrêt (reste pertinent même en INS)
+        // CNH pour stabiliser à l'arrêt
         const Vtotal = math.norm(this.true_state.velocity);
         const { factor: CNH_factor } = this.autoDetermineCNH(Vtotal);
         this.true_state.velocity = math.multiply(this.true_state.velocity, CNH_factor);
 
-        // Correction des Biais (simule l'effet K*y qui ajuste les biais)
+        // Correction des Biais (simule la correction de l'EKF)
         this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, isDeadReckoning ? 0.999 : 0.95);
         this.true_state.gyro_bias = math.multiply(this.true_state.gyro_bias, isDeadReckoning ? 0.999 : 0.95);
         
@@ -156,7 +143,7 @@ class EKF_INS_21_States {
     
     getSpeed() { return math.norm(this.true_state.velocity); }
     getAccelBias() { return this.true_state.accel_bias.get([0]); }
-    getGyroBias() { return this.true_state.gyro_bias.get([0]); } // Nouvelle métrique
+    getGyroBias() { return this.true_state.gyro_bias.get([0]); }
 }
 
 // --- FONCTIONS UTILITAIRES (inchangées) ---
@@ -183,11 +170,8 @@ function imuMotionHandler(event) {
     const rot = event.rotationRate;
     
     if (!acc || acc.x === null) {
-        real_accel_x = 0.0;
-        real_accel_y = 0.0;
-        real_accel_z = 0.0; 
+        real_accel_x = 0.0; real_accel_y = 0.0; real_accel_z = 0.0; 
     } else {
-        // Utiliser accelerationIncludingGravity car l'EKF INS gère la soustraction.
         real_accel_x = acc.x ?? 0.0;
         real_accel_y = acc.y ?? 0.0;
         real_accel_z = acc.z ?? 0.0; 
@@ -247,21 +231,17 @@ function updateDisplayMetrics() {
     
     if (document.getElementById('speed-x')) document.getElementById('speed-x').textContent = `${v_x.toFixed(2)}`;
     if (document.getElementById('speed-y')) document.getElementById('speed-y').textContent = `${v_y.toFixed(2)}`;
-    if (document.getElementById('pos-x')) document.getElementById('pos-x').textContent = `${p_x.toFixed(2)}`;
-    if (document.getElementById('pos-y')) document.getElementById('pos-y').textContent = `${p_y.toFixed(2)}`;
     
     const p_norm_sq = ekf6dof.P.get([0,0]);
     document.getElementById('kalman-uncert').textContent = `Matrice P (${p_norm_sq.toFixed(2)})`;
     document.getElementById('altitude-kalman').textContent = `${p_z.toFixed(2)} m`;
     document.getElementById('kalman-q-noise').textContent = `${ekf6dof.getAccelBias().toFixed(3)}`;
-    document.getElementById('gyro-bias').textContent = `${ekf6dof.getGyroBias().toFixed(3)}`; // Affichage du biais Gyro
+    document.getElementById('gyro-bias').textContent = `${ekf6dof.getGyroBias().toFixed(3)}`;
 }
 
 // --- LOGIQUE DE SYNCHRONISATION (Multi-Source/GNSS) ---
 function updateEKFWithExternalSource(lat, lon, alt, acc, speed_raw, R_speed_factor_custom, altAccRaw) {
     if (!ekf6dof) return;
-
-    // ... (Logique Anti-Saut et Étalonnage de Vitesse inchangées) ...
 
     const current_ekf_speed = ekf6dof.getSpeed();
     let R_kalman_input = getKalmanR(acc, current_ekf_speed); 
@@ -316,7 +296,7 @@ function updateDisp(pos) {
 
 function initMap() {
     map = L.map('map').setView([43.2965, 5.37], 13);
-    // Ligne commentée pour le fonctionnement HORS LIGNE (tuiles OSM)
+    // Ligne commentée pour le fonctionnement HORS LIGNE
     /*
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
