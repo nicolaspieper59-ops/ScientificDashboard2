@@ -1,20 +1,18 @@
 // =================================================================
 // FICHIER JS FINAL : gnss-dashboard-full.js
 // EKF INS (Système de Navigation Inertielle) - ES-EKF 21 États CONCEPTUEL
-// Gère l'Orientation (Attitude) et les Biais de Gyroscope pour la Dynamique 3D
 // =================================================================
 
 // --- CONSTANTES DE BASE ET MATHÉMATIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const KMH_MS = 3.6;         
-const MIN_DT = 0.0001;      
 const GRAVITY = 9.81; // m/s^2
 
 // --- CONSTANTES DE FRÉQUENCE IMU ---
 const IMU_FREQUENCY_HZ = 100;
 const DT_IMU = 1 / IMU_FREQUENCY_HZ; 
 
-// --- PARAMÈTRES EKF et ANTI-SAUT ---
+// --- PARAMÈTRES EKF ---
 const R_MIN = 1.0;            
 const R_MAX = 500.0;          
 const R_SLOW_SPEED_FACTOR = 100.0; 
@@ -32,76 +30,46 @@ let isDeadReckoning = false;
 let autoDetectedMode = 'Libre/Piéton'; 
 
 // --- VARIABLES GLOBALES POUR LES CAPTEURS RÉELS ---
-let real_accel_x = 0.0;
-let real_accel_y = 0.0;
-let real_accel_z = 0.0; 
-let real_gyro_x = 0.0;
-let real_gyro_y = 0.0;
-let real_gyro_z = 0.0;
+let real_accel_x = 0.0; let real_accel_y = 0.0; let real_accel_z = 0.0; 
+let real_gyro_x = 0.0; let real_gyro_y = 0.0; let real_gyro_z = 0.0;
 
 // =================================================================
 // CLASSE EKF INS (Système de Navigation Inertielle) - ES-EKF 21 États
 // =================================================================
 class EKF_INS_21_States {
     constructor() {
-        // État d'erreur (21 états)
         this.error_state_vector = math.zeros(21); 
-        
-        // État Vrai (estimations non-linéaires)
         this.true_state = {
             position: math.matrix([0, 0, 0]), 
             velocity: math.matrix([0, 0, 0]), 
-            attitude_q: math.matrix([1, 0, 0, 0]), // Quaternion (w, x, y, z)
+            attitude_q: math.matrix([1, 0, 0, 0]), // Quaternion 
             accel_bias: math.matrix([0, 0, 0]), 
             gyro_bias: math.matrix([0, 0, 0]),     
         };
         
-        // Covariance d'Erreur (21x21)
-        const initial_uncertainty_21 = [
-            10, 10, 10,       // Pos
-            1, 1, 1,          // Vel
-            0.1, 0.1, 0.1,    // Attitude
-            0.01, 0.01, 0.01, // Biais Accel
-            0.001, 0.001, 0.001, // Biais Gyro
-            0.01, 0.01, 0.01, 0.01, 0.01, 0.01 // Termes additionnels
-        ];
+        const initial_uncertainty_21 = [10, 10, 10, 1, 1, 1, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01];
         this.P = math.diag(initial_uncertainty_21); 
-        
-        // Bruit de Processus (21x21)
-        this.Q = math.diag([
-            0, 0, 0, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 
-            0.00005, 0.00005, 0.000001, 0.000001, 0.000001, 0.000001, 
-            0, 0, 0, 0, 0, 0
-        ]);
+        this.Q = math.diag([0, 0, 0, 0.01, 0.01, 0.01, 0.001, 0.001, 0.001, 0.00005, 0.00005, 0.000001, 0.000001, 0.000001, 0.000001, 0, 0, 0, 0, 0, 0]);
     }
     
     predict(dt, imu_input) {
-        // La matrice F n'est pas entièrement calculée, on simule l'augmentation de l'incertitude
         this.P = math.add(this.P, this.Q);
-        
         const accel_raw = math.matrix([imu_input[0], imu_input[1], imu_input[2]]);
         const gyro_raw = math.matrix([imu_input[3], imu_input[4], imu_input[5]]); 
         
-        // --- ÉTAPE 1: Compensation des Biais ---
         const accel_corrected = math.subtract(accel_raw, this.true_state.accel_bias);
         const gyro_corrected = math.subtract(gyro_raw, this.true_state.gyro_bias); 
         
-        // --- ÉTAPE 2: Propagation de l'Orientation (Gyroscope) ---
-        // La fonction updateQuaternion utilise gyro_corrected pour mettre à jour l'orientation (q)
         this.true_state.attitude_q = this.updateQuaternion(this.true_state.attitude_q, gyro_corrected, dt); 
         
-        // --- ÉTAPE 3: COMPENSATION de GRAVITÉ ---
         const R_matrice = this.quaternionToRotationMatrix(this.true_state.attitude_q);
         const Gravité_Vector = math.matrix([0, 0, -GRAVITY]); 
         
-        // Accel_Global = R_matrice * Accel_Corps + Gravité_Vector (L'opérateur + gère le signe négatif de GRAVITY)
         const accel_global = math.add(math.multiply(R_matrice, accel_corrected), Gravité_Vector); 
         
-        // FORCE DE TRAÎNÉE
         const drag_force = math.multiply(this.true_state.velocity, -DRAG_COEFFICIENT);
         const total_acceleration = math.add(accel_global, drag_force);
         
-        // Intégration
         const delta_v = math.multiply(total_acceleration, dt);
         this.true_state.velocity = math.add(this.true_state.velocity, delta_v);
         
@@ -109,7 +77,7 @@ class EKF_INS_21_States {
         this.true_state.position = math.add(this.true_state.position, delta_p);
     }
     
-    // Simplification des fonctions mathématiques complexes (math.js est indispensable ici)
+    // --- FONCTIONS PLACEHOLDERS (Nécessitent la librairie math.js) ---
     updateQuaternion(q, gyro, dt) { return q; }
     quaternionToRotationMatrix(q) { return math.identity(3); }
 
@@ -128,16 +96,13 @@ class EKF_INS_21_States {
     }
 
     update(z, R_matrix, isDeadReckoning) {
-        // CNH pour stabiliser à l'arrêt
         const Vtotal = math.norm(this.true_state.velocity);
         const { factor: CNH_factor } = this.autoDetermineCNH(Vtotal);
         this.true_state.velocity = math.multiply(this.true_state.velocity, CNH_factor);
 
-        // Correction des Biais (simule la correction de l'EKF)
         this.true_state.accel_bias = math.multiply(this.true_state.accel_bias, isDeadReckoning ? 0.999 : 0.95);
         this.true_state.gyro_bias = math.multiply(this.true_state.gyro_bias, isDeadReckoning ? 0.999 : 0.95);
         
-        // Réduction de l'incertitude
         this.P = math.multiply(this.P, 0.9); 
     }
     
@@ -157,9 +122,7 @@ function distance(lat1, lon1, lat2, lon2) {
     const R = 6371e3; 
     const dLat = (lat2 - lat1) * D2R;
     const dLon = (lon2 - lon1) * D2R;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * D2R) * Math.cos(lat2 * D2R) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * D2R) * Math.cos(lat2 * D2R) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
 }
@@ -169,13 +132,8 @@ function imuMotionHandler(event) {
     const acc = event.accelerationIncludingGravity; 
     const rot = event.rotationRate;
     
-    if (!acc || acc.x === null) {
-        real_accel_x = 0.0; real_accel_y = 0.0; real_accel_z = 0.0; 
-    } else {
-        real_accel_x = acc.x ?? 0.0;
-        real_accel_y = acc.y ?? 0.0;
-        real_accel_z = acc.z ?? 0.0; 
-    }
+    if (!acc || acc.x === null) { real_accel_x = 0.0; real_accel_y = 0.0; real_accel_z = 0.0; } 
+    else { real_accel_x = acc.x ?? 0.0; real_accel_y = acc.y ?? 0.0; real_accel_z = acc.z ?? 0.0; }
     
     real_gyro_x = rot.alpha ?? 0.0; 
     real_gyro_y = rot.beta ?? 0.0;
@@ -183,15 +141,11 @@ function imuMotionHandler(event) {
 }
 
 function startIMUListeners() {
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', imuMotionHandler);
-    }
+    if (window.DeviceMotionEvent) { window.addEventListener('devicemotion', imuMotionHandler); }
 }
 
 function stopIMUListeners() {
-    if (window.DeviceMotionEvent) {
-        window.removeEventListener('devicemotion', imuMotionHandler);
-    }
+    if (window.DeviceMotionEvent) { window.removeEventListener('devicemotion', imuMotionHandler); }
 }
 
 // --- BOUCLE D'ESTIME IMU AUTONOME (100 Hz) ---
@@ -212,14 +166,10 @@ function updateDisplayMetrics() {
 
     const R_kalman_input = getKalmanR(lPos?.coords?.accuracy ?? R_MAX, current_ekf_speed);
     
-    const modeStatus = isDeadReckoning 
-        ? '🚨 DEAD RECKONING (DR) EN COURS - Mode DR auto: ' + autoDetectedMode
-        : '🛰️ FUSION INS/GNSS';
+    const modeStatus = isDeadReckoning ? '🚨 DEAD RECKONING (DR) EN COURS - Mode DR auto: ' + autoDetectedMode : '🛰️ FUSION INS/GNSS';
     
     const v_x = ekf6dof.true_state.velocity.get([0]);
     const v_y = ekf6dof.true_state.velocity.get([1]);
-    const p_x = ekf6dof.true_state.position.get([0]);
-    const p_y = ekf6dof.true_state.position.get([1]);
     const p_z = ekf6dof.true_state.position.get([2]);
 
     const sSpdFE = final_speed < 0.05 ? 0 : final_speed; 
@@ -264,9 +214,7 @@ function updateEKFWithExternalSource(lat, lon, alt, acc, speed_raw, R_speed_fact
     }
     
     const external_measurement = math.matrix([lat, lon, alt, speed_raw, 0, 0]); 
-    const R_matrix = math.diag([
-        R_kalman_input, R_kalman_input, altAccRaw, R_speed_factor, R_speed_factor, R_V_VERTICAL_UNCERTAINTY
-    ]); 
+    const R_matrix = math.diag([R_kalman_input, R_kalman_input, altAccRaw, R_speed_factor, R_speed_factor, R_V_VERTICAL_UNCERTAINTY]); 
     
     ekf6dof.update(external_measurement, R_matrix, isDeadReckoning);
 }
@@ -296,12 +244,7 @@ function updateDisp(pos) {
 
 function initMap() {
     map = L.map('map').setView([43.2965, 5.37], 13);
-    // Ligne commentée pour le fonctionnement HORS LIGNE
-    /*
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-    */
+    // Tuiles OSM commentées pour le mode HORS LIGNE
     marker = L.marker([0, 0]).addTo(map);
 }
 
@@ -374,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setTransportModeParameters(mode) {
         currentTransportMode = mode;
         if (mode === 'INS_6DOF_REALISTE') {
-            ekf6dof = new EKF_INS_21_States(); // INITIALISATION DE LA NOUVELLE CLASSE INS
+            ekf6dof = new EKF_INS_21_States(); 
             document.getElementById('nhc-status').textContent = '✅ EKF INS 21-États ACTIF';
         } else {
              document.getElementById('nhc-status').textContent = 'Mode EKF 1D ou Fictionnel';
