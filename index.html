@@ -8,23 +8,42 @@
     <link rel="manifest" href="manifest.json">
     
     <link rel="stylesheet" href="leaflet.css"/>
-    
+    <link rel="stylesheet" href="fontawesome.min.css"/>
+    <link rel="stylesheet" href="style.css"/>
+
     <style>
+        /* Styles de base */
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f7f9; }
         header { background-color: #3f51b5; color: white; padding: 10px; text-align: center; }
         #container { display: flex; flex-wrap: wrap; max-width: 1200px; margin: 20px auto; }
         #map { height: 400px; width: 100%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); margin-bottom: 20px; }
-        #controls-metrics { display: flex; flex-wrap: wrap; width: 100%; }
-        #controls { flex: 1; min-width: 300px; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); margin-right: 20px; }
-        #metrics { flex: 2; min-width: 400px; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+        /* ... (Autres styles de mise en page) ... */
         .metric-group { margin-bottom: 15px; padding: 10px; border: 1px solid #eee; border-radius: 5px; }
         .metric-group h3 { margin-top: 0; border-bottom: 2px solid #3f51b5; padding-bottom: 5px; color: #3f51b5; }
-        .metric-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #eee; }
-        .metric-label { font-weight: bold; }
-        .metric-value { color: #00796b; font-family: monospace; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #00796b; color: white; border: none; border-radius: 5px; transition: background-color 0.3s; }
-        button:hover { background-color: #004d40; }
-        select { padding: 10px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; width: 100%; margin-bottom: 15px; }
+        /* ... (Styles de bouton et de sélection) ... */
+
+        /* NOUVEAUX STYLES POUR L'AFFICHAGE DU CIEL (AMULETTE) */
+        .sky-display {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(to bottom, #4a90e2 0%, #89cff0 60%, #50c878 100%);
+            border: 8px solid #FFD700;
+            margin: 10px auto;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        .sky-sun {
+            width: 25px;
+            height: 25px;
+            background-color: #FFEB3B;
+            border-radius: 50%;
+            position: absolute;
+            left: 50%;
+            transform: translate(-50%, -50%); /* Position initiale (haut) */
+            transition: transform 0.5s ease-out;
+        }
     </style>
 </head>
 <body>
@@ -37,45 +56,42 @@
         <div id="controls-metrics">
             <div id="controls">
                 <h2>Contrôles</h2>
-                <p>Sélectionnez le mode de navigation INS :</p>
                 <select id="transport-mode-select">
                     <option value="INS_6DOF_REALISTE">INS 21-États (Dynamique 3D)</option>
                     <option value="GPS_BRUT">GPS Brut (Sans EKF)</option>
                 </select>
-                
                 <button id="toggle-gps-btn">Démarrer la Fusion (INS/GNSS)</button>
                 <p style="margin-top: 15px;">**Statut :** <span id="gps-status-dr" style="font-weight: bold;">Arrêté</span></p>
             </div>
             
             <div id="metrics">
                 <h2>Métriques de l'EKF</h2>
+                
                 <div class="metric-group">
-                    <h3>Vitesse & Dynamique</h3>
-                    <div class="metric-item"><span class="metric-label">Vitesse EKF (km/h) :</span><span class="metric-value" id="current-speed">0.00</span></div>
-                    <div class="metric-item"><span class="metric-label">Vitesse EKF (m/s) :</span><span class="metric-value" id="speed-stable">0.000</span></div>
-                    <div class="metric-item"><span class="metric-label">Mode CNH/DR Auto :</span><span class="metric-value" id="nhc-status">Mode EKF 1D ou Fictionnel</span></div>
+                    <h3>Ciel & Météo</h3>
+                    <div id="sky-amulet" class="sky-display">
+                        <div id="sky-sun-object" class="sky-sun"></div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Saison :</span>
+                        <span class="metric-value" id="season-info">Indéterminée</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Météo (T/P/H) :</span>
+                        <span class="metric-value" id="weather-info">Chargement...</span>
+                    </div>
                 </div>
-                <div class="metric-group">
-                    <h3>Position & Correction (3D)</h3>
-                    <div class="metric-item"><span class="metric-label">Altitude EKF (m) :</span><span class="metric-value" id="altitude-kalman">0.00</span></div>
-                    <div class="metric-item"><span class="metric-label">Incertitude Pos. EKF ($P_{0,0}$) :</span><span class="metric-value" id="kalman-uncert">Matrice P (0.00)</span></div>
-                    <div class="metric-item"><span class="metric-label">Fiabilité GPS ($R$) :</span><span class="metric-value" id="kalman-r-dyn">0.00</span></div>
+
                 </div>
-                <div class="metric-group">
-                    <h3>Dérive & Biais (INS)</h3>
-                    <div class="metric-item"><span class="metric-label">Biais Accél. X estimé ($\mathbf{b}_a$) :</span><span class="metric-value" id="kalman-q-noise">0.000</span></div>
-                    <div class="metric-item"><span class="metric-label">Biais Gyro. X estimé ($\mathbf{b}_g$) :</span><span class="metric-value" id="gyro-bias">0.000</span></div>
-                    <div class="metric-item"><span class="metric-label">Vitesse X (m/s) :</span><span class="metric-value" id="speed-x">0.00</span></div>
-                    <div class="metric-item"><span class="metric-label">Vitesse Y (m/s) :</span><span class="metric-value" id="speed-y">0.00</span></div>
-                </div>
-            </div>
         </div>
     </div>
 
-    <script src="math.min.js"></script> 
-    <script src="leaflet.js"></script>
-
-    <script src="gnss-dashboard-full.js"></script>
+    <script src="math.min.js"></script> <script src="leaflet.js"></script>
+    <script src="suncalc.js"></script>
+    
+    <script src="math_logic.js"></script>
+    <script src="weather.js"></script>
+    <script src="app_logic.js"></script>
 
     <script>
         if ('serviceWorker' in navigator) {
@@ -87,4 +103,4 @@
         }
     </script>
 </body>
-</html>
+                        </html>
