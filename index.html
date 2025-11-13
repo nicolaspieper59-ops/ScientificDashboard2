@@ -29,11 +29,11 @@
         .data-point { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #333; }
         .speed-main-display { font-size: 3.5em; font-weight: bold; color: var(--accent-green); text-align: center; line-height: 1.1; margin-bottom: 10px; }
         button { background-color: var(--accent-blue); color: var(--bg-dark); border: none; padding: 10px; border-radius: 5px; cursor: pointer; margin-top: 10px; font-weight: bold; }
-        button.active { background-color: #ff5722; }
+        #emergency-stop-btn.active { background-color: #f44336; }
         #gnss-map { height: 350px; border-radius: 8px; margin-top: 10px; }
         hr { border-color: #333; margin: 15px 0; }
         .input-group { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
-        input[type="number"], select { padding: 5px; border-radius: 4px; border: 1px solid #555; background-color: #333; color: var(--text-dark); width: 100px; }
+        input[type="number"], select { padding: 5px; border-radius: 4px; border: 1px solid #555; background-color: #333; color: var(--text-dark); width: 100px; text-align: right; }
     </style>
 </head>
 <body>
@@ -55,7 +55,7 @@
         <button id="emergency-stop-btn">🛑 Arrêt d'urgence: INACTIF 🟢</button>
         
         <div class="input-group">
-            <label for="mass-input">Masse (kg)</label>
+            <label for="mass-input">Masse de l'objet (kg)</label>
             <input type="number" id="mass-input" value="70.0" step="0.01">
             <span id="mass-display">70.000 kg</span>
         </div>
@@ -67,8 +67,8 @@
                 <option value="LUNE">Lune</option>
                 <option value="MARS">Mars</option>
             </select>
+            <span id="corps-celeste-gravity">9.8067 m/s²</span>
         </div>
-        <div class="data-point"><span>Gravité de Base</span><span id="corps-celeste-gravity">9.8067 m/s²</span></div>
         <div class="data-point"><span>Rapport Dist. Centre-Terre</span><span id="rapport-dist-centre-terre">1.000 (Surface)</span></div>
 
         <hr>
@@ -80,17 +80,17 @@
 
     <div class="panel">
         <h2><i class="fas fa-tachometer-alt"></i> Vitesse & Distance</h2>
-        <div class="speed-main-display"><span id="speed-stable">0.00</span> km/h</div>
+        <div class="speed-main-display"><span id="speed-stable">--.--</span> km/h</div>
         
-        <div class="data-point"><span>Vitesse Stable (m/s)</span><span id="speed-stable-ms">0.000 m/s</span></div>
-        <div class="data-point"><span>Vitesse Stable (km/s)</span><span id="speed-stable-kms">0.00e+0 km/s</span></div>
-        <div class="data-point"><span>Vitesse 3D (Instantanée)</span><span id="speed-3d-inst">0.00 km/h</span></div> 
-        <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-brute-ms">0.000 m/s</span></div>
-        <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.00 km/h</span></div>
-        <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.00 km/h</span></div>
-        <div class="data-point"><span>Vitesse Moyenne (Total)</span><span id="speed-avg-total">0.00 km/h</span></div>
-        <div class="data-point"><span>Vitesse Verticale</span><span id="vertical-speed">0.00 m/s</span></div>
-
+        <div class="data-point"><span>Vitesse Stable (m/s)</span><span id="speed-stable-ms">-- m/s</span></div>
+        <div class="data-point"><span>Vitesse Stable (km/s)</span><span id="speed-stable-kms">-- km/s</span></div>
+        <div class="data-point"><span>Vitesse 3D (Instantanée)</span><span id="speed-3d-inst">-- km/h</span></div> 
+        <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-brute-ms">-- m/s</span></div>
+        <div class="data-point"><span>Vitesse Verticale (m/s)</span><span id="vertical-speed">0.00 m/s</span></div>
+        <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.0 km/h</span></div>
+        <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.0 km/h</span></div>
+        <div class="data-point"><span>Vitesse Moyenne (Total)</span><span id="speed-avg-total">0.0 km/h</span></div>
+        
         <hr>
         
         <h3>Distance (3D)</h3>
@@ -111,7 +111,6 @@
         <div class="data-point"><span>Altitude (EKF Corrigée)</span><span id="altitude-ekf-corrigee">N/A</span></div>
         <div class="data-point"><span>Altitude Géopotentielle</span><span id="altitude-geopotentielle">N/A</span></div>
         <div class="data-point"><span>Cap (Direction, Magnéto)</span><span id="cap-direction">N/A</span></div>
-        <div class="data-point"><span>Statut Souterrain</span><span id="underground-status">N/A</span></div>
         
         <hr>
         
@@ -124,19 +123,19 @@
         <div class="data-point"><span>☀️ Lever/Coucher (Locale)</span><span id="lever-coucher-locale">N/A / N/A</span></div>
         <div class="data-point"><span>Phase Lune</span><span id="phase-lune">N/A</span></div>
         <div class="data-point"><span>Lune Âge (Jours)</span><span id="lune-age">N/A</span></div>
-        <div class="data-point"><span>Lune Distance</span><span id="lune-distance">N/A</span></div>
-        <div class="data-point"><span>Soleil Distance</span><span id="soleil-distance">N/A</span></div>
+        <div class="data-point"><span>Lune Distance (km)</span><span id="lune-distance">N/A</span></div>
+        <div class="data-point"><span>Soleil Distance (UA)</span><span id="soleil-distance">N/A</span></div>
     </div>
 
     <div class="panel">
         <h2><i class="fas fa-cloud-sun"></i> Météo & Biophysique</h2>
         
-        <div class="data-point"><span>Temp. Air (Réelle)</span><span id="temp-air-reelle">N/A</span></div>
-        <div class="data-point"><span>Pression Atm. (Corrigée)</span><span id="pression-atm-corrigee">N/A</span></div>
-        <div class="data-point"><span>Humidité Relative</span><span id="humidite-relative">N/A</span></div>
-        <div class="data-point"><span>Point de Rosée</span><span id="point-rosee">N/A</span></div>
-        <div class="data-point"><span>Densité de l'Air (Corrigée)</span><span id="densite-air-corrigee">N/A</span></div>
-        <div class="data-point"><span>Vitesse du Son Locale</span><span id="vitesse-son-locale">N/A</span></div>
+        <div class="data-point"><span>Temp. Air (Réelle)</span><span id="temp-air-reelle">18.0 °C</span></div>
+        <div class="data-point"><span>Pression Atm. (Corrigée)</span><span id="pression-atm-corrigee">1019.5 hPa</span></div>
+        <div class="data-point"><span>Humidité Relative</span><span id="humidite-relative">66 %</span></div>
+        <div class="data-point"><span>Point de Rosée</span><span id="point-rosee">13.0 °C</span></div>
+        <div class="data-point"><span>Densité de l'Air (Corrigée)</span><span id="densite-air-corrigee">1.200 kg/m³</span></div>
+        <div class="data-point"><span>Vitesse du Son Locale</span><span id="vitesse-son-locale">341.8 m/s</span></div>
         
         <hr>
         
@@ -154,9 +153,9 @@
         <div class="data-point"><span>Gravité Locale (g)</span><span id="gravite-locale">N/A</span></div>
         <div class="data-point"><span>Temps Dilation (Vitesse)</span><span id="time-dilation-v">0.00 ns/j</span></div>
         <div class="data-point"><span>Temps Dilation (Gravité)</span><span id="time-dilation-gravite">0.00 ns/j</span></div>
-        <div class="data-point"><span>Énergie Relativiste ($\text{E}$)</span><span id="energie-relativiste">N/A</span></div>
-        <div class="data-point"><span>Énergie de Masse au Repos ($\text{E}_0$)</span><span id="energie-masse-repos">N/A</span></div>
-        <div class="data-point"><span>Rayon de Schwarzschild ($\text{R}_s$)</span><span id="rayon-schwarzschild">N/A</span></div>
+        <div class="data-point"><span>Énergie Relativiste (E)</span><span id="energie-relativiste">N/A</span></div>
+        <div class="data-point"><span>Énergie de Masse au Repos (E₀)</span><span id="energie-masse-repos">N/A</span></div>
+        <div class="data-point"><span>Rayon de Schwarzschild (Rₛ)</span><span id="rayon-schwarzschild">N/A</span></div>
 
         <hr>
         
@@ -164,12 +163,12 @@
         <div class="data-point"><span>Accélération Long.</span><span id="acceleration-long">N/A</span></div>
         <div class="data-point"><span>Force de Coriolis</span><span id="force-coriolis">0.00 N</span></div>
         <div class="data-point"><span>Quantité de Mouvement</span><span id="quantite-mouvement">N/A</span></div>
-        <div class="data-point"><span>Pression Dynamique ($\text{q}$)</span><span id="dynamic-pressure">0.00 Pa</span></div>
+        <div class="data-point"><span>Pression Dynamique (q)</span><span id="dynamic-pressure">0.00 Pa</span></div>
         <div class="data-point"><span>Force de Traînée</span><span id="force-trainee">0.00 N</span></div>
         <div class="data-point"><span>Nombre de Reynolds</span><span id="nombre-reynolds">N/A</span></div>
         <div class="data-point"><span>Nombre de Mach</span><span id="nombre-mach">0.0000</span></div>
         <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">0.00 %</span></div>
-        <div class="data-point"><span>Facteur de Lorentz ($\gamma$)</span><span id="lorentz-factor">1.0000</span></div>
+        <div class="data-point"><span>Facteur de Lorentz (γ)</span><span id="lorentz-factor">1.0000</span></div>
     </div>
     
     <div class="panel">
@@ -179,7 +178,7 @@
         <hr>
 
         <h2><i class="fas fa-brain"></i> Filtre EKF & Debug</h2>
-        <div class="data-point"><span>Statut GPS & EKF</span><span id="gps-status-dr">Arrêté</span></div>
+        <div class="data-point"><span>Statut GPS & EKF</span><span id="statut-gps-ekf">Arrêté</span></div>
         <div class="data-point"><span>Précision GPS (Acc)</span><span id="gps-precision-acc">N/A</span></div>
         <div class="input-group">
             <label for="gps-accuracy-override">Forcer Précision GPS (m)</label>
@@ -189,9 +188,9 @@
         
         <hr>
         
-        <div class="data-point"><span>Incertitude Vitesse ($\text{P}$)</span><span id="kalman-uncert">N/A</span></div>
-        <div class="data-point"><span>Incertitude Alt. ($\sigma$)</span><span id="alt-uncertainty">N/A</span></div> 
-        <div class="data-point"><span>Bruit Mesure Vitesse ($\text{R}$)</span><span id="bruit-mesure-vitesse-r">N/A</span></div>
+        <div class="data-point"><span>Incertitude Vitesse (P)</span><span id="kalman-uncert">N/A</span></div>
+        <div class="data-point"><span>Incertitude Alt. (σ)</span><span id="alt-uncertainty">N/A</span></div> 
+        <div class="data-point"><span>Bruit Mesure Vitesse (R)</span><span id="bruit-mesure-vitesse-r">N/A</span></div>
         
         <hr>
         
@@ -205,7 +204,8 @@
         integrity="sha256-R4eAG3I4zD4I3O43S7hQ9T7w/6xXw7A9/A6d5Q7K6w="
         crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
-<script src="gnss-dashboard-full.js"></script>
 
+<script src="gnss-dashboard-full.js"></script>
+    
 </body>
-                                                                                                            </html>
+    </html>
