@@ -1,80 +1,97 @@
 // =================================================================
-// FICHIER JS FINAL MAXIMAL : gnss-dashboard-full-max.js (4 BLOCS)
-// EKF INS (Système de Navigation Inertielle) - ES-EKF 21 États COMPLET
-// NOUVEAU : Minecraft Time, Géopotentiel, SVT/Chimie Étendu
+// PARTIE 1/2 : CONSTANTES, ÉTAT GLOBAL & MATHÉMATIQUES
 // =================================================================
 
-// --- BLOC 1/4 : Constantes, État Global & Filtres EKF (Core Math) ---
+// --- CONFIGURATION & API ---
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
 const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
-const DOM_SLOW_UPDATE_MS = 2000; 
+const DOM_SLOW_UPDATE_MS = 1000; 
 
+// --- CONSTANTES PHYSIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-const C_L = 299792458;          // Vitesse de la lumière (m/s)
-const C_S_STD = 343;            // Vitesse du son standard (m/s)
-const G_U = 6.67430e-11;        // Constante gravitationnelle universelle (N·m²/kg²)
-const OMEGA_EARTH = 7.292115e-5; // Vitesse de rotation de la Terre (rad/s)
-const R_SPECIFIC_AIR = 287.058; // Constante spécifique de l'air sec (J/kg·K)
-const R_WATER_VAPOR = 461.5;    // Constante spécifique pour la vapeur d'eau (J/kg·K)
-const GAMMA_AIR = 1.4;          // Indice adiabatique de l'air
-const MU_DYNAMIC_AIR = 1.8e-5;  // Viscosité dynamique de l'air (Pa·s)
-const R_E_BASE = 6371000;       // Rayon terrestre moyen (m)
-const KMH_MS = 3.6;             // Conversion m/s vers km/h
+const C_L = 299792458;          // Vitesse lumière (m/s)
+const C_S_STD = 343;            // Vitesse son (m/s)
+const G_U = 6.67430e-11;        // Constante gravitationnelle
+const OMEGA_EARTH = 7.292115e-5; // Vitesse rotation Terre
+const R_SPECIFIC_AIR = 287.058; // Constante gaz air sec
+const R_WATER_VAPOR = 461.5;    // Constante gaz vapeur eau
+const GAMMA_AIR = 1.4;          // Indice adiabatique
+const MU_DYNAMIC_AIR = 1.8e-5;  // Viscosité dynamique
+const R_E_BASE = 6371000;       // Rayon Terre
+const KMH_MS = 3.6;             // Conversion m/s -> km/h
 
-// --- CONSTANTES PHYSIQUE AVANCÉE/QUANTIQUE ---
-const PLANCK_CONSTANT_REDUCED = 1.0545718e-34; // Constante de Planck réduite (J·s)
-const C_BOLTZMANN = 1.380649e-23;             // Constante de Boltzmann (J/K)
-const SCHWARZSCHILD_PROXIMITY = 1e-6;         // Proximité (m) pour le calcul de Casimir
-const PM25_DEFAULT = 15.0;                    // PM 2.5 de base (simulation)
+// --- CONSTANTES AVANCÉES (Quantique / ISA) ---
+const PLANCK_CONSTANT_REDUCED = 1.0545718e-34; 
+const C_BOLTZMANN = 1.380649e-23;             
+const SCHWARZSCHILD_PROXIMITY = 1e-6;         
+const PM25_DEFAULT = 15.0;                    
+const T_ISA_0M_K = 288.15;      
+const P_ISA_0M_PA = 101325;     
+const LAPSE_RATE_ISA = 0.0065;  
 
-// --- CONSTANTES MÉTÉO ISA (Atmosphère Standard Internationale) ---
-const T_ISA_0M_K = 288.15;      // Température standard au niveau de la mer (K)
-const P_ISA_0M_PA = 101325;     // Pression standard au niveau de la mer (Pa)
-const LAPSE_RATE_ISA = 0.0065;  // Taux de déperdition standard (K/m)
-
-// --- PARAMÈTRES EKF / DRAG ---
+// --- PARAMÈTRES SYSTÈME ---
 const IMU_FREQUENCY_HZ = 100;
 const DT_IMU = 1 / IMU_FREQUENCY_HZ; 
 const MIN_SPD_DR = 0.05; 
 const R_MIN_EKF = 1.0; 
-const DEFAULT_ALBEDO = 0.15; // Albédo par défaut
+const DEFAULT_ALBEDO = 0.15;
 
-// --- VARIABLES D'ÉTAT GLOBALES ---
-let wID = null, lPos = null; 
-let imuIntervalID = null; 
-let ekf6dof = null; 
-let map = null, marker = null; 
-let lastIMUTime = performance.now();
-let GRAVITY_BASE = 9.8067;
-let MASS_CELESTIAL = 5.972e24; // Masse de la Terre
-let R_LOCAL_BASE = 6371000;
+// --- DONNÉES & ENVIRONNEMENT ---
+const CELESTIAL_DATA = {
+    'EARTH': { G: 9.80665, R: R_E_BASE, M: 5.972e24 },
+    'MOON': { G: 1.62, R: 1737400, M: 7.347e22 },
+    'MARS': { G: 3.71, R: 3389500, M: 6.417e23 },
+    'ROTATING': { G: 0.0, R: R_E_BASE, M: 0 }
+};
+
+const ENVIRONMENT_FACTORS = {
+    'NORMAL': { R_MULT: 1.0, DRAG_C: 0.5, DISPLAY: 'Normal' },
+    'FOREST': { R_MULT: 2.5, DRAG_C: 0.8, DISPLAY: 'Forêt' },
+    'CONCRETE': { R_MULT: 7.0, DRAG_C: 0.9, DISPLAY: 'Grotte/Tunnel' },
+    'METAL': { R_MULT: 5.0, DRAG_C: 0.9, DISPLAY: 'Métal/Bâtiment' },
+};
+
+// --- VARIABLES D'ÉTAT GLOBALES (Partagées) ---
+let wID = null, domID = null, lPos = null;
+let lat = null, lon = null, sTime = null;
+let distM = 0, maxSpd = 0, timeMoving = 0;
+let kSpd = 0, kUncert = 1000; 
+let lServH = new Date(), lLocH = new Date(); 
+let lastFSpeed = 0; 
+let kAlt = null, kAltUncert = 10;  
+let emergencyStopActive = false;
+let netherMode = false; 
+let selectedEnvironment = 'NORMAL'; 
 let currentMass = 70.0; 
-let totalDistance3D = 0; 
-let timeMoving = 0;
-let totalSessionTime = 0.01; 
+let currentCelestialBody = 'EARTH';
+let rotationRadius = 100;
+let angularVelocity = 0.0; 
+let G_ACC = CELESTIAL_DATA['EARTH'].G;
+let MASS_CELESTIAL = CELESTIAL_DATA['EARTH'].M;
+let R_LOCAL_BASE = CELESTIAL_DATA['EARTH'].R;
+let lastWeatherData = { 
+    tempC: 20, tempK: 293.15, pressure_hPa: 1013, 
+    humidity_perc: 50, air_density: 1.225, wind_speed_ms: 0 
+}; 
+let sunAltitudeRad = 0;
+let real_accel_x = 0, real_accel_y = 0, real_accel_z = 0;
+let map, marker, circle;
+let GPS_ACCURACY_OVERRIDE = 0;
+let ekf6dof = null; 
+let imuIntervalID = null; 
+let totalDistance3D = 0;
+let totalSessionTime = 0.01;
 let max3DSpeed = 0;
 let lastAccelLong = 0;
-let lastAccelVert = 0;
-let netherMode = 1; 
-let lServH = new Date(), lLocH = new Date(); 
-let forcedGpsPrecision = 0.0; 
-let lastWeatherData = { 
-    tempC: 17.3, tempK: 290.45, pressure_hPa: 1013.25, 
-    air_density: 1.225, humidity_perc: 81, wind_speed_ms: 0.0, 
-    baro_alt_msl: 0.0,
-};
-let lastWindSpeed = 0.0; 
 
-const $ = id => document.getElementById(id); 
-
-// --- CLASSE EKF/INS 21DOF (Simplifiée pour le contexte) ---
+// --- CLASSE EKF INS 21 ÉTATS ---
 class EKF_INS_21_States {
     constructor() {
-        this.P = 1000; // Incertitude vitesse initiale
-        this.Q_VEL = 0.1; // Bruit de processus vitesse
-        this.R_ALT = 5.0; // Bruit de mesure altitude
-        this.kAltUncert = 100; // Incertitude altitude EKF
+        this.P = 1000; 
+        this.Q_VEL = 0.1; 
+        this.R_ALT = 5.0; 
+        this.kAltUncert = 100; 
         this.lat = 0; this.lon = 0; this.alt = 0; 
         this.speedMS = 0; 
         this.vX = 0; this.vY = 0; this.vZ = 0; 
@@ -85,40 +102,34 @@ class EKF_INS_21_States {
 
     predict(dt, accel, gyroZ) {
         if (dt <= 0) return;
-        
         this.yaw = (this.yaw + gyroZ * dt * D2R + 2 * Math.PI) % (2 * Math.PI); 
-        
         const localG = calculateLocalGravity(this.lat, this.alt);
         
-        // Mouvement dans le cadre EKF (IMU)
         this.vX += accel.x * dt;
         this.vY += accel.y * dt;
         this.vZ += (accel.z - localG) * dt; 
         
         if (this.lat !== 0) {
             const R_local = R_LOCAL_BASE + this.alt;
-            const dLat = (this.vX * dt) / R_local * R2D * netherMode;
-            const dLon = (this.vY * dt) / (R_local * Math.cos(this.lat * D2R)) * R2D * netherMode;
-            
+            const dLat = (this.vX * dt) / R_local * R2D;
+            const dLon = (this.vY * dt) / (R_local * Math.cos(this.lat * D2R)) * R2D;
             this.lat += dLat;
             this.lon += dLon;
             this.alt += this.vZ * dt;
         }
-
         this.speedMS = Math.sqrt(this.vX**2 + this.vY**2 + this.vZ**2);
         this.P += this.Q_VEL * dt;
         this.deadReckoningError += this.speedMS * this.Q_VEL * dt;
-        this.vVerticalRaw = accel.z * dt; 
+        this.vVerticalRaw = accel.z * dt;
     }
     
     correctGNSS(pos, altBaro) {
-        if (pos === null) return;
-        
+        if (!pos) return;
         const rawAcc = pos.coords.accuracy || 10.0;
-        const accGPS = forcedGpsPrecision > 0 ? forcedGpsPrecision : rawAcc;
+        const accGPS = GPS_ACCURACY_OVERRIDE > 0 ? GPS_ACCURACY_OVERRIDE : rawAcc;
         const gnssSpd3D = pos.coords.speed || 0; 
-        
-        const R_dyn = Math.max(R_MIN_EKF, accGPS * 1.0); 
+        const envFactor = ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT;
+        const R_dyn = Math.max(R_MIN_EKF, accGPS * envFactor); 
         
         const K_vel = this.P / (this.P + R_dyn);
         const error_v = gnssSpd3D - this.speedMS;
@@ -128,11 +139,8 @@ class EKF_INS_21_States {
             this.vY += K_vel * error_v * (this.vY / this.speedMS);
             this.vZ += K_vel * error_v * (this.vZ / this.speedMS);
         } else {
-            this.vX *= (1 - K_vel);
-            this.vY *= (1 - K_vel);
-            this.vZ *= (1 - K_vel);
+            this.vX *= (1 - K_vel); this.vY *= (1 - K_vel); this.vZ *= (1 - K_vel);
         }
-        
         this.speedMS = Math.sqrt(this.vX**2 + this.vY**2 + this.vZ**2);
         this.P = (1 - K_vel) * this.P;
         
@@ -140,29 +148,23 @@ class EKF_INS_21_States {
         if (this.lat !== 0) {
             this.lat += K_pos * (pos.coords.latitude - this.lat);
             this.lon += K_pos * (pos.coords.longitude - this.lon);
-            this.deadReckoningError = this.deadReckoningError * (1 - K_pos); 
-
+            this.deadReckoningError *= (1 - K_pos); 
             const alt_ref = altBaro !== null ? altBaro : pos.coords.altitude;
             if (alt_ref !== null) {
                 const K_alt = this.kAltUncert / (this.kAltUncert + this.R_ALT);
                 this.alt += K_alt * (alt_ref - this.alt);
-                this.kAltUncert = (1 - K_alt) * this.kAltUncert;
+                this.kAltUncert *= (1 - K_alt);
             }
         } else {
             this.lat = pos.coords.latitude;
             this.lon = pos.coords.longitude;
             this.alt = altBaro || pos.coords.altitude || 0;
-            this.yaw = pos.coords.heading !== null ? pos.coords.heading * D2R : 0;
+            this.yaw = pos.coords.heading ? pos.coords.heading * D2R : 0;
         }
     }
 }
-// --- BLOC 2/4 : Fonctions de Calculs Avancés (Physique, Météo & Astro) ---
 
-/** NOUVEAU : Calcul de l'altitude géopotentielle */
-function calculateGeopotentialAltitude(alt) {
-    const R0 = R_E_BASE; // Rayon terrestre moyen
-    return (R0 * alt) / (R0 + alt);
-}
+// --- FONCTIONS MATHÉMATIQUES AVANCÉES ---
 
 function calculateLocalGravity(lat, alt) {
     const latRad = lat * D2R;
@@ -170,40 +172,19 @@ function calculateLocalGravity(lat, alt) {
     return g_lat * (1 - 2 * alt / R_LOCAL_BASE);
 }
 
-function calculateSpeedOfSound(tempK) {
-    return Math.sqrt(GAMMA_AIR * R_SPECIFIC_AIR * tempK);
-}
-
-// Modèle ICAO ISA Simplifié
-function calculateISA(alt) {
-    if (alt < 0 || alt > 11000) alt = Math.max(0, Math.min(11000, alt));
-    const T_alt_K = T_ISA_0M_K - LAPSE_RATE_ISA * alt; 
-    const ratio = T_alt_K / T_ISA_0M_K;
-    const power = GRAVITY_BASE / (LAPSE_RATE_ISA * R_SPECIFIC_AIR);
-    const P_alt_Pa = P_ISA_0M_PA * Math.pow(ratio, power);
-    return { T_alt_K, P_alt_Pa };
-}
-
-function calculateAirDensity(p_Pa, t_K, h_perc = 0.8) {
-    const p_v_sat = 611.2 * Math.exp((17.67 * (t_K - 273.15)) / (t_K - 29.65)); 
-    const p_v = (h_perc / 100) * p_v_sat; 
-    const p_d = p_Pa - p_v; 
-    return (p_d / (R_SPECIFIC_AIR * t_K)) + (p_v / (R_WATER_VAPOR * t_K)); 
-}
-
-// Calcul de Relativité
 function calculateRelativity(v, m) {
     const v2_c2 = (v / C_L)**2;
     const gamma = 1 / Math.sqrt(Math.max(0.0000001, 1 - v2_c2)); 
     const T_d_speed = (gamma - 1) * 86400 * 1e9; 
     const Rs = (2 * G_U * MASS_CELESTIAL / C_L**2);
     const T_d_gravity = (Rs / (2 * R_LOCAL_BASE)) * 86400 * 1e9;
-    return { gamma, T_d_speed, Rs, T_d_gravity };
+    const E0 = m * C_L**2;
+    const E = gamma * E0;
+    return { gamma, T_d_speed, Rs, T_d_gravity, E0, E };
 }
 
-// Calcul des Forces (Aérodynamique, Coriolis, Quantique)
 function calculateForces(v, mass, rho, sunAltitudeRad) {
-    const C_d = 0.05; 
+    const C_d = ENVIRONMENT_FACTORS[selectedEnvironment].DRAG_C; 
     const A = 1.0; 
     const q = 0.5 * rho * v**2; 
     const dragForce = q * C_d * A;
@@ -214,147 +195,87 @@ function calculateForces(v, mass, rho, sunAltitudeRad) {
     return { q, dragForce, corioForce, CasimirForce, RadiationPressure };
 }
 
-/** NOUVEAU : Conversion temps réel en temps Minecraft */
-function calculateMinecraftTime(sunAltitudeRad) {
-    // sunAltitudeRad: angle solaire (-pi/2 coucher, pi/2 midi)
-    // Heure solaire normalisée (0=minuit, 1=minuit suivant)
-    let solarFraction = (sunAltitudeRad / (2 * Math.PI) + 0.25) % 1; 
-    let ticks = Math.round(solarFraction * 24000) % 24000;
-    // Décalage pour que 0 ticks = 6:00 (l'aube)
-    ticks = (ticks + 18000) % 24000;
-    
-    // Convertir ticks en HH:MM
-    const hours = Math.floor(ticks / 1000) % 24; 
-    const minutes = Math.floor((ticks % 1000) * 0.06); 
-    
-    const h_str = String(hours).padStart(2, '0');
-    const m_str = String(minutes).padStart(2, '0');
-    
-    return { ticks, time: `${h_str}:${m_str}` };
-}
-
-/** NOUVEAU : Variables SVT & Environnement (Simulées étendues) */
 function calculateBioSVT(tempC, alt, humidity_perc, pressure_Pa, wind_speed_ms, sunAltitudeRad) {
     const dewPoint = tempC - ((100 - humidity_perc) / 5); 
-    const CAPE_Simp = Math.max(0, 1.5 * (tempC - 20) * 100); 
-    const PWC_Simp = Math.max(0, (0.001 * humidity_perc) * Math.exp(1.7 * tempC / (tempC + 243.12))); 
-    const windShear = (wind_speed_ms / 1000) * 0.01; 
-    const vorticity = OMEGA_EARTH * Math.sin(ekf6dof.lat * D2R);
-    const albedo = DEFAULT_ALBEDO + 0.1 * Math.abs(Math.sin(sunAltitudeRad));
-    const pm25 = PM25_DEFAULT + Math.floor(Math.random() * 5); 
+    const windChill = (tempC < 15 && wind_speed_ms > 1.3) ? 13.12 + 0.6215 * tempC - 11.37 * Math.pow(wind_speed_ms * 3.6, 0.16) + 0.3965 * tempC * Math.pow(wind_speed_ms * 3.6, 0.16) : tempC;
     
-    // NEW SVT/CHIMIE SIMULATIONS (Placeholders pour capteurs/API)
-    const O2_LEVEL = 20.9; // % vol (standard)
-    const CO2_LEVEL_SIM = 420 + Math.random() * 5; // ppm
-    const OZONE_CONC_SIM = 300 + 50 * Math.sin(alt / 10000); // Dobson Units (DU)
-    const PH_LEVEL_SIM = 6.5 + 0.5 * Math.random(); // pH
-    const NOISE_LEVEL_SIM = 40 + wind_speed_ms * 5 + (ekf6dof.speedMS > 1 ? 20 : 0); // dB
-    const SOIL_TYPE_SIM = "Argileux (API)"; // Placeholder
-    const NDVI_INDEX_SIM = Math.min(0.9, 0.2 + 0.7 * (Math.sin(alt / 5000) + 1) / 2); // NDVI (Normalized Difference Vegetation Index)
+    const O2_LEVEL = 20.9; 
+    const CO2_LEVEL = 420 + Math.random() * 5; 
+    const OZONE = 300 + 50 * Math.sin(alt / 10000); 
+    const PH = 6.5 + 0.5 * Math.random(); 
+    const NOISE = 40 + wind_speed_ms * 5; 
+    const NDVI = Math.min(0.9, 0.2 + 0.7 * (Math.sin(alt / 5000) + 1) / 2); 
+    const CAPE = Math.max(0, 1.5 * (tempC - 20) * 100); 
 
-    return { 
-        dewPoint, CAPE_Simp, PWC_Simp, windShear, vorticity, albedo, pm25,
-        O2_LEVEL, CO2_LEVEL_SIM, OZONE_CONC_SIM, PH_LEVEL_SIM, NOISE_LEVEL_SIM, SOIL_TYPE_SIM, NDVI_INDEX_SIM
-    };
-            }
-// --- BLOC 3/4 : Contrôles, Fusion GNSS/IMU & Carte ---
+    return { dewPoint, windChill, O2_LEVEL, CO2_LEVEL, OZONE, PH, NOISE, NDVI, CAPE };
+}
+
+function calculateSpeedOfSound(tempK) {
+    return Math.sqrt(GAMMA_AIR * R_SPECIFIC_AIR * tempK);
+}
+
+function calculateISA(alt) {
+    if (alt < 0 || alt > 11000) alt = Math.max(0, Math.min(11000, alt));
+    const T_alt_K = T_ISA_0M_K - LAPSE_RATE_ISA * alt; 
+    const ratio = T_alt_K / T_ISA_0M_K;
+    const power = GRAVITY_BASE / (LAPSE_RATE_ISA * R_SPECIFIC_AIR);
+    const P_alt_Pa = P_ISA_0M_PA * Math.pow(ratio, power);
+    return { T_alt_K, P_alt_Pa };
+}
+
+function calculateAirDensity(p, t, h) {
+    const pv = (h/100) * 6.1078 * Math.pow(10, (7.5*(t-273.15))/(237.3+(t-273.15))) * 100;
+    const pd = p - pv;
+    return (pd / (R_SPECIFIC_AIR * t)) + (pv / (R_WATER_VAPOR * t));
+}
+
+function calculateMinecraftTime(sunAltitudeRad) {
+    let solarFraction = (sunAltitudeRad / (2 * Math.PI) + 0.25) % 1; 
+    let ticks = Math.round(solarFraction * 24000) % 24000;
+    ticks = (ticks + 18000) % 24000;
+    const hours = Math.floor(ticks / 1000) % 24; 
+    const minutes = Math.floor((ticks % 1000) * 0.06); 
+    const h_str = String(hours).padStart(2, '0');
+    const m_str = String(minutes).padStart(2, '0');
+    return { ticks, time: `${h_str}:${m_str}` };
+    }
+// =================================================================
+// PARTIE 2/2 : GESTION DES BOUCLES, DOM & EVENTS
+// =================================================================
+
+const $ = id => document.getElementById(id);
+
+// --- GESTION CARTE & UTILS ---
 function initMap() {
-    if (!('L' in window)) return;
-    map = L.map('map-container').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-    marker = L.marker([0, 0]).addTo(map).bindPopup("Position Actuelle").openPopup();
+    if (typeof L === 'undefined') return;
+    map = L.map('map').setView([48.8566, 2.3522], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    marker = L.marker([0, 0]).addTo(map);
+    circle = L.circle([0, 0], { radius: 10 }).addTo(map);
 }
 
-function getCDate(serverTime, localTimeAtSync) {
-    if (!serverTime) return null;
-    const now = new Date();
-    const diffMs = now.getTime() - localTimeAtSync.getTime();
-    return new Date(serverTime.getTime() + diffMs);
+function updateMap(lat, lon, acc) {
+    if (!map || !marker) return;
+    const newLatLng = L.latLng(lat, lon);
+    marker.setLatLng(newLatLng);
+    circle.setLatLng(newLatLng).setRadius(acc || 10);
+    map.panTo(newLatLng);
 }
 
-function updateMap() {
-    if (!map || !marker || ekf6dof.lat === 0) return;
-    const { lat, lon } = ekf6dof;
-    marker.setLatLng([lat, lon]);
-    map.setView([lat, lon], map.getZoom() < 10 ? 15 : map.getZoom());
+function getCDate(serv, loc) {
+    if (!serv) return new Date();
+    return new Date(serv.getTime() + (Date.now() - loc.getTime()));
 }
 
-function syncH() {
-    fetch(SERVER_TIME_ENDPOINT)
-        .then(response => response.json())
-        .then(data => {
-            lServH = new Date(data.utc_datetime);
-            lLocH = new Date();
-        })
-        .catch(() => {});
-}
+// --- GESTION DES BOUCLES ET CAPTEURS ---
 
-function runIMUIntegration() {
-    if (!ekf6dof) return;
-
-    const cTime = performance.now();
-    const dt = (cTime - lastIMUTime) / 1000;
-    lastIMUTime = cTime;
-    
-    if (dt > 0.5) return;
-    
-    totalSessionTime += dt;
-    
-    // SIMULATION IMU 
-    const timeSec = cTime / 1000;
-    const imuAccelZ_sim = 0.1 * Math.sin(timeSec / 10); 
-    const imuAccelX_sim = 0.5 + 0.5 * Math.cos(timeSec / 8); 
-    const gyroZ_sim = 0.5 * Math.sin(timeSec / 15); 
-    
-    lastAccelLong = imuAccelX_sim;
-    lastAccelVert = imuAccelZ_sim;
-    
-    const accel = { x: imuAccelX_sim, y: 0.05, z: imuAccelZ_sim };
-    const gyroZ = gyroZ_sim; 
-
-    // EKF PREDICTION
-    ekf6dof.predict(dt, accel, gyroZ);
-    
-    const distStep = ekf6dof.speedMS * dt * netherMode;
-    totalDistance3D += distStep;
-    if (ekf6dof.speedMS > MIN_SPD_DR) timeMoving += dt;
-    if (ekf6dof.speedMS > max3DSpeed) max3DSpeed = ekf6dof.speedMS;
-
-    // Mise à jour IMU brute (pour l'affichage)
-    if ($('accel-x')) $('accel-x').textContent = `${accel.x.toFixed(2)} m/s²`;
-    if ($('accel-y')) $('accel-y').textContent = `${accel.y.toFixed(2)} m/s²`;
-    if ($('accel-z')) $('accel-z').textContent = `${accel.z.toFixed(2)} m/s²`;
-    if ($('imu-status')) $('imu-status').textContent = 'Actif (Simulé)';
-    if ($('accel-long-raw')) $('accel-long-raw').textContent = `${accel.x.toFixed(3)} m/s ²`;
-    if ($('accel-vertical-raw')) $('accel-vertical-raw').textContent = `${accel.z.toFixed(3)} m/s ²`;
-    if ($('speed-vertical-raw')) $('speed-vertical-raw').textContent = `${ekf6dof.vVerticalRaw.toFixed(2)} m/s`;
-}
-
-function fetchWeatherAndSync(lat, lon, alt) {
-    // 1. Météo
-    fetch(`${PROXY_WEATHER_ENDPOINT}?lat=${lat}&lon=${lon}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data && data.tempK) {
-                const tempK = data.tempC + 273.15;
-                lastWeatherData = {
-                    tempC: data.tempC,
-                    tempK: tempK,
-                    pressure_hPa: data.pressure_hPa,
-                    humidity_perc: data.humidity_perc,
-                    wind_speed_ms: data.wind_speed_ms || 0.0,
-                    baro_alt_msl: data.baro_alt_msl || alt,
-                    air_density: calculateAirDensity(data.pressure_hPa * 100, tempK, data.humidity_perc),
-                };
-                lastWindSpeed = data.wind_speed_ms || 0.0;
-            }
-        })
-        .catch(err => console.error("Erreur API Météo:", err));
-        
-    // 2. Synchronisation NTP
-    syncH();
+function imuMotionHandler(event) {
+    if (event.accelerationIncludingGravity) {
+        real_accel_x = event.accelerationIncludingGravity.x || 0;
+        real_accel_y = event.accelerationIncludingGravity.y || 0;
+        real_accel_z = event.accelerationIncludingGravity.z || 0;
+        if ($('imu-status')) $('imu-status').textContent = "Actif";
+    }
 }
 
 function startFusion() {
@@ -362,7 +283,7 @@ function startFusion() {
     
     ekf6dof = new EKF_INS_21_States(); 
     initMap(); 
-    syncH();
+    if (window.DeviceMotionEvent) window.addEventListener('devicemotion', imuMotionHandler, true);
 
     lastIMUTime = performance.now();
     imuIntervalID = setInterval(runIMUIntegration, DT_IMU * 1000);
@@ -372,16 +293,13 @@ function startFusion() {
             lPos = pos;
             const altBaro = lastWeatherData.baro_alt_msl; 
             ekf6dof.correctGNSS(lPos, altBaro); 
-            
-            if (ekf6dof.lat !== 0) fetchWeatherAndSync(ekf6dof.lat, ekf6dof.lon, ekf6dof.alt);
+            fetchWeatherAndSync(ekf6dof.lat, ekf6dof.lon);
         },
-        (error) => { console.warn(`GPS ERROR(${error.code}): ${error.message}`); },
+        (error) => console.warn("GPS Error"),
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
     
-    // Boucle lente pour l'affichage DOM
     setInterval(updateDisplaySlow, DOM_SLOW_UPDATE_MS);
-    
     if ($('gps-status-dr')) $('gps-status-dr').textContent = 'EKF/INS ACTIF';
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = "⏸️ PAUSE GPS";
 }
@@ -389,171 +307,169 @@ function startFusion() {
 function stopFusion() {
     if (wID !== null) navigator.geolocation.clearWatch(wID);
     if (imuIntervalID !== null) clearInterval(imuIntervalID); 
+    window.removeEventListener('devicemotion', imuMotionHandler, true);
     wID = null;
-    imuIntervalID = null;
     ekf6dof = null;
     if ($('gps-status-dr')) $('gps-status-dr').textContent = 'Arrêté';
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = "▶️ MARCHE GPS";
-        }
-// --- BLOC 4/4 : Mise à jour du DOM & Initialisation ---
+}
+
+function runIMUIntegration() {
+    if (!ekf6dof) return;
+    const cTime = performance.now();
+    const dt = (cTime - lastIMUTime) / 1000;
+    lastIMUTime = cTime;
+    if (dt > 0.5) return;
+    totalSessionTime += dt;
+
+    const accel = { x: real_accel_x, y: real_accel_y, z: real_accel_z }; 
+    const gyroZ = 0; 
+
+    ekf6dof.predict(dt, accel, gyroZ);
+    
+    const V = ekf6dof.speedMS;
+    const distStep = V * dt * (netherMode ? 8 : 1);
+    totalDistance3D += distStep;
+    if (V > MIN_SPD_DR) timeMoving += dt;
+    if (V * KMH_MS > max3DSpeed) max3DSpeed = V * KMH_MS;
+    
+    lastAccelLong = (V - lastFSpeed) / dt;
+    lastFSpeed = V;
+
+    if ($('imu-accel-x')) $('imu-accel-x').textContent = real_accel_x.toFixed(2) + ' m/s²';
+    if ($('imu-accel-y')) $('imu-accel-y').textContent = real_accel_y.toFixed(2) + ' m/s²';
+    if ($('imu-accel-z')) $('imu-accel-z').textContent = real_accel_z.toFixed(2) + ' m/s²';
+}
+
+function fetchWeatherAndSync(lat, lon) {
+    fetch(`${PROXY_WEATHER_ENDPOINT}?lat=${lat}&lon=${lon}`)
+        .then(r => r.json())
+        .then(d => {
+            if (d && d.tempK) {
+                lastWeatherData = {
+                    tempC: d.tempC, tempK: d.tempK,
+                    pressure_hPa: d.pressure_hPa,
+                    humidity_perc: d.humidity_perc,
+                    air_density: calculateAirDensity(d.pressure_hPa*100, d.tempK, d.humidity_perc),
+                    wind_speed_ms: d.wind_speed_ms || 0,
+                    baro_alt_msl: d.baro_alt_msl || 0
+                };
+            }
+        }).catch(e => {});
+    
+    fetch(SERVER_TIME_ENDPOINT).then(r => r.json()).then(d => {
+        lServH = new Date(d.utc_datetime); lLocH = new Date();
+    }).catch(() => {});
+}
+
+// --- MISE À JOUR DE L'AFFICHAGE (SLOW LOOP) ---
+
 function updateDisplaySlow() {
     if (!ekf6dof) return;
-    
-    const now = getCDate(lServH, lLocH) || new Date();
+    const now = getCDate(lServH, lLocH);
     const { lat, lon, alt, speedMS, P, kAltUncert, deadReckoningError } = ekf6dof;
     const { tempC, tempK, pressure_hPa, air_density, humidity_perc, wind_speed_ms } = lastWeatherData;
     const localG = calculateLocalGravity(lat, alt);
 
-    // --- Calculs Avancés ---
+    const sunPos = typeof SunCalc !== 'undefined' ? SunCalc.getPosition(now, lat, lon) : {altitude:0, azimuth:0};
+    sunAltitudeRad = sunPos.altitude;
+    const times = typeof SunCalc !== 'undefined' ? SunCalc.getTimes(now, lat, lon) : {};
+    const moon = typeof SunCalc !== 'undefined' ? SunCalc.getMoonIllumination(now) : {phase:0};
+
+    const phy = calculateRelativity(speedMS, currentMass);
+    const forces = calculateForces(speedMS, currentMass, air_density, sunAltitudeRad);
+    const bio = calculateBioSVT(tempC, alt, humidity_perc, pressure_hPa*100, wind_speed_ms, sunAltitudeRad);
+    
     const speedSound = calculateSpeedOfSound(tempK);
     const mach = speedMS / speedSound;
-    const sunPos = SunCalc.getPosition(now, lat, lon);
-    const sunAltitudeRad = sunPos.altitude;
     
-    const { gamma, T_d_speed, T_d_gravity } = calculateRelativity(speedMS, currentMass);
-    const { q, dragForce, corioForce, CasimirForce, RadiationPressure } = calculateForces(speedMS, currentMass, air_density, sunAltitudeRad);
-    const bioSim = calculateBioSVT(tempC, alt, humidity_perc, pressure_hPa * 100, wind_speed_ms, sunAltitudeRad); 
-    const times = SunCalc.getTimes(now, lat, lon);
-    const eot = (sunPos.equationOfTime / 60).toFixed(2); 
+    // Update DOM
+    if ($('lat-display')) $('lat-display').textContent = lat.toFixed(6) + ' °';
+    if ($('lon-display')) $('lon-display').textContent = lon.toFixed(6) + ' °';
+    if ($('alt-display')) $('alt-display').textContent = alt.toFixed(2) + ' m';
+    if ($('geopotential-alt')) $('geopotential-alt').textContent = (alt * 9.80665 / localG).toFixed(2) + ' m';
+    if ($('heading-display')) $('heading-display').textContent = (ekf6dof.yaw * R2D).toFixed(1) + ' °';
     
-    const isa = calculateISA(alt);
-    const temp_850hpa = isa.T_alt_K - 273.15; 
+    if ($('speed-stable')) $('speed-stable').textContent = (speedMS * KMH_MS).toFixed(1) + ' km/h';
+    if ($('speed-stable-ms')) $('speed-stable-ms').textContent = speedMS.toFixed(2) + ' m/s';
+    if ($('speed-stable-kms')) $('speed-stable-kms').textContent = (speedMS/1000).toExponential(2) + ' km/s';
+    if ($('speed-max')) $('speed-max').textContent = (max3DSpeed * KMH_MS).toFixed(1) + ' km/h';
+    if ($('speed-avg-moving')) $('speed-avg-moving').textContent = ((totalDistance3D / (timeMoving||1)) * KMH_MS).toFixed(1) + ' km/h';
     
-    const geopotentialAlt = calculateGeopotentialAltitude(alt); // NOUVEAU
-    const minecraftTime = calculateMinecraftTime(sunAltitudeRad); // NOUVEAU
+    if ($('perc-speed-sound')) $('perc-speed-sound').textContent = (mach * 100).toFixed(2) + ' %';
+    if ($('perc-speed-c')) $('perc-speed-c').textContent = ((speedMS/C_L)*100).toExponential(2) + ' %';
+    if ($('mach-number')) $('mach-number').textContent = mach.toFixed(4);
+    if ($('lorentz-factor')) $('lorentz-factor').textContent = phy.gamma.toFixed(5);
+    
+    if ($('distance-total-km')) $('distance-total-km').textContent = (totalDistance3D/1000).toFixed(3) + ' km';
+    if ($('distance-light-s')) $('distance-light-s').textContent = (totalDistance3D/C_L).toExponential(2) + ' s';
+    if ($('distance-cosmic')) $('distance-cosmic').textContent = (totalDistance3D/AU_METERS).toExponential(2) + ' UA';
+    
+    if ($('gravity-local')) $('gravity-local').textContent = localG.toFixed(4) + ' m/s²';
+    if ($('accel-long')) $('accel-long').textContent = lastAccelLong.toFixed(3) + ' m/s²';
+    if ($('force-g-long')) $('force-g-long').textContent = (forces.dragForce / (currentMass*localG)).toFixed(2) + ' G';
+    if ($('coriolis-force')) $('coriolis-force').textContent = forces.corioForce.toExponential(2) + ' N';
+    if ($('kinetic-energy')) $('kinetic-energy').textContent = (0.5*currentMass*speedMS*speedMS).toExponential(2) + ' J';
+    if ($('dynamic-pressure')) $('dynamic-pressure').textContent = forces.q.toFixed(2) + ' Pa';
+    if ($('casimir-force')) $('casimir-force').textContent = forces.CasimirForce.toExponential(2) + ' N';
+    if ($('radiation-pressure')) $('radiation-pressure').textContent = forces.RadiationPressure.toExponential(2) + ' Pa';
+    if ($('time-dilation-speed')) $('time-dilation-speed').textContent = phy.T_d_speed.toFixed(3) + ' ns/j';
+    if ($('grav-dilation')) $('grav-dilation').textContent = phy.T_d_gravity.toFixed(3) + ' ns/j';
+    if ($('energy-relativistic')) $('energy-relativistic').textContent = phy.E.toExponential(2) + ' J';
+    if ($('energy-rest-mass')) $('energy-rest-mass').textContent = phy.E0.toExponential(2) + ' J';
+    if ($('Rs-object')) $('Rs-object').textContent = phy.Rs.toExponential(2) + ' m';
+    if ($('momentum')) $('momentum').textContent = (phy.gamma * currentMass * speedMS).toFixed(2) + ' kg·m/s';
 
-    const { 
-        O2_LEVEL, CO2_LEVEL_SIM, OZONE_CONC_SIM, PH_LEVEL_SIM, 
-        NOISE_LEVEL_SIM, SOIL_TYPE_SIM, NDVI_INDEX_SIM 
-    } = bioSim; // NOUVEAU
-
-    // --- 1. Position EKF & Géopotentiel ---
-    $('latitude-ekf').textContent = `${lat.toFixed(6)} °`;
-    $('longitude-ekf').textContent = `${lon.toFixed(6)} °`;
-    $('altitude-ekf').textContent = `${alt.toFixed(2)} m`;
-    $('heading-ekf').textContent = `${(ekf6dof.yaw * R2D).toFixed(1)} °`;
-    $('geopotential-alt').textContent = `${geopotentialAlt.toFixed(2)} m`; // NOUVEAU
-
-    // --- 2. Vitesse et Relativité ---
-    const v_kmh = speedMS * KMH_MS;
+    if ($('temp-air-2')) $('temp-air-2').textContent = tempC.toFixed(1) + ' °C';
+    if ($('pressure-2')) $('pressure-2').textContent = pressure_hPa.toFixed(0) + ' hPa';
+    if ($('humidity-2')) $('humidity-2').textContent = humidity_perc + ' %';
+    if ($('dew-point')) $('dew-point').textContent = bio.dewPoint.toFixed(1) + ' °C';
+    if ($('air-density')) $('air-density').textContent = air_density.toFixed(3) + ' kg/m³';
+    if ($('temp-feels-like')) $('temp-feels-like').textContent = bio.windChill.toFixed(1) + ' °C';
+    if ($('wind-speed-ms')) $('wind-speed-ms').textContent = wind_speed_ms.toFixed(1) + ' m/s';
     
-    $('speed-stable-ekf').textContent = `${v_kmh.toFixed(1)} km/h`;
-    $('speed-stable-kms').textContent = `${(speedMS / 1000).toExponential(2)} km/s`;
-    
-    $('perc-speed-sound').textContent = `${(speedMS / speedSound * 100).toFixed(2)} %`;
-    $('mach-number').textContent = `${mach.toFixed(4)}`;
-    $('lorentz-factor').textContent = `${gamma.toFixed(4)}`;
-    $('time-dilation-speed').textContent = `${T_d_speed.toFixed(2)} ns/j`;
-    $('time-dilation-gravity').textContent = `${T_d_gravity.toFixed(2)} ns/j`;
+    if ($('o2-level')) $('o2-level').textContent = bio.O2_LEVEL + ' %';
+    if ($('co2-level')) $('co2-level').textContent = bio.CO2_LEVEL.toFixed(0) + ' ppm';
+    if ($('ozone-conc')) $('ozone-conc').textContent = bio.OZONE.toFixed(0) + ' DU';
+    if ($('ph-level')) $('ph-level').textContent = bio.PH.toFixed(1);
+    if ($('noise-level')) $('noise-level').textContent = bio.NOISE.toFixed(1) + ' dB';
+    if ($('ndvi-index')) $('ndvi-index').textContent = bio.NDVI.toFixed(2);
+    if ($('cape-sim')) $('CAPE-sim').textContent = bio.CAPE.toFixed(0) + ' J/kg';
 
-    // --- 3. Dynamique (Maximale) ---
-    const g_force_long = lastAccelLong / localG;
-    const g_force_vert = lastAccelVert / localG;
+    // Astro
+    const minecraftTime = calculateMinecraftTime(sunAltitudeRad);
+    if ($('time-minecraft')) $('time-minecraft').textContent = minecraftTime.time;
     
-    $('gravity-local').textContent = `${localG.toFixed(4)} m/s²`;
-    $('accel-long-hybrid').textContent = `${lastAccelLong.toFixed(3)} m/s ²`;
-    $('force-g-long').textContent = `${g_force_long.toFixed(2)} G`;
-    $('force-g-vertical').textContent = `${g_force_vert.toFixed(2)} G`;
-    $('coriolis-force').textContent = `${corioForce.toFixed(2)} N`;
-    $('dynamic-pressure').textContent = `${q.toFixed(2)} Pa`;
-    $('drag-force').textContent = `${dragForce.toFixed(2)} N`;
-    $('radiation-pressure').textContent = `${RadiationPressure.toExponential(2)} Pa`;
-    $('casimir-force').textContent = `${CasimirForce.toExponential(2)} N/m²`;
+    if ($('tst')) $('tst').textContent = (12 + (lon/15) + ((sunPos.azimuth*R2D)/15) % 24).toFixed(2) + ' h';
+    if ($('sun-elevation')) $('sun-elevation').textContent = (sunAltitudeRad * R2D).toFixed(1) + ' °';
+    if ($('noon-solar')) $('noon-solar').textContent = times.solarNoon ? times.solarNoon.toLocaleTimeString() : 'N/A';
+    if ($('moon-phase-name')) $('moon-phase-name').textContent = (moon.phase * 100).toFixed(0) + ' %';
 
-    // --- 4. Météo & SVT (Maximale) ---
-    $('temp-air-2').textContent = `${tempC.toFixed(1)} °C`;
-    $('pressure-2').textContent = `${pressure_hPa.toFixed(0)} hPa`;
-    $('humidity-2').textContent = `${humidity_perc} %`;
-    $('dew-point').textContent = `${bioSim.dewPoint.toFixed(1)} °C`;
-    $('air-density').textContent = `${air_density.toFixed(3)} kg/m³`;
-    $('temp-850hpa').textContent = `${temp_850hpa.toFixed(1)} °C (ISA)`;
-    $('cape-display').textContent = `${bioSim.CAPE_Simp.toFixed(0)} J/kg`;
-    $('pwc-display').textContent = `${bioSim.PWC_Simp.toFixed(2)} mm`;
-    $('wind-shear').textContent = `${bioSim.windShear.toExponential(2)} s⁻¹`;
-    $('vorticity-display').textContent = `${bioSim.vorticity.toExponential(2)} s⁻¹`;
+    if ($('kalman-uncert')) $('kalman-uncert').textContent = P.toFixed(3);
+    if ($('speed-error-perc')) $('speed-error-perc').textContent = (Math.sqrt(P)/(speedMS||1)*100).toFixed(1) + '%';
+    if ($('gps-precision')) $('gps-precision').textContent = (lPos ? lPos.coords.accuracy : 0).toFixed(1) + ' m';
     
-    $('solar-radiation').textContent = `${(1361 * Math.sin(sunAltitudeRad)).toFixed(0)} W/m²`;
-    $('albedo-display').textContent = `${bioSim.albedo.toFixed(2)}`;
-    $('aerosols-pm25').textContent = `${bioSim.pm25.toFixed(1)} µg/m³ (Sim.)`;
-    $('wind-speed-ms').textContent = `${wind_speed_ms.toFixed(1)} m/s`;
+    // Horloge Visuelle
+    const sunDeg = (sunAltitudeRad * R2D);
+    if ($('sun-element')) $('sun-element').style.transform = `rotate(${sunDeg}deg) translateX(35px) rotate(-${sunDeg}deg)`;
+    if ($('moon-element')) $('moon-element').style.transform = `rotate(${sunDeg + 180}deg) translateX(35px) rotate(-${sunDeg + 180}deg)`;
     
-    // NOUVEAU SVT/CHIMIE
-    $('o2-level').textContent = `${O2_LEVEL.toFixed(1)} % vol (Sim.)`;
-    $('co2-level').textContent = `${CO2_LEVEL_SIM.toFixed(0)} ppm (Sim.)`;
-    $('ozone-conc').textContent = `${OZONE_CONC_SIM.toFixed(0)} DU (Sim.)`;
-    $('ph-level').textContent = `${PH_LEVEL_SIM.toFixed(2)} (Sim.)`;
-    $('noise-level').textContent = `${NOISE_LEVEL_SIM.toFixed(1)} dB (Sim.)`;
-    $('soil-type').textContent = SOIL_TYPE_SIM;
-    $('ndvi-index').textContent = NDVI_INDEX_SIM.toFixed(3);
-
-
-    // --- 5. Astro & Système ---
-    $('sun-elevation').textContent = `${(sunAltitudeRad * R2D).toFixed(1)} °`;
-    $('solar-noon-utc').textContent = times.solarNoon.toLocaleTimeString('fr-FR', { timeZone: 'UTC' });
-    $('eot-display').textContent = `${eot} min`;
-    $('moon-phase').textContent = `${SunCalc.getMoonIllumination(now).phase.toFixed(2)}`;
-    $('time-minecraft').textContent = minecraftTime.time; // NOUVEAU
-    
-    $('time-elapsed').textContent = `${totalSessionTime.toFixed(1)} s`;
-    $('time-moving').textContent = `${timeMoving.toFixed(1)} s`;
-    $('local-time').textContent = now.toLocaleTimeString('fr-FR');
-    $('date-display').textContent = now.toLocaleDateString('fr-FR');
-    
-    // --- 6. EKF/GPS Debug ---
-    $('kalman-uncert').textContent = `${P.toFixed(3)} m/s`;
-    $('alt-uncertainty').textContent = `${Math.sqrt(kAltUncert).toFixed(2)} m`;
-    $('dead-reckoning-error').textContent = `${deadReckoningError.toFixed(2)} m`;
-    $('nyquist-frequency').textContent = `${(IMU_FREQUENCY_HZ / 2).toFixed(1)} Hz`;
-    $('speed-error-perc').textContent = `${(Math.sqrt(P) / (speedMS || 0.01) * 100).toFixed(2)} %`; // NOUVEAU (Erreur/Vitesse)
-
-    // --- 7. Carte & Brutes ---
-    if (lPos) {
-        $('latitude-raw').textContent = `${lPos.coords.latitude.toFixed(6)} °`;
-        $('longitude-raw').textContent = `${lPos.coords.longitude.toFixed(6)} °`;
-        $('altitude-gps-raw').textContent = `${(lPos.coords.altitude || 0).toFixed(2)} m`;
-        $('gps-precision').textContent = `${(lPos.coords.accuracy || 0).toFixed(1)} m`;
-    }
-    updateMap();
+    updateMap(lat, lon, lPos ? lPos.coords.accuracy : 10);
 }
 
-// --- INITIALISATION DES ÉVÉNEMENTS DOM ---
 document.addEventListener('DOMContentLoaded', () => {
-    
-    // ... (Listeners de contrôle)
-    if ($('toggle-night-mode')) $('toggle-night-mode').addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-    });
-
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => { 
-        ekf6dof === null ? startFusion() : stopFusion(); 
-    });
-    
-    if ($('reset-distance-btn')) $('reset-distance-btn').addEventListener('click', () => { totalDistance3D = 0; });
-    if ($('reset-vmax-btn')) $('reset-vmax-btn').addEventListener('click', () => { max3DSpeed = 0; });
-    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
-        stopFusion();
-        totalDistance3D = 0;
-        timeMoving = 0;
-        totalSessionTime = 0.01;
-        max3DSpeed = 0;
-        initMap();
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => ekf6dof ? stopFusion() : startFusion());
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => { emergencyStopActive = !emergencyStopActive; $('emergency-stop-btn').classList.toggle('active'); });
+    if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => document.body.classList.toggle('dark-mode'));
+    if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => { netherMode = !netherMode; $('mode-nether').textContent = netherMode ? 'ACTIVÉ (1:8)' : 'DÉSACTIVÉ (1:1)'; });
+    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { totalDistance3D = 0; maxSpd = 0; timeMoving = 0; });
+    if ($('celestial-body-select')) $('celestial-body-select').addEventListener('change', (e) => {
+        currentCelestialBody = e.target.value;
+        GRAVITY_BASE = CELESTIAL_DATA[currentCelestialBody].G;
+        R_LOCAL_BASE = CELESTIAL_DATA[currentCelestialBody].R;
+        MASS_CELESTIAL = CELESTIAL_DATA[currentCelestialBody].M;
+        $('gravity-base').textContent = GRAVITY_BASE.toFixed(4) + ' m/s²';
     });
     
-    if ($('force-gps-precision-input')) $('force-gps-precision-input').addEventListener('input', (e) => {
-        forcedGpsPrecision = parseFloat(e.target.value) || 0.0;
-        if ($('force-gps-precision-display')) $('force-gps-precision-display').textContent = `${forcedGpsPrecision.toFixed(6)} m`;
-    });
-    
-    if ($('toggle-nether-mode')) $('toggle-nether-mode').addEventListener('click', () => {
-        if (netherMode === 1) {
-            netherMode = 8;
-            if ($('nether-mode-status')) $('nether-mode-status').textContent = 'ACTIVÉ (1:8)';
-        } else {
-            netherMode = 1;
-            if ($('nether-mode-status')) $('nether-mode-status').textContent = 'DÉSACTIVÉ (1:1)';
-        }
-    });
-
     syncH();
-    updateDisplaySlow(); 
 });
