@@ -9,7 +9,7 @@
           integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
           crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
-          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+h/lVj7T1/qA=" 
+          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
@@ -117,7 +117,6 @@
             transition: background-color 0.8s, border-color 0.8s; 
             z-index: 0;
         }
-        /* ... autres styles de l'horloge astro ... */
         #minecraft-clock::before { /* Horizon */
             content: ''; 
             position: absolute; 
@@ -306,8 +305,8 @@
                     <button id="xray-button" title="Rayons X : Biome transparent">X</button>
                     </div>
             </div>
-    </div>
-    <div class="column-3">
+                        </div>
+                        <div class="column-3">
             <div class="section">
                 <h2><i class="fas fa-balance-scale-right"></i> Dynamique & Forces</h2>
                 <div class="data-point"><span>Vitesse Angulaire</span><span id="angular-speed">N/A</span></div>
@@ -369,9 +368,9 @@
                 <div class="data-point"><span>Azimut (Lune)</span><span id="moon-azimuth">N/A</span></div>
             </div>
         </div>
-
+        
         <script src="gnss-dashboard-full.js"></script>
         
     </div>
-    </body>
-                                                                                                                       </html>
+</body>
+</html>
