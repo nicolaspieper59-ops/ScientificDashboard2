@@ -998,3 +998,97 @@ function updateAstro(latA, lonA, lServH, lLocH) {
     
     updateClockVisualization(now, sunPos, moonPos, sunTimes);
         }
+// Remarque : Le bloc précédent se terminait par la fermeture de la fonction updateAstro :
+// updateClockVisualization(now, sunPos, moonPos, sunTimes);
+// } // <-- Fermeture de la fonction updateAstro
+
+// --- FONCTION D'INITIALISATION ET BOUCLES DE MISE À JOUR ---
+
+/**
+ * Boucle de mise à jour rapide (Fast Update Loop).
+ * Met à jour l'IMU et l'heure locale rapidement.
+ */
+function domUpdateLoop() {
+    // La fonction updateIMU est appelée pour simuler l'acquisition rapide des capteurs
+    updateIMU(null, 0, DOM_FAST_UPDATE_MS / 1000); 
+    
+    // Récupère l'heure corrigée (NTP/Locale)
+    const now = getCDate(lServH, lLocH);
+    if (now) {
+        if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString('fr-FR', { hour12: false });
+        if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
+    }
+}
+
+/**
+ * Initialise l'application, configure les boucles et les écouteurs d'événements.
+ */
+function init() {
+    // Initialise la carte Leaflet
+    initMap();
+    
+    // Démarre la surveillance GPS/Geolocalisation
+    setGPSMode(currentGPSMode);
+    
+    // Boucle rapide (ex: 50ms) pour l'IMU et l'affichage de l'heure
+    setInterval(domUpdateLoop, DOM_FAST_UPDATE_MS); 
+
+    // Boucle lente (ex: 1000ms) pour les calculs Astro et la météo
+    setInterval(() => {
+        // Appelle la fonction updateAstro uniquement si des coordonnées sont disponibles
+        if (lat !== null && lon !== null) {
+            updateAstro(lat, lon, lServH, lLocH);
+        }
+        // Appeler la mise à jour météo ici si elle est implémentée
+        // updateWeather(); 
+    }, DOM_SLOW_UPDATE_MS);
+
+    // --- CONFIGURATION DES LISTENERS D'ÉVÉNEMENTS ---
+    
+    // MARCHE/ARRÊT GPS
+    $('toggle-gps-btn').addEventListener('click', () => {
+        if (wID !== null) stopGPS(); else setGPSMode(currentGPSMode);
+    });
+    
+    // Sélection de fréquence
+    $('freq-select').addEventListener('change', (e) => setGPSMode(e.target.value));
+    
+    // Arrêt d'urgence
+    $('emergency-stop-btn').addEventListener('click', () => {
+        emergencyStopActive = !emergencyStopActive;
+        $('emergency-stop-btn').textContent = emergencyStopActive ? '🚨 Arrêt d\'urgence: ACTIF 🔴' : '🛑 Arrêt d\'urgence: INACTIF 🟢';
+        $('emergency-stop-btn').classList.toggle('active', emergencyStopActive);
+    });
+    
+    // Mode Nuit
+    $('toggle-mode-btn').addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        // Logique pour inverser les couleurs de la carte Leaflet
+        const mapEl = document.getElementById('map');
+        if (mapEl) {
+            const isDarkMode = document.body.classList.contains('dark-mode');
+            mapEl.style.filter = isDarkMode ? 'invert(0.9) hue-rotate(180deg)' : 'none';
+        }
+    });
+
+    // Reset des compteurs
+    $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; maxSpd = 0; });
+    $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
+    $('reset-all-btn').addEventListener('click', () => { window.location.reload(); });
+    
+    // Paramètres EKF/Physique
+    $('gps-accuracy-override').addEventListener('input', (e) => { gpsAccuracyOverride = parseFloat(e.target.value); });
+    $('mass-input').addEventListener('input', (e) => { currentMass = parseFloat(e.target.value); $('mass-display').textContent = currentMass.toFixed(3) + ' kg'; });
+    $('celestial-body-select').addEventListener('change', (e) => { currentCelestialBody = e.target.value; });
+    $('environment-select').addEventListener('change', (e) => { selectedEnvironment = e.target.value; /* Mise à jour de R_FACTOR_RATIO ici */ });
+    
+    // Bouton Rayons X pour l'horloge Minecraft
+    $('xray-button').addEventListener('click', () => { 
+        isXRayMode = !isXRayMode;
+        document.getElementById('minecraft-clock').classList.toggle('x-ray', isXRayMode);
+        $('xray-button').textContent = isXRayMode ? 'ON' : 'X';
+    });
+}
+
+// Démarre l'application après le chargement complet du HTML
+document.addEventListener('DOMContentLoaded', init);
