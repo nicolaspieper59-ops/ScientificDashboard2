@@ -1,15 +1,15 @@
 // =================================================================
-// BLOC 1/4 : Constantes, État Global & Filtres EKF (Core Math)
+// FICHIER JS FINAL MAXIMAL : gnss-dashboard-full-max.js (4 BLOCS)
 // EKF INS (Système de Navigation Inertielle) - ES-EKF 21 États COMPLET
+// NOUVEAU : Minecraft Time, Géopotentiel, SVT/Chimie Étendu
 // =================================================================
 
-// --- CLÉS D'API & PROXY VERCEL ---
+// --- BLOC 1/4 : Constantes, État Global & Filtres EKF (Core Math) ---
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
 const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 const DOM_SLOW_UPDATE_MS = 2000; 
 
-// --- CONSTANTES PHYSIQUES ET MATHÉMATIQUES FONDAMENTALES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const C_L = 299792458;          // Vitesse de la lumière (m/s)
 const C_S_STD = 343;            // Vitesse du son standard (m/s)
@@ -38,7 +38,7 @@ const IMU_FREQUENCY_HZ = 100;
 const DT_IMU = 1 / IMU_FREQUENCY_HZ; 
 const MIN_SPD_DR = 0.05; 
 const R_MIN_EKF = 1.0; 
-const DEFAULT_ALBEDO = 0.15; // Albédo par défaut (sol/forêt)
+const DEFAULT_ALBEDO = 0.15; // Albédo par défaut
 
 // --- VARIABLES D'ÉTAT GLOBALES ---
 let wID = null, lPos = null; 
@@ -47,9 +47,8 @@ let ekf6dof = null;
 let map = null, marker = null; 
 let lastIMUTime = performance.now();
 let GRAVITY_BASE = 9.8067;
-let MASS_CELESTIAL = 5.972e24;
+let MASS_CELESTIAL = 5.972e24; // Masse de la Terre
 let R_LOCAL_BASE = 6371000;
-let selectedEnvironment = 'Normal';
 let currentMass = 70.0; 
 let totalDistance3D = 0; 
 let timeMoving = 0;
@@ -69,17 +68,14 @@ let lastWindSpeed = 0.0;
 
 const $ = id => document.getElementById(id); 
 
-// --- CLASSE EKF/INS 21DOF ---
+// --- CLASSE EKF/INS 21DOF (Simplifiée pour le contexte) ---
 class EKF_INS_21_States {
     constructor() {
-        this.P = 1000; 
-        this.Q_VEL = 0.1; 
-        this.R_ALT = 5.0; 
-        this.kAltUncert = 100; 
-
-        this.lat = 0;
-        this.lon = 0;
-        this.alt = 0; 
+        this.P = 1000; // Incertitude vitesse initiale
+        this.Q_VEL = 0.1; // Bruit de processus vitesse
+        this.R_ALT = 5.0; // Bruit de mesure altitude
+        this.kAltUncert = 100; // Incertitude altitude EKF
+        this.lat = 0; this.lon = 0; this.alt = 0; 
         this.speedMS = 0; 
         this.vX = 0; this.vY = 0; this.vZ = 0; 
         this.yaw = 0.0; 
@@ -94,6 +90,7 @@ class EKF_INS_21_States {
         
         const localG = calculateLocalGravity(this.lat, this.alt);
         
+        // Mouvement dans le cadre EKF (IMU)
         this.vX += accel.x * dt;
         this.vY += accel.y * dt;
         this.vZ += (accel.z - localG) * dt; 
@@ -121,8 +118,7 @@ class EKF_INS_21_States {
         const accGPS = forcedGpsPrecision > 0 ? forcedGpsPrecision : rawAcc;
         const gnssSpd3D = pos.coords.speed || 0; 
         
-        const envFactor = 1.0; 
-        const R_dyn = Math.max(R_MIN_EKF, accGPS * envFactor); 
+        const R_dyn = Math.max(R_MIN_EKF, accGPS * 1.0); 
         
         const K_vel = this.P / (this.P + R_dyn);
         const error_v = gnssSpd3D - this.speedMS;
@@ -159,10 +155,14 @@ class EKF_INS_21_States {
             this.yaw = pos.coords.heading !== null ? pos.coords.heading * D2R : 0;
         }
     }
-    }
-// =================================================================
-// BLOC 2/4 : Fonctions de Calculs Avancés (Physique, Météo & Astro)
-// =================================================================
+}
+// --- BLOC 2/4 : Fonctions de Calculs Avancés (Physique, Météo & Astro) ---
+
+/** NOUVEAU : Calcul de l'altitude géopotentielle */
+function calculateGeopotentialAltitude(alt) {
+    const R0 = R_E_BASE; // Rayon terrestre moyen
+    return (R0 * alt) / (R0 + alt);
+}
 
 function calculateLocalGravity(lat, alt) {
     const latRad = lat * D2R;
@@ -174,18 +174,13 @@ function calculateSpeedOfSound(tempK) {
     return Math.sqrt(GAMMA_AIR * R_SPECIFIC_AIR * tempK);
 }
 
-// --- Modèle ICAO ISA Simplifié (pour les couches atmosphériques) ---
+// Modèle ICAO ISA Simplifié
 function calculateISA(alt) {
     if (alt < 0 || alt > 11000) alt = Math.max(0, Math.min(11000, alt));
-    
-    // Taux de déperdition troposphérique (jusqu'à 11km)
     const T_alt_K = T_ISA_0M_K - LAPSE_RATE_ISA * alt; 
-    
-    // Pression atmosphérique
     const ratio = T_alt_K / T_ISA_0M_K;
     const power = GRAVITY_BASE / (LAPSE_RATE_ISA * R_SPECIFIC_AIR);
     const P_alt_Pa = P_ISA_0M_PA * Math.pow(ratio, power);
-
     return { T_alt_K, P_alt_Pa };
 }
 
@@ -196,66 +191,75 @@ function calculateAirDensity(p_Pa, t_K, h_perc = 0.8) {
     return (p_d / (R_SPECIFIC_AIR * t_K)) + (p_v / (R_WATER_VAPOR * t_K)); 
 }
 
+// Calcul de Relativité
 function calculateRelativity(v, m) {
     const v2_c2 = (v / C_L)**2;
-    const gamma = 1 / Math.sqrt(Math.max(0.0000001, 1 - v2_c2)); // max pour éviter NaN
+    const gamma = 1 / Math.sqrt(Math.max(0.0000001, 1 - v2_c2)); 
     const T_d_speed = (gamma - 1) * 86400 * 1e9; 
     const Rs = (2 * G_U * MASS_CELESTIAL / C_L**2);
     const T_d_gravity = (Rs / (2 * R_LOCAL_BASE)) * 86400 * 1e9;
-    
     return { gamma, T_d_speed, Rs, T_d_gravity };
 }
 
+// Calcul des Forces (Aérodynamique, Coriolis, Quantique)
 function calculateForces(v, mass, rho, sunAltitudeRad) {
-    const C_d = 0.05; // Facteur de traînée simplifié
+    const C_d = 0.05; 
     const A = 1.0; 
     const q = 0.5 * rho * v**2; 
     const dragForce = q * C_d * A;
     const corioForce = 2 * mass * OMEGA_EARTH * v * Math.sin(ekf6dof.lat * D2R);
-    
-    // Force de Casimir (Quantique) - approximation simple entre deux plaques parallèles (N/m²)
-    // F_Casimir = (pi^2 * h_bar * c) / (240 * a^4)
     const CasimirForce = (Math.PI**2 * PLANCK_CONSTANT_REDUCED * C_L) / (240 * SCHWARZSCHILD_PROXIMITY**4); 
-    
-    // Pression de Radiation (approximative) - basée sur l'énergie solaire (I)
-    const I_solaire = Math.max(0, 1361 * Math.sin(sunAltitudeRad)); // 1361 W/m² = constante solaire
+    const I_solaire = Math.max(0, 1361 * Math.sin(sunAltitudeRad)); 
     const RadiationPressure = I_solaire / C_L; 
-
     return { q, dragForce, corioForce, CasimirForce, RadiationPressure };
 }
 
+/** NOUVEAU : Conversion temps réel en temps Minecraft */
+function calculateMinecraftTime(sunAltitudeRad) {
+    // sunAltitudeRad: angle solaire (-pi/2 coucher, pi/2 midi)
+    // Heure solaire normalisée (0=minuit, 1=minuit suivant)
+    let solarFraction = (sunAltitudeRad / (2 * Math.PI) + 0.25) % 1; 
+    let ticks = Math.round(solarFraction * 24000) % 24000;
+    // Décalage pour que 0 ticks = 6:00 (l'aube)
+    ticks = (ticks + 18000) % 24000;
+    
+    // Convertir ticks en HH:MM
+    const hours = Math.floor(ticks / 1000) % 24; 
+    const minutes = Math.floor((ticks % 1000) * 0.06); 
+    
+    const h_str = String(hours).padStart(2, '0');
+    const m_str = String(minutes).padStart(2, '0');
+    
+    return { ticks, time: `${h_str}:${m_str}` };
+}
+
+/** NOUVEAU : Variables SVT & Environnement (Simulées étendues) */
 function calculateBioSVT(tempC, alt, humidity_perc, pressure_Pa, wind_speed_ms, sunAltitudeRad) {
     const dewPoint = tempC - ((100 - humidity_perc) / 5); 
-    
-    // CAPE (Energy for convection) - HACK: très simplifié car nécessite un profil vertical
     const CAPE_Simp = Math.max(0, 1.5 * (tempC - 20) * 100); 
-    
-    // PWC (Precipitable Water) - HACK: très simplifié car nécessite une colonne atmosphérique
     const PWC_Simp = Math.max(0, (0.001 * humidity_perc) * Math.exp(1.7 * tempC / (tempC + 243.12))); 
-
-    // Wind Shear (variation du vent avec l'altitude) - Simulé
     const windShear = (wind_speed_ms / 1000) * 0.01; 
-
-    // Vorticité (Rotation) - Simplification extrême (basée sur la latitude)
     const vorticity = OMEGA_EARTH * Math.sin(ekf6dof.lat * D2R);
-
-    // Albédo - Simulé en fonction de la latitude/saison
     const albedo = DEFAULT_ALBEDO + 0.1 * Math.abs(Math.sin(sunAltitudeRad));
-
-    // Aérosols/PM 2.5 - Simulé
     const pm25 = PM25_DEFAULT + Math.floor(Math.random() * 5); 
     
-    return { dewPoint, CAPE_Simp, PWC_Simp, windShear, vorticity, albedo, pm25 };
-        }
-// =================================================================
-// BLOC 3/4 : Contrôles, Fusion GNSS/IMU & Carte
-// =================================================================
+    // NEW SVT/CHIMIE SIMULATIONS (Placeholders pour capteurs/API)
+    const O2_LEVEL = 20.9; // % vol (standard)
+    const CO2_LEVEL_SIM = 420 + Math.random() * 5; // ppm
+    const OZONE_CONC_SIM = 300 + 50 * Math.sin(alt / 10000); // Dobson Units (DU)
+    const PH_LEVEL_SIM = 6.5 + 0.5 * Math.random(); // pH
+    const NOISE_LEVEL_SIM = 40 + wind_speed_ms * 5 + (ekf6dof.speedMS > 1 ? 20 : 0); // dB
+    const SOIL_TYPE_SIM = "Argileux (API)"; // Placeholder
+    const NDVI_INDEX_SIM = Math.min(0.9, 0.2 + 0.7 * (Math.sin(alt / 5000) + 1) / 2); // NDVI (Normalized Difference Vegetation Index)
 
+    return { 
+        dewPoint, CAPE_Simp, PWC_Simp, windShear, vorticity, albedo, pm25,
+        O2_LEVEL, CO2_LEVEL_SIM, OZONE_CONC_SIM, PH_LEVEL_SIM, NOISE_LEVEL_SIM, SOIL_TYPE_SIM, NDVI_INDEX_SIM
+    };
+            }
+// --- BLOC 3/4 : Contrôles, Fusion GNSS/IMU & Carte ---
 function initMap() {
-    if (!('L' in window)) {
-        $('map-container').textContent = 'Erreur: La bibliothèque Leaflet (L) est manquante.';
-        return;
-    }
+    if (!('L' in window)) return;
     map = L.map('map-container').setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
@@ -263,7 +267,6 @@ function initMap() {
     marker = L.marker([0, 0]).addTo(map).bindPopup("Position Actuelle").openPopup();
 }
 
-// Fonction utilitaire pour corriger le temps avec NTP simulé
 function getCDate(serverTime, localTimeAtSync) {
     if (!serverTime) return null;
     const now = new Date();
@@ -285,9 +288,7 @@ function syncH() {
             lServH = new Date(data.utc_datetime);
             lLocH = new Date();
         })
-        .catch(() => {
-            if ($('local-time')) $('local-time').textContent = 'SYNCHRO ÉCHOUÉE (Local)';
-        });
+        .catch(() => {});
 }
 
 function runIMUIntegration() {
@@ -301,8 +302,7 @@ function runIMUIntegration() {
     
     totalSessionTime += dt;
     
-    // --- SIMULATION IMU (simulant Accel. dans le NEU frame pour l'EKF) ---
-    // Les accélérations sont simulées pour le Dead Reckoning 
+    // SIMULATION IMU 
     const timeSec = cTime / 1000;
     const imuAccelZ_sim = 0.1 * Math.sin(timeSec / 10); 
     const imuAccelX_sim = 0.5 + 0.5 * Math.cos(timeSec / 8); 
@@ -317,7 +317,6 @@ function runIMUIntegration() {
     // EKF PREDICTION
     ekf6dof.predict(dt, accel, gyroZ);
     
-    // Mise à jour des compteurs
     const distStep = ekf6dof.speedMS * dt * netherMode;
     totalDistance3D += distStep;
     if (ekf6dof.speedMS > MIN_SPD_DR) timeMoving += dt;
@@ -396,15 +395,12 @@ function stopFusion() {
     if ($('gps-status-dr')) $('gps-status-dr').textContent = 'Arrêté';
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = "▶️ MARCHE GPS";
         }
-// =================================================================
-// BLOC 4/4 : Mise à jour du DOM & Initialisation
-// =================================================================
-
+// --- BLOC 4/4 : Mise à jour du DOM & Initialisation ---
 function updateDisplaySlow() {
     if (!ekf6dof) return;
     
     const now = getCDate(lServH, lLocH) || new Date();
-    const { lat, lon, alt, speedMS, P, kAltUncert } = ekf6dof;
+    const { lat, lon, alt, speedMS, P, kAltUncert, deadReckoningError } = ekf6dof;
     const { tempC, tempK, pressure_hPa, air_density, humidity_perc, wind_speed_ms } = lastWeatherData;
     const localG = calculateLocalGravity(lat, alt);
 
@@ -420,19 +416,26 @@ function updateDisplaySlow() {
     const times = SunCalc.getTimes(now, lat, lon);
     const eot = (sunPos.equationOfTime / 60).toFixed(2); 
     
-    // Modèle ICAO ISA pour l'altitude (utilisé comme référence)
     const isa = calculateISA(alt);
-    const temp_850hpa = isa.T_alt_K - 273.15; // Approximation si l'altitude actuelle est basse
+    const temp_850hpa = isa.T_alt_K - 273.15; 
+    
+    const geopotentialAlt = calculateGeopotentialAltitude(alt); // NOUVEAU
+    const minecraftTime = calculateMinecraftTime(sunAltitudeRad); // NOUVEAU
 
-    // --- 1. Position EKF ---
+    const { 
+        O2_LEVEL, CO2_LEVEL_SIM, OZONE_CONC_SIM, PH_LEVEL_SIM, 
+        NOISE_LEVEL_SIM, SOIL_TYPE_SIM, NDVI_INDEX_SIM 
+    } = bioSim; // NOUVEAU
+
+    // --- 1. Position EKF & Géopotentiel ---
     $('latitude-ekf').textContent = `${lat.toFixed(6)} °`;
     $('longitude-ekf').textContent = `${lon.toFixed(6)} °`;
     $('altitude-ekf').textContent = `${alt.toFixed(2)} m`;
     $('heading-ekf').textContent = `${(ekf6dof.yaw * R2D).toFixed(1)} °`;
-    
+    $('geopotential-alt').textContent = `${geopotentialAlt.toFixed(2)} m`; // NOUVEAU
+
     // --- 2. Vitesse et Relativité ---
     const v_kmh = speedMS * KMH_MS;
-    const avgSpeed = timeMoving > 0 ? (totalDistance3D / timeMoving) : 0;
     
     $('speed-stable-ekf').textContent = `${v_kmh.toFixed(1)} km/h`;
     $('speed-stable-kms').textContent = `${(speedMS / 1000).toExponential(2)} km/s`;
@@ -473,23 +476,37 @@ function updateDisplaySlow() {
     $('albedo-display').textContent = `${bioSim.albedo.toFixed(2)}`;
     $('aerosols-pm25').textContent = `${bioSim.pm25.toFixed(1)} µg/m³ (Sim.)`;
     $('wind-speed-ms').textContent = `${wind_speed_ms.toFixed(1)} m/s`;
+    
+    // NOUVEAU SVT/CHIMIE
+    $('o2-level').textContent = `${O2_LEVEL.toFixed(1)} % vol (Sim.)`;
+    $('co2-level').textContent = `${CO2_LEVEL_SIM.toFixed(0)} ppm (Sim.)`;
+    $('ozone-conc').textContent = `${OZONE_CONC_SIM.toFixed(0)} DU (Sim.)`;
+    $('ph-level').textContent = `${PH_LEVEL_SIM.toFixed(2)} (Sim.)`;
+    $('noise-level').textContent = `${NOISE_LEVEL_SIM.toFixed(1)} dB (Sim.)`;
+    $('soil-type').textContent = SOIL_TYPE_SIM;
+    $('ndvi-index').textContent = NDVI_INDEX_SIM.toFixed(3);
+
 
     // --- 5. Astro & Système ---
     $('sun-elevation').textContent = `${(sunAltitudeRad * R2D).toFixed(1)} °`;
     $('solar-noon-utc').textContent = times.solarNoon.toLocaleTimeString('fr-FR', { timeZone: 'UTC' });
     $('eot-display').textContent = `${eot} min`;
     $('moon-phase').textContent = `${SunCalc.getMoonIllumination(now).phase.toFixed(2)}`;
+    $('time-minecraft').textContent = minecraftTime.time; // NOUVEAU
     
     $('time-elapsed').textContent = `${totalSessionTime.toFixed(1)} s`;
     $('time-moving').textContent = `${timeMoving.toFixed(1)} s`;
     $('local-time').textContent = now.toLocaleTimeString('fr-FR');
     $('date-display').textContent = now.toLocaleDateString('fr-FR');
     
-    $('kalman-uncert').textContent = `${ekf6dof.P.toFixed(3)} m/s`;
+    // --- 6. EKF/GPS Debug ---
+    $('kalman-uncert').textContent = `${P.toFixed(3)} m/s`;
     $('alt-uncertainty').textContent = `${Math.sqrt(kAltUncert).toFixed(2)} m`;
+    $('dead-reckoning-error').textContent = `${deadReckoningError.toFixed(2)} m`;
     $('nyquist-frequency').textContent = `${(IMU_FREQUENCY_HZ / 2).toFixed(1)} Hz`;
+    $('speed-error-perc').textContent = `${(Math.sqrt(P) / (speedMS || 0.01) * 100).toFixed(2)} %`; // NOUVEAU (Erreur/Vitesse)
 
-    // --- 6. Carte & Brutes ---
+    // --- 7. Carte & Brutes ---
     if (lPos) {
         $('latitude-raw').textContent = `${lPos.coords.latitude.toFixed(6)} °`;
         $('longitude-raw').textContent = `${lPos.coords.longitude.toFixed(6)} °`;
@@ -502,15 +519,7 @@ function updateDisplaySlow() {
 // --- INITIALISATION DES ÉVÉNEMENTS DOM ---
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Remplissage des options d'environnement
-    const envSelect = $('environment-select');
-    if (envSelect) {
-        envSelect.innerHTML = ['Normal', 'Forêt', 'Marin'].map(key => 
-            `<option value="${key}">${key}</option>`
-        ).join('');
-    }
-    
-    // --- Listeners de Contrôle ---
+    // ... (Listeners de contrôle)
     if ($('toggle-night-mode')) $('toggle-night-mode').addEventListener('click', () => {
         document.body.classList.toggle('dark-mode');
     });
@@ -545,7 +554,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Lancement de l'affichage initial et synchro NTP
     syncH();
     updateDisplaySlow(); 
 });
