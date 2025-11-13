@@ -24,9 +24,9 @@ const KMH_MS = 3.6;             // Conversion m/s vers km/h
 
 // --- CONSTANTES PHYSIQUE AVANCÉE/QUANTIQUE ---
 const PLANCK_CONSTANT_REDUCED = 1.0545718e-34; // Constante de Planck réduite (J·s)
-const PLANCK_CONSTANT = 6.62607015e-34;       // Constante de Planck (J·s)
 const C_BOLTZMANN = 1.380649e-23;             // Constante de Boltzmann (J/K)
-const STEFAN_BOLTZMANN = 5.670374419e-8;      // Constante de Stefan-Boltzmann (W/(m²·K⁴))
+const SCHWARZSCHILD_PROXIMITY = 1e-6;         // Proximité (m) pour le calcul de Casimir
+const PM25_DEFAULT = 15.0;                    // PM 2.5 de base (simulation)
 
 // --- CONSTANTES MÉTÉO ISA (Atmosphère Standard Internationale) ---
 const T_ISA_0M_K = 288.15;      // Température standard au niveau de la mer (K)
@@ -65,11 +65,11 @@ let lastWeatherData = {
     air_density: 1.225, humidity_perc: 81, wind_speed_ms: 0.0, 
     baro_alt_msl: 0.0,
 };
-let lastWindSpeed = 0.0; // Ajout pour les calculs de vent avancés
+let lastWindSpeed = 0.0; 
 
 const $ = id => document.getElementById(id); 
 
-// --- CLASSE EKF/INS 21DOF (Même que précédemment) ---
+// --- CLASSE EKF/INS 21DOF ---
 class EKF_INS_21_States {
     constructor() {
         this.P = 1000; 
@@ -121,7 +121,7 @@ class EKF_INS_21_States {
         const accGPS = forcedGpsPrecision > 0 ? forcedGpsPrecision : rawAcc;
         const gnssSpd3D = pos.coords.speed || 0; 
         
-        const envFactor = 1.0; // Simplification
+        const envFactor = 1.0; 
         const R_dyn = Math.max(R_MIN_EKF, accGPS * envFactor); 
         
         const K_vel = this.P / (this.P + R_dyn);
@@ -159,7 +159,7 @@ class EKF_INS_21_States {
             this.yaw = pos.coords.heading !== null ? pos.coords.heading * D2R : 0;
         }
     }
-}
+    }
 // =================================================================
 // BLOC 2/4 : Fonctions de Calculs Avancés (Physique, Météo & Astro)
 // =================================================================
@@ -198,14 +198,12 @@ function calculateAirDensity(p_Pa, t_K, h_perc = 0.8) {
 
 function calculateRelativity(v, m) {
     const v2_c2 = (v / C_L)**2;
-    const gamma = 1 / Math.sqrt(1 - v2_c2);
+    const gamma = 1 / Math.sqrt(Math.max(0.0000001, 1 - v2_c2)); // max pour éviter NaN
     const T_d_speed = (gamma - 1) * 86400 * 1e9; 
     const Rs = (2 * G_U * MASS_CELESTIAL / C_L**2);
     const T_d_gravity = (Rs / (2 * R_LOCAL_BASE)) * 86400 * 1e9;
-    const E0 = m * C_L**2;
-    const E = gamma * E0;
     
-    return { gamma, T_d_speed, E0, E, Rs, T_d_gravity };
+    return { gamma, T_d_speed, Rs, T_d_gravity };
 }
 
 function calculateForces(v, mass, rho, sunAltitudeRad) {
@@ -215,8 +213,9 @@ function calculateForces(v, mass, rho, sunAltitudeRad) {
     const dragForce = q * C_d * A;
     const corioForce = 2 * mass * OMEGA_EARTH * v * Math.sin(ekf6dof.lat * D2R);
     
-    // Force de Casimir (Quantique) - approximation simple pour le dashboard
-    const CasimirForce = (PLANCK_CONSTANT_REDUCED * C_L * Math.PI**2) / (240 * SCHWARZSCHILD_PROXIMITY**4); 
+    // Force de Casimir (Quantique) - approximation simple entre deux plaques parallèles (N/m²)
+    // F_Casimir = (pi^2 * h_bar * c) / (240 * a^4)
+    const CasimirForce = (Math.PI**2 * PLANCK_CONSTANT_REDUCED * C_L) / (240 * SCHWARZSCHILD_PROXIMITY**4); 
     
     // Pression de Radiation (approximative) - basée sur l'énergie solaire (I)
     const I_solaire = Math.max(0, 1361 * Math.sin(sunAltitudeRad)); // 1361 W/m² = constante solaire
@@ -225,29 +224,29 @@ function calculateForces(v, mass, rho, sunAltitudeRad) {
     return { q, dragForce, corioForce, CasimirForce, RadiationPressure };
 }
 
-function calculateBioSVT(tempC, alt, humidity_perc, pressure_Pa, wind_speed_ms) {
+function calculateBioSVT(tempC, alt, humidity_perc, pressure_Pa, wind_speed_ms, sunAltitudeRad) {
     const dewPoint = tempC - ((100 - humidity_perc) / 5); 
     
     // CAPE (Energy for convection) - HACK: très simplifié car nécessite un profil vertical
-    const CAPE_Simp = Math.max(0, 1.5 * (tempC - 20) * 100); // 1.5 J/kg par °C au-dessus de 20°C
+    const CAPE_Simp = Math.max(0, 1.5 * (tempC - 20) * 100); 
     
     // PWC (Precipitable Water) - HACK: très simplifié car nécessite une colonne atmosphérique
     const PWC_Simp = Math.max(0, (0.001 * humidity_perc) * Math.exp(1.7 * tempC / (tempC + 243.12))); 
 
     // Wind Shear (variation du vent avec l'altitude) - Simulé
-    const windShear = (wind_speed_ms / 1000) * 0.01; // 10 m/s à 1 km
+    const windShear = (wind_speed_ms / 1000) * 0.01; 
 
     // Vorticité (Rotation) - Simplification extrême (basée sur la latitude)
     const vorticity = OMEGA_EARTH * Math.sin(ekf6dof.lat * D2R);
 
-    // Albédo - Simulé en fonction de la latitude/saison (pour un dashboard)
-    const albedo = DEFAULT_ALBEDO + 0.1 * Math.abs(Math.sin(ekf6dof.lat * D2R));
+    // Albédo - Simulé en fonction de la latitude/saison
+    const albedo = DEFAULT_ALBEDO + 0.1 * Math.abs(Math.sin(sunAltitudeRad));
 
     // Aérosols/PM 2.5 - Simulé
     const pm25 = PM25_DEFAULT + Math.floor(Math.random() * 5); 
     
     return { dewPoint, CAPE_Simp, PWC_Simp, windShear, vorticity, albedo, pm25 };
-}
+        }
 // =================================================================
 // BLOC 3/4 : Contrôles, Fusion GNSS/IMU & Carte
 // =================================================================
@@ -262,6 +261,14 @@ function initMap() {
         attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
     marker = L.marker([0, 0]).addTo(map).bindPopup("Position Actuelle").openPopup();
+}
+
+// Fonction utilitaire pour corriger le temps avec NTP simulé
+function getCDate(serverTime, localTimeAtSync) {
+    if (!serverTime) return null;
+    const now = new Date();
+    const diffMs = now.getTime() - localTimeAtSync.getTime();
+    return new Date(serverTime.getTime() + diffMs);
 }
 
 function updateMap() {
@@ -295,13 +302,17 @@ function runIMUIntegration() {
     totalSessionTime += dt;
     
     // --- SIMULATION IMU (simulant Accel. dans le NEU frame pour l'EKF) ---
-    const imuAccelZ_sim = 0.1 * Math.sin(cTime / 10000); 
-    const imuAccelX_sim = 0.5 + 0.5 * Math.cos(cTime / 8000); 
+    // Les accélérations sont simulées pour le Dead Reckoning 
+    const timeSec = cTime / 1000;
+    const imuAccelZ_sim = 0.1 * Math.sin(timeSec / 10); 
+    const imuAccelX_sim = 0.5 + 0.5 * Math.cos(timeSec / 8); 
+    const gyroZ_sim = 0.5 * Math.sin(timeSec / 15); 
+    
     lastAccelLong = imuAccelX_sim;
     lastAccelVert = imuAccelZ_sim;
     
     const accel = { x: imuAccelX_sim, y: 0.05, z: imuAccelZ_sim };
-    const gyroZ = 0.5 * Math.sin(cTime / 15000); 
+    const gyroZ = gyroZ_sim; 
 
     // EKF PREDICTION
     ekf6dof.predict(dt, accel, gyroZ);
@@ -369,6 +380,7 @@ function startFusion() {
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
     
+    // Boucle lente pour l'affichage DOM
     setInterval(updateDisplaySlow, DOM_SLOW_UPDATE_MS);
     
     if ($('gps-status-dr')) $('gps-status-dr').textContent = 'EKF/INS ACTIF';
@@ -383,7 +395,7 @@ function stopFusion() {
     ekf6dof = null;
     if ($('gps-status-dr')) $('gps-status-dr').textContent = 'Arrêté';
     if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = "▶️ MARCHE GPS";
-}
+        }
 // =================================================================
 // BLOC 4/4 : Mise à jour du DOM & Initialisation
 // =================================================================
@@ -402,9 +414,9 @@ function updateDisplaySlow() {
     const sunPos = SunCalc.getPosition(now, lat, lon);
     const sunAltitudeRad = sunPos.altitude;
     
-    const { gamma, T_d_speed, E0, E, Rs, T_d_gravity } = calculateRelativity(speedMS, currentMass);
+    const { gamma, T_d_speed, T_d_gravity } = calculateRelativity(speedMS, currentMass);
     const { q, dragForce, corioForce, CasimirForce, RadiationPressure } = calculateForces(speedMS, currentMass, air_density, sunAltitudeRad);
-    const bioSim = calculateBioSVT(tempC, alt, humidity_perc, pressure_hPa * 100, wind_speed_ms); 
+    const bioSim = calculateBioSVT(tempC, alt, humidity_perc, pressure_hPa * 100, wind_speed_ms, sunAltitudeRad); 
     const times = SunCalc.getTimes(now, lat, lon);
     const eot = (sunPos.equationOfTime / 60).toFixed(2); 
     
@@ -460,6 +472,7 @@ function updateDisplaySlow() {
     $('solar-radiation').textContent = `${(1361 * Math.sin(sunAltitudeRad)).toFixed(0)} W/m²`;
     $('albedo-display').textContent = `${bioSim.albedo.toFixed(2)}`;
     $('aerosols-pm25').textContent = `${bioSim.pm25.toFixed(1)} µg/m³ (Sim.)`;
+    $('wind-speed-ms').textContent = `${wind_speed_ms.toFixed(1)} m/s`;
 
     // --- 5. Astro & Système ---
     $('sun-elevation').textContent = `${(sunAltitudeRad * R2D).toFixed(1)} °`;
@@ -489,25 +502,26 @@ function updateDisplaySlow() {
 // --- INITIALISATION DES ÉVÉNEMENTS DOM ---
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Remplissage des options d'environnement (si nécessaire)
+    // Remplissage des options d'environnement
     const envSelect = $('environment-select');
-    envSelect.innerHTML = ['Normal', 'Forêt', 'Marin'].map(key => 
-        `<option value="${key}">${key}</option>`
-    ).join('');
+    if (envSelect) {
+        envSelect.innerHTML = ['Normal', 'Forêt', 'Marin'].map(key => 
+            `<option value="${key}">${key}</option>`
+        ).join('');
+    }
     
     // --- Listeners de Contrôle ---
-    $('toggle-night-mode').addEventListener('click', () => {
+    if ($('toggle-night-mode')) $('toggle-night-mode').addEventListener('click', () => {
         document.body.classList.toggle('dark-mode');
     });
 
-    $('toggle-gps-btn').addEventListener('click', () => { 
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => { 
         ekf6dof === null ? startFusion() : stopFusion(); 
     });
     
-    // ... autres listeners (réinitialisation, nether mode, etc.)
-    $('reset-distance-btn').addEventListener('click', () => { totalDistance3D = 0; });
-    $('reset-vmax-btn').addEventListener('click', () => { max3DSpeed = 0; });
-    $('reset-all-btn').addEventListener('click', () => { 
+    if ($('reset-distance-btn')) $('reset-distance-btn').addEventListener('click', () => { totalDistance3D = 0; });
+    if ($('reset-vmax-btn')) $('reset-vmax-btn').addEventListener('click', () => { max3DSpeed = 0; });
+    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
         stopFusion();
         totalDistance3D = 0;
         timeMoving = 0;
@@ -516,18 +530,18 @@ document.addEventListener('DOMContentLoaded', () => {
         initMap();
     });
     
-    $('force-gps-precision-input').addEventListener('input', (e) => {
+    if ($('force-gps-precision-input')) $('force-gps-precision-input').addEventListener('input', (e) => {
         forcedGpsPrecision = parseFloat(e.target.value) || 0.0;
-        $('force-gps-precision-display').textContent = `${forcedGpsPrecision.toFixed(6)} m`;
+        if ($('force-gps-precision-display')) $('force-gps-precision-display').textContent = `${forcedGpsPrecision.toFixed(6)} m`;
     });
     
-    $('toggle-nether-mode').addEventListener('click', () => {
+    if ($('toggle-nether-mode')) $('toggle-nether-mode').addEventListener('click', () => {
         if (netherMode === 1) {
             netherMode = 8;
-            $('nether-mode-status').textContent = 'ACTIVÉ (1:8)';
+            if ($('nether-mode-status')) $('nether-mode-status').textContent = 'ACTIVÉ (1:8)';
         } else {
             netherMode = 1;
-            $('nether-mode-status').textContent = 'DÉSACTIVÉ (1:1)';
+            if ($('nether-mode-status')) $('nether-mode-status').textContent = 'DÉSACTIVÉ (1:1)';
         }
     });
 
