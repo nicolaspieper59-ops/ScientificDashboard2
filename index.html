@@ -25,7 +25,7 @@
             <div class="section">
                 <h2><i class="fas fa-cog"></i> Contrôles & Système</h2>
                 <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">N/A</span></div>
-                <div class="data-point"><span>Date Locale (UTC)</span><span id="date-display">N/A</span></div>
+                <div class="data-point"><span>Date & Heure (UTC/GMT)</span><span id="date-display">N/A</span></div>
                 <div class="data-point"><span>Temps écoulé (Session)</span><span id="elapsed-time">0.00 s</span></div>
                 <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
                 <div class="data-point"><span>Heure Minecraft</span><span id="time-minecraft">00:00</span></div>
@@ -137,7 +137,7 @@
                 <h2><i class="fas fa-map-marked-alt"></i> Carte GNSS / Globe Interactif</h2>
                 <div class="data-point"><span>Précision GPS (Acc)</span><span id="gps-precision">N/A</span></div>
                 <div id="map-container">
-                    <div id="map">Erreur: Bibliothèque Leaflet non chargée.</div>
+                    <div id="map">Chargement de la carte...</div>
                     <button id="xray-button" title="Rayons X : Biome transparent">X</button>
                     </div>
             </div>
@@ -206,8 +206,9 @@
             </div>
         </div>
         
-        <script src="gnss-dashboard-full.js"></script>
+        <script src="gnss-dashbord-full.js"></script>
+    
         
     </div>
 </body>
- </html>
+    </html>
