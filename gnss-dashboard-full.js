@@ -250,7 +250,7 @@ function initializeIMUSensors() {
     } else {
         $('imu-status').textContent = 'INACTIF (Simul.)';
     }
-        }
+          }
 // =========================================================================
 // _main_dom.js : Logique Physique, Astro, Rendu DOM et Boucle Principale
 // DOIT ÊTRE CHARGÉ EN DERNIER (dépend des deux fichiers précédents)
@@ -311,6 +311,7 @@ function updatePhysicsCalculations(currentSpeed) {
     const spd_sound = calculateSpeedOfSound(tempC);
     const air_density = calculateAirDensity(pressurehPa, tempC);
     
+    // CORRECTION: Calcule la gravité locale basée sur l'altitude EKF
     const g_local = altEst !== null ? G_BASE * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altEst), 2) : G_BASE;
     $('gravity-local').textContent = g_local.toFixed(5) + ' m/s²';
 
