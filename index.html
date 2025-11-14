@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • EKF Fusion Professionnel</title>
+    <title>GNSS SpaceTime Dashboard • EKF Fusion Professionnel Avancé</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
           integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
           crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" 
-          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
+          integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+h/lVj7T1/qA=" 
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
@@ -36,7 +36,7 @@
 
         .dashboard-container { 
             display: grid; 
-            grid-template-columns: 1fr 1.5fr 1fr; /* 3 Colonnes sur grand écran */
+            grid-template-columns: 1fr 1.5fr 1fr; 
             gap: 15px; 
             padding: 15px; 
             max-width: 1800px;
@@ -65,7 +65,6 @@
             color: var(--text-dark); 
             border-color: #555;
         }
-        /* Mode Nuit pour la carte (inversion légère) */
         body.dark-mode #map { background-color: #333; filter: invert(0.9) hue-rotate(180deg); }
         body.dark-mode #emergency-stop-btn { background-color: #e65c69; }
 
@@ -136,7 +135,7 @@
             left: 0; 
             right: 0; 
             bottom: 0; 
-            background-color: #795548; /* Couleur Biome (ex: terre) */
+            background-color: #795548; 
             transition: background-color 0.8s;
             z-index: 1;
         }
@@ -155,7 +154,7 @@
         }
         .sun-icon, .moon-icon { 
             font-size: 1.5em; 
-            transform: translateY(-50%); /* Place l'icône sur le bord */
+            transform: translateY(-50%); 
         }
         .sun-icon { color: #ffdd00; text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
         .moon-icon { color: #f0f0f0; text-shadow: 0 0 5px rgba(200, 200, 255, 0.3); }
@@ -183,9 +182,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js"></script>
-        </head>
-
-    <body>
+</head>
+<body>
     <div class="dashboard-container">
         
         <div class="column-1">
@@ -254,6 +252,11 @@
                 <div class="data-point"><span>Accélération Y</span><span id="accel-y">N/A</span></div>
                 <div class="data-point"><span>Accélération Z</span><span id="accel-z">N/A</span></div>
                 <div class="data-point"><span>Champ Magnétique Max</span><span id="magnetic-max">N/A</span></div>
+                <hr>
+                <h3>Gyroscope (Rotation)</h3>
+                <div class="data-point"><span>Vitesse Angulaire X</span><span id="gyro-x">N/A</span></div>
+                <div class="data-point"><span>Vitesse Angulaire Y</span><span id="gyro-y">N/A</span></div>
+                <div class="data-point"><span>Vitesse Angulaire Z</span><span id="gyro-z">N/A</span></div>
                 <div class="data-point"><span>Statut Capteur</span><span id="imu-status">Actif / Fusion</span></div>
                 <hr>
                 <h3>Compteurs Physiques (Max)</h3>
@@ -333,7 +336,7 @@
             </div>
         </div>
                         
-        <div class="column-3">
+       <div class="column-3">
             <div class="section">
                 <h2><i class="fas fa-globe-americas"></i> Position & Astro</h2>
                 <div id="minecraft-clock-container">
@@ -343,45 +346,30 @@
                         <div class="moon-element"><i class="fas fa-moon moon-icon"></i></div>
                     </div>
                     <div class="clock-display" id="clock-display">Heure Solaire : N/A</div>
-                </div>
-                
-                <hr>
-
-                <h3><i class="fas fa-compass"></i> Position & Navigation</h3>
-                <div class="data-point"><span>Cap (Heading)</span><span id="heading-display">N/A</span></div>
-                <div class="data-point"><span>Latitude (φ)</span><span id="lat-display">N/A</span></div>
-                <div class="data-point"><span>Longitude (λ)</span><span id="lon-display">N/A</span></div>
-                <div class="data-point"><span>Altitude (EKF)</span><span id="alt-ekf">N/A</span></div>
-                <hr>
-                
-                <h3><i class="fas fa-clock"></i> Temps & Éphémérides</h3>
-                <div class="data-point"><span>Heure Solaire Vraie (TST)</span><span id="tst">N/A</span></div>
-                <div class="data-point"><span>Heure Solaire Moyenne (MST)</span><span id="mst">N/A</span></div>
-                <div class="data-point"><span>Midi Solaire Local (UTC)</span><span id="noon-solar">N/A</span></div>
-                <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/A</span></div>
-                <div class="data-point"><span>Longitude Écliptique</span><span id="ecl-long">N/A</span></div>
-                <hr>
-                
-                <h3><i class="fas fa-sun"></i> Soleil</h3>
-                <div class="data-point"><span>Altitude (Soleil)</span><span id="sun-alt">N/A</span></div>
-                <div class="data-point"><span>Azimut (Soleil)</span><span id="sun-azimuth">N/A</span></div>
-                <hr>
-
-                <h3><i class="fas fa-moon"></i> Lune</h3>
-                <div class="data-point"><span>Phase</span><span id="moon-phase-name">N/A</span></div>
-                <div class="data-point"><span>Illumination</span><span id="moon-illuminated">N/A</span></div>
-                <div class="data-point"><span>Altitude (Lune)</span><span id="moon-alt">N/A</span></div>
+                </div>  
                 <div class="data-point"><span>Azimut (Lune)</span><span id="moon-azimuth">N/A</span></div>
             </div>
 
             <div class="section">
-                <h2><i class="fas fa-brain"></i> Filtre EKF & Debug</h2>
+                <h2><i class="fas fa-brain"></i> Filtre EKF & Debug Avancé</h2>
+                <div class="data-point"><span>Statut ZUPT</span><span id="zupt-status">N/A</span></div>
+                <hr>
+                <h3>Incertitude & Bruit</h3>
                 <div class="data-point"><span>Incertitude Vitesse (P)</span><span id="kalman-uncert">N/A</span></div>
                 <div class="data-point"><span>Incertitude Alt. (σ)</span><span id="alt-uncertainty">N/A</span></div>
                 <div class="data-point"><span>Bruit Mesure Vitesse (R)</span><span id="speed-error-perc">N/A</span></div>
                 <div class="data-point"><span>Bande Passante (Nyquist)</span><span id="nyquist-frequency">N/A</span></div>
+                <hr>
+                <h3>Biais IMU Estimé</h3>
+                <div class="data-point"><span>Biais Accélération X</span><span id="bias-accel-x">N/A</span></div>
+                <div class="data-point"><span>Biais Vitesse Ang. Z</span><span id="bias-gyro-z">N/A</span></div>
                 <div class="data-point"><span>Statut GPS & EKF</span><span id="gps-status-dr">Actif</span></div>
             </div>
-        </div> </div> <script src="gnss-dashboard-full.js"></script>
+        </div>
+        
+    </div>
+    
+    <script src="gnss-dashboard-full.js"></script>
+
 </body>
-    </html>
+</html>
