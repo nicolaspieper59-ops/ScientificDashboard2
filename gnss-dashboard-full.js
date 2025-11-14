@@ -89,6 +89,7 @@ function EKF_predict(dt) {
     // 1. Vitesse (Propagation)
     const V_xyz = [X.get([3]), X.get([4]), X.get([5])];
     const NED_Accel = [accel_corrected[0], accel_corrected[1], accel_corrected[2]]; 
+    // Simplification: le full EKF utiliserait la rotation du quaternion (X[6:9]) pour projeter accel_corrected
     const gravity = [0, 0, G_BASE]; 
 
     const dV = math.multiply(math.subtract(NED_Accel, gravity), dt);
@@ -229,15 +230,11 @@ function initializeIMUSensors() {
     if ('ondevicemotion' in window) {
         window.addEventListener('devicemotion', (event) => {
             if (event.accelerationIncludingGravity) {
-                // IMU lue en axes du corps (X, Y, Z)
+                // Met à jour les variables d'état imuAccel et imuGyro
                 imuAccel.x = event.accelerationIncludingGravity.x || 0;
                 imuAccel.y = event.accelerationIncludingGravity.y || 0;
                 imuAccel.z = event.accelerationIncludingGravity.z || 0;
                 
-                $('accel-x').textContent = imuAccel.x.toFixed(2) + ' m/s²';
-                $('accel-y').textContent = imuAccel.y.toFixed(2) + ' m/s²';
-                $('accel-z').textContent = imuAccel.z.toFixed(2) + ' m/s²';
-
                 if (event.rotationRate) {
                     imuGyro.x = event.rotationRate.alpha * D2R; 
                     imuGyro.y = event.rotationRate.beta * D2R; 
@@ -245,12 +242,13 @@ function initializeIMUSensors() {
                     angularSpeed = Math.sqrt(imuGyro.x**2 + imuGyro.y**2 + imuGyro.z**2) * R2D;
                 }
             }
+            // Retiré: $('accel-x').textContent = ... - Déplacé dans _main_dom.js
             $('imu-status').textContent = 'ACTIF / Motion API';
         }, true);
     } else {
         $('imu-status').textContent = 'INACTIF (Simul.)';
     }
-                }
+}
 // =========================================================================
 // _main_dom.js : Logique Physique, Astro, Rendu DOM et Boucle Principale
 // DOIT ÊTRE CHARGÉ EN DERNIER (dépend des deux fichiers précédents)
@@ -278,9 +276,7 @@ function calculateDewPoint(tempC, humidity) {
 
 /** Mise à jour des données Météo (utilise des valeurs nominales si pas de capteur réel). */
 function updateWeatherAndBiophysics() {
-    // Suppression de la simulation (Pas de Math.sin/cos). 
     // Les valeurs initiales de tempC, pressurehPa, humidityPerc sont statiques et nominales (définies dans _constants.js).
-
     const air_density = calculateAirDensity(pressurehPa, tempC);
     const dew_point = calculateDewPoint(tempC, humidityPerc);
     
@@ -291,21 +287,31 @@ function updateWeatherAndBiophysics() {
     $('dew-point').textContent = dew_point !== null ? dew_point.toFixed(1) + ' °C' : 'N/A';
     $('air-density').textContent = air_density !== null ? air_density.toFixed(3) + ' kg/m³' : 'N/A';
     
-    // Le calcul de l'alt-baro utilise l'estimation d'altitude EKF et la pression nominale
-    $('alt-baro').textContent = altEst !== null ? (altEst + (1013.25 - pressurehPa) * 8.5).toFixed(2) + ' m' : 'N/A';
+    // Calcul de l'altitude barométrique (simplifié)
+    const alt_baro = altEst !== null ? altEst + (1013.25 - pressurehPa) * 8.5 : null;
+    $('alt-baro').textContent = alt_baro !== null ? alt_baro.toFixed(2) + ' m' : 'N/A';
     
     $('weather-status').textContent = 'INACTIF (Données nominales)'; 
+}
+
+/** Mise à jour des indicateurs IMU (appelé dans la boucle principale pour la cohérence) */
+function updateIMUMonitor() {
+    // Assure la cohérence des valeurs d'accélération (X et Long.)
+    $('accel-x').textContent = imuAccel.x.toFixed(2) + ' m/s²';
+    $('accel-y').textContent = imuAccel.y.toFixed(2) + ' m/s²';
+    $('accel-z').textContent = imuAccel.z.toFixed(2) + ' m/s²';
 }
 
 function updatePhysicsCalculations(currentSpeed) {
     const spd_sound = calculateSpeedOfSound(tempC);
     const air_density = calculateAirDensity(pressurehPa, tempC);
     
-    const g_local = altEst !== null ? G_BASE * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altEst), 2) : null;
-    $('gravity-local').textContent = g_local !== null ? g_local.toFixed(5) + ' m/s²' : G_BASE.toFixed(4) + ' m/s² (Base)';
+    const g_local = altEst !== null ? G_BASE * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altEst), 2) : G_BASE;
+    $('gravity-local').textContent = g_local.toFixed(5) + ' m/s²';
 
     $('angular-speed').textContent = angularSpeed !== 0 ? angularSpeed.toFixed(2) + ' °/s' : '0.00 °/s';
     
+    // Accélération Longitudinale (basée sur l'axe X du dispositif)
     $('accel-long').textContent = imuAccel.x !== 0 ? imuAccel.x.toFixed(2) + ' m/s²' : '0.00 m/s²'; 
     
     if (spd_sound && air_density !== null) {
@@ -330,7 +336,7 @@ function updatePhysicsCalculations(currentSpeed) {
 // --- CALCULS ASTRO ET AFFICHAGE ---
 
 function formatHours(decimalHours) {
-    if (isNaN(decimalHours)) return 'N/A';
+    if (decimalHours === null || isNaN(decimalHours)) return 'N/A';
     decimalHours = (decimalHours % 24 + 24) % 24;
     const hours = Math.floor(decimalHours);
     const minutes = Math.floor((decimalHours % 1) * 60);
@@ -338,7 +344,7 @@ function formatHours(decimalHours) {
 }
 
 function formatMinecraftTime(ticks) {
-    if (isNaN(ticks)) return 'N/A';
+    if (ticks === null || isNaN(ticks)) return 'N/A';
     ticks = (ticks % 24000 + 24000) % 24000; 
     let mc_hours = Math.floor(ticks / 1000) % 24;
     let mc_minutes = Math.floor(((ticks % 1000) / 1000) * 60);
@@ -376,20 +382,24 @@ function updateAstroCalculations() {
         // Calcul des Temps Solaires
         const UTC_hours_dec = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
         
-        // Utiliser 0 si equationOfTime est null/undefined pour éviter la propagation de NaN
-        const EOT_sec = sunPos.equationOfTime || 0; 
-        const EOT_minutes = EOT_sec / 60;
-        const EOT_hours = EOT_minutes / 60;
-        
-        const MST_hours = UTC_hours_dec + coords.lon / 15;
-        const TST_hours = MST_hours + EOT_hours;
+        const EOT_sec = sunPos.equationOfTime; // Ne pas forcer à 0
+        let EOT_minutes = null;
+        let TST_hours = null;
 
-        // Affichage des temps solaires (gère le NaN pour l'affichage)
+        const MST_hours = UTC_hours_dec + coords.lon / 15;
+
+        if (typeof EOT_sec === 'number' && !isNaN(EOT_sec)) {
+            EOT_minutes = EOT_sec / 60;
+            const EOT_hours = EOT_minutes / 60;
+            TST_hours = MST_hours + EOT_hours;
+        }
+
+        // Affichage des temps solaires (gère le null/NaN via formatHours)
         $('mst').textContent = formatHours(MST_hours);
         $('tst').textContent = formatHours(TST_hours);
         
         // Temps Minecraft
-        const mc_ticks = TST_hours * 1000 - 6000;
+        const mc_ticks = TST_hours !== null ? TST_hours * 1000 - 6000 : null;
         $('time-minecraft').textContent = formatMinecraftTime(mc_ticks);
 
         // Affichage Astro
@@ -400,9 +410,9 @@ function updateAstroCalculations() {
         $('moon-phase-name').textContent = getMoonPhaseName(moonIllumination.phase);
         $('moon-illuminated').textContent = (moonIllumination.fraction * 100).toFixed(1) + ' %';
         
-        // EOT et Longitude Écliptique (Gère le NaN pour l'affichage)
+        // EOT et Longitude Écliptique (Gère le null/NaN pour l'affichage)
         $('noon-solar').textContent = sunTimes.solarNoon.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-        $('eot').textContent = isNaN(EOT_minutes) ? 'N/A' : EOT_minutes.toFixed(2) + ' min'; 
+        $('eot').textContent = EOT_minutes !== null ? EOT_minutes.toFixed(2) + ' min' : 'N/A'; 
         $('ecl-long').textContent = isNaN(sunPos.eclipticLongitude * R2D) ? 'N/A' : (sunPos.eclipticLongitude * R2D).toFixed(2) + ' °';
         
         $('date-solar-mean').textContent = date.toLocaleDateString('fr-FR');
@@ -637,6 +647,7 @@ function domUpdateLoop() {
     
     updateEKFDisplay();
     updateCompteurs(speedEst, dt);
+    updateIMUMonitor(); // Mise à jour centralisée de l'IMU
 }
 
 /** Point d'entrée de l'application */
@@ -655,7 +666,6 @@ function init() {
     
     // Boucle lente (Astro, Météo (si non temps réel))
     setInterval(updateAstroCalculations, 10000);
-    // On garde l'intervalle pour la météo même si elle est statique, pour une future implémentation de capteur
     setInterval(updateWeatherAndBiophysics, 60000); 
 }
 
