@@ -249,7 +249,9 @@ function initializeIMUSensors() {
         $('imu-status').textContent = 'INACTIF (Simul.)';
     }
 }
-// =========================================================================
+        
+
+    // =========================================================================
 // _main_dom.js : Logique Physique, Astro, Rendu DOM et Boucle Principale
 // DOIT ÊTRE CHARGÉ EN DERNIER (dépend des deux fichiers précédents)
 // =========================================================================
@@ -276,7 +278,7 @@ function calculateDewPoint(tempC, humidity) {
 
 /** Mise à jour des données Météo (utilise des valeurs nominales si pas de capteur réel). */
 function updateWeatherAndBiophysics() {
-    // Les valeurs initiales de tempC, pressurehPa, humidityPerc sont statiques et nominales (définies dans _constants.js).
+    // Les valeurs sont nominales statiques
     const air_density = calculateAirDensity(pressurehPa, tempC);
     const dew_point = calculateDewPoint(tempC, humidityPerc);
     
@@ -300,6 +302,9 @@ function updateIMUMonitor() {
     $('accel-x').textContent = imuAccel.x.toFixed(2) + ' m/s²';
     $('accel-y').textContent = imuAccel.y.toFixed(2) + ' m/s²';
     $('accel-z').textContent = imuAccel.z.toFixed(2) + ' m/s²';
+    
+    // Accélération Longitudinale (basée sur l'axe X du dispositif)
+    $('accel-long').textContent = imuAccel.x !== 0 ? imuAccel.x.toFixed(2) + ' m/s²' : '0.00 m/s²'; 
 }
 
 function updatePhysicsCalculations(currentSpeed) {
@@ -310,9 +315,6 @@ function updatePhysicsCalculations(currentSpeed) {
     $('gravity-local').textContent = g_local.toFixed(5) + ' m/s²';
 
     $('angular-speed').textContent = angularSpeed !== 0 ? angularSpeed.toFixed(2) + ' °/s' : '0.00 °/s';
-    
-    // Accélération Longitudinale (basée sur l'axe X du dispositif)
-    $('accel-long').textContent = imuAccel.x !== 0 ? imuAccel.x.toFixed(2) + ' m/s²' : '0.00 m/s²'; 
     
     if (spd_sound && air_density !== null) {
         const mach = currentSpeed / spd_sound;
@@ -647,7 +649,7 @@ function domUpdateLoop() {
     
     updateEKFDisplay();
     updateCompteurs(speedEst, dt);
-    updateIMUMonitor(); // Mise à jour centralisée de l'IMU
+    updateIMUMonitor(); // Mise à jour centralisée de l'IMU (Accélération X et Long.)
 }
 
 /** Point d'entrée de l'application */
