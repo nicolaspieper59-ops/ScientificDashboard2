@@ -1,1 +1,335 @@
- 
+/* =========================================================================
+   style.css : Styles du GNSS SpaceTime Dashboard
+   ========================================================================= */
+
+/* --- 1. Variables Globales (Couleurs) --- */
+:root {
+    /* Couleurs Claires */
+    --bg-light: #f4f7f6;
+    --panel-light: #ffffff;
+    --text-light: #333333;
+    --primary-light: #007bff;
+    --secondary-light: #6c757d;
+    --border-light: #dddddd;
+    --success-light: #28a745;
+    --error-light: #dc3545;
+    
+    /* Couleurs Sombres */
+    --bg-dark: #121220;
+    --panel-dark: #1e1e1e;
+    --text-dark: #e0e0e0;
+    --primary-dark: #4da6ff;
+    --secondary-dark: #9aa0a6;
+    --border-dark: #333333;
+    --success-dark: #20c997;
+    --error-dark: #ff6b6b;
+
+    /* Couleurs spécifiques au Dashboard */
+    --speed-color: #ff9900;
+    --data-label-color: var(--secondary-light);
+    --data-value-color: var(--text-light);
+    
+    /* Couleurs Horloge Minecraft */
+    --sky-day: #87ceeb;
+    --sky-night: #000033;
+    --sky-sunset: #ff8c00;
+}
+
+/* --- 2. Styles Mode Nuit --- */
+body.dark-mode {
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+}
+
+body.dark-mode .panel {
+    background-color: var(--panel-dark);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-dark);
+}
+
+body.dark-mode h2 {
+    color: var(--primary-dark);
+}
+
+body.dark-mode .data-point span:first-child {
+    color: var(--secondary-dark);
+}
+
+body.dark-mode button {
+    background-color: #333;
+    color: var(--text-dark);
+    border: 1px solid var(--border-dark);
+}
+
+body.dark-mode button:hover {
+    background-color: #555;
+}
+
+body.dark-mode input, body.dark-mode select {
+    background-color: #333;
+    color: var(--text-dark);
+    border: 1px solid var(--border-dark);
+}
+
+body.dark-mode hr {
+    border-top: 1px solid var(--border-dark);
+}
+
+body.dark-mode #speed-display-panel {
+    background-color: #333344;
+}
+
+/* --- 3. Configuration Générale & Layout --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Consolas', 'Monaco', monospace; /* Police technique et lisible */
+}
+
+body {
+    background-color: var(--bg-light);
+    color: var(--text-light);
+    padding: 20px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+#dashboard-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* --- 4. Panneaux (Panels) --- */
+.panel {
+    background-color: var(--panel-light);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border-light);
+    transition: background-color 0.3s, box-shadow 0.3s, border-color 0.3s;
+    display: flex;
+    flex-direction: column;
+}
+
+h2 {
+    color: var(--primary-light);
+    font-size: 1.2em;
+    margin-bottom: 15px;
+    border-bottom: 2px solid var(--primary-light);
+    padding-bottom: 5px;
+    display: flex;
+    align-items: center;
+}
+
+h2 i {
+    margin-right: 8px;
+}
+
+h3 {
+    font-size: 1em;
+    margin-top: 15px;
+    margin-bottom: 5px;
+    color: var(--secondary-light);
+}
+body.dark-mode h3 {
+    color: var(--secondary-dark);
+}
+
+hr {
+    border: none;
+    border-top: 1px solid var(--border-light);
+    margin: 10px 0;
+}
+
+/* --- 5. Lignes de Données --- */
+.data-point {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 0.9em;
+}
+
+.data-point span:first-child {
+    color: var(--data-label-color);
+}
+
+.data-point span:last-child {
+    font-weight: bold;
+    color: var(--data-value-color);
+    text-align: right;
+}
+
+/* --- 6. Affichage Principal (Vitesse) --- */
+#speed-display-panel {
+    grid-column: 1 / -1; /* S'étend sur toute la largeur */
+    background-color: #1e285a; /* Fond sombre pour contraste */
+    color: #ffffff;
+    text-align: center;
+    padding: 20px;
+    border: none;
+    margin-bottom: -10px; /* Réduire l'espace avec le reste */
+}
+
+#speed-stable {
+    font-size: 4em;
+    font-weight: 900;
+    color: var(--speed-color);
+    display: block;
+    line-height: 1.1;
+    text-shadow: 0 0 5px rgba(255, 153, 0, 0.5);
+}
+
+#speed-status-text {
+    font-size: 1.1em;
+    display: block;
+    margin-top: 5px;
+    color: var(--secondary-dark);
+}
+
+/* --- 7. Contrôles et Inputs --- */
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin: 8px 0;
+    flex-wrap: wrap;
+}
+
+button {
+    flex-grow: 1;
+    padding: 8px 12px;
+    background-color: var(--primary-light);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+    font-size: 0.85em;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+#emergency-stop-btn {
+    background-color: var(--error-light);
+}
+body.dark-mode #emergency-stop-btn {
+    background-color: var(--error-dark);
+}
+#emergency-stop-btn:hover {
+    background-color: #c82333;
+}
+
+.controls-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 8px 0;
+    padding: 4px 0;
+}
+
+input[type="number"], select {
+    padding: 4px;
+    border-radius: 3px;
+    border: 1px solid var(--border-light);
+    font-size: 0.9em;
+    text-align: right;
+    width: 100px;
+}
+
+/* --- 8. Carte GNSS (Leaflet) --- */
+#map-container {
+    height: 250px;
+    border-radius: 6px;
+    margin-top: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+    transition: border-color 0.3s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--secondary-light);
+}
+body.dark-mode #map-container {
+    border-color: var(--border-dark);
+}
+
+/* Fix pour l'affichage Leaflet */
+.leaflet-container {
+    background: #000;
+}
+
+/* --- 9. Horloge Minecraft & Astro --- */
+#minecraft-clock-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 15px 0;
+}
+
+#minecraft-clock {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background-color: var(--sky-day);
+    position: relative;
+    overflow: hidden;
+    border: 5px solid #000;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.celestial-body {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    transition: transform 0.5s, top 0.5s;
+    transform-origin: center center;
+    z-index: 10;
+}
+
+#sun-element {
+    background-color: #ffcc00;
+    box-shadow: 0 0 10px #ffcc00;
+}
+
+#moon-element {
+    background-color: #ddddff;
+    box-shadow: 0 0 5px #ddddff;
+}
+
+#minecraft-clock-horizon {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    background-color: #8b4513; /* Terre/Blocs */
+    opacity: 1.0;
+    transition: opacity 0.5s;
+    z-index: 5;
+}
+
+#clock-status {
+    z-index: 15;
+}
+
+/* --- 10. Réactivité Mobile --- */
+@media (max-width: 768px) {
+    #dashboard-container {
+        grid-template-columns: 1fr;
+    }
+    
+    #speed-stable {
+        font-size: 3em;
+    }
+    
+    .action-buttons button {
+        font-size: 0.9em;
+        padding: 10px;
+    }
+ }
