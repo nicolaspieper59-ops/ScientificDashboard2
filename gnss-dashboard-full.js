@@ -362,7 +362,7 @@ function updateAstro(latA, lonA, lServH, lLocH) {
     if ($('moon-illuminated')) $('moon-illuminated').textContent = `${(moonIllum.fraction * 100).toFixed(1)}%`;
     
     updateClockVisualization(now, sunPos, moonPos, sunTimes);
-            }
+                                }
 // =================================================================
 // BLOC 4/4 : Initialisation de l'Application et Boucles d'Intervalle
 // Contient la logique de démarrage du programme.
