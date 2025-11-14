@@ -1,6 +1,5 @@
 // =========================================================================
 // _constants.js : Constantes et État Global
-// DOIT ÊTRE CHARGÉ EN PREMIER (avant math.js et le reste du code)
 // =========================================================================
 
 // --- CONSTANTES ---
@@ -36,13 +35,13 @@ let isDarkMode = false;
 let currentEnvFactor = ENV_FACTORS.NORMAL;
 
 // --- ÉTAT EKF (21-STATES) ---
-// X: [lat, lon, alt, vx, vy, vz, q0, q1, q2, q3, bgx, bgy, bgz, bax, bay, baz, m0, m1, m2, m3, m4]
+// X: [0:lat, 1:lon, 2:alt, 3:vx, 4:vy, 5:vz, 6:q0, 7:q1, 8:q2, 9:q3, 10:bgx, 11:bgy, 12:bgz, 13:bax, 14:bay, 15:baz, 16:m0, 17:m1, 18:m2, 19:m3, 20:m4]
 let X = math.matrix(math.zeros(N_STATES)._data.flat()); 
 let P = math.diag(math.zeros(N_STATES)._data.flat());   
 
 let Q_diag = new Array(N_STATES).fill(1e-6); 
 Q_diag[0] = Q_diag[1] = Q_diag[2] = 1e-4; // Pos
-Q_diag[3] = Q_diag[4] = Q_diag[5] = 1e-3; // Vel
+Q_diag[3] = Q_diag[4] = Q_diag[5] = 10.0; // Vel: Augmenté pour gérer le drift en Dead Reckoning
 let Q = math.diag(Q_diag); // Matrice de covariance du bruit de processus
 
 // --- ÉTAT DES CAPTEURS ET COMPTEURS ---
@@ -66,10 +65,8 @@ let maxSpd = 0.0;
 
 let magFieldMax = 0.0; 
 let angularSpeed = 0.0;
-// ===========
 // =========================================================================
 // _ekf_core.js : Moteur EKF, Prédiction, Correction et Gestion Capteurs
-// DOIT ÊTRE CHARGÉ APRÈS _constants.js (dépend de X, P, Q, imuAccel, etc.)
 // =========================================================================
 
 /** Initialise l'état EKF. */
@@ -220,7 +217,9 @@ function gpsError(error) {
     // ZUPT (Correction Vitesse Zéro) - Utiliser l'accélération linéaire
     const accel_mag_linear = math.norm(linear_accel_NED);
     
-    if (accel_mag_linear < ZUPT_ACCEL_TOLERANCE && speedEst < MIN_SPD) {
+    // Correction: ZUPT est appliqué si l'accélération linéaire est faible. 
+    // La vérification de 'speedEst < MIN_SPD' est retirée.
+    if (accel_mag_linear < ZUPT_ACCEL_TOLERANCE) {
         // L'objet est immobile: Vitesse réelle = 0
         const z_zupt = math.matrix([0, 0, 0]); 
         const z_h_zupt = math.matrix([X.get([3]), X.get([4]), X.get([5])]); 
@@ -270,10 +269,9 @@ function initializeIMUSensors() {
     } else {
         $('imu-status').textContent = 'INACTIF (Simul.)';
     }
-    }// =========================================================================
+}
 // =========================================================================
 // _main_dom.js : Logique Physique, Astro, Rendu DOM et Boucle Principale
-// DOIT ÊTRE CHARGÉ EN DERNIER (dépend des deux fichiers précédents)
 // =========================================================================
 
 // --- CALCULS PHYSIQUES AVANCÉS ---
@@ -389,11 +387,9 @@ function updateAstroCalculations() {
     const coords = { lat: lat * R2D || 45.75, lon: lon * R2D || 4.85 };
     const date = new Date();
     
-    // Correction: Rétablir la synchronisation GMT
-    // Heure Locale (NTP) utilise l'heure locale de l'appareil
+    // Correction: Rétablir la synchronisation GMT (assuré dans l'itération précédente, reconfirmé)
     $('local-time').textContent = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     
-    // Date & Heure (UTC/GMT) utilise explicitement UTC
     const utcDate = new Date(date.getTime());
     const utcString = utcDate.getUTCDate().toString().padStart(2, '0') + '/' + 
                       (utcDate.getUTCMonth() + 1).toString().padStart(2, '0') + '/' + 
@@ -415,14 +411,16 @@ function updateAstroCalculations() {
         // Calcul des Temps Solaires
         const UTC_hours_dec = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
         
-        const EOT_sec = sunPos.equationOfTime; 
+        const EOT_rad = sunPos.equationOfTime; 
         let EOT_minutes = null;
         let TST_hours = null;
 
         const MST_hours = UTC_hours_dec + coords.lon / 15;
 
-        if (typeof EOT_sec === 'number' && !isNaN(EOT_sec)) {
-            EOT_minutes = EOT_sec / 60;
+        // Correction: L'EOT est en radians dans SunCalc.getPosition. 
+        // Conversion Radian -> Minutes (1 rad = 3.8197 heures = 229.18 minutes)
+        if (typeof EOT_rad === 'number' && !isNaN(EOT_rad)) {
+            EOT_minutes = EOT_rad * (240 / Math.PI); 
             const EOT_hours = EOT_minutes / 60;
             TST_hours = MST_hours + EOT_hours;
         }
@@ -432,7 +430,7 @@ function updateAstroCalculations() {
         $('tst').textContent = formatHours(TST_hours);
         
         // Temps Minecraft
-        const mc_ticks = TST_hours !== null ? (TST_hours * 1000 - 6000) % 24000 : null;
+        const mc_ticks = TST_hours !== null && !isNaN(TST_hours) ? (TST_hours * 1000 - 6000) % 24000 : null;
         $('time-minecraft').textContent = formatMinecraftTime(mc_ticks);
 
         // Affichage Astro
@@ -445,7 +443,7 @@ function updateAstroCalculations() {
         
         // EOT et Longitude Écliptique (Gère le null/NaN pour l'affichage)
         $('noon-solar').textContent = sunTimes.solarNoon.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-        $('eot').textContent = EOT_minutes !== null ? EOT_minutes.toFixed(2) + ' min' : 'N/A'; 
+        $('eot').textContent = EOT_minutes !== null && !isNaN(EOT_minutes) ? EOT_minutes.toFixed(2) + ' min' : 'N/A'; 
         $('ecl-long').textContent = isNaN(sunPos.eclipticLongitude * R2D) ? 'N/A' : (sunPos.eclipticLongitude * R2D).toFixed(2) + ' °';
         
         $('date-solar-mean').textContent = date.toLocaleDateString('fr-FR');
