@@ -403,7 +403,13 @@ function init() {
     setGPSMode('HIGH_FREQ');
     
     // Boucle rapide (IMU + DOM)
-    setInterval(domUpdateLoop, DOM_FAST_UPDATE_MS); 
+    setInterval(domUpdateLoop, DOM_FAST_UPDATE_MS);
+    // --- CALCULS DE DEBUG ---
+// Fréquence de Nyquist : F_s/2
+const nyquistFreq = 1 / (2 * dt); 
+if ($('nyquist-frequency')) {
+    $('nyquist-frequency').textContent = `${nyquistFreq.toFixed(1)} Hz`;
+}
 
     // Boucle lente (Météo + Astro)
     setInterval(() => {
