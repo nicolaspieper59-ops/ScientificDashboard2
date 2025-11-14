@@ -24,7 +24,7 @@ const Q_ALT = 0.5;
 const Q_BIAS_ACC = 1e-6;    
 const Q_BIAS_GYRO = 1e-7;   
 
-// AJOUTÉ : Paramètres de sécurité pour la Saturation de Correction EKF
+// Paramètres de sécurité pour la Saturation de Correction EKF
 const MIN_CORRECTION_MS = 2.0;       // Correction minimale/base autorisée (m/s)
 const CORRECTION_FACTOR = 0.5;       // Facteur de correction proportionnel à la vitesse mesurée (0.5 = 50% de speedMeasure3D max)
 const ABSOLUTE_MAX_CORRECTION = 30.0; // Correction maximale absolue (m/s) [~108 km/h de correction en 50ms]
@@ -110,7 +110,6 @@ function calculateHorizonDistance(altitude_m) {
 }
 
 // --- GESTION DES CAPTEURS RÉELS ---
-
 function initializeSensors() {
     // 1. Accéléromètre
     if ('Accelerometer' in window) {
@@ -168,8 +167,43 @@ function initializeSensors() {
 function updateEKF(coords, speedMeasure3D, accuracy_m, dt) {
     const altMeasure = coords.altitude || altEst;
     
+    // FIX P4: Gère les coordonnées nulles lors de la panne GPS.
+    if (coords.latitude !== null) { 
+        lastLat = lat; lastLon = lon;
+        lat = coords.latitude;
+        lon = coords.longitude;
+    } 
+    // Si lat est toujours null (premier démarrage sans GPS), forcer une latitude par défaut pour les calculs astro/physique
+    if (lat === null) lat = 45; 
+    
+    // 3. CORRECTION : Calcul du Bruit R et du Gain K_spd
+    const R_spd = calculateR(accuracy_m);
+    let K_spd = P_spd / (P_spd + R_spd);
+
+    // =========================================================
+    // FIX P2: SÉCURITÉ : DÉCAY FORCÉ EN MODE DEAD RECKONING (DR) 🛑
+    // Empêche la dérive infinie si ZUPT ne peut s'enclencher.
+    if (R_spd === R_MAX) { // Détecte le mode DR (Bruit de mesure maximal)
+        const imuHorizontalAccelRaw = Math.sqrt((imuAccelX || 0)**2 + (imuAccelY || 0)**2);
+        
+        // Détecte l'arrêt (Accélération basse) ou l'absence d'accélération nette
+        if (imuHorizontalAccelRaw < ZUPT_ACCEL_TOLERANCE * 2) { 
+            
+            // Décélération qui dépend de la vitesse estimée (simule le frottement/résistance)
+            const DECAY_RATE_MS = 0.5 + speedEst * 0.05; 
+            const decayAmount = DECAY_RATE_MS * dt;
+            
+            speedEst = Math.max(0, speedEst - decayAmount);
+            
+            // Augmente l'incertitude pour que le ZUPT s'active plus facilement après le decay.
+            P_spd = Math.min(P_spd + Q_IMU * dt * 5, 500); 
+        }
+    }
+    // =========================================================
+
     // 1. DÉTECTION ZUPT (Zero Velocity Update) - Correction des Biais
     const imuTotalAccel = Math.sqrt((imuAccelX || 0)**2 + (imuAccelY || 0)**2 + (imuAccelZ || G_BASE)**2);
+    // Le ZUPT s'active si l'IMU est stable ET que la vitesse est basse.
     const isStationary = Math.abs(imuTotalAccel - G_BASE) < ZUPT_ACCEL_TOLERANCE && (speedEst < MIN_SPD * 5); 
 
     if (isStationary) {
@@ -205,32 +239,20 @@ function updateEKF(coords, speedMeasure3D, accuracy_m, dt) {
     P_biasAccel = P_biasAccel + Q_BIAS_ACC * dt;
     P_biasGyro = P_biasGyro + Q_BIAS_GYRO * dt;
 
-    // 3. CORRECTION : Correction de Dérive GNSS.
-    const R_spd = calculateR(accuracy_m);
-    let K_spd = P_spd / (P_spd + R_spd);
-    
-    // Correction de la vitesse
+    // 3. CORRECTION suite
     const speedInnovation = speedMeasure3D - speedPred;
     
     // Calcul de la correction (Gain de Kalman * Innovation)
     let speedCorrection = K_spd * speedInnovation;
     
-    // =========================================================
     // SÉCURITÉ : SATURATION BASÉE SUR LA VITESSE MESURÉE (Fixe l'explosion)
-    
-    // 1. Calcul du seuil dynamique :
     let dynamicCorrectionLimit = Math.max(MIN_CORRECTION_MS, speedMeasure3D * CORRECTION_FACTOR);
-    
-    // 2. Plafonnement au maximum absolu :
     dynamicCorrectionLimit = Math.min(ABSOLUTE_MAX_CORRECTION, dynamicCorrectionLimit);
     
-    // 3. Application de la saturation :
     if (Math.abs(speedCorrection) > dynamicCorrectionLimit) {
         speedCorrection = Math.sign(speedCorrection) * dynamicCorrectionLimit;
     }
-    // =========================================================
     
-    // Application de la correction limitée.
     speedEst = speedPred + speedCorrection; 
     P_spd = (1 - K_spd) * P_spd;
     
@@ -250,9 +272,6 @@ function updateEKF(coords, speedMeasure3D, accuracy_m, dt) {
     P_alt = (1 - K_alt) * P_alt;
     
     // Mise à jour des compteurs et états globaux
-    lastLat = lat; lastLon = lon;
-    lat = coords.latitude || lat;
-    lon = coords.longitude || lon;
     accuracyGPS = accuracy_m;
     
     if (speedEst >= MIN_SPD) {
@@ -264,7 +283,6 @@ function updateEKF(coords, speedMeasure3D, accuracy_m, dt) {
     const localGravity = calculateLocalGravity(lat * D2R, altEst);
     const airDensity = (pressurehPa !== null && tempC !== null) ? (pressurehPa * 100) / (R_AIR * (tempC + KELVIN_OFFSET)) : null;
     
-    // Les fonctions d'affichage sont appelées ici mais définies dans app_flow_dom.js
     updateAdvancedPhysics(speedEst, localGravity, airDensity);
     
     totalTime = (Date.now() - startTime) / 1000;
@@ -277,10 +295,10 @@ function updateEKF(coords, speedMeasure3D, accuracy_m, dt) {
     // Affichage des biais EKF (Debug)
     if ($('bias-accel-x')) $('bias-accel-x').textContent = `${biasAccelX.toPrecision(3)} m/s²`;
     if ($('bias-gyro-z')) $('bias-gyro-z').textContent = `${biasGyroZ.toPrecision(3)} rad/s`;
-                                     }
+}
 // =================================================================
 // 3/3. APPLICATION FLOW & DOM UPDATES
-// (Dépend de: constants_globals.js, core_logic_ekf.js)
+// (Dépend de: constants_globals.js, core_logic_ekf.js, SunCalc)
 // =================================================================
 
 // --- LOGIQUE D'AFFICHAGE EKF / AVANCÉE ---
@@ -298,7 +316,8 @@ function updateEKFDisplay(R_spd, P_spd, altEst, P_alt, localGravity) {
     const percSpeedC = (speedEst / C_L) * 100;
     if ($('perc-speed-c')) $('perc-speed-c').textContent = `${percSpeedC.toExponential(2)} %`;
 
-    if ($('distance-horizon')) $('distance-horizon').textContent = altEst !== null ? `${calculateHorizonDistance(altEst).toFixed(0)} m` : 'N/A';
+    // FIX P4: N'affiche la distance horizon que si l'altitude est significative.
+    if ($('distance-horizon')) $('distance-horizon').textContent = (altEst !== null && altEst > 1.0) ? `${calculateHorizonDistance(altEst).toFixed(0)} m` : 'N/A';
 }
 
 function updateGPSDisplay(coords, speedMeasure3D, accuracy_m, speedAvgMoving, speedAvgTotal) {
@@ -339,7 +358,7 @@ function updateAdvancedPhysics(speedEst, localGravity, airDensity) {
     const tempK = (tempC !== null) ? tempC + KELVIN_OFFSET : null;
     const speedOfSound = (tempK !== null) ? Math.sqrt(1.4 * R_AIR * tempK) : null;
     
-    // CORRECTION : Plafonnement de la vitesse pour les calculs relativistes.
+    // CORRECTION NaN: Plafonnement de la vitesse pour les calculs relativistes.
     const speedForRelativity = Math.min(speedEst, C_L * 0.9999999999); 
     
     const lorentzFactor = 1 / Math.sqrt(1 - Math.pow(speedForRelativity / C_L, 2));
@@ -348,12 +367,12 @@ function updateAdvancedPhysics(speedEst, localGravity, airDensity) {
     const timeDilationVelocity = (lorentzFactor - 1) * 86400 * 1e9; 
     const restMassEnergy = currentMass * C_L * C_L;
     const relativisticEnergy = lorentzFactor * restMassEnergy;
-    // La gravité locale est déjà calculée
     const schwarzschildRadius = 2 * localGravity * currentMass / Math.pow(C_L, 2);
 
     // Dynamique
     const dynamicPressure = (airDensity !== null) ? 0.5 * airDensity * speedEst * speedEst : null;
     const dragForce = (dynamicPressure !== null) ? dynamicPressure * 1 * 0.5 : null; 
+    // lat ne sera plus 0 grâce au fix dans updateEKF
     const coriolisForce = 2 * currentMass * (7.2921e-5) * speedEst * Math.sin((lat || 0) * D2R); 
 
     // Affichage des données avancées
@@ -615,7 +634,7 @@ function initControls() {
 function domUpdateLoop() {
     const dt = DOM_FAST_UPDATE_MS / 1000;
     
-    // Mises à jour des données IMU (Utilisation de displayVal pour uniformité)
+    // Mises à jour des données IMU
     if ($('accel-x')) $('accel-x').textContent = displayVal(imuAccelX, ' m/s²');
     if ($('accel-y')) $('accel-y').textContent = displayVal(imuAccelY, ' m/s²');
     if ($('accel-z')) $('accel-z').textContent = imuAccelZ !== null ? imuAccelZ.toFixed(3) + ' m/s²' : 'N/A';
@@ -643,11 +662,11 @@ function domUpdateLoop() {
     if ($('elapsed-time')) $('elapsed-time').textContent = totalTime.toFixed(2) + ' s';
     if ($('time-moving')) $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
     
-    // Calcul Heure Minecraft (Simplifié)
+    // Calcul Heure Minecraft
     const mc_total_ticks = (totalTime * 20); // 20 ticks par seconde
     const mc_game_ticks = (mc_total_ticks % 24000); 
     const mc_hours = Math.floor(mc_game_ticks / 1000) % 24; 
-    const mc_minutes = Math.floor((mc_game_ticks % 1000) * 0.06); // 1000 ticks = 60 minutes
+    const mc_minutes = Math.floor((mc_game_ticks % 1000) * 0.06); 
 
     if ($('time-minecraft')) $('time-minecraft').textContent = `${mc_hours.toString().padStart(2, '0')}:${mc_minutes.toString().padStart(2, '0')}`;
 
