@@ -54,6 +54,7 @@ let lastGPSPosition = null;
 let imuAccel = {x: 0, y: 0, z: 0};  
 let imuGyro = {x: 0, y: 0, z: 0};   
 
+// Valeurs nominales statiques par défaut
 let tempC = 20.0, pressurehPa = 1013.25, humidityPerc = 50.0; 
 let currentMass = 70.0;
 let gpsAccuracyOverride = 0.0;
@@ -88,8 +89,10 @@ function EKF_predict(dt) {
 
     // 1. Vitesse (Propagation)
     const V_xyz = [X.get([3]), X.get([4]), X.get([5])];
+    // IMPORTANT: Pour un EKF complet, l'accélération du corps (accel_corrected) devrait 
+    // être projetée dans le repère NED (Nord-Est-Bas) en utilisant le quaternion d'attitude X[6:9]
+    // Ici, on utilise une simplification forte qui suppose le repère du corps aligné avec NED.
     const NED_Accel = [accel_corrected[0], accel_corrected[1], accel_corrected[2]]; 
-    // Simplification: le full EKF utiliserait la rotation du quaternion (X[6:9]) pour projeter accel_corrected
     const gravity = [0, 0, G_BASE]; 
 
     const dV = math.multiply(math.subtract(NED_Accel, gravity), dt);
@@ -242,16 +245,13 @@ function initializeIMUSensors() {
                     angularSpeed = Math.sqrt(imuGyro.x**2 + imuGyro.y**2 + imuGyro.z**2) * R2D;
                 }
             }
-            // Retiré: $('accel-x').textContent = ... - Déplacé dans _main_dom.js
             $('imu-status').textContent = 'ACTIF / Motion API';
         }, true);
     } else {
         $('imu-status').textContent = 'INACTIF (Simul.)';
     }
-}
-        
-
-    // =========================================================================
+        }
+// =========================================================================
 // _main_dom.js : Logique Physique, Astro, Rendu DOM et Boucle Principale
 // DOIT ÊTRE CHARGÉ EN DERNIER (dépend des deux fichiers précédents)
 // =========================================================================
@@ -384,7 +384,7 @@ function updateAstroCalculations() {
         // Calcul des Temps Solaires
         const UTC_hours_dec = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
         
-        const EOT_sec = sunPos.equationOfTime; // Ne pas forcer à 0
+        const EOT_sec = sunPos.equationOfTime; 
         let EOT_minutes = null;
         let TST_hours = null;
 
