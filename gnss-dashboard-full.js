@@ -69,21 +69,8 @@ let maxSpd = 0.0;
 let magFieldMax = 0.0; 
 let angularSpeed = 0.0;
 // =========================================================================
-// _ekf_core.js : Moteur EKF (21-States), Géolocalisation et IMU
+// CORRECTION CRITIQUE DANS _ekf_core.js
 // =========================================================================
-
-/**
- * Initialise l'état EKF et les variables globales avec une position GPS initiale.
- */
-function initEKF(lat_init, lon_init, alt_init) {
-    lat = lat_init !== null ? lat_init * D2R : 45.0 * D2R; 
-    lon = lon_init !== null ? lon_init * D2R : 5.0 * D2R; 
-    altEst = alt_init !== null ? alt_init : 0.0;
-    
-    // Initialisation du vecteur d'état X (Pos/Alt uniquement)
-    X.set([0], lat); X.set([1], lon); X.set([2], altEst);
-    P = math.diag(Q_diag);
-}
 
 /**
  * Étape de Prédiction de l'EKF (Propagation INS) via IMU corrigée.
@@ -100,12 +87,30 @@ function EKF_predict(dt) {
     const dV = math.multiply(math.subtract(NED_Accel, gravity), dt);
     const new_V_xyz = math.add(V_xyz, dV);
     X.set([3], new_V_xyz[0]); X.set([4], new_V_xyz[1]); X.set([5], new_V_xyz[2]);
+    
+    // --- FIX CRITIQUE: Propagation de la position en coordonnées géodétiques ---
+    const latRad = X.get([0]);
+    const lonRad = X.get([1]);
+    const altM = X.get([2]);
 
-    // 2. Position (Propagation) - Applique le facteur d'environnement à la distance parcourue
-    const P_xyz = [X.get([0]), X.get([1]), X.get([2])];
-    const dP = math.multiply(V_xyz, dt * currentEnvFactor); 
-    const new_P_xyz = math.add(P_xyz, dP);
-    X.set([0], new_P_xyz[0]); X.set([1], new_P_xyz[1]); X.set([2], new_P_xyz[2]);
+    const Vn = X.get([3]); // V North
+    const Ve = X.get([4]); // V East
+    const Vd = X.get([5]); // V Down
+    
+    // Rayons de courbure (simplifié: rayon équatorial)
+    const R_M = EARTH_RADIUS + altM; 
+    // R_N_prime est le rayon du parallèle (dépend de la latitude)
+    const R_N_prime = (EARTH_RADIUS + altM) * Math.cos(latRad); 
+
+    // Changement de position (radians/mètres)
+    const dLat = (Vn * dt) / R_M;
+    const dLon = (Ve * dt) / R_N_prime;
+    const dAlt = -Vd * dt; // dAlt est l'opposé de Vd (Down)
+
+    // Propagation (Lat/Lon/Alt) - Applique le facteur d'environnement
+    X.set([0], latRad + dLat * currentEnvFactor); 
+    X.set([1], lonRad + dLon * currentEnvFactor); 
+    X.set([2], altM + dAlt * currentEnvFactor); 
 
     // 3. Mise à jour de la Covariance (Simplifié: P = P + Q)
     P = math.add(P, Q); 
@@ -116,6 +121,9 @@ function EKF_predict(dt) {
     altEst = X.get([2]);
     speedEst = math.norm([X.get([3]), X.get([4]), X.get([5])]);
 }
+
+// Le reste du fichier _ekf_core.js reste inchangé.
+
 
 /**
  * Étape de Correction (Mise à jour) de l'EKF.
