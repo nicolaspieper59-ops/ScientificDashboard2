@@ -12,14 +12,177 @@
           integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" 
           crossorigin="anonymous" referrerpolicy="no-referrer" />
           
-    <link rel="stylesheet" href="style.css">
+    <style>
+        /* --- Configuration Générale --- */
+        :root {
+            --bg-light: #f4f7f6;
+            --bg-dark: #121220;
+            --panel-light: #ffffff;
+            --panel-dark: #1e1e1e;
+            --text-light: #333;
+            --text-dark: #e0e0e0;
+            --border-light: #ddd;
+            --border-dark: #333;
+        }
+
+        body { 
+            font-family: 'Arial', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: var(--bg-light); 
+            color: var(--text-light); 
+            transition: background-color 0.8s, color 0.8s; 
+        }
+
+        .dashboard-container { 
+            display: grid; 
+            grid-template-columns: 1fr 1.5fr 1fr; /* 3 Colonnes sur grand écran */
+            gap: 15px; 
+            padding: 15px; 
+            max-width: 1800px;
+            margin: auto;
+        }
+        
+        /* --- Styles du Mode Sombre --- */
+        body.dark-mode {
+            background-color: var(--bg-dark); 
+            color: var(--text-dark); 
+        }
+        body.dark-mode .section {
+            background-color: var(--panel-dark); 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+        }
+        body.dark-mode .section h2 {
+            border-bottom-color: var(--border-dark);
+            color: #4da6ff;
+        }
+        body.dark-mode .data-point span:first-child { color: #ccc; }
+        body.dark-mode .data-point span:last-child { color: #99ccff; }
+        body.dark-mode .data-point { border-bottom-color: #2a2a2a; }
+        body.dark-mode .control-input-full input, 
+        body.dark-mode .control-input-full select { 
+            background-color: #333; 
+            color: var(--text-dark); 
+            border-color: #555;
+        }
+        body.dark-mode #map { background-color: #333; filter: invert(0.9) hue-rotate(180deg); }
+        body.dark-mode #emergency-stop-btn { background-color: #e65c69; }
+
+        /* --- Sections (Panneaux) --- */
+        .section { 
+            background-color: var(--panel-light); 
+            padding: 15px 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05); 
+            transition: background-color 0.3s, box-shadow 0.3s; 
+        }
+        .section h2 { 
+            margin-top: 0; 
+            border-bottom: 2px solid var(--border-light); 
+            padding-bottom: 10px; 
+            font-size: 1.2em; 
+            color: #007bff;
+            transition: border-color 0.3s, color 0.3s;
+        }
+        
+        .data-point { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.95em; min-height: 24px; }
+        .data-point span:first-child { font-weight: bold; color: #555; margin-right: 10px; }
+        .data-point span:last-child { font-family: 'Courier New', Courier, monospace; font-weight: bold; color: #0056b3; text-align: right; }
+        .speed-display { text-align: center; background-color: #222; color: #00ff66; padding: 20px; border-radius: 12px; font-size: 2em; margin-bottom: 15px; font-family: 'Orbitron', sans-serif; }
+        .speed-display small { display: block; font-size: 0.5em; color: #aaa; margin-top: 5px; font-family: Arial, sans-serif; }
+        #speed-stable { font-size: 2.5em; font-weight: 700; letter-spacing: 1px; }
+        .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
+        .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
+        .control-input-full input, .control-input-full select { width: 98%; padding: 5px; border-radius: 4px; border: 1px solid #ccc; background-color: #f9f9f9; }
+        button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: background-color 0.2s, transform 0.1s; }
+        button:active { transform: scale(0.98); }
+        #toggle-gps-btn { background-color: #28a745; color: white; }
+        #emergency-stop-btn { background-color: #dc3545; color: white; }
+        #emergency-stop-btn.active { animation: pulse-red 1s infinite alternate; }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 100% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } }
+        #map-container { position: relative; }
+        #map { height: 350px; width: 100%; border-radius: 8px; margin-top: 15px; background-color: #e0e0e0; }
+        #xray-button { position: absolute; top: 25px; right: 10px; z-index: 1000; background-color: rgba(0,0,0,0.6); color: white; border-radius: 50%; width: 30px; height: 30px; padding: 0; font-size: 0.8em; line-height: 30px; text-align: center; }
+
+        /* Styles de l'horloge astro (Minecraft) */
+        #minecraft-clock-container { display: flex; justify-content: center; align-items: center; flex-direction: column; padding-top: 10px; position: relative; }
+        #minecraft-clock { 
+            width: 100px; height: 100px; 
+            position: relative; 
+            border: 3px solid #333; 
+            overflow: hidden; 
+            background-color: transparent; 
+            border-radius: 50%; 
+            transition: background-color 0.8s, border-color 0.8s; 
+            z-index: 0;
+        }
+        #minecraft-clock::before { /* Horizon */
+            content: ''; 
+            position: absolute; 
+            top: 50%; 
+            left: 0; 
+            right: 0; 
+            height: 2px; 
+            background-color: #555; 
+            transform: translateY(-50%);
+            z-index: 3;
+        }
+        #biome-half { /* Nouvelle demi-sphère pour le biome */
+            content: ''; 
+            position: absolute; 
+            top: 50%; 
+            left: 0; 
+            right: 0; 
+            bottom: 0; 
+            background-color: #795548; /* Couleur Biome (ex: terre) */
+            transition: background-color 0.8s;
+            z-index: 1;
+        }
+        #minecraft-clock.x-ray #biome-half { opacity: 0; }
+
+        .sun-element, .moon-element { 
+            position: absolute; 
+            width: 100%; height: 100%; 
+            top: 0; left: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: flex-start; 
+            transform-origin: center center; 
+            transition: transform 1s linear; 
+            z-index: 2; 
+        }
+        .sun-icon, .moon-icon { 
+            font-size: 1.5em; 
+            transform: translateY(-50%); 
+        }
+        .sun-icon { color: #ffdd00; text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
+        .moon-icon { color: #f0f0f0; text-shadow: 0 0 5px rgba(200, 200, 255, 0.3); }
+        .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
+
+        /* Styles Ciel & Mode Sombre */
+        .sky-day { background-color: #87ceeb !important; color: var(--text-light) !important; } 
+        .sky-sunset { background-color: #ff8c00 !important; color: var(--text-light) !important; } 
+        .sky-night-light { background-color: #303040 !important; color: var(--text-dark) !important; } 
+        .sky-night { background-color: #121220 !important; color: var(--text-dark) !important; } 
+        #minecraft-clock.sky-day { background-color: #87ceeb; }
+        #minecraft-clock.sky-sunset { background-color: #ff8c00; }
+        #minecraft-clock.sky-night, #minecraft-clock.sky-night-light { background-color: #121220; }
+        
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-container { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .dashboard-container { grid-template-columns: 1fr; }
+            .controls-grid { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
     
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-            integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
-            crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""></script>
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.js"></script>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script> 
 </head>
 <body>
     <div class="dashboard-container">
@@ -144,9 +307,8 @@
                     <button id="xray-button" title="Rayons X : Biome transparent">X</button>
                     </div>
             </div>
-        </div>
-        
-        <div class="column-3">
+                        </div>
+                        <div class="column-3">
             <div class="section">
                 <h2><i class="fas fa-balance-scale-right"></i> Dynamique & Forces</h2>
                 <div class="data-point"><span>Vitesse Angulaire</span><span id="angular-speed">N/A</span></div>
@@ -174,7 +336,6 @@
                     <div id="minecraft-clock">
                         <div id="biome-half"></div> 
                         <div id="sun-element" class="sun-element"><i class="fas fa-sun sun-icon"></i></div>
-                        <div id="moon-element" class="sun-element"><i class="fas fa-moon moon-icon"></i></div>
                     </div>
                     <div class="clock-display"><span id="clock-status">Nuit/Crépuscule (🌙)</span></div>
                 </div>
@@ -209,9 +370,8 @@
             </div>
         </div>
         
-        <script src="gnss-dashbord-full.js"></script>
-    
+        <script src="gnss-dashboard-full.js"></script>
         
     </div>
 </body>
-    </html>
+                                            </html>    
