@@ -249,7 +249,7 @@ function initializeIMUSensors() {
     } else {
         $('imu-status').textContent = 'INACTIF (Simul.)';
     }
-}
+    }
 // =========================================================================
 // _physics_astro_weather.js : Physique Avancée, Astronomie et Météo
 // =========================================================================
@@ -536,7 +536,7 @@ function updateCompteurs(currentSpeed, dt) {
     $('distance-light-min').textContent = (total_dist_m / (C_L * 60)).toPrecision(2) + ' min';
 
     // Appel au BLOC 3 pour la physique
-    updatePhysicsCalculations(currentSpeed * currentEnvFactor);
+    updatePhysicsCalculations(speedEst * currentEnvFactor);
 }
 
 /** Met à jour les données de position EKF et la vitesse brute. */
