@@ -66,6 +66,7 @@ let maxSpd = 0.0;
 
 let magFieldMax = 0.0; 
 let angularSpeed = 0.0;
+// ===========
 // =========================================================================
 // _ekf_core.js : Moteur EKF, Prédiction, Correction et Gestion Capteurs
 // DOIT ÊTRE CHARGÉ APRÈS _constants.js (dépend de X, P, Q, imuAccel, etc.)
@@ -83,26 +84,31 @@ function initEKF(lat_init, lon_init, alt_init) {
 
 /** Étape de Prédiction de l'EKF. */
 function EKF_predict(dt) {
-    const ba = [X.get([12]), X.get([13]), X.get([14])]; 
+    // Correction: Utiliser les indices corrects pour les biais d'accéléromètre (13, 14, 15)
+    const ba_accel = [X.get([13]), X.get([14]), X.get([15])]; 
     // Correction de l'accélération par le biais du biais
-    const accel_corrected = math.subtract([imuAccel.x, imuAccel.y, imuAccel.z], ba);
+    const accel_corrected_total = math.subtract([imuAccel.x, imuAccel.y, imuAccel.z], ba_accel);
 
     // 1. Vitesse (Propagation)
     const V_xyz = [X.get([3]), X.get([4]), X.get([5])];
-    // IMPORTANT: Pour un EKF complet, l'accélération du corps (accel_corrected) devrait 
-    // être projetée dans le repère NED (Nord-Est-Bas) en utilisant le quaternion d'attitude X[6:9]
-    // Ici, on utilise une simplification forte qui suppose le repère du corps aligné avec NED.
-    const NED_Accel = [accel_corrected[0], accel_corrected[1], accel_corrected[2]]; 
-    const gravity = [0, 0, G_BASE]; 
+    const altM = X.get([2]);
 
-    const dV = math.multiply(math.subtract(NED_Accel, gravity), dt);
+    // Calcul de la gravité locale basée sur l'altitude EKF (dynamique)
+    const g_local = G_BASE * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altM), 2);
+    
+    // Accélération linéaire en NED (assumant alignement body=NED, Z=Down)
+    // a_linear = a_IMU_total - g_NED. Gravity is [0, 0, g_local] en NED (Down est Z positif)
+    const gravity_NED = [0, 0, g_local]; 
+    const linear_accel_NED = math.subtract(accel_corrected_total, gravity_NED); 
+
+    const dV = math.multiply(linear_accel_NED, dt);
     const new_V_xyz = math.add(V_xyz, dV);
     X.set([3], new_V_xyz[0]); X.set([4], new_V_xyz[1]); X.set([5], new_V_xyz[2]);
     
     // 2. Position (Propagation Géodétique Corrigée)
     const latRad = X.get([0]);
-    const altM = X.get([2]);
-
+    // const altM est déjà calculée
+    
     const Vn = X.get([3]); // V North
     const Ve = X.get([4]); // V East
     const Vd = X.get([5]); // V Down (Down = -Vz)
@@ -202,10 +208,19 @@ function gpsError(error) {
     
     EKF_predict(dt); 
 
-    // ZUPT (Correction Vitesse Zéro)
-    const accel_mag = Math.sqrt(imuAccel.x**2 + imuAccel.y**2 + imuAccel.z**2);
+    // --- CALCUL DE L'ACCÉLÉRATION LINÉAIRE pour ZUPT ---
+    const altM = X.get([2]) || 0;
+    const g_local = G_BASE * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altM), 2);
+    // Correction: Utiliser les indices corrects pour les biais d'accéléromètre (13, 14, 15)
+    const ba_accel = [X.get([13]), X.get([14]), X.get([15])]; 
+    const accel_corrected_total = math.subtract([imuAccel.x, imuAccel.y, imuAccel.z], ba_accel);
+    // Accélération linéaire (gravité soustraite)
+    const linear_accel_NED = math.subtract(accel_corrected_total, [0, 0, g_local]); 
     
-    if (accel_mag < ZUPT_ACCEL_TOLERANCE && speedEst < MIN_SPD) {
+    // ZUPT (Correction Vitesse Zéro) - Utiliser l'accélération linéaire
+    const accel_mag_linear = math.norm(linear_accel_NED);
+    
+    if (accel_mag_linear < ZUPT_ACCEL_TOLERANCE && speedEst < MIN_SPD) {
         // L'objet est immobile: Vitesse réelle = 0
         const z_zupt = math.matrix([0, 0, 0]); 
         const z_h_zupt = math.matrix([X.get([3]), X.get([4]), X.get([5])]); 
@@ -225,7 +240,12 @@ function gpsError(error) {
         currentAccuracy = null;
     }
 
-    $('gps-status-dr').textContent = 'ERREUR GPS - DR: IMU Seul';
+    // Correction du statut GPS pour refléter l'arrêt explicite du GPS
+    if (wID === null && !isGPSEnabled) {
+        $('gps-status-dr').textContent = 'Arrêté (Pause/Manuel)';
+    } else {
+         $('gps-status-dr').textContent = 'ERREUR GPS - DR: IMU Seul';
+    }
 }
 
 /** Initialise et écoute les capteurs IMU (Accéléromètre et Gyroscope). */
@@ -250,7 +270,7 @@ function initializeIMUSensors() {
     } else {
         $('imu-status').textContent = 'INACTIF (Simul.)';
     }
-          }
+    }// =========================================================================
 // =========================================================================
 // _main_dom.js : Logique Physique, Astro, Rendu DOM et Boucle Principale
 // DOIT ÊTRE CHARGÉ EN DERNIER (dépend des deux fichiers précédents)
@@ -289,8 +309,8 @@ function updateWeatherAndBiophysics() {
     $('dew-point').textContent = dew_point !== null ? dew_point.toFixed(1) + ' °C' : 'N/A';
     $('air-density').textContent = air_density !== null ? air_density.toFixed(3) + ' kg/m³' : 'N/A';
     
-    // Calcul de l'altitude barométrique (simplifié)
-    const alt_baro = altEst !== null ? altEst + (1013.25 - pressurehPa) * 8.5 : null;
+    // Correction: Altitude barométrique affichée comme l'altitude EKF
+    const alt_baro = altEst !== null ? altEst : null;
     $('alt-baro').textContent = alt_baro !== null ? alt_baro.toFixed(2) + ' m' : 'N/A';
     
     $('weather-status').textContent = 'INACTIF (Données nominales)'; 
@@ -311,7 +331,7 @@ function updatePhysicsCalculations(currentSpeed) {
     const spd_sound = calculateSpeedOfSound(tempC);
     const air_density = calculateAirDensity(pressurehPa, tempC);
     
-    // CORRECTION: Calcule la gravité locale basée sur l'altitude EKF
+    // Gravité locale basée sur l'altitude EKF
     const g_local = altEst !== null ? G_BASE * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altEst), 2) : G_BASE;
     $('gravity-local').textContent = g_local.toFixed(5) + ' m/s²';
 
@@ -369,10 +389,20 @@ function updateAstroCalculations() {
     const coords = { lat: lat * R2D || 45.75, lon: lon * R2D || 4.85 };
     const date = new Date();
     
-    // Affichage GMT (UTC) et Local
+    // Correction: Rétablir la synchronisation GMT
+    // Heure Locale (NTP) utilise l'heure locale de l'appareil
     $('local-time').textContent = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    $('date-display').textContent = date.toLocaleDateString('fr-FR', { timeZone: 'UTC' }) + ' ' + 
-                                     date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' });
+    
+    // Date & Heure (UTC/GMT) utilise explicitement UTC
+    const utcDate = new Date(date.getTime());
+    const utcString = utcDate.getUTCDate().toString().padStart(2, '0') + '/' + 
+                      (utcDate.getUTCMonth() + 1).toString().padStart(2, '0') + '/' + 
+                      utcDate.getUTCFullYear() + ' ' +
+                      utcDate.getUTCHours().toString().padStart(2, '0') + ':' +
+                      utcDate.getUTCMinutes().toString().padStart(2, '0') + ':' +
+                      utcDate.getUTCSeconds().toString().padStart(2, '0');
+                      
+    $('date-display').textContent = utcString;
     
     $('date-display-astro').textContent = date.toLocaleDateString('fr-FR');
     
@@ -397,12 +427,12 @@ function updateAstroCalculations() {
             TST_hours = MST_hours + EOT_hours;
         }
 
-        // Affichage des temps solaires (gère le null/NaN via formatHours)
+        // Affichage des temps solaires (gère le null/NaN via formatHours -> N/A)
         $('mst').textContent = formatHours(MST_hours);
         $('tst').textContent = formatHours(TST_hours);
         
         // Temps Minecraft
-        const mc_ticks = TST_hours !== null ? TST_hours * 1000 - 6000 : null;
+        const mc_ticks = TST_hours !== null ? (TST_hours * 1000 - 6000) % 24000 : null;
         $('time-minecraft').textContent = formatMinecraftTime(mc_ticks);
 
         // Affichage Astro
@@ -587,7 +617,7 @@ function stopGPS() {
     }
     isGPSEnabled = false;
     $('toggle-gps-btn').textContent = '▶️ MARCHE GPS';
-    $('gps-status-dr').textContent = 'Arrêté';
+    $('gps-status-dr').textContent = 'Arrêté (Pause/Manuel)';
     $('speed-status-text').textContent = 'GPS en Pause / Dead Reckoning Arrêté.';
 }
 
@@ -638,6 +668,7 @@ function domUpdateLoop() {
     
     // Logique EKF/DR
     if (!isGPSEnabled && wID === null) {
+        // Appelle gpsError pour faire le Dead Reckoning (DR) et ZUPT lorsque le GPS est en pause/inactif
         gpsError(null); 
     }
     
