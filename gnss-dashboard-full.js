@@ -24,6 +24,12 @@ const Q_ALT = 0.5;
 const Q_BIAS_ACC = 1e-6;    
 const Q_BIAS_GYRO = 1e-7;   
 
+// AJOUTÉ : Paramètres de sécurité pour la Saturation de Correction EKF
+const MIN_CORRECTION_MS = 2.0;       // Correction minimale/base autorisée (m/s)
+const CORRECTION_FACTOR = 0.5;       // Facteur de correction proportionnel à la vitesse mesurée (0.5 = 50% de speedMeasure3D max)
+const ABSOLUTE_MAX_CORRECTION = 30.0; // Correction maximale absolue (m/s) [~108 km/h de correction en 50ms]
+
+
 let P_spd = 100;            
 let P_alt = 100;            
 let P_biasAccel = 1e-4;     
@@ -34,7 +40,7 @@ let altEst = 0;
 let biasAccelX = 0, biasAccelY = 0, biasAccelZ = 0; 
 let biasGyroX = 0, biasGyroY = 0, biasGyroZ = 0;    
 
-// --- VARIABLES D'ÉTAT CAPTEURS (Initialisées à null pour "N/A" si capteur absent) ---
+// --- VARIABLES D'ÉTAT CAPTEURS ---
 let lat = null, lon = null; 
 let speed3dRaw = 0;         
 let accuracyGPS = 1000;     
@@ -124,6 +130,7 @@ function initializeSensors() {
             magX = magnetometer.x || 0;
             magY = magnetometer.y || 0;
             magZ = magnetometer.z || 0;
+            maxMagnetic = Math.max(maxMagnetic, Math.sqrt(magX**2 + magY**2 + magZ**2));
         });
         magnetometer.start();
     }
@@ -204,8 +211,31 @@ function updateEKF(coords, speedMeasure3D, accuracy_m, dt) {
     
     // Correction de la vitesse
     const speedInnovation = speedMeasure3D - speedPred;
-    speedEst = speedPred + K_spd * speedInnovation; 
+    
+    // Calcul de la correction (Gain de Kalman * Innovation)
+    let speedCorrection = K_spd * speedInnovation;
+    
+    // =========================================================
+    // SÉCURITÉ : SATURATION BASÉE SUR LA VITESSE MESURÉE (Fixe l'explosion)
+    
+    // 1. Calcul du seuil dynamique :
+    let dynamicCorrectionLimit = Math.max(MIN_CORRECTION_MS, speedMeasure3D * CORRECTION_FACTOR);
+    
+    // 2. Plafonnement au maximum absolu :
+    dynamicCorrectionLimit = Math.min(ABSOLUTE_MAX_CORRECTION, dynamicCorrectionLimit);
+    
+    // 3. Application de la saturation :
+    if (Math.abs(speedCorrection) > dynamicCorrectionLimit) {
+        speedCorrection = Math.sign(speedCorrection) * dynamicCorrectionLimit;
+    }
+    // =========================================================
+    
+    // Application de la correction limitée.
+    speedEst = speedPred + speedCorrection; 
     P_spd = (1 - K_spd) * P_spd;
+    
+    // Sécurité: la vitesse estimée ne peut pas être négative.
+    speedEst = Math.max(0, speedEst);
     
     // Correction des Biais (Propagation de la Correction de Vitesse)
     const K_bias_from_spd = K_spd * 0.01; 
@@ -247,7 +277,7 @@ function updateEKF(coords, speedMeasure3D, accuracy_m, dt) {
     // Affichage des biais EKF (Debug)
     if ($('bias-accel-x')) $('bias-accel-x').textContent = `${biasAccelX.toPrecision(3)} m/s²`;
     if ($('bias-gyro-z')) $('bias-gyro-z').textContent = `${biasGyroZ.toPrecision(3)} rad/s`;
-    }
+                                     }
 // =================================================================
 // 3/3. APPLICATION FLOW & DOM UPDATES
 // (Dépend de: constants_globals.js, core_logic_ekf.js)
@@ -309,12 +339,16 @@ function updateAdvancedPhysics(speedEst, localGravity, airDensity) {
     const tempK = (tempC !== null) ? tempC + KELVIN_OFFSET : null;
     const speedOfSound = (tempK !== null) ? Math.sqrt(1.4 * R_AIR * tempK) : null;
     
-    const lorentzFactor = 1 / Math.sqrt(1 - Math.pow(speedEst / C_L, 2));
+    // CORRECTION : Plafonnement de la vitesse pour les calculs relativistes.
+    const speedForRelativity = Math.min(speedEst, C_L * 0.9999999999); 
+    
+    const lorentzFactor = 1 / Math.sqrt(1 - Math.pow(speedForRelativity / C_L, 2));
 
     // Relativité
     const timeDilationVelocity = (lorentzFactor - 1) * 86400 * 1e9; 
     const restMassEnergy = currentMass * C_L * C_L;
     const relativisticEnergy = lorentzFactor * restMassEnergy;
+    // La gravité locale est déjà calculée
     const schwarzschildRadius = 2 * localGravity * currentMass / Math.pow(C_L, 2);
 
     // Dynamique
@@ -353,7 +387,7 @@ function initMap() {
 }
 
 function fetchWeatherAndBaro() {
-    // Les variables restent à null (N/A) car aucune API externe ou capteur n'est implémenté pour ces données.
+    // Les variables restent à null (N/A) car aucune API externe ou capteur n'est implémenté
     pressurehPa = null;  
     tempC = null;             
     humidityPerc = null;      
@@ -377,9 +411,75 @@ function fetchWeatherAndBaro() {
     if ($('cape-index')) $('cape-index').textContent = 'N/A';
 }
 
-function updateAstro() {
-    // Logique SunCalc (omis)
+function updateMinecraftClock(sunAltitudeDeg, times) {
+    const clock = $('minecraft-clock');
+    if (!clock) return;
+
+    clock.classList.remove('sky-day', 'sky-sunset', 'sky-night-light', 'sky-night');
+
+    if (sunAltitudeDeg > 5) {
+        clock.classList.add('sky-day');
+    } else if (sunAltitudeDeg > -5) {
+        clock.classList.add('sky-sunset');
+    } else if (sunAltitudeDeg > -18) {
+        clock.classList.add('sky-night-light'); 
+    } else {
+        clock.classList.add('sky-night');
+    }
+    
+    // Rotation simplifiée (24h) pour simuler la position
+    const nowHours = getCDate().getHours() + getCDate().getMinutes()/60 + getCDate().getSeconds()/3600;
+    const totalAngle = (nowHours / 24) * 360; 
+    const rotationAngle = totalAngle - 90; 
+
+    const sun = $('sun-element');
+    const moon = $('moon-element');
+    
+    if (sun) sun.style.transform = `rotate(${rotationAngle}deg)`;
+    if (moon) moon.style.transform = `rotate(${rotationAngle + 180}deg)`; 
 }
+
+function updateAstro() {
+    if (lat === null || lon === null) return;
+
+    const now = getCDate();
+    const times = SunCalc.getTimes(now, lat, lon);
+    const pos = SunCalc.getPosition(now, lat, lon);
+    const moonPos = SunCalc.getMoonPosition(now, lat, lon);
+    const moonIllumination = SunCalc.getMoonIllumination(now);
+    
+    // Soleil
+    const sunAltDeg = pos.altitude * R2D;
+    const sunAzimuthDeg = (pos.azimuth * R2D + 180) % 360;
+
+    if ($('sun-alt')) $('sun-alt').textContent = `${sunAltDeg.toFixed(2)} °`;
+    if ($('sun-azimuth')) $('sun-azimuth').textContent = `${sunAzimuthDeg.toFixed(2)} °`; 
+    if ($('noon-solar')) $('noon-solar').textContent = times.solarNoon.toLocaleTimeString('fr-FR', { hour12: false });
+    
+    // Lune
+    const moonAltDeg = moonPos.altitude * R2D;
+    const moonAzimuthDeg = (moonPos.azimuth * R2D + 180) % 360;
+    
+    if ($('moon-alt')) $('moon-alt').textContent = `${moonAltDeg.toFixed(2)} °`;
+    if ($('moon-azimuth')) $('moon-azimuth').textContent = `${moonAzimuthDeg.toFixed(2)} °`;
+    if ($('moon-illuminated')) $('moon-illuminated').textContent = `${(moonIllumination.fraction * 100).toFixed(1)} %`;
+    
+    // Phase
+    const phase = moonIllumination.phase;
+    let phaseName = 'N/A';
+    if (phase === 0) phaseName = 'Nouvelle Lune';
+    else if (phase < 0.25) phaseName = 'Croissant Ascendant';
+    else if (phase === 0.25) phaseName = 'Premier Quartier';
+    else if (phase < 0.5) phaseName = 'Gibbeuse Ascendante';
+    else if (phase === 0.5) phaseName = 'Pleine Lune';
+    else if (phase < 0.75) phaseName = 'Gibbeuse Descendante';
+    else if (phase === 0.75) phaseName = 'Dernier Quartier';
+    else if (phase < 1) phaseName = 'Croissant Descendant';
+    if ($('moon-phase-name')) $('moon-phase-name').textContent = phaseName;
+
+    updateMinecraftClock(sunAltDeg, times); 
+}
+
 
 // --- GESTION GPS & FLUX D'APPLICATION ---
 
@@ -427,20 +527,108 @@ function stopGPS() {
     if ($('gps-status-dr')) $('gps-status-dr').textContent = 'INACTIF (Arrêté)';
 }
 
+// --- GESTION DES CONTRÔLES (BOUTONS) ---
+
+function initControls() {
+    // 1. GPS Toggle Button
+    $('toggle-gps-btn').addEventListener('click', () => {
+        if (wID === null) {
+            setGPSMode($('freq-select').value);
+            $('toggle-gps-btn').textContent = '⏸️ ARRÊT GPS';
+        } else {
+            stopGPS();
+            $('toggle-gps-btn').textContent = '▶️ MARCHE GPS';
+        }
+    });
+
+    // 2. Frequency Select
+    $('freq-select').addEventListener('change', (e) => {
+        if (wID !== null) {
+            setGPSMode(e.target.value);
+        }
+    });
+
+    // 3. Environment Select
+    $('environment-select').addEventListener('change', (e) => {
+        selectedEnvironment = e.target.value;
+        const text = e.target.options[e.target.selectedIndex].text;
+        $('env-factor').textContent = text.substring(text.indexOf('(') + 1, text.indexOf(')'));
+    });
+    
+    // 4. Mass Input
+    $('mass-input').addEventListener('input', (e) => {
+        currentMass = parseFloat(e.target.value) || 70;
+        $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+    });
+    
+    // 5. GPS Accuracy Override
+    $('gps-accuracy-override').addEventListener('input', (e) => {
+        gpsAccuracyOverride = parseFloat(e.target.value) || 0;
+        $('gps-accuracy-display').textContent = `${gpsAccuracyOverride.toFixed(6)} m`;
+    });
+
+    // 6. Reset Distance
+    $('reset-dist-btn').addEventListener('click', () => {
+        distM_3D = 0;
+        timeMoving = 0;
+    });
+
+    // 7. Reset Max (Speed/Sensors)
+    $('reset-max-btn').addEventListener('click', () => {
+        maxSpd = 0;
+        maxLight = 0;
+        maxMagnetic = 0;
+    });
+
+    // 8. Emergency Stop
+    $('emergency-stop-btn').addEventListener('click', () => {
+        stopGPS();
+        $('emergency-stop-btn').classList.add('active');
+        setTimeout(() => $('emergency-stop-btn').classList.remove('active'), 2000);
+    });
+
+    // 9. Toggle Dark Mode
+    $('toggle-mode-btn').addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDark = document.body.classList.contains('dark-mode');
+        $('toggle-mode-btn').innerHTML = isDark ? '<i class="fas fa-sun"></i> Mode Jour' : '<i class="fas fa-moon"></i> Mode Nuit';
+    });
+    
+    // 10. Toggle X-Ray Map (Minecraft clock only)
+    if ($('xray-button')) {
+        $('xray-button').addEventListener('click', () => {
+            const clock = $('minecraft-clock');
+            if (clock) clock.classList.toggle('x-ray');
+        });
+    }
+
+    // 11. Reset All
+    $('reset-all-btn').addEventListener('click', () => {
+        if (confirm("Êtes-vous sûr de vouloir tout réinitialiser (y compris l'heure de début) ?")) {
+            stopGPS();
+            window.location.reload(); 
+        }
+    });
+}
+
 /** Boucle de mise à jour rapide (50ms). */
 function domUpdateLoop() {
     const dt = DOM_FAST_UPDATE_MS / 1000;
     
-    // Mises à jour des données IMU
+    // Mises à jour des données IMU (Utilisation de displayVal pour uniformité)
     if ($('accel-x')) $('accel-x').textContent = displayVal(imuAccelX, ' m/s²');
     if ($('accel-y')) $('accel-y').textContent = displayVal(imuAccelY, ' m/s²');
     if ($('accel-z')) $('accel-z').textContent = imuAccelZ !== null ? imuAccelZ.toFixed(3) + ' m/s²' : 'N/A';
+    
+    if ($('magnetic-max')) $('magnetic-max').textContent = displayVal(maxMagnetic, ' μT');
     
     // Gyroscope
     if ($('gyro-x')) $('gyro-x').textContent = displayVal(imuGyroX, ' rad/s');
     if ($('gyro-y')) $('gyro-y').textContent = displayVal(imuGyroY, ' rad/s');
     if ($('gyro-z')) $('gyro-z').textContent = displayVal(imuGyroZ, ' rad/s');
     
+    if ($('light-max')) $('light-max').textContent = displayVal(maxLight, ' lux');
+
     // Si le GPS est arrêté ou non disponible, on force la logique Dead Reckoning
     if (wID === null) {
         gpsError(null); 
@@ -455,8 +643,12 @@ function domUpdateLoop() {
     if ($('elapsed-time')) $('elapsed-time').textContent = totalTime.toFixed(2) + ' s';
     if ($('time-moving')) $('time-moving').textContent = timeMoving.toFixed(2) + ' s';
     
-    const mc_hours = Math.floor((now.getHours() * 1000 + now.getMinutes() * 100 / 6) / 1000) % 24;
-    const mc_minutes = Math.floor((now.getMinutes() * 60) / 1000) * 10;
+    // Calcul Heure Minecraft (Simplifié)
+    const mc_total_ticks = (totalTime * 20); // 20 ticks par seconde
+    const mc_game_ticks = (mc_total_ticks % 24000); 
+    const mc_hours = Math.floor(mc_game_ticks / 1000) % 24; 
+    const mc_minutes = Math.floor((mc_game_ticks % 1000) * 0.06); // 1000 ticks = 60 minutes
+
     if ($('time-minecraft')) $('time-minecraft').textContent = `${mc_hours.toString().padStart(2, '0')}:${mc_minutes.toString().padStart(2, '0')}`;
 
     // CALCUL DE DEBUG : Fréquence de Nyquist
@@ -474,8 +666,11 @@ function init() {
     
     initializeSensors(); 
     initMap();
+    initControls();
+    
     fetchWeatherAndBaro(); 
     updateAstro();
+    
     setGPSMode('HIGH_FREQ');
     
     // Boucle rapide (IMU + DOM)
@@ -486,8 +681,6 @@ function init() {
         fetchWeatherAndBaro(); 
         updateAstro();
     }, DOM_SLOW_UPDATE_MS);
-
-    // TODO: Ajouter les listeners d'événements pour les boutons de contrôle
 }
 
 document.addEventListener('DOMContentLoaded', init);
