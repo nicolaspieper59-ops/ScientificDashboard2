@@ -1,5 +1,5 @@
 // =========================================================================
-// _constants.js : Constantes et État Global
+// _constants.js : Constantes et État Global (Tuning pour la Réactivité)
 // =========================================================================
 
 // --- CONSTANTES ---
@@ -41,7 +41,9 @@ let P = math.diag(math.zeros(N_STATES)._data.flat());
 
 let Q_diag = new Array(N_STATES).fill(1e-6); 
 Q_diag[0] = Q_diag[1] = Q_diag[2] = 1e-4; // Pos
-Q_diag[3] = Q_diag[4] = Q_diag[5] = 10.0; // Vel: Augmenté pour gérer le drift en Dead Reckoning
+Q_diag[3] = Q_diag[4] = Q_diag[5] = 1000.0; // Vel: Augmenté massivement pour la réactivité
+Q_diag[13] = Q_diag[14] = Q_diag[15] = 1e-5; // Ba (Biais accéléromètre)
+Q_diag[10] = Q_diag[11] = Q_diag[12] = 1e-5; // Bg (Biais gyroscope)
 let Q = math.diag(Q_diag); // Matrice de covariance du bruit de processus
 
 // --- ÉTAT DES CAPTEURS ET COMPTEURS ---
@@ -81,9 +83,9 @@ function initEKF(lat_init, lon_init, alt_init) {
 
 /** Étape de Prédiction de l'EKF. */
 function EKF_predict(dt) {
-    // Correction: Utiliser les indices corrects pour les biais d'accéléromètre (13, 14, 15)
+    // Les biais des accéléromètres (états 13, 14, 15) et des gyroscopes (10, 11, 12) 
+    // sont propagés via P = P + Q.
     const ba_accel = [X.get([13]), X.get([14]), X.get([15])]; 
-    // Correction de l'accélération par le biais du biais
     const accel_corrected_total = math.subtract([imuAccel.x, imuAccel.y, imuAccel.z], ba_accel);
 
     // 1. Vitesse (Propagation)
@@ -104,7 +106,6 @@ function EKF_predict(dt) {
     
     // 2. Position (Propagation Géodétique Corrigée)
     const latRad = X.get([0]);
-    // const altM est déjà calculée
     
     const Vn = X.get([3]); // V North
     const Ve = X.get([4]); // V East
@@ -122,7 +123,10 @@ function EKF_predict(dt) {
     X.set([1], X.get([1]) + dLon * currentEnvFactor); 
     X.set([2], altM + dAlt * currentEnvFactor); 
 
-    // 3. Mise à jour de la Covariance (Simplifié: P = P + Q)
+    // 3. Quaternions (États 6-9) : Pas de rotation si pas de données gyro.
+    // Pour une implémentation complète, ceci nécessiterait math.multiply(q, rotation_quaternion)
+    
+    // 4. Mise à jour de la Covariance (P = P + Q pour la simplicité du 21-états)
     P = math.add(P, Q); 
     
     // Mise à jour des variables d'affichage
@@ -132,7 +136,7 @@ function EKF_predict(dt) {
     speedEst = math.norm([X.get([3]), X.get([4]), X.get([5])]);
 }
 
-/** Étape de Correction (Mise à jour) de l'EKF. */
+/** Étape de Correction (Mise à jour) de l'EKF. (Non modifiée) */
 function EKF_update(z_meas, z_h, H, R) {
     const H_t = math.transpose(H);
     const S = math.add(math.multiply(H, P, H_t), R);
@@ -148,7 +152,7 @@ function EKF_update(z_meas, z_h, H, R) {
     P = math.multiply(I_KH, P, math.transpose(I_KH), math.multiply(K, R, math.transpose(K))); 
 }
 
-/** Gestion du signal GPS réussi (Correction GNSS de l'EKF). */
+/** Gestion du signal GPS réussi (Correction GNSS de l'EKF). (Non modifiée) */
 function gpsSuccess(position) {
     const dt = DT_MS / 1000;
     
@@ -197,7 +201,7 @@ function gpsSuccess(position) {
     $('gps-status-dr').textContent = 'ACTIF (FUSION IMU/GPS)';
 }
 
-/** Gestion de l'erreur GPS (Dead Reckoning et ZUPT). */
+/** Gestion de l'erreur GPS (Dead Reckoning et ZUPT). (Non modifiée) */
 function gpsError(error) {
     const dt = DT_MS / 1000;
     
@@ -208,17 +212,14 @@ function gpsError(error) {
     // --- CALCUL DE L'ACCÉLÉRATION LINÉAIRE pour ZUPT ---
     const altM = X.get([2]) || 0;
     const g_local = G_BASE * Math.pow(EARTH_RADIUS / (EARTH_RADIUS + altM), 2);
-    // Correction: Utiliser les indices corrects pour les biais d'accéléromètre (13, 14, 15)
     const ba_accel = [X.get([13]), X.get([14]), X.get([15])]; 
     const accel_corrected_total = math.subtract([imuAccel.x, imuAccel.y, imuAccel.z], ba_accel);
-    // Accélération linéaire (gravité soustraite)
     const linear_accel_NED = math.subtract(accel_corrected_total, [0, 0, g_local]); 
     
     // ZUPT (Correction Vitesse Zéro) - Utiliser l'accélération linéaire
     const accel_mag_linear = math.norm(linear_accel_NED);
     
-    // Correction: ZUPT est appliqué si l'accélération linéaire est faible. 
-    // La vérification de 'speedEst < MIN_SPD' est retirée.
+    // Le Q très élevé assure que cette correction domine l'état EKF Vitesse
     if (accel_mag_linear < ZUPT_ACCEL_TOLERANCE) {
         // L'objet est immobile: Vitesse réelle = 0
         const z_zupt = math.matrix([0, 0, 0]); 
@@ -239,7 +240,6 @@ function gpsError(error) {
         currentAccuracy = null;
     }
 
-    // Correction du statut GPS pour refléter l'arrêt explicite du GPS
     if (wID === null && !isGPSEnabled) {
         $('gps-status-dr').textContent = 'Arrêté (Pause/Manuel)';
     } else {
@@ -247,12 +247,11 @@ function gpsError(error) {
     }
 }
 
-/** Initialise et écoute les capteurs IMU (Accéléromètre et Gyroscope). */
+/** Initialise et écoute les capteurs IMU (Non modifiée) */
 function initializeIMUSensors() {
     if ('ondevicemotion' in window) {
         window.addEventListener('devicemotion', (event) => {
             if (event.accelerationIncludingGravity) {
-                // Met à jour les variables d'état imuAccel et imuGyro
                 imuAccel.x = event.accelerationIncludingGravity.x || 0;
                 imuAccel.y = event.accelerationIncludingGravity.y || 0;
                 imuAccel.z = event.accelerationIncludingGravity.z || 0;
@@ -387,7 +386,7 @@ function updateAstroCalculations() {
     const coords = { lat: lat * R2D || 45.75, lon: lon * R2D || 4.85 };
     const date = new Date();
     
-    // Correction: Rétablir la synchronisation GMT (assuré dans l'itération précédente, reconfirmé)
+    // Synchronisation GMT (inchangée)
     $('local-time').textContent = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     
     const utcDate = new Date(date.getTime());
@@ -417,20 +416,21 @@ function updateAstroCalculations() {
 
         const MST_hours = UTC_hours_dec + coords.lon / 15;
 
-        // Correction: L'EOT est en radians dans SunCalc.getPosition. 
-        // Conversion Radian -> Minutes (1 rad = 3.8197 heures = 229.18 minutes)
+        // CORRECTION MAJEURE: Conversion de EOT_rad (radians) en minutes
+        // 1 rad = 720/pi minutes ≈ 229.183 minutes
         if (typeof EOT_rad === 'number' && !isNaN(EOT_rad)) {
-            EOT_minutes = EOT_rad * (240 / Math.PI); 
+            EOT_minutes = EOT_rad * (720 / Math.PI); 
             const EOT_hours = EOT_minutes / 60;
+            // TST (Heure Solaire Vraie) = MST + EOT (en heures)
             TST_hours = MST_hours + EOT_hours;
         }
 
-        // Affichage des temps solaires (gère le null/NaN via formatHours -> N/A)
+        // Affichage des temps solaires
         $('mst').textContent = formatHours(MST_hours);
         $('tst').textContent = formatHours(TST_hours);
         
-        // Temps Minecraft
-        const mc_ticks = TST_hours !== null && !isNaN(TST_hours) ? (TST_hours * 1000 - 6000) % 24000 : null;
+        // Temps Minecraft (Décalage de 6h par rapport à TST minuit)
+        const mc_ticks = TST_hours !== null && !isNaN(TST_hours) ? ((TST_hours + 6) % 24) * 1000 : null; 
         $('time-minecraft').textContent = formatMinecraftTime(mc_ticks);
 
         // Affichage Astro
@@ -441,7 +441,7 @@ function updateAstroCalculations() {
         $('moon-phase-name').textContent = getMoonPhaseName(moonIllumination.phase);
         $('moon-illuminated').textContent = (moonIllumination.fraction * 100).toFixed(1) + ' %';
         
-        // EOT et Longitude Écliptique (Gère le null/NaN pour l'affichage)
+        // EOT et Longitude Écliptique 
         $('noon-solar').textContent = sunTimes.solarNoon.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
         $('eot').textContent = EOT_minutes !== null && !isNaN(EOT_minutes) ? EOT_minutes.toFixed(2) + ' min' : 'N/A'; 
         $('ecl-long').textContent = isNaN(sunPos.eclipticLongitude * R2D) ? 'N/A' : (sunPos.eclipticLongitude * R2D).toFixed(2) + ' °';
@@ -483,7 +483,7 @@ function updateMinecraftClockAnimation(sunAltitudeRad, sunAzimuthRad) {
 
 // --- RENDU DOM ET CARTE ---
 
-/** Initialise la carte Leaflet. */
+/** Initialise la carte Leaflet. (Non modifiée) */
 function initMap() {
     if (typeof L !== 'undefined') {
         mapInstance = L.map('map').setView([45.75, 4.85], 10); 
@@ -497,7 +497,7 @@ function initMap() {
     }
 }
 
-/** Met à jour la position du marqueur EKF sur la carte. */
+/** Met à jour la position du marqueur EKF sur la carte. (Non modifiée) */
 function updateMap(newLatDeg, newLonDeg, accuracy) {
     if (mapInstance && newLatDeg !== null) {
         const newLatLng = [newLatDeg, newLonDeg];
@@ -519,7 +519,7 @@ function updateMap(newLatDeg, newLonDeg, accuracy) {
     }
 }
 
-/** Met à jour les compteurs de distance, vitesse max et appels aux calculs physiques. */
+/** Met à jour les compteurs de distance, vitesse max et appels aux calculs physiques. (Non modifiée) */
 function updateCompteurs(currentSpeed, dt) {
     const totalTime = (Date.now() - startTime) / 1000;
     const currentSpeed_kmh = currentSpeed * KMH_MS * currentEnvFactor;
@@ -554,7 +554,7 @@ function updateCompteurs(currentSpeed, dt) {
     updatePhysicsCalculations(speedEst * currentEnvFactor);
 }
 
-/** Met à jour les données de position EKF et la vitesse brute. */
+/** Met à jour les données de position EKF et la vitesse brute. (Non modifiée) */
 function updateGPSDisplay(coords) {
     if (lat !== null) {
         $('lat-display').textContent = (lat * R2D).toFixed(6) + ' °';
@@ -574,11 +574,12 @@ function updateGPSDisplay(coords) {
     updateMap(lat * R2D, lon * R2D, currentAccuracy);
 }
 
-/** Met à jour les informations de débogage EKF. */
+/** Met à jour les informations de débogage EKF. (Non modifiée) */
 function updateEKFDisplay() {
     const p_vel = P.get([3, 3]);
     const p_alt = P.get([2, 2]);
     
+    // L'incertitude P est maintenant plus élevée pour la vitesse à cause de Q=1000.0
     $('kalman-uncert').textContent = p_vel !== null ? `${p_vel.toPrecision(3)} (m/s)²` : 'N/A';
     $('alt-uncertainty').textContent = p_alt !== null ? `${Math.sqrt(p_alt).toPrecision(3)} m` : 'N/A';
     
