@@ -276,23 +276,25 @@ function calculateDewPoint(tempC, humidity) {
     return (B * alfa) / (A - alfa);
 }
 
+/** Mise à jour des données Météo (utilise des valeurs nominales si pas de capteur réel). */
 function updateWeatherAndBiophysics() {
-    // Simulation des variations Météo
-    tempC = 20.0 + Math.sin(Date.now() / 100000) * 5; 
-    pressurehPa = 1013.25 + Math.cos(Date.now() / 50000) * 2;
-    humidityPerc = 50.0 + Math.sin(Date.now() / 80000) * 10;
+    // Suppression de la simulation (Pas de Math.sin/cos). 
+    // Les valeurs initiales de tempC, pressurehPa, humidityPerc sont statiques et nominales (définies dans _constants.js).
 
     const air_density = calculateAirDensity(pressurehPa, tempC);
     const dew_point = calculateDewPoint(tempC, humidityPerc);
     
     // Rendu DOM
-    $('temp-air-2').textContent = tempC.toFixed(1) + ' °C';
-    $('pressure-2').textContent = pressurehPa.toFixed(2) + ' hPa';
-    $('humidity-2').textContent = humidityPerc.toFixed(1) + ' %';
+    $('temp-air-2').textContent = tempC.toFixed(1) + ' °C (Nom.)';
+    $('pressure-2').textContent = pressurehPa.toFixed(2) + ' hPa (Nom.)';
+    $('humidity-2').textContent = humidityPerc.toFixed(1) + ' % (Nom.)';
     $('dew-point').textContent = dew_point !== null ? dew_point.toFixed(1) + ' °C' : 'N/A';
     $('air-density').textContent = air_density !== null ? air_density.toFixed(3) + ' kg/m³' : 'N/A';
+    
+    // Le calcul de l'alt-baro utilise l'estimation d'altitude EKF et la pression nominale
     $('alt-baro').textContent = altEst !== null ? (altEst + (1013.25 - pressurehPa) * 8.5).toFixed(2) + ' m' : 'N/A';
-    $('weather-status').textContent = 'SIMULÉ';
+    
+    $('weather-status').textContent = 'INACTIF (Données nominales)'; 
 }
 
 function updatePhysicsCalculations(currentSpeed) {
@@ -328,6 +330,7 @@ function updatePhysicsCalculations(currentSpeed) {
 // --- CALCULS ASTRO ET AFFICHAGE ---
 
 function formatHours(decimalHours) {
+    if (isNaN(decimalHours)) return 'N/A';
     decimalHours = (decimalHours % 24 + 24) % 24;
     const hours = Math.floor(decimalHours);
     const minutes = Math.floor((decimalHours % 1) * 60);
@@ -335,6 +338,7 @@ function formatHours(decimalHours) {
 }
 
 function formatMinecraftTime(ticks) {
+    if (isNaN(ticks)) return 'N/A';
     ticks = (ticks % 24000 + 24000) % 24000; 
     let mc_hours = Math.floor(ticks / 1000) % 24;
     let mc_minutes = Math.floor(((ticks % 1000) / 1000) * 60);
@@ -371,16 +375,21 @@ function updateAstroCalculations() {
         
         // Calcul des Temps Solaires
         const UTC_hours_dec = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
-        const EOT_minutes = sunPos.equationOfTime / 60;
+        
+        // Utiliser 0 si equationOfTime est null/undefined pour éviter la propagation de NaN
+        const EOT_sec = sunPos.equationOfTime || 0; 
+        const EOT_minutes = EOT_sec / 60;
         const EOT_hours = EOT_minutes / 60;
+        
         const MST_hours = UTC_hours_dec + coords.lon / 15;
         const TST_hours = MST_hours + EOT_hours;
 
+        // Affichage des temps solaires (gère le NaN pour l'affichage)
         $('mst').textContent = formatHours(MST_hours);
         $('tst').textContent = formatHours(TST_hours);
         
         // Temps Minecraft
-        const mc_ticks = (TST_hours * 1000) - 6000;
+        const mc_ticks = TST_hours * 1000 - 6000;
         $('time-minecraft').textContent = formatMinecraftTime(mc_ticks);
 
         // Affichage Astro
@@ -391,9 +400,10 @@ function updateAstroCalculations() {
         $('moon-phase-name').textContent = getMoonPhaseName(moonIllumination.phase);
         $('moon-illuminated').textContent = (moonIllumination.fraction * 100).toFixed(1) + ' %';
         
+        // EOT et Longitude Écliptique (Gère le NaN pour l'affichage)
         $('noon-solar').textContent = sunTimes.solarNoon.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-        $('eot').textContent = EOT_minutes.toFixed(2) + ' min'; 
-        $('ecl-long').textContent = (sunPos.eclipticLongitude * R2D).toFixed(2) + ' °';
+        $('eot').textContent = isNaN(EOT_minutes) ? 'N/A' : EOT_minutes.toFixed(2) + ' min'; 
+        $('ecl-long').textContent = isNaN(sunPos.eclipticLongitude * R2D) ? 'N/A' : (sunPos.eclipticLongitude * R2D).toFixed(2) + ' °';
         
         $('date-solar-mean').textContent = date.toLocaleDateString('fr-FR');
         $('date-solar-true').textContent = date.toLocaleDateString('fr-FR');
@@ -544,7 +554,6 @@ function updateEKFDisplay() {
 
 function startGPS() {
     if (wID === null && 'geolocation' in navigator) {
-        // Appelle gpsSuccess ou gpsError, définis dans _ekf_core.js
         wID = navigator.geolocation.watchPosition(gpsSuccess, gpsError, {
             enableHighAccuracy: true,
             timeout: 5000,
@@ -637,7 +646,8 @@ function init() {
     initEKF(null, null, 0); 
     initMap();
     
-    updateWeatherAndBiophysics();
+    // Les appels conservent les valeurs nominales statiques
+    updateWeatherAndBiophysics(); 
     updateAstroCalculations();
     
     // Boucle rapide (EKF Predict + DOM)
@@ -645,7 +655,8 @@ function init() {
     
     // Boucle lente (Astro, Météo (si non temps réel))
     setInterval(updateAstroCalculations, 10000);
-    setInterval(updateWeatherAndBiophysics, 60000);
+    // On garde l'intervalle pour la météo même si elle est statique, pour une future implémentation de capteur
+    setInterval(updateWeatherAndBiophysics, 60000); 
 }
 
 document.addEventListener('DOMContentLoaded', init);
