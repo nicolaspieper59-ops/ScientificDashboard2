@@ -1,374 +1,251 @@
-/* =========================================================================
-   style.css : Styles du GNSS SpaceTime Dashboard • EKF Fusion Professionnel
-   ========================================================================= */
-
-/* --- 1. Variables Globales (Couleurs) --- */
+/* --- Configuration Générale --- */
 :root {
-    /* Couleurs de base (définies dans l'HTML) */
     --bg-light: #f4f7f6;
     --bg-dark: #121220;
     --panel-light: #ffffff;
     --panel-dark: #1e1e1e;
-    --text-light: #333;
-    --text-dark: #e0e0e0;
-    --border-light: #ddd;
-    --border-dark: #333;
-    
-    /* Couleurs spécifiques */
-    --primary-color: #007bff;
-    --speed-bg: #222;
-    --speed-text: #00ff66;
-    --data-label-color: #555;
-    --data-value-color: #0056b3;
-    --data-value-dark: #99ccff;
+    --text-light: #000000;
+    --text-dark: #f0f0f0;
+    --accent: #007bff;
+    --success: #28a745;
+    --danger: #dc3545;
+    --warning: #ffc107;
+    --font-mono: 'Roboto Mono', monospace;
 }
 
-/* --- 2. Configuration Générale & Layout --- */
-* {
-    box-sizing: border-box;
+body {
+    font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-}
-
-body { 
-    font-family: 'Arial', sans-serif; 
-    background-color: var(--bg-light); 
-    color: var(--text-light); 
-    /* Amélioration de la transition pour le mode sombre */
-    transition: background-color 0.4s, color 0.4s; 
-}
-
-.dashboard-container { 
-    display: grid; 
-    grid-template-columns: 1fr 1.5fr 1fr; /* 3 Colonnes sur grand écran (1:1.5:1) */
-    gap: 15px; 
-    padding: 15px; 
-    max-width: 1800px;
-    margin: auto;
-}
-
-/* --- 3. Styles Mode Sombre (Dark Mode) --- */
-body.dark-mode {
-    background-color: var(--bg-dark); 
-    color: var(--text-dark); 
-}
-body.dark-mode .section {
-    background-color: var(--panel-dark); 
-    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
-}
-body.dark-mode .section h2 {
-    border-bottom-color: var(--border-dark);
-    color: #4da6ff; /* Couleur du titre en mode sombre */
-}
-body.dark-mode .data-point { 
-    border-bottom-color: #3a3a3a; 
-}
-body.dark-mode .data-point span:first-child { 
-    color: #bdbdbd; 
-}
-body.dark-mode .data-point span:last-child { 
-    color: var(--data-value-dark); 
-}
-body.dark-mode .clock-display { 
-    color: #aaa; 
-}
-body.dark-mode select, 
-body.dark-mode input { 
-    background-color: #333; 
-    color: #eee; 
-    border-color: #555; 
-}
-body.dark-mode #map { 
-    /* Inversion partielle pour rendre les tuiles de carte lisibles */
-    filter: invert(0.9) hue-rotate(180deg); 
-    background-color: #333;
-}
-body.dark-mode #emergency-stop-btn { 
-    background-color: #e65c69; 
-}
-body.dark-mode #xray-button {
-    background-color: rgba(255, 255, 255, 0.2);
-    color: #121220;
-}
-
-/* --- 4. Sections & Panneaux (Panels) --- */
-.section { 
-    background-color: var(--panel-light); 
-    padding: 15px 20px; 
-    border-radius: 8px; 
-    box-shadow: 0 4px 8px rgba(0,0,0,0.05); 
-    transition: background-color 0.3s, box-shadow 0.3s, border-color 0.3s; 
-}
-
-.section h2 { 
-    margin-top: 0; 
-    border-bottom: 2px solid var(--border-light); 
-    padding-bottom: 10px; 
-    font-size: 1.2em; 
-    color: var(--primary-color);
-    transition: border-color 0.3s, color 0.3s;
+    background-color: var(--bg-light);
+    color: var(--text-light);
+    transition: background-color 0.5s, color 0.5s;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    min-height: 100vh;
 }
-.section h2 i {
-    margin-right: 8px;
+
+/* --- Modes Jour/Nuit Dynamiques pour le fond (SkyBox) --- */
+body.sky-day { background-color: #87CEEB; }
+body.sky-sunset { background-color: #FF7F50; }
+body.sky-night-light { background-color: #191970; }
+body.sky-night { background-color: #000000; }
+
+/* Dark Mode */
+body.dark-mode {
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+}
+body.dark-mode .section, 
+body.dark-mode .controls,
+body.dark-mode .speed-gauge {
+    background-color: var(--panel-dark);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+body.dark-mode .data-point {
+    border-bottom: 1px solid #333;
+}
+
+/* --- Mise en page --- */
+header {
+    background-color: var(--accent);
+    color: white;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.main-content {
+    display: flex;
+    flex-grow: 1;
+    padding: 20px;
+    gap: 20px;
+}
+
+.data-container {
+    display: grid;
+    /* 3 colonnes pour les données à gauche */
+    grid-template-columns: repeat(3, 1fr); 
+    grid-auto-rows: minmax(min-content, max-content);
+    gap: 20px;
+    flex-grow: 1;
+    max-width: 70%; 
+}
+
+.map-container {
+    width: 30%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.section, .controls, .speed-gauge {
+    background-color: var(--panel-light);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+/* Étendre la section des contrôles sur 3 colonnes */
+.controls {
+    grid-column: span 3; 
+}
+
+/* --- Sections de Données --- */
+.section h2 {
+    margin-top: 0;
+    color: var(--accent);
+    font-size: 1.2em;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 5px;
+    margin-bottom: 10px;
 }
 .section h3 {
-    font-size: 1em;
-    margin-top: 15px;
-    margin-bottom: 5px;
-    color: var(--primary-color);
-}
-
-hr {
-    border: none;
-    border-top: 1px solid var(--border-light);
     margin: 10px 0;
+    font-size: 1em;
+    color: #666;
 }
-body.dark-mode hr {
-    border-top: 1px solid var(--border-dark);
+.dark-mode .section h3 {
+    color: #aaa;
 }
 
-/* --- 5. Lignes de Données (Data Points) --- */
-.data-point { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    padding: 6px 0; 
-    border-bottom: 1px solid #eee; 
-    font-size: 0.95em; 
-    min-height: 24px; 
+.data-point {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 0.9em;
+}
+.data-point span:last-child {
+    font-family: var(--font-mono);
+    font-weight: bold;
+    color: #333;
+}
+.dark-mode .data-point span:last-child {
+    color: var(--text-dark);
 }
 .data-point:last-child {
-    border-bottom: none; /* Nettoyer le dernier point de donnée de chaque section */
+    border-bottom: none;
 }
 
-.data-point span:first-child { 
-    font-weight: bold; 
-    color: var(--data-label-color); 
-    margin-right: 10px; 
+/* --- Contrôles & Boutons --- */
+.controls h2 {
+    color: var(--danger);
 }
-
-.data-point span:last-child { 
-    font-family: 'Courier New', Courier, monospace; 
-    font-weight: bold; 
-    color: var(--data-value-color); 
-    text-align: right; 
-}
-
-/* --- 6. Affichage Vitesse (Speed Display) --- */
-.speed-display { 
-    text-align: center; 
-    background-color: var(--speed-bg); 
-    color: var(--speed-text); 
-    padding: 20px; 
-    border-radius: 12px; 
-    font-size: 2em; 
-    margin-bottom: 15px; 
-    font-family: 'Orbitron', sans-serif; /* Style pour la vitesse */
-}
-.speed-display small { 
-    display: block; 
-    font-size: 0.5em; 
-    color: #aaa; 
-    margin-top: 5px; 
-    font-family: Arial, sans-serif; 
-}
-#speed-stable { 
-    font-size: 2.5em; 
-    font-weight: 700; 
-    letter-spacing: 1px; 
-}
-
-/* --- 7. Contrôles et Inputs --- */
-.controls-grid { 
-    display: grid; 
-    grid-template-columns: repeat(3, 1fr); 
-    gap: 10px; 
-    margin-top: 10px; 
-}
-@media (max-width: 768px) {
-    .controls-grid {
-        grid-template-columns: 1fr 1fr; /* 2 colonnes sur mobile */
-    }
-}
-
-.control-input-full { 
-    grid-column: 1 / -1; 
-    margin-top: 5px; 
-}
-.control-input-full label { 
-    display: block; 
-    font-size: 0.9em; 
-    margin-bottom: 3px; 
+.controls button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
     font-weight: bold;
 }
-.control-input-full input, .control-input-full select { 
-    width: 98%; 
-    padding: 5px; 
-    border-radius: 4px; 
-    border: 1px solid #ccc; 
-    background-color: #f9f9f9; 
+#toggle-gps-btn { background-color: var(--success); color: white; }
+#reset-all-btn { background-color: var(--danger); color: white; }
+#toggle-dark-mode-btn { background-color: #555; color: white; }
+.button-group {
+    display: flex;
+    gap: 5px;
+}
+.button-group button {
+    margin-top: 5px;
+    width: 33%;
+    background-color: #797979;
+    font-size: 0.8em;
 }
 
-button, select { 
-    padding: 8px; 
-    border: none; 
-    border-radius: 5px; 
-    cursor: pointer; 
-    font-weight: bold; 
-    transition: background-color 0.2s, transform 0.1s; 
-}
-button:hover {
-    opacity: 0.9;
-}
-button:active { 
-    transform: scale(0.98); 
+.control-group label { display: block; margin-top: 10px; font-weight: bold; }
+.control-group input, .control-group select {
+    width: calc(100% - 10px);
+    padding: 5px;
+    margin-top: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
 }
 
-#toggle-gps-btn { 
-    background-color: #28a745; 
-    color: white; 
+/* --- Carte & Vitesse/Astro Clock --- */
+#map {
+    flex-grow: 1;
+    height: 350px;
+    background-color: #ddd; 
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden; /* Pour l'effet 3D */
 }
-#emergency-stop-btn { 
-    background-color: #dc3545; 
-    color: white; 
-}
-#emergency-stop-btn.active { 
-    animation: pulse-red 1s infinite alternate; 
+.speed-gauge h3 { color: var(--accent); margin-top: 0; }
+.speed-value { font-size: 3em; font-weight: bold; color: var(--danger); font-family: var(--font-mono); }
+.speed-unit { font-size: 1em; color: #666; }
+
+/* --- Astro Clock (3D Animation) --- */
+.astro-clock-container {
+    width: 100%;
+    height: 100%;
+    perspective: 1000px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
-/* --- 8. Carte (Leaflet) --- */
-#map-container { 
-    position: relative; 
-}
-#map { 
-    height: 350px; 
-    width: 100%; 
-    border-radius: 8px; 
-    margin-top: 15px; 
-    background-color: #e0e0e0; 
-}
-#xray-button { 
-    position: absolute; 
-    top: 25px; 
-    right: 10px; 
-    z-index: 1000; 
-    background-color: rgba(0,0,0,0.6); 
-    color: white; 
-    border-radius: 50%; 
-    width: 30px; 
-    height: 30px; 
-    padding: 0; 
-    font-size: 0.8em; 
-    line-height: 30px; 
-    text-align: center; 
-    border: none;
+.astro-clock {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    border: 5px solid rgba(0, 123, 255, 0.5);
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.5s; 
 }
 
-/* --- 9. Horloge Astronomique (Minecraft) --- */
-#minecraft-clock-container { 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    flex-direction: column; 
-    padding-top: 10px; 
-    position: relative; 
+.celestial-body {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    margin: -15px; 
+    transform-style: preserve-3d;
+    transition: transform 0.5s;
 }
-#minecraft-clock { 
-    width: 100px; height: 100px; 
-    position: relative; 
-    border: 3px solid #333; 
-    overflow: hidden; 
-    background-color: transparent; 
-    border-radius: 50%; 
-    transition: background-color 0.8s, border-color 0.8s; 
-    z-index: 0;
+#sun-element {
+    background-color: var(--warning);
+    box-shadow: 0 0 10px var(--warning);
+    transform: translateZ(75px); 
 }
-#minecraft-clock::before { /* Horizon */
-    content: ''; 
-    position: absolute; 
-    top: 50%; 
-    left: 0; 
-    right: 0; 
-    height: 2px; 
-    background-color: #555; 
-    transform: translateY(-50%);
-    z-index: 3;
+#moon-element {
+    background-color: #ccc;
+    box-shadow: 0 0 5px #ccc;
+    transform: translateZ(-75px); 
 }
-#biome-half { /* Demi-sphère Biome */
-    position: absolute; 
-    top: 50%; 
-    left: 0; 
-    right: 0; 
-    bottom: 0; 
-    background-color: #795548; 
-    transition: opacity 0.4s, background-color 0.8s;
-    z-index: 1;
+.clock-status {
+    text-align: center;
+    margin-top: 10px;
+    font-style: italic;
+    color: var(--danger);
 }
-#minecraft-clock.x-ray #biome-half { 
-    opacity: 0; 
+.map-section .data-point {
+    padding: 5px 0;
 }
 
-.sun-element, .moon-element { 
-    position: absolute; 
-    width: 100%; height: 100%; 
-    top: 0; left: 0; 
-    display: flex; 
-    justify-content: center; 
-    align-items: flex-start; 
-    transform-origin: center center; 
-    transition: transform 1s linear; 
-    z-index: 2; 
+/* Responsive Design */
+@media (max-width: 1400px) {
+    .data-container { grid-template-columns: repeat(2, 1fr); max-width: 65%; }
+    .controls { grid-column: span 2; }
+    .map-container { width: 35%; }
 }
-
-.sun-icon, .moon-icon { 
-    font-size: 1.5em; 
-    transform: translateY(-50%); 
+@media (max-width: 1024px) {
+    .main-content { flex-direction: column; }
+    .data-container { grid-template-columns: repeat(2, 1fr); max-width: 100%; }
+    .controls { grid-column: span 2; }
+    .map-container { width: 100%; }
 }
-.sun-icon { 
-    color: #ffdd00; 
-    text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); 
-}
-.moon-icon { 
-    color: #f0f0f0; 
-    text-shadow: 0 0 5px rgba(200, 200, 255, 0.3); 
-}
-.clock-display { 
-    font-size: 0.8em; 
-    color: #777; 
-    margin-top: 5px; 
-}
-
-/* --- 10. Styles Ciel (Dynamiques) --- */
-.sky-day { background-color: #87ceeb !important; } 
-.sky-sunset { background-color: #ff8c00 !important; } 
-.sky-night-light { background-color: #303040 !important; } 
-.sky-night { background-color: #121220 !important; } 
-
-#minecraft-clock.sky-day { background-color: #87ceeb; }
-#minecraft-clock.sky-sunset { background-color: #ff8c00; }
-#minecraft-clock.sky-night, #minecraft-clock.sky-night-light { background-color: #121220; }
-
-/* --- 11. Animations --- */
-@keyframes pulse-red { 
-    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 
-    100% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 
-}
-
-/* --- 12. CSS Adaptatif (Responsive) --- */
-@media (max-width: 1200px) {
-    .dashboard-container { 
-        /* Passe en 2 colonnes sur tablettes */
-        grid-template-columns: 1fr 1fr;
-    }
-}
-@media (max-width: 800px) {
-    .dashboard-container { 
-        /* Passe en 1 colonne sur mobiles */
-        grid-template-columns: 1fr;
-    }
-    .controls-grid { 
-        grid-template-columns: 1fr 1fr; /* Retour aux 2 colonnes pour les boutons */
-    }
-                              }
+@media (max-width: 600px) {
+    .data-container { grid-template-columns: 1fr; }
+    .controls { grid-column: span 1; }
+    header h1 { font-size: 1.5em; }
+    .button-group { flex-direction: column; }
+    .button-group button { width: 100%; margin-top: 2px; }
+   }
