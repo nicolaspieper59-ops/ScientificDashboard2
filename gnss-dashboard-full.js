@@ -103,7 +103,7 @@ function getGravityLocal(alt, bodyKey, rotationRadius, angularVelocity) {
         return G_PLANET * Math.pow(R_PLANET / (R_PLANET + alt), 2);
     }
     return G_PLANET;
-        }
+                        }
 // =================================================================
 // BLOC 2/4 : astro_weather_ntp.js
 // Fonctions pour la synchronisation NTP, l'heure Minecraft, les calculs Astro/Soleil/Lune et Météo.
@@ -237,13 +237,7 @@ function getMoonPhaseName(phase) {
     if (phase < 0.75) return "Gibbeuse Décroissante";
     if (phase < 0.94) return "Dernier Quartier";
     return "Phase Inconnue";
-                                          }
-// =================================================================
-// BLOC 2/4 : astro_weather_ntp.js
-// Fonctions pour la synchronisation NTP, l'heure Minecraft, les calculs Astro/Soleil/Lune et Météo.
-// Dépendances: Fonctions externes (SunCalc, fetch)
-// =================================================================
-
+                                       }
 // =================================================================
 // BLOC 3/4 : ekf_core.js
 // Implémentation du cœur du Filtre de Kalman Étendu (EKF)
@@ -376,7 +370,8 @@ function getEKFVelocity3D() {
 
 function getVelocityUncertainty() { 
     return P_vel_3D; 
-}
+        }
+// =================================================================
 // BLOC 4A/4 : AppController.js (Partie 1: Contrôles et Utilitaires)
 // État Global, Gestion des Capteurs, Fonctions de Contrôle GPS/Carte.
 // Dépendances: Toutes les variables globales et fonctions de 1/4, 2/4.
@@ -575,7 +570,7 @@ function handleErr(err) {
         stopGPS();
         alert("Accès à la géolocalisation refusé. Veuillez l'activer.");
     }
-}
+    }
 // =================================================================
 // BLOC 4B/4 : AppController.js (Partie 2: Logique Principale, EKF et Initialisation)
 // Fonctions de Mise à Jour (EKF, DOM Lent) et Gestion du Démarrage.
