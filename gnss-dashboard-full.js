@@ -309,7 +309,28 @@ function getEKFVelocity3D() {
 function getVelocityUncertainty() { 
     return currentEKFState.P_vel; 
 }
+function getMinecraftTime(now) {
+    // 20 minutes (1,200,000 ms) est la durée d'un cycle jour Minecraft
+    const MC_DAY_MS = 20 * 60 * 1000; 
+    
+    // Décalage pour aligner le temps réel sur l'heure 6:00 (début de la journée MC)
+    const midnightOffsetMs = 6 * 3600 * 1000; 
+    const msSinceEpoch = now.getTime();
+    
+    // Calculer la position dans le cycle de 20 minutes, relative au décalage
+    let timeInCycle = (msSinceEpoch - midnightOffsetMs) % MC_DAY_MS;
+    
+    // Assurer un temps positif
+    if (timeInCycle < 0) timeInCycle += MC_DAY_MS; 
 
+    // Convertir la position en MS dans le cycle en 24 heures/minutes Minecraft
+    const msPerMcHour = MC_DAY_MS / 24; 
+    
+    const mcHours = Math.floor(timeInCycle / msPerMcHour);
+    const mcMinutes = Math.floor((timeInCycle % msPerMcHour) / (msPerMcHour / 60));
+    
+    return `${String(mcHours).padStart(2, '0')}:${String(mcMinutes).padStart(2, '0')}`;
+}
 
 // =========================================================================
 // BLOC 3/4 : Gestion des Événements IMU & GPS
