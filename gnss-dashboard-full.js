@@ -141,7 +141,7 @@ function highlightMissingData() {
             span.classList.remove('value-missing');
         }
     });
-    }
+}
 // =========================================================================
 // BLOC 2/4 : Fonctions EKF, Astro et Météo (Logique de Fusion)
 // =========================================================================
@@ -392,7 +392,7 @@ function getEKFVelocity3D() {
 
 function getVelocityUncertainty() { 
     return currentEKFState.P_vel; 
-                                        }
+                    }
 // =========================================================================
 // BLOC 3/4 : Gestion des Événements IMU & GPS
 // =========================================================================
@@ -518,7 +518,7 @@ function toggleGPS() {
         $('speed-status-text').textContent = 'PAUSE. Données figées.';
         lastUpdateTime = 0;
     }
-        }
+                                                        }
 // =========================================================================
 // BLOC 4/4 : Démarrage Lent & Mise à Jour du DOM
 // =========================================================================
@@ -838,4 +838,4 @@ window.onload = () => {
         window.addEventListener('devicemotion', handleIMU);
         $('imu-status').textContent = 'Actif (Accel)';
     }
-        }
+                               }
