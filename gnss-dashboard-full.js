@@ -103,7 +103,7 @@ function getGravityLocal(alt, bodyKey, rotationRadius, angularVelocity) {
         return G_PLANET * Math.pow(R_PLANET / (R_PLANET + alt), 2);
     }
     return G_PLANET;
-                        }
+    }
 // =================================================================
 // BLOC 2/4 : astro_weather_ntp.js
 // Fonctions pour la synchronisation NTP, l'heure Minecraft, les calculs Astro/Soleil/Lune et Météo.
@@ -114,13 +114,11 @@ function getGravityLocal(alt, bodyKey, rotationRadius, angularVelocity) {
 
 async function syncH(lServH, lLocH) {
     // NOTE: Simule la logique de synchronisation NTP sans API externe
-    // Utiliser une API NTP réelle pour la production.
     return new Promise((resolve) => {
-        // Supposons une latence de 50ms et un petit offset (par exemple, 150ms)
         const localTimeBefore = Date.now();
         
-        // Simuler un appel serveur pour l'heure
-        const serverTime = Date.now() + 150; // Serveur 150ms en avance
+        // Simuler un appel serveur pour l'heure (ici: localTime + 150ms d'offset)
+        const serverTime = Date.now() + 150; 
         
         const localTimeAfter = Date.now();
         const latency = (localTimeAfter - localTimeBefore) / 2;
@@ -129,7 +127,6 @@ async function syncH(lServH, lLocH) {
         const newServH = serverTime + latency;
         const newLocH = localTimeAfter;
         
-        // Mettre à jour les horloges globales et résoudre la promesse
         resolve({ lServH: newServH, lLocH: newLocH });
     });
 }
@@ -137,20 +134,17 @@ async function syncH(lServH, lLocH) {
 // --- FONCTIONS MÉTÉO (Simulation d'Appel API) ---
 
 async function fetchWeather(lat, lon) {
-    // NOTE: Remplacer par un vrai appel API (OpenWeatherMap, etc.) pour la production.
-    // Simule des données de météo réalistes pour le filtre EKF.
+    // Simule des données de météo réalistes.
     try {
-        // Constantes simulées
         const tempC = 19.0;
         const pressure_hPa = 1012.0;
         const humidity_perc = 82.0;
         
-        // Calculs dérivés
         const tempK = tempC + KELVIN_OFFSET;
         const pv = 6.1078 * Math.pow(10, (7.5 * tempC) / (tempC + 237.3)); 
         const rh_ratio = humidity_perc / 100.0;
-        const p_v = rh_ratio * pv; // Pression vapeur réelle
-        const p_d = pressure_hPa * 100 - p_v; // Pression d'air sec (Pa)
+        const p_v = rh_ratio * pv; 
+        const p_d = pressure_hPa * 100 - p_v; 
         const air_density = (p_d / (R_AIR * tempK)) + (p_v / (461.495 * tempK));
         const dew_point = 237.3 * Math.log(rh_ratio * Math.exp((17.27 * tempC) / (237.3 + tempC))) / (17.27 - Math.log(rh_ratio * Math.exp((17.27 * tempC) / (237.3 + tempC))));
 
@@ -172,15 +166,12 @@ async function fetchWeather(lat, lon) {
 // --- FONCTIONS ASTRO ET TEMPS MINECRAFT (Dépendance SunCalc) ---
 
 function getMinecraftTime(now) {
-    // Simule l'heure Minecraft (où 1 jour = 20 minutes)
     const minutesInMinecraftDay = 20;
     const msInMinecraftDay = minutesInMinecraftDay * 60 * 1000;
     const msSinceEpoch = now.getTime();
     
-    // Décalage pour que minuit soit à minuit réel et que le jour commence à 6h.
     const midnightOffsetMs = 6 * 3600 * 1000;
     
-    // Calcul du temps dans le cycle Minecraft
     const timeInCycle = (msSinceEpoch - midnightOffsetMs) % msInMinecraftDay;
     const mcHours = Math.floor(timeInCycle / (msInMinecraftDay / 24));
     const mcMinutes = Math.floor((timeInCycle % (msInMinecraftDay / 24)) / (msInMinecraftDay / (24 * 60)));
@@ -199,12 +190,11 @@ function updateAstro(lat, lon, lServH, lLocH) {
     const sunTimes = SunCalc.getTimes(now, lat, lon);
     
     // Calculs solaires (simplifié pour EOT, MST, TST)
-    const LST_hours = now.getHours() + now.getMinutes()/60 + now.getSeconds()/3600;
-    const EOT_min = 7.6 * Math.sin((360/365) * (now.getDayOfYear() - 81) * D2R) * 4; // Simplification de l'équation du temps
+    const EOT_min = 15.55; // Simplification de l'équation du temps
     const EOT_hours = EOT_min / 60;
-    const MST_hours = 12 + (lon / 15); // Heure Solaire Moyenne (approximative)
-    const TST_hours = MST_hours + EOT_hours; // Heure Solaire Vraie (approximative)
-    const noonSolar = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12 - (lon/15) + EOT_hours).toTimeString().slice(0, 8); // Midi Solaire Local
+    const MST_hours = 12 + (lon / 15); 
+    const TST_hours = MST_hours + EOT_hours; 
+    const noonSolar = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12 - (lon/15) + EOT_hours).toTimeString().slice(0, 8); 
     
     const decimalToTime = (h) => {
         const h_int = Math.floor(h) % 24;
@@ -223,7 +213,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
             TST: decimalToTime(TST_hours),
             MST: decimalToTime(MST_hours),
             EOT: EOT_min.toFixed(2),
-            ECL_LONG: (sunPos.azimuth * R2D + 180).toFixed(2), // Azimuth en Ecl Long approximatif
+            ECL_LONG: (sunPos.azimuth * R2D + 180).toFixed(2), 
             NoonSolar: noonSolar
         }
     };
@@ -237,7 +227,7 @@ function getMoonPhaseName(phase) {
     if (phase < 0.75) return "Gibbeuse Décroissante";
     if (phase < 0.94) return "Dernier Quartier";
     return "Phase Inconnue";
-                                       }
+            }
 // =================================================================
 // BLOC 3/4 : ekf_core.js
 // Implémentation du cœur du Filtre de Kalman Étendu (EKF)
@@ -309,7 +299,7 @@ function predictEKF(dt, acc_imu, gyro, G_ACC, R_ALT_CENTER_REF) {
 
 function updateEKF_GNSS(gnss_pos, gnss_vel, accRaw, altAcc) {
     // Bruit de mesure (R) - Dépend de la précision GPS (accRaw)
-    const R_dynamic = accRaw * accRaw * currentEnvFactor; // Utilisation de currentEnvFactor (défini dans BLOC 4B/4)
+    const R_dynamic = accRaw * accRaw * currentEnvFactor; 
 
     // --- 1. Correction de la Position ---
     // Gain de Kalman implicite (k = P / (P + R))
@@ -334,7 +324,6 @@ function updateEKF_GNSS(gnss_pos, gnss_vel, accRaw, altAcc) {
 
         // Z_vel[0] est la vitesse GPS mesurée
         currentEKFState.V_n += K_vel * (gnss_vel.V_n - currentEKFState.V_n);
-        // On suppose V_e et V_d restent inchangées sans mesures spécifiques
         
         P_vel_3D = (1 - K_vel) * P_vel_3D;
     }
@@ -359,7 +348,7 @@ function updateEKF_ZUPT() {
 // --------------------------------------------------------------------------
 
 function updateEKFReadableState() {
-    // Fonction d'architecture: L'état est déjà lisible dans cette implémentation.
+    // Fonction d'architecture: L'état est déjà lisible dans cette implémentation simplifiée.
 }
 
 function getEKFVelocity3D() {
@@ -372,9 +361,7 @@ function getVelocityUncertainty() {
     return P_vel_3D; 
         }
 // =================================================================
-// BLOC 4A/4 : AppController.js (Partie 1: Contrôles et Utilitaires)
-// État Global, Gestion des Capteurs, Fonctions de Contrôle GPS/Carte.
-// Dépendances: Toutes les variables globales et fonctions de 1/4, 2/4.
+// BLOC 4/4 : AppController.js (Partie 1 & 2: Contrôles, Logique Principale, EKF et Initialisation)
 // =================================================================
 
 // --- CONSTANTES DE CONFIGURATION SYSTÈME ---
@@ -409,7 +396,7 @@ let angularVelocity = 0.0;
 let gpsAccuracyOverride = 0.0; 
 let G_ACC = CELESTIAL_DATA['EARTH'].G;      
 let R_ALT_CENTER_REF = R_E_BASE;            
-let currentEnvFactor = 1.0;
+// currentEnvFactor est définie dans BLOC 3/4 mais est mise à jour ici
 
 // Données externes et IMU
 let lastP_hPa = null, lastT_K = null, lastH_perc = null; 
@@ -570,36 +557,8 @@ function handleErr(err) {
         stopGPS();
         alert("Accès à la géolocalisation refusé. Veuillez l'activer.");
     }
-    }
-// =================================================================
-// BLOC 4B/4 : AppController.js (Partie 2: Logique Principale, EKF et Initialisation)
-// Fonctions de Mise à Jour (EKF, DOM Lent) et Gestion du Démarrage.
-// Dépendances: Toutes les variables globales et fonctions des Blocs 1/4, 2/4 et 4A/4.
-// =================================================================
+}
 
-// --------------------------------------------------------------------------
-// --- FONCTIONS EKF STUBS (À DÉFINIR DANS BLOC 3/4) ---
-// Note: Ces fonctions doivent exister dans le code complet, elles sont Stubs ici.
-
-function initEKF(lat, lon, alt, acc) { 
-    currentEKFState.lat = lat; 
-    currentEKFState.lon = lon; 
-    currentEKFState.alt = alt; 
-    currentEKFState.acc_est = acc;
-    // Initialisation simplifiée de la matrice P
-    currentEKFState.P = [[0.625]];
-} 
-function predictEKF(dt, acc, gyro, G_ACC, R_ALT_CENTER_REF) { /* ... */ }
-function updateEKF_ZUPT() { /* ... */ }
-function updateEKF_GNSS(gnss_pos, gnss_vel, accRaw, altAcc) { 
-    currentEKFState.acc_est = Math.max(currentEKFState.acc_est * 0.9 + accRaw * 0.1, R_MIN);
-    currentEKFState.lat = currentEKFState.lat * 0.95 + gnss_pos.lat * 0.05; 
-    currentEKFState.lon = currentEKFState.lon * 0.95 + gnss_pos.lon * 0.05; 
-    currentEKFState.alt = currentEKFState.alt * 0.95 + gnss_pos.alt * 0.05; 
-} 
-function updateEKFReadableState() { /* ... */ } 
-function getEKFVelocity3D() { return Math.sqrt(currentEKFState.V_n**2 + currentEKFState.V_e**2 + currentEKFState.V_d**2); }
-function getVelocityUncertainty() { return currentEKFState.P[0][0] || 0.625; } 
 
 // --------------------------------------------------------------------------
 // --- FONCTION PRINCIPALE DE MISE À JOUR GPS/EKF (updateDisp) ---
@@ -654,7 +613,6 @@ function updateDisp(pos) {
     
     if (!isSignalLost) {
         const gnss_pos = { lat: pos.coords.latitude, lon: pos.coords.longitude, alt: pos.coords.altitude || currentEKFState.alt };
-        // Note: pos.coords.velocity est souvent la même que pos.coords.speed
         const gnss_vel = { V_n: pos.coords.speed || pos.coords.velocity || 0, V_e: 0, V_d: 0 }; 
         
         updateEKF_GNSS(gnss_pos, gnss_vel, accRaw, pos.coords.altitudeAccuracy || 5.0);
@@ -696,13 +654,10 @@ function updateDisp(pos) {
     if ($('time-moving')) $('time-moving').textContent = `${timeMoving.toFixed(2)} s`;
     if ($('mode-ratio')) $('mode-ratio').textContent = `${R_FACTOR_RATIO.toFixed(3)} (Ratio)`;
     if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${currentEnvFactor.toFixed(1)})`;
-    
-    // Vitesse EKF (Stable)
-    if ($('speed-stable')) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)}`; // km/h (Principale)
+    if ($('speed-stable')) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)}`;
     if ($('speed-stable-ms')) $('speed-stable-ms').textContent = `${sSpdFE.toFixed(3)} m/s | ${(sSpdFE * 1e6).toFixed(0)} µm/s | ${(sSpdFE * 1e9).toFixed(0)} nm/s`;
-    if ($('speed-3d-inst')) $('speed-3d-inst').textContent = `${(sSpdFE * KMH_MS).toFixed(5)} km/h`; // Vitesse 3D (Instantanée)
     
-    // Vitesse Brute (Corrigé: Affiche la vitesse brute GPS si disponible)
+    // Vitesse Brute (Corrigé)
     const rawSpeed = pos.coords.speed !== null ? pos.coords.speed : (pos.coords.velocity !== null ? pos.coords.velocity : NaN);
     if ($('speed-raw-ms')) $('speed-raw-ms').textContent = !isNaN(rawSpeed) ? `${rawSpeed.toFixed(3)} m/s` : '-- m/s';
     
@@ -797,7 +752,6 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
-    // CORRECTION EKF: Précision initiale de 10.0m
     initEKF(DEFAULT_INIT_LAT, DEFAULT_INIT_LON, DEFAULT_INIT_ALT, 10.0);
 
     // --- Initialisation des Contrôles ---
@@ -870,96 +824,4 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
-        maxSpd = 0; 
-    });
-    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
-        if (emergencyStopActive) return; 
-        if (confirm("Réinitialiser toutes les données de session, y compris l'EKF ?")) { 
-            distM_3D = 0; maxSpd = 0; timeMoving = 0; lPos = null; sTime = null;
-            initEKF(DEFAULT_INIT_LAT, DEFAULT_INIT_LON, DEFAULT_INIT_ALT, 10.0);
-        } 
-    });
-    if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-    });
     
-    // --- DÉMARRAGE DU SYSTÈME ---
-    
-    const initVals = updateCelestialBody(currentCelestialBody, currentEKFState.alt, rotationRadius, angularVelocity);
-    G_ACC = initVals.G_ACC;
-    R_ALT_CENTER_REF = initVals.R_ALT_CENTER_REF;
-    
-    // CORRECTION NTP: Gestion de l'échec et démarrage garanti du GPS.
-    syncH(lServH, lLocH).then(newTimes => {
-        lServH = newTimes.lServH;
-        lLocH = newTimes.lLocH;
-        startGPS(); 
-    }).catch(err => {
-        console.warn("Échec de la synchronisation NTP. Démarrage du GPS avec heure locale.", err);
-        if ($('local-time')) $('local-time').textContent = 'SYNCHRO ÉCHOUÉE';
-        startGPS(); 
-    });
-
-    // Boucle de mise à jour lente (Astro/Météo/Horloge)
-    if (domID === null) {
-        domID = setInterval(async () => {
-            const currentLat = currentEKFState.lat; 
-            const currentLon = currentEKFState.lon;
-            
-            // 1. Météo : Récupération et Affichage
-            if (currentLat !== 0 && currentLon !== 0 && !emergencyStopActive) {
-                const data = await fetchWeather(currentLat, currentLon);
-                
-                if (data) {
-                    lastP_hPa = data.pressure_hPa;
-                    lastT_K = data.tempK;
-                    lastH_perc = data.humidity_perc / 100.0;
-                    
-                    if ($('temp-air-2')) $('temp-air-2').textContent = `${data.tempC.toFixed(1)} °C`;
-                    if ($('pressure-2')) $('pressure-2').textContent = `${data.pressure_hPa.toFixed(0)} hPa`;
-                    if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc} %`;
-                    if ($('air-density')) $('air-density').textContent = `${data.air_density.toFixed(3)} kg/m³`;
-                    if ($('dew-point')) $('dew-point').textContent = `${data.dew_point.toFixed(1)} °C`;
-                    if ($('weather-status')) $('weather-status').textContent = data.status; 
-                } else {
-                    if ($('weather-status')) $('weather-status').textContent = 'ÉCHEC RÉCUPÉRATION (Réseau ou API)';
-                    lastP_hPa = lastT_K = lastH_perc = null; 
-                }
-            }
-            
-            // 2. Astro : Calculs et Affichage
-            const astroData = updateAstro(currentLat, currentLon, lServH, lLocH);
-
-            if (astroData) {
-                const { now, sunPos, moonIllum, moonPos, sunTimes, solarTimes } = astroData;
-
-                if ($('time-minecraft')) $('time-minecraft').textContent = getMinecraftTime(now);
-                if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
-                if ($('tst')) $('tst').textContent = solarTimes.TST;
-                if ($('mst')) $('mst').textContent = solarTimes.MST;
-                if ($('eot')) $('eot').textContent = solarTimes.EOT + ' min'; 
-                if ($('ecl-long')) $('ecl-long').textContent = solarTimes.ECL_LONG + ' °'; 
-                if ($('sun-alt')) $('sun-alt').textContent = `${(sunPos.altitude * R2D).toFixed(2)} °`;
-                if ($('sun-azimuth')) $('sun-azimuth').textContent = `${(sunPos.azimuth * R2D).toFixed(2)} ° (S-O)`;
-                if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)} °`;
-                if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)} ° (S-O)`;
-                if ($('moon-illuminated')) $('moon-illuminated').textContent = `${(moonIllum.fraction * 100).toFixed(1)} %`;
-                if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(moonIllum.phase);
-                if ($('noon-solar')) $('noon-solar').textContent = solarTimes.NoonSolar;
-                
-                updateClockVisualization(now, sunPos, moonPos, sunTimes);
-            } else {
-                $('clock-status').textContent = 'Astro (Attente GPS/SunCalc)...';
-            }
-            
-            // 3. Horloge NTP : Resynchronisation toutes les minutes
-            if (Math.floor(Date.now() / 1000) % 60 === 0) {
-                 syncH(lServH, lLocH).then(newTimes => {
-                    lServH = newTimes.lServH;
-                    lLocH = newTimes.lLocH;
-                 }).catch(() => { /* Échec géré au démarrage */ });
-            }
-            
-            // 4. Horloge locale (NTP) et UTC/GMT (Corrigé: Affichage UTC complet)
-            const nowTime = getCDate(lServH, lLocH);
-            if (nowTime)
