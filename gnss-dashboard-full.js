@@ -1,5 +1,5 @@
 // =========================================================================
-// gnss-dashboard-full.js : Rétablissement Complet des Simulations EKF et Astro
+// gnss-dashboard-full.js (Bloc 1/2) : CONSTANTES ET CŒUR EKF/SIMULATION
 // =========================================================================
 
 // --- CONSTANTES GLOBALES ET TUNING EKF ---
@@ -31,7 +31,9 @@ Q_diag[10] = Q_diag[11] = Q_diag[12] = 1e-5; // Bg
 let Q = null; 
 
 // --- ÉTAT GLOBAL ET CAPTEURS ---
-let wID = null; let isGPSEnabled = false; let isDarkMode = false;
+let wID = null; 
+let isGPSEnabled = false; 
+let isDarkMode = false;
 let currentEnvFactor = ENV_FACTORS.NORMAL;
 let currentMass = 70.0;
 let gpsAccuracyOverride = 0.0;
@@ -46,7 +48,9 @@ let currentHeading = 81.2; // Simulé
 let imuAccel = {x: -2.00, y: 0.60, z: 9.90}; 
 let imuGyro = {x: 0, y: 0, z: 0};   
 let tempC = 20.0, pressurehPa = 1013.25, humidityPerc = 50.0; 
-let distM_3D = 25.63; let timeMoving = 37.80; let maxSpd = 7.4; 
+let distM_3D = 25.63; 
+let timeMoving = 37.80; 
+let maxSpd = 7.4; 
 let angularSpeed = 0.0;
 
 // --- UTILITAIRE MATH (EKF) ---
@@ -206,10 +210,11 @@ function initializeIMUSensors() {
         $('imu-status').textContent = 'Simulé';
     }
 }
+// =========================================================================
+// gnss-dashboard-full.js (Bloc 2/2) : AFFICHAGE, BOUCLE ET INITIALISATION
+// =========================================================================
 
-// --------------------------------------------------------------------------
 // --- LOGIQUE DOM & CALCULS AVANCÉS ---
-// --------------------------------------------------------------------------
 
 function calculateSpeedOfSound(tempC) { return 20.0468 * Math.sqrt(tempC + KELVIN_OFFSET); }
 function calculateAirDensity(pressurehPa, tempC) { const R_SPECIFIQUE = 287.05; return (pressurehPa * 100) / (R_SPECIFIQUE * (tempC + KELVIN_OFFSET)); }
@@ -217,9 +222,9 @@ function calculateAirDensity(pressurehPa, tempC) { const R_SPECIFIQUE = 287.05; 
 function updateAstroCalculations() {
     // Utilise les coordonnées filtrées par l'EKF
     const coords = { lat: lat * R2D || 45.749950, lon: lon * R2D || 4.850027 };
-    const date = new Date(); // Date et heure de la session
+    const date = new Date(); 
     
-    // Logique de conversion et affichage (Rétabli, simulant SunCalc)
+    // Logique de conversion et affichage
     const utcDate = new Date(date.getTime());
     const utcString = utcDate.getUTCDate().toString().padStart(2, '0') + '/' + (utcDate.getUTCMonth() + 1).toString().padStart(2, '0') + '/' + utcDate.getUTCFullYear() + ' ' + utcDate.getUTCHours().toString().padStart(2, '0') + ':' + utcDate.getUTCMinutes().toString().padStart(2, '0') + ':' + utcDate.getUTCSeconds().toString().padStart(2, '0') + ' UTC';
     
@@ -228,10 +233,10 @@ function updateAstroCalculations() {
     $('date-display').textContent = utcString;
     $('date-display-astro').textContent = date.toLocaleDateString('fr-FR');
     
-    // Valeurs Astro simulées basées sur l'heure (représentant la complexité de SunCalc)
+    // Valeurs Astro simulées
     const UTC_hours_dec = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
     const MST_hours = UTC_hours_dec + coords.lon / 15;
-    const TST_hours = MST_hours + 0.123; // EOT simulé
+    const TST_hours = MST_hours + 0.123; 
     const mc_ticks = ((TST_hours + 6) % 24) * 1000;
     
     const formatHours = (h) => { const hours = Math.floor(h % 24); const minutes = Math.floor((h % 1) * 60); return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`; };
@@ -258,7 +263,7 @@ function updatePhysicsCalculations(currentSpeed) {
     $('gravity-local').textContent = g_local.toFixed(5) + ' m/s²';
     $('angular-speed').textContent = angularSpeed.toFixed(2) + ' °/s';
     
-    // Calculs de Vitesse/Mach/Relativité (Rétablis)
+    // Calculs de Vitesse/Mach/Relativité
     const mach = currentSpeed / spd_sound;
     const dyn_pressure = 0.5 * air_density * currentSpeed * currentSpeed; 
     const lorentz_factor = 1 / Math.sqrt(1 - (currentSpeed**2 / C_L**2));
@@ -269,16 +274,16 @@ function updatePhysicsCalculations(currentSpeed) {
     $('mach-number').textContent = mach.toFixed(4);
     $('dynamic-pressure').textContent = dyn_pressure.toFixed(2) + ' Pa';
     $('perc-speed-c').textContent = perc_speed_c.toExponential(2) + ' %';
-    $('facteur-lorentz').textContent = lorentz_factor.toFixed(4);
+    $('lorentz-factor').textContent = lorentz_factor.toFixed(4);
 
-    $('drag-force').textContent = (dyn_pressure * 0.1).toFixed(2) + ' N'; // Simul.
+    $('drag-force').textContent = (dyn_pressure * 0.1).toFixed(2) + ' N'; 
 }
 
 function updateEKFDisplay() {
     // Affichage des incertitudes basées sur la matrice P (EKF)
     const p_vel = P !== null ? P[3] : 1000.0;
     const p_alt = P !== null ? P[2] : 1e-4;   
-    const R_sim = 168.1; // Bruit de mesure simulé
+    const R_sim = 168.1; 
     
     $('kalman-uncert').textContent = p_vel.toPrecision(3) + ' (m/s)²';
     $('alt-uncertainty').textContent = Math.sqrt(p_alt).toPrecision(3) + ' m';
@@ -305,9 +310,35 @@ function updateGPSDisplay(currentSpeed, accuracy) {
     $('speed-stable-ms').textContent = currentSpeed.toFixed(2) + ' m/s';
     $('speed-stable-kms').textContent = (currentSpeed / 1000).toFixed(4) + ' km/s';
     $('speed-3d-inst').textContent = speed_kmh.toFixed(1) + ' km/h';
-    $('speed-raw-ms').textContent = (currentSpeed * 0.98).toFixed(2) + ' m/s'; // Légère différence simulée
+    $('speed-raw-ms').textContent = (currentSpeed * 0.98).toFixed(2) + ' m/s'; 
     
     $('gps-precision').textContent = (accuracy || 12.97).toFixed(2) + ' m';
+}
+
+// --- Fonctions de Simulation (minimales) ---
+function updateIMUMonitor() {
+    $('accel-x').textContent = imuAccel.x.toFixed(2);
+    $('accel-y').textContent = imuAccel.y.toFixed(2);
+    $('accel-z').textContent = imuAccel.z.toFixed(2);
+    $('mag-x').textContent = (imuAccel.x * 2.5).toFixed(2); 
+    $('mag-y').textContent = (imuAccel.y * 1.5).toFixed(2);
+    $('mag-z').textContent = (imuAccel.z * 0.5).toFixed(2);
+}
+
+function updateWeatherAndBiophysics() {
+    // Simulation simple des données météo
+    tempC = 20.0 + Math.sin(Date.now() / 10000) * 0.5;
+    pressurehPa = 1013.25 + Math.cos(Date.now() / 15000) * 1.0;
+    humidityPerc = 50.0 + Math.sin(Date.now() / 20000) * 5.0;
+    
+    const air_density = calculateAirDensity(pressurehPa, tempC);
+    
+    $('temp-air-2').textContent = tempC.toFixed(2) + ' °C';
+    $('pressure-2').textContent = pressurehPa.toFixed(2) + ' hPa';
+    $('humidity-2').textContent = humidityPerc.toFixed(1) + ' %';
+    $('alt-baro').textContent = '2.64 m';
+    $('air-density').textContent = air_density.toFixed(4) + ' kg/m³';
+    $('weather-status').textContent = 'ACTIF (SIMULÉ)';
 }
 
 // --- BOUCLE PRINCIPALE & INITIALISATION ---
@@ -321,7 +352,9 @@ function domUpdateLoop() {
          gpsSuccess({ coords: { latitude: 45.749950, longitude: 4.850027, altitude: 2.64, speed: 1.58, accuracy: 12.97, heading: 81.2 } });
     } else if (isGPSEnabled) {
          // Simule la lecture GPS/EKF continue
-         gpsSuccess({ coords: { latitude: lat * R2D + 0.000001, longitude: lon * R2D + 0.000002, altitude: altEst + 0.01, speed: speedEst, accuracy: currentAccuracy * 1.05, heading: currentHeading } });
+         const newLatDeg = lat * R2D + 0.000001; 
+         const newLonDeg = lon * R2D + 0.000002;
+         gpsSuccess({ coords: { latitude: newLatDeg, longitude: newLonDeg, altitude: altEst + 0.01, speed: speedEst, accuracy: currentAccuracy * 1.05, heading: currentHeading } });
     } else if (!isGPSEnabled) {
         gpsError(null); 
     }
@@ -350,7 +383,7 @@ function domUpdateLoop() {
 }
 
 function initControls() {
-    // Les gestionnaires d'événements sont essentiels pour les "filtres"
+    // Les gestionnaires d'événements pour les contrôles du tableau de bord
     $('#mass-input')?.addEventListener('input', (e) => {
         currentMass = parseFloat(e.target.value) || 70.0;
         $('#mass-display').textContent = currentMass.toFixed(3) + ' kg';
@@ -358,6 +391,7 @@ function initControls() {
     
     $('#environment-select')?.addEventListener('change', (e) => {
         currentEnvFactor = ENV_FACTORS[e.target.value];
+        $('#env-factor').textContent = e.target.options[e.target.selectedIndex].text;
     });
     
     $('#gps-accuracy-override')?.addEventListener('input', (e) => {
@@ -368,10 +402,8 @@ function initControls() {
         isGPSEnabled = !isGPSEnabled;
         if (isGPSEnabled) {
             $('#toggle-gps-btn').innerHTML = '⏸️ PAUSE GPS';
-            // wID = navigator.geolocation.watchPosition(gpsSuccess, gpsError, { enableHighAccuracy: true });
         } else {
             $('#toggle-gps-btn').innerHTML = '▶️ MARCHE GPS';
-            // if (wID !== null) navigator.geolocation.clearWatch(wID);
             wID = null;
         }
     });
@@ -400,6 +432,4 @@ function init() {
     setInterval(domUpdateLoop, DT_MS); 
 }
 
-// document.addEventListener('DOMContentLoaded', init); // Décommenter si le script est chargé en <head>
 init();
-// La boucle d'initialisation et de rafraîchissement continu est le morceau final.
