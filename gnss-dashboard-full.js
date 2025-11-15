@@ -237,8 +237,146 @@ function getMoonPhaseName(phase) {
     if (phase < 0.75) return "Gibbeuse Décroissante";
     if (phase < 0.94) return "Dernier Quartier";
     return "Phase Inconnue";
-}
+                                          }
 // =================================================================
+// BLOC 2/4 : astro_weather_ntp.js
+// Fonctions pour la synchronisation NTP, l'heure Minecraft, les calculs Astro/Soleil/Lune et Météo.
+// Dépendances: Fonctions externes (SunCalc, fetch)
+// =================================================================
+
+// =================================================================
+// BLOC 3/4 : ekf_core.js
+// Implémentation du cœur du Filtre de Kalman Étendu (EKF)
+// Dépendances: Constantes de BLOC 1/4 (D2R, Q_NOISE, R_MIN, R_E_BASE, etc.)
+// =================================================================
+
+// --- COVARIANCE ET INCERTITUDE (Simplification: P représenté par des scalaires) ---
+let P_pos_2D = 100.0;  // Incertitude position (m²)
+let P_vel_3D = 0.625;  // Incertitude vitesse (m²/s²)
+let currentEnvFactor = 1.0; // Facteur environnemental (doit être mis à jour par 4B/4)
+
+// --------------------------------------------------------------------------
+// --- INITIALISATION DU FILTRE ---
+// --------------------------------------------------------------------------
+
+function initEKF(lat, lon, alt, acc) {
+    // Initialise l'état EKF et la covariance
+    currentEKFState.lat = lat;
+    currentEKFState.lon = lon;
+    currentEKFState.alt = alt;
+    currentEKFState.V_n = 0.0;
+    currentEKFState.V_e = 0.0;
+    currentEKFState.V_d = 0.0;
+    currentEKFState.acc_est = acc;
+
+    // Initialisation des incertitudes
+    P_pos_2D = acc * acc; 
+    P_vel_3D = Q_NOISE * 2; 
+}
+
+// --------------------------------------------------------------------------
+// --- ÉTAPE DE PRÉDICTION (Propagated State) ---
+// --------------------------------------------------------------------------
+
+function predictEKF(dt, acc_imu, gyro, G_ACC, R_ALT_CENTER_REF) {
+    const Vn = currentEKFState.V_n;
+    const Ve = currentEKFState.V_e;
+    const lat = currentEKFState.lat;
+
+    // --- 1. Prédiction de l'État (X) ---
+    // Accélération dans le référentiel NED (Très simplifié: acc_imu[2] est Z)
+    const accel_n = acc_imu[0]; 
+    const accel_e = acc_imu[1]; 
+    const accel_d = acc_imu[2] - G_ACC; // Accélération verticale nette (imu_z - g)
+
+    // Mise à jour de la Vitesse (V = V + a * dt)
+    currentEKFState.V_n += accel_n * dt;
+    currentEKFState.V_e += accel_e * dt;
+    currentEKFState.V_d += accel_d * dt;
+
+    // Mise à jour de la Position (P = P + V * dt)
+    // Conversion de la vitesse NED en changements de lat/lon/alt
+    const R_MERIDIAN = R_ALT_CENTER_REF; 
+    const R_TRANSVERSE = R_ALT_CENTER_REF * Math.cos(lat * D2R); 
+
+    currentEKFState.lat += (Vn * dt) / R_MERIDIAN * R2D;
+    currentEKFState.lon += (Ve * dt) / R_TRANSVERSE * R2D;
+    currentEKFState.alt -= currentEKFState.V_d * dt; // 'D' est Down, donc la position 'alt' diminue
+
+    // --- 2. Prédiction de l'Incertitude (P) ---
+    // Le bruit de processus Q augmente l'incertitude avec le temps
+    P_pos_2D += Q_NOISE * dt * 0.1; 
+    P_vel_3D += Q_NOISE * dt; 
+}
+
+// --------------------------------------------------------------------------
+// --- ÉTAPE DE CORRECTION GNSS ---
+// --------------------------------------------------------------------------
+
+function updateEKF_GNSS(gnss_pos, gnss_vel, accRaw, altAcc) {
+    // Bruit de mesure (R) - Dépend de la précision GPS (accRaw)
+    const R_dynamic = accRaw * accRaw * currentEnvFactor; // Utilisation de currentEnvFactor (défini dans BLOC 4B/4)
+
+    // --- 1. Correction de la Position ---
+    // Gain de Kalman implicite (k = P / (P + R))
+    const K_pos = P_pos_2D / (P_pos_2D + R_dynamic);
+    
+    // Mise à jour de l'état
+    currentEKFState.lat += K_pos * (gnss_pos.lat - currentEKFState.lat);
+    currentEKFState.lon += K_pos * (gnss_pos.lon - currentEKFState.lon);
+    
+    // L'altitude utilise une précision différente
+    const K_alt = P_pos_2D / (P_pos_2D + altAcc * altAcc);
+    currentEKFState.alt += K_alt * (gnss_pos.alt - currentEKFState.alt);
+
+    // Mise à jour de l'Incertitude
+    P_pos_2D = (1 - K_pos) * P_pos_2D;
+    currentEKFState.acc_est = Math.sqrt(P_pos_2D); 
+
+    // --- 2. Correction de la Vitesse (si Vitesse GPS est disponible) ---
+    if (gnss_vel.V_n !== null && gnss_vel.V_n !== undefined) {
+        const R_vel = R_dynamic * 0.1; // La mesure de vitesse est considérée 10x plus stable
+        const K_vel = P_vel_3D / (P_vel_3D + R_vel);
+
+        // Z_vel[0] est la vitesse GPS mesurée
+        currentEKFState.V_n += K_vel * (gnss_vel.V_n - currentEKFState.V_n);
+        // On suppose V_e et V_d restent inchangées sans mesures spécifiques
+        
+        P_vel_3D = (1 - K_vel) * P_vel_3D;
+    }
+}
+
+// --------------------------------------------------------------------------
+// --- ZUPT (Zero Velocity Update) ---
+// --------------------------------------------------------------------------
+
+function updateEKF_ZUPT() {
+    // L'objet est immobile, forcer la vitesse à zéro
+    currentEKFState.V_n = 0.0;
+    currentEKFState.V_e = 0.0;
+    currentEKFState.V_d = 0.0;
+
+    // Réduire fortement l'incertitude de vitesse
+    P_vel_3D = Q_NOISE * 0.1; 
+}
+
+// --------------------------------------------------------------------------
+// --- FONCTIONS UTILITAIRES DE L'ÉTAT EKF ---
+// --------------------------------------------------------------------------
+
+function updateEKFReadableState() {
+    // Fonction d'architecture: L'état est déjà lisible dans cette implémentation.
+}
+
+function getEKFVelocity3D() {
+    return Math.sqrt(currentEKFState.V_n * currentEKFState.V_n + 
+                     currentEKFState.V_e * currentEKFState.V_e + 
+                     currentEKFState.V_d * currentEKFState.V_d);
+}
+
+function getVelocityUncertainty() { 
+    return P_vel_3D; 
+}
 // BLOC 4A/4 : AppController.js (Partie 1: Contrôles et Utilitaires)
 // État Global, Gestion des Capteurs, Fonctions de Contrôle GPS/Carte.
 // Dépendances: Toutes les variables globales et fonctions de 1/4, 2/4.
