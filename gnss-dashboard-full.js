@@ -1,7 +1,3 @@
-// =========================================================================
-// BLOC 1/4 : Constantes, État Global & Initialisation
-// =========================================================================
-
 // CORRECTION : Import de la fonction météo réelle du module client
 import { fetchWeatherReal } from './weather.js';
 // Les librairies SunCalc et Leaflet sont chargées globalement via index.html
@@ -126,16 +122,131 @@ function highlightMissingData() {
         }
     });
 }
-// =========================================================================
-// BLOC 2/4 : Fonctions EKF, Astro et Météo (Logique de Fusion)
-// =========================================================================
+function handleIMU(event) {
+    if (event.acceleration) {
+        // Stockage des accélérations brutes (non compensées par la gravité)
+        real_accel_x = event.acceleration.x || 0;
+        real_accel_y = event.acceleration.y || 0;
+        real_accel_z = event.acceleration.z || 0;
+        
+        $('accel-x').textContent = `${real_accel_x.toFixed(3)} m/s²`;
+        $('accel-y').textContent = `${real_accel_y.toFixed(3)} m/s²`;
+        $('accel-z').textContent = `${real_accel_z.toFixed(3)} m/s²`;
+        $('imu-status').textContent = 'Actif (Accel)';
+    }
 
+    if (event.rotationRate) {
+        const gyroX = event.rotationRate.alpha || 0;
+        const gyroY = event.rotationRate.beta || 0;
+        const gyroZ = event.rotationRate.gamma || 0;
+        angularVelocity = Math.sqrt(gyroX*gyroX + gyroY*gyroY + gyroZ*gyroZ);
+        $('angular-speed').textContent = `${angularVelocity.toFixed(3)} rad/s`;
+    }
+}
+
+function handlePosition(pos) {
+    const cTimePos = pos.timestamp;
+    // Calcul du Delta Temps (dt)
+    const dt = lastUpdateTime === 0 ? MIN_DT : Math.max(MIN_DT, (cTimePos - lastUpdateTime) / 1000); 
+    lastUpdateTime = cTimePos;
+    
+    if (emergencyStopActive) {
+        updateDisp(pos, dt);
+        return;
+    }
+
+    // --- MISE À JOUR EKF (PRÉDICTION) ---
+    const accel_imu = [real_accel_x, real_accel_y, real_accel_z]; 
+    predictEKF(dt, accel_imu, G_ACC, R_ALT_CENTER_REF);
+
+    if (lPos === null) {
+        // Initialisation à la première position GPS
+        initEKF(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude || DEFAULT_INIT_ALT, pos.coords.accuracy);
+        sTime = Date.now();
+    } else {
+        const dist_ekf = getEKFVelocity3D() * dt;
+        distM_3D += dist_ekf;
+
+        // --- ZUPT (Zero Update): Correction à vitesse zéro ---
+        const currentAccelMagnitude = Math.sqrt(real_accel_x*real_accel_x + real_accel_y*real_accel_y + real_accel_z*real_accel_z);
+        if (getEKFVelocity3D() < MIN_SPD && currentAccelMagnitude < ZUPT_ACCEL_TOLERANCE) {
+            updateEKF_ZUPT();
+        }
+
+        if (getEKFVelocity3D() >= MIN_SPD) {
+            timeMoving += dt;
+        }
+    }
+
+    // --- MISE À JOUR EKF (CORRECTION GPS) ---
+    const currentAcc = gpsAccuracyOverride > 0 ? gpsAccuracyOverride : pos.coords.accuracy;
+
+    if (currentAcc < R_MAX) {
+        const gnss_pos = { lat: pos.coords.latitude, lon: pos.coords.longitude, alt: pos.coords.altitude || currentEKFState.alt };
+        
+        let V_gnss_n = 0.0;
+        let V_gnss_e = 0.0;
+        const rawSpeed = pos.coords.speed || 0;
+        
+        if (pos.coords.heading !== null && pos.coords.heading !== undefined) {
+            const headingRad = pos.coords.heading * D2R;
+            V_gnss_n = rawSpeed * Math.cos(headingRad);
+            V_gnss_e = rawSpeed * Math.sin(headingRad);
+        } else {
+            // Approximation si le cap n'est pas disponible (simple vitesse lat/lon)
+            V_gnss_n = rawSpeed;
+            V_gnss_e = 0.0; 
+        }
+
+        const gnss_vel = { V_n: V_gnss_n, V_e: V_gnss_e, V_d: 0.0 }; 
+        updateEKF_GNSS(gnss_pos, gnss_vel, currentAcc, 10.0);
+        
+        $('gps-status-dr').textContent = 'Actif (GNSS+IMU)';
+        $('speed-status-text').textContent = 'Signal GNSS verrouillé.';
+    } else {
+        $('gps-status-dr').textContent = 'Actif (Estimation Seule)';
+        $('speed-status-text').textContent = 'Perte de signal GNSS. Estimation en cours...';
+    }
+
+    updateDisp(pos, dt);
+
+    lPos = pos;
+}
+
+function handleErr(err) {
+    if (wID !== null) {
+        $('gps-status-dr').textContent = `ERREUR ${err.code}: ${err.message}`;
+        $('speed-status-text').textContent = 'ERREUR GPS: Estimation active.';
+    }
+}
+
+function toggleGPS() {
+    const btn = $('toggle-gps-btn');
+    const options = GPS_OPTS['HIGH_FREQ']; // Utilise HIGH_FREQ par défaut
+
+    if (wID === null) {
+        btn.innerHTML = '⏸️ PAUSE GPS';
+        btn.style.backgroundColor = '#ffc107';
+        wID = navigator.geolocation.watchPosition(handlePosition, handleErr, options);
+        sTime = Date.now();
+        $('gps-status-dr').textContent = 'MARCHE / Initialisation';
+        $('speed-status-text').textContent = 'Acquisition des coordonnées...';
+    } else {
+        navigator.geolocation.clearWatch(wID);
+        wID = null;
+        btn.innerHTML = '▶️ MARCHE GPS';
+        btn.style.backgroundColor = '#28a745';
+        $('gps-status-dr').textContent = 'PAUSE';
+        $('speed-status-text').textContent = 'PAUSE. Données figées.';
+        lastUpdateTime = 0;
+    }
+        }
 /**
  * Simule la synchronisation du temps (NTP) pour compenser le décalage local.
  */
 async function syncH(lServH, lLocH) {
     // Dans une application réelle, on ferait une requête AJAX ici.
-    return new new Promise((resolve) => {
+    return new Promise((resolve) => {
         const localTimeBefore = Date.now();
         const serverTime = Date.now() + 150; // Simule un serveur avec 150ms d'avance
         const localTimeAfter = Date.now();
@@ -353,134 +464,7 @@ function getEKFVelocity3D() {
 
 function getVelocityUncertainty() { 
     return currentEKFState.P_vel; 
-            }
-// =========================================================================
-// BLOC 3/4 : Gestion des Événements IMU & GPS (Watchers)
-// =========================================================================
-
-function handleIMU(event) {
-    if (event.acceleration) {
-        // Stockage des accélérations brutes (non compensées par la gravité)
-        real_accel_x = event.acceleration.x || 0;
-        real_accel_y = event.acceleration.y || 0;
-        real_accel_z = event.acceleration.z || 0;
-        
-        $('accel-x').textContent = `${real_accel_x.toFixed(3)} m/s²`;
-        $('accel-y').textContent = `${real_accel_y.toFixed(3)} m/s²`;
-        $('accel-z').textContent = `${real_accel_z.toFixed(3)} m/s²`;
-        $('imu-status').textContent = 'Actif (Accel)';
-    }
-
-    if (event.rotationRate) {
-        const gyroX = event.rotationRate.alpha || 0;
-        const gyroY = event.rotationRate.beta || 0;
-        const gyroZ = event.rotationRate.gamma || 0;
-        angularVelocity = Math.sqrt(gyroX*gyroX + gyroY*gyroY + gyroZ*gyroZ);
-        $('angular-speed').textContent = `${angularVelocity.toFixed(3)} rad/s`;
-    }
-}
-
-function handlePosition(pos) {
-    const cTimePos = pos.timestamp;
-    // Calcul du Delta Temps (dt)
-    const dt = lastUpdateTime === 0 ? MIN_DT : Math.max(MIN_DT, (cTimePos - lastUpdateTime) / 1000); 
-    lastUpdateTime = cTimePos;
-    
-    if (emergencyStopActive) {
-        updateDisp(pos, dt);
-        return;
-    }
-
-    // --- MISE À JOUR EKF (PRÉDICTION) ---
-    const accel_imu = [real_accel_x, real_accel_y, real_accel_z]; 
-    predictEKF(dt, accel_imu, G_ACC, R_ALT_CENTER_REF);
-
-    if (lPos === null) {
-        // Initialisation à la première position GPS
-        initEKF(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude || DEFAULT_INIT_ALT, pos.coords.accuracy);
-        sTime = Date.now();
-    } else {
-        const dist_ekf = getEKFVelocity3D() * dt;
-        distM_3D += dist_ekf;
-
-        // --- ZUPT (Zero Update): Correction à vitesse zéro ---
-        const currentAccelMagnitude = Math.sqrt(real_accel_x*real_accel_x + real_accel_y*real_accel_y + real_accel_z*real_accel_z);
-        if (getEKFVelocity3D() < MIN_SPD && currentAccelMagnitude < ZUPT_ACCEL_TOLERANCE) {
-            updateEKF_ZUPT();
         }
-
-        if (getEKFVelocity3D() >= MIN_SPD) {
-            timeMoving += dt;
-        }
-    }
-
-    // --- MISE À JOUR EKF (CORRECTION GPS) ---
-    const currentAcc = gpsAccuracyOverride > 0 ? gpsAccuracyOverride : pos.coords.accuracy;
-
-    if (currentAcc < R_MAX) {
-        const gnss_pos = { lat: pos.coords.latitude, lon: pos.coords.longitude, alt: pos.coords.altitude || currentEKFState.alt };
-        
-        let V_gnss_n = 0.0;
-        let V_gnss_e = 0.0;
-        const rawSpeed = pos.coords.speed || 0;
-        
-        if (pos.coords.heading !== null && pos.coords.heading !== undefined) {
-            const headingRad = pos.coords.heading * D2R;
-            V_gnss_n = rawSpeed * Math.cos(headingRad);
-            V_gnss_e = rawSpeed * Math.sin(headingRad);
-        } else {
-            // Approximation si le cap n'est pas disponible (simple vitesse lat/lon)
-            V_gnss_n = rawSpeed;
-            V_gnss_e = 0.0; 
-        }
-
-        const gnss_vel = { V_n: V_gnss_n, V_e: V_gnss_e, V_d: 0.0 }; 
-        updateEKF_GNSS(gnss_pos, gnss_vel, currentAcc, 10.0);
-        
-        $('gps-status-dr').textContent = 'Actif (GNSS+IMU)';
-        $('speed-status-text').textContent = 'Signal GNSS verrouillé.';
-    } else {
-        $('gps-status-dr').textContent = 'Actif (Estimation Seule)';
-        $('speed-status-text').textContent = 'Perte de signal GNSS. Estimation en cours...';
-    }
-
-    updateDisp(pos, dt);
-
-    lPos = pos;
-}
-
-function handleErr(err) {
-    if (wID !== null) {
-        $('gps-status-dr').textContent = `ERREUR ${err.code}: ${err.message}`;
-        $('speed-status-text').textContent = 'ERREUR GPS: Estimation active.';
-    }
-}
-
-function toggleGPS() {
-    const btn = $('toggle-gps-btn');
-    const options = GPS_OPTS['HIGH_FREQ']; // Utilise HIGH_FREQ par défaut
-
-    if (wID === null) {
-        btn.innerHTML = '⏸️ PAUSE GPS';
-        btn.style.backgroundColor = '#ffc107';
-        wID = navigator.geolocation.watchPosition(handlePosition, handleErr, options);
-        sTime = Date.now();
-        $('gps-status-dr').textContent = 'MARCHE / Initialisation';
-        $('speed-status-text').textContent = 'Acquisition des coordonnées...';
-    } else {
-        navigator.geolocation.clearWatch(wID);
-        wID = null;
-        btn.innerHTML = '▶️ MARCHE GPS';
-        btn.style.backgroundColor = '#28a745';
-        $('gps-status-dr').textContent = 'PAUSE';
-        $('speed-status-text').textContent = 'PAUSE. Données figées.';
-        lastUpdateTime = 0;
-    }
-}
-// =========================================================================
-// BLOC 4/4 : Affichage DOM & Boucles Lentes (Render)
-// =========================================================================
-
 /**
  * Met à jour les éléments visuels de l'horloge et de l'état du ciel.
  */
