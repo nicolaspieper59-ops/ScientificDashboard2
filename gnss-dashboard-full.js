@@ -77,7 +77,7 @@ let lastMapUpdate = 0;
 // --- UTILITIES ---
 const $ = id => document.getElementById(id);
 
-// Fonction de gestion de l'heure de référence (simule NTP)
+// Fonction de gestion de l'heure de référence (utilise l'heure client)
 function getCDate(lServH, lLocH) {
     if (lServH === null || lLocH === null) {
         return new Date();
@@ -121,6 +121,7 @@ function highlightMissingData() {
             span.classList.remove('value-missing');
         }
     });
+}
 }
 function handleIMU(event) {
     if (event.acceleration) {
