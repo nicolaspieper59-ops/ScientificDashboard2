@@ -484,6 +484,11 @@ function getVelocityUncertainty() {
 // État Global, Gestion des Capteurs, Boucle de Mise à Jour (EKF), et DOM
 // =================================================================
 
+// =================================================================
+// BLOC 3/3 : AppController.js
+// État Global, Gestion des Capteurs, Boucle de Mise à Jour (EKF), et DOM
+// =================================================================
+
 // --- CONSTANTES DE CONFIGURATION SYSTÈME ---
 const GPS_OPTS = {
     HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
@@ -577,6 +582,7 @@ function stopIMUListeners() {
 
 function initMap() {
     try {
+        // Assurez-vous que Leaflet (L) est chargé dans votre HTML
         if ($('map') && typeof L !== 'undefined') { 
             map = L.map('map').setView([DEFAULT_INIT_LAT, DEFAULT_INIT_LON], 12);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -757,8 +763,8 @@ function updateDisp(pos) {
     if (sSpdFE > maxSpd) maxSpd = sSpdFE; 
     
     const local_g = getGravityLocal(currentEKFState.alt, currentCelestialBody, rotationRadius, angularVelocity); 
-    const kineticEnergy = 0.5 * currentMass * sSpdFE ** 2;
-    const mechanicalPower = currentMass * sSpdFE * accel_long;
+    // const kineticEnergy = 0.5 * currentMass * sSpdFE ** 2; // Non affiché
+    // const mechanicalPower = currentMass * sSpdFE * accel_long; // Non affiché
     const coriolis_force = 2 * currentMass * sSpdFE * OMEGA_EARTH * Math.sin(currentEKFState.lat * D2R);
     
     // Calculs Mach (Nécessite lastT_K de la météo)
@@ -814,7 +820,7 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
 
     if (!sunEl || !moonEl || !clockEl || !sunPos || !moonPos || !sunTimes) return;
 
-    // ... (Logique visuelle complète du Bloc 2/2 précédent)
+    // Logique de rotation et d'altitude (Omise ici pour la concision)
     const sunIcon = sunEl.querySelector('.sun-icon');
     const moonIcon = moonEl.querySelector('.moon-icon');
 
@@ -823,7 +829,7 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
     sunEl.style.transform = `rotate(${aziDegSun}deg)`;
     const radialPercentSun = Math.min(50, Math.max(0, 50 * (90 - altDegSun) / 90));
     const altitudeOffsetPercentSun = 50 - radialPercentSun; 
-    sunIcon.style.transform = `translateY(calc(-50% + ${altitudeOffsetPercentSun}%) )`; 
+    if (sunIcon) sunIcon.style.transform = `translateY(calc(-50% + ${altitudeOffsetPercentSun}%) )`; 
     sunEl.style.display = altDegSun > -0.83 ? 'flex' : 'none'; 
 
     const altDegMoon = moonPos.altitude * R2D;
@@ -831,7 +837,7 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
     moonEl.style.transform = `rotate(${aziDegMoon}deg)`;
     const radialPercentMoon = Math.min(50, Math.max(0, 50 * (90 - altDegMoon) / 90));
     const altitudeOffsetPercentMoon = 50 - radialPercentMoon; 
-    moonIcon.style.transform = `translateY(calc(-50% + ${altitudeOffsetPercentMoon}%) )`;
+    if (moonIcon) moonIcon.style.transform = `translateY(calc(-50% + ${altitudeOffsetPercentMoon}%) )`;
     moonEl.style.display = altDegMoon > 0 ? 'flex' : 'none';
 
     const body = document.body;
@@ -840,12 +846,16 @@ function updateClockVisualization(now, sunPos, moonPos, sunTimes) {
 
     const nowMs = now.getTime();
     let bodyClass;
-    if (nowMs >= sunTimes.sunriseEnd.getTime() && nowMs < sunTimes.sunsetStart.getTime()) {
-        bodyClass = 'sky-day';
-    } else if (nowMs >= sunTimes.dusk.getTime() || nowMs < sunTimes.dawn.getTime()) {
-        bodyClass = 'sky-night';
+    if (sunTimes.sunriseEnd && sunTimes.sunsetStart && sunTimes.dusk && sunTimes.dawn) {
+        if (nowMs >= sunTimes.sunriseEnd.getTime() && nowMs < sunTimes.sunsetStart.getTime()) {
+            bodyClass = 'sky-day';
+        } else if (nowMs >= sunTimes.dusk.getTime() || nowMs < sunTimes.dawn.getTime()) {
+            bodyClass = 'sky-night';
+        } else {
+            bodyClass = 'sky-sunset';
+        }
     } else {
-        bodyClass = 'sky-sunset';
+        bodyClass = 'sky-night';
     }
     
     body.classList.add(bodyClass);
@@ -933,6 +943,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (emergencyStopActive) return; 
         distM_3D = 0; timeMoving = 0; 
     });
+    if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { 
         if (emergencyStopActive) return; 
         maxSpd = 0; 
     });
