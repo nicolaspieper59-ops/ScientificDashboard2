@@ -1,5 +1,5 @@
 // =================================================================
-// BLOC 1/3 : Modèles Avancés (UKF, Quaternion, WGS84) & Filtres
+// BLOC 1/4 : Modèles Avancés (UKF, Quaternion, WGS84) & Filtres
 // =================================================================
 
 // --- CONSTANTES PHYSIQUES ET MATHÉMATIQUES ---
@@ -221,9 +221,9 @@ function getKalmanR(acc, alt, P_hPa, selectedEnv) {
     } 
 
     return Math.max(UKF_R_MIN, Math.min(UKF_R_MAX, R)); 
-            }
+    }
 // =================================================================
-// BLOC 2/3 : Logique Géophysique & Astro & Services (Météo/NTP)
+// BLOC 2/4 : Logique Géophysique & Astro & Services (Météo/NTP)
 // =================================================================
 
 // --- CLÉS D'API & PROXY VERCEL ---
@@ -526,7 +526,7 @@ function updateAstro(latA, lonA, lServH, lLocH) {
     updateClockVisualization(now, sunPos, moonPos, sunTimes);
     }
 // =================================================================
-// BLOC 3/3 : Logique Applicative Principale (updateDisp & DOM/Init)
+// BLOC 4/4 : Logique Applicative Principale (updateDisp & DOM/Init)
 // =================================================================
 
 // --- CONSTANTES DE CONFIGURATION SYSTÈME ---
@@ -559,8 +559,9 @@ let rotationRadius = 100;
 let angularVelocity = 0.0; 
 let gpsAccuracyOverride = 0.0; 
 
-// Données externes
+// Données externes (Météo/Physique)
 let lastP_hPa = BARO_ALT_REF_HPA, lastT_K = 288.15, currentAirDensity = RHO_SEA_LEVEL;
+let lastH_perc = 0.5; // Humidité en fraction [0.0 - 1.0]
 let currentSpeedOfSound = 343;
 
 // IMU/Quaternion State
@@ -607,7 +608,6 @@ function imuMotionHandler(event) {
 
     lastAccelMagnitude = Math.sqrt(accX**2 + accY**2 + accZ**2);
     
-    // Le filtre UKF utilise real_accel_z (l'accélération verticale, direction du mouvement pour un corps en déplacement) comme input.
     // L'attitude est calculée à partir de l'accélération, incluant la gravité.
     currentAttitude = Quaternion.fromAcc(accX, accY, accZ);
 }
@@ -1029,4 +1029,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     lServH = newTimes.lServH;
                     lLocH = newTimes.lLocH;
                  });
-     
+            }
+            
+            // Récupération Météo (si 
