@@ -1,5 +1,6 @@
 // =================================================================
-// EKF CORE (1/4) : Logique de Filtrage Mathématique (15 États)
+// 1/4 : ekf-core.js
+// Logique du Filtre de Kalman Étendu (EKF) : Constantes, États et Mathématiques.
 // =================================================================
 
 // --- CONSTANTES PHYSIQUES ET MATHÉMATIQUES ---
@@ -23,9 +24,9 @@ const R_POS_MIN = 2.0;      // Bruit de mesure min (GPS)
 const R_VEL_MIN = 0.1;      // Bruit de mesure min (Vitesse GPS)
 const MAX_GPS_ACCURACY = 25.0; // Précision max (m)
 const MIN_DT = 0.01;        // Delta Temps minimum (s)
-const DOM_FAST_UPDATE_MS = 50; // NOUVEAU: Fréquence de la boucle EKF/IMU (20 Hz)
+const DOM_FAST_UPDATE_MS = 50; // Fréquence de la boucle EKF/IMU (20 Hz)
 
-// --- STRUCTURE DE L'ÉTAT EKF ---
+// --- STRUCTURE DE L'ÉTAT EKF (Globale) ---
 const EKFState = {
     lat: 0.0, lon: 0.0, alt: 0.0,
     // X[0-2]: Pos_N, Pos_E, Pos_D
@@ -45,13 +46,12 @@ const EKFState = {
     }))
 };
 
-/** Initialise l'état EKF (15 états). */
+/** Initialise l'état EKF. */
 function initEKF(lat, lon, alt) {
     EKFState.lat = lat; EKFState.lon = lon; EKFState.alt = alt;
     EKFState.X.fill(0.0);
     EKFState.X[2] = -alt; 
     
-    // Réinitialisation de la covariance (taille 15x15)
     for (let i = 0; i < NUM_STATES; i++) {
         for (let j = 0; j < NUM_STATES; j++) {
             EKFState.P[i][j] = i === j ? (i < 3 ? 50.0 : i < 6 ? 1.0 : i < 9 ? 1.0 : i < 12 ? 0.01 : 1e-4) : 0.0;
@@ -59,7 +59,7 @@ function initEKF(lat, lon, alt) {
     }
 }
 
-/** * ÉTAPE DE PRÉDICTION (IMU).
+/** * ÉTAPE DE PRÉDICTION (IMU) à haute fréquence. 
  * @param {number} dt Delta temps (s).
  * @param {number[]} a_b Accélération brute [ax, ay, az].
  * @param {number} G_ACC Gravité locale.
@@ -70,18 +70,17 @@ function predictEKF_IMU(dt, a_b, G_ACC) {
     const X = EKFState.X;
     const phi = X[6], theta = X[7], psi = X[8]; 
     
-    // Correction des mesures IMU avec les biais estimés (EKF 15 états)
-    const a_corrected = [
-        a_b[0] - X[9], 
-        a_b[1] - X[10],
-        a_b[2] - X[11] 
-    ];
+    const a_corrected = [ a_b[0] - X[9], a_b[1] - X[10], a_b[2] - X[11] ];
 
-    // Matrice de rotation Corps vers Navigation (Simplified C_b^n)
+    // Matrice de rotation (Simplified C_b^n)
+    const cos_p = Math.cos(phi), sin_p = Math.sin(phi);
+    const cos_t = Math.cos(theta), sin_t = Math.sin(theta);
+    const cos_s = Math.cos(psi), sin_s = Math.sin(psi);
+    
     const C_bn = [
-        [Math.cos(theta) * Math.cos(psi), Math.sin(phi) * Math.sin(theta) * Math.cos(psi) - Math.cos(phi) * Math.sin(psi), Math.cos(phi) * Math.sin(theta) * Math.cos(psi) + Math.sin(phi) * Math.sin(psi)],
-        [Math.cos(theta) * Math.sin(psi), Math.sin(phi) * Math.sin(theta) * Math.sin(psi) + Math.cos(phi) * Math.cos(psi), Math.cos(phi) * Math.sin(theta) * Math.sin(psi) - Math.sin(phi) * Math.cos(psi)],
-        [-Math.sin(theta), Math.sin(phi) * Math.cos(theta), Math.cos(phi) * Math.cos(theta)]
+        [cos_t * cos_s, sin_p * sin_t * cos_s - cos_p * sin_s, cos_p * sin_t * cos_s + sin_p * sin_s],
+        [cos_t * sin_s, sin_p * sin_t * sin_s + cos_p * cos_s, cos_p * sin_t * sin_s - sin_p * cos_s],
+        [-sin_t, sin_p * cos_t, cos_p * cos_t]
     ];
 
     // Accélération en référentiel Navigation (a_n)
@@ -98,27 +97,25 @@ function predictEKF_IMU(dt, a_b, G_ACC) {
     X[0] += X[3] * dt; X[1] += X[4] * dt; X[2] += X[5] * dt; 
     X[3] += a_n[0] * dt; X[4] += a_n[1] * dt; X[5] += a_n[2] * dt; 
 
-    // PROPAGATION DE LA COVARIANCE P (Simplifiée : Matrice de bruit de processus Q diagonale)
+    // PROPAGATION DE LA COVARIANCE P (Simplifiée pour la haute fréquence)
     EKFState.P[0][0] += Q_POS * dt; EKFState.P[1][1] += Q_POS * dt; EKFState.P[2][2] += Q_POS * dt;
     EKFState.P[3][3] += Q_VEL * dt; EKFState.P[4][4] += Q_VEL * dt; EKFState.P[5][5] += Q_VEL * dt;
     EKFState.P[6][6] += Q_ATT * dt; EKFState.P[7][7] += Q_ATT * dt; EKFState.P[8][8] += Q_ATT * dt;
     
-    // Propagation du bruit pour les Biais
     EKFState.P[9][9] += Q_BIAS_ACC * dt; EKFState.P[10][10] += Q_BIAS_ACC * dt; EKFState.P[11][11] += Q_BIAS_ACC * dt;
     EKFState.P[12][12] += Q_BIAS_GYRO * dt; EKFState.P[13][13] += Q_BIAS_GYRO * dt; EKFState.P[14][14] += Q_BIAS_GYRO * dt;
 }
 
-/** ÉTAPE DE CORRECTION (GNSS) */
+/** ÉTAPE DE CORRECTION (GNSS) à basse fréquence. */
 function updateEKF_GNSS(gnss_m, R_pos_cov) {
     if (gnss_m.acc > MAX_GPS_ACCURACY) return;
 
     const X = EKFState.X;
     const P = EKFState.P;
     
-    // Gains de Kalman simplifiés
     const K_pos = P[0][0] / (P[0][0] + R_pos_cov);
     const K_vel = P[3][3] / (P[3][3] + R_VEL_MIN);
-    const K_bias = Math.sqrt(K_pos) * 0.005; // Facteur de correction pour les biais
+    const K_bias = Math.sqrt(K_pos) * 0.005;
 
     // Correction des coordonnées Lat/Lon/Alt (Affichage)
     EKFState.lat += K_pos * (gnss_m.lat - EKFState.lat);
@@ -132,7 +129,7 @@ function updateEKF_GNSS(gnss_m, R_pos_cov) {
         X[5] += K_vel * (gnss_m.V_d - X[5]);
     }
     
-    // Correction des Biais Accél. (via l'erreur de vitesse)
+    // Correction des Biais Accél.
     X[9] -= K_bias * (gnss_m.V_n - X[3]); 
     X[10] -= K_bias * (gnss_m.V_e - X[4]);
     X[11] -= K_bias * (gnss_m.V_d - X[5]);
@@ -144,7 +141,7 @@ function updateEKF_GNSS(gnss_m, R_pos_cov) {
         P[i][i] = Math.max(P[i][i], i < 9 ? 0.01 : 1e-8); 
     }
     
-    // Correction de l'Attitude (Cap/Yaw) basé sur le Cap GPS
+    // Correction de l'Attitude (Cap/Yaw)
     if (gnss_m.heading !== null) {
         const K_yaw = P[8][8] / (P[8][8] + 0.01); 
         let heading_diff = (gnss_m.heading * D2R) - X[8];
@@ -155,7 +152,7 @@ function updateEKF_GNSS(gnss_m, R_pos_cov) {
     }
 }
 
-/** Calcule la vitesse 3D estimée par l'EKF. */
+/** Calcule la vitesse 3D estimée. */
 function getEKFVelocity3D() {
     const X = EKFState.X;
     return Math.sqrt(X[3] * X[3] + X[4] * X[4] + X[5] * X[5]);
@@ -176,13 +173,12 @@ function getMeasurementNoiseR(accRaw, P_hPa) {
         R *= Math.max(1.0, pressureFactor); 
     }
     return Math.max(R_POS_MIN, R); 
-                                                                                                                                                    }
+}
 // =================================================================
-// PHYSICS SERVICES (2/4) : Forces, Météo, Astro & Relativité
+// 2/4 : physics-services.js
+// Fonctions de calcul Physique, Météo, Astro et Relativité.
+// Dépend de : ekf-core.js
 // =================================================================
-
-// Dépendances de l'EKF Core
-// (Accès aux variables globales EKFState, D2R, R_AIR, C_S_REF, OMEGA_EARTH, C_L)
 
 // --- DONNÉES CÉLESTES/GRAVITÉ ---
 const CELESTIAL_DATA = {
@@ -200,10 +196,10 @@ function getGravityLocal(alt, bodyKey, R_ref) {
     return g_base * (R_base / (R_base + alt)) ** 2;
 }
 
-/** Calcule la Vitesse du Son Local (basée sur la température). */
+/** Calcule la Vitesse du Son Local. */
 function calculateSpeedOfSound(tempK) {
     if (tempK === null || isNaN(tempK)) return C_S_REF; 
-    return Math.sqrt(1.4 * R_AIR * tempK); // Gamma = 1.4 pour l'air sec
+    return Math.sqrt(1.4 * R_AIR * tempK); 
 }
 
 /** Calcule la force de Coriolis. */
@@ -232,11 +228,12 @@ function calculateRelativisticFactors(V_ekf) {
     return { lorentzFactor, percC: V_C_ratio * 100 };
 }
 
-/** Calcule les positions du Soleil et de la Lune (utilisé dans main-initializer pour le DOM). */
+/** * Mise à jour des données astronomiques (Dépend de SunCalc).
+ * Assurez-vous que SunCalc est chargé dans l'HTML.
+ */
 function updateAstro(latA, lonA, date, $) {
     if (typeof SunCalc === 'undefined' || latA === null || lonA === null) return;
     
-    const times = SunCalc.getTimes(date, latA, lonA);
     const sunPos = SunCalc.getPosition(date, latA, lonA);
     const moonPos = SunCalc.getMoonPosition(date, latA, lonA);
     const moonIllumination = SunCalc.getMoonIllumination(date);
@@ -258,15 +255,18 @@ function updateAstro(latA, lonA, date, $) {
     if ($('noon-solar')) $('noon-solar').textContent = solarTimeData.NoonSolar;
     if ($('eot')) $('eot').textContent = `${solarTimeData.EOT} min`;
 
+    // Mise à jour du mode jour/nuit (simple)
     const bodyEl = document.body;
-    if (sunAltDeg > 5) {
-        bodyEl.className = bodyEl.className.replace('sky-night', 'sky-day');
-    } else if (sunAltDeg < -0.5) {
-        bodyEl.className = bodyEl.className.replace('sky-day', 'sky-night');
+    if (sunAltDeg > 5 && bodyEl.classList.contains('sky-night')) {
+        bodyEl.classList.remove('sky-night');
+        bodyEl.classList.add('sky-day');
+    } else if (sunAltDeg < -0.5 && bodyEl.classList.contains('sky-day')) {
+        bodyEl.classList.remove('sky-day');
+        bodyEl.classList.add('sky-night');
     }
 }
 
-/** Calcule le Temps Solaire Vrai (TST) et l'Équation du Temps (EOT). */
+/** Calcule le Temps Solaire Vrai (TST), Moyen (MST) et le Midi Solaire (NoonSolar). */
 function getSolarTime(date, lon) {
     const dayMs = 1000 * 60 * 60 * 24;
     const J1970 = 2440588, J2000 = 2451545; 
@@ -306,24 +306,79 @@ function getSolarTime(date, lon) {
     };
 
     return { TST: toTimeString(tst_ms), MST: toTimeString(mst_ms), EOT: eot_min.toFixed(2), NoonSolar: toTimeString(NoonSolar_ms) };
+}
+// =================================================================
+// 3/4 : app-controls.js
+// Gestion des Capteurs, de la Carte et de la Double Boucle Principale.
+// Dépend de : ekf-core.js, physics-services.js, main-initializer.js (pour les fonctions updateDisplay)
+// =================================================================
+
+// (Accès aux variables globales définies dans main-initializer.js et ekf-core.js)
+// wID, lPos, lastUpdateTime, real_accel_x/y/z, G_ACC, lastP_hPa, map, marker, circle, sTime, distM, maxSpd, timeMoving, $, GPS_OPTS, emergencyStopActive, D2R, R_E_BASE
+
+let lastImuTime = 0; // Temps pour le calcul du dt IMU
+
+// --- GESTION DES CAPTEURS ---
+
+/** Gère les données d'accélération de l'IMU (à coupler à DeviceMotionEvent). */
+function imuMotionHandler(event) {
+    if (wID === null) return; // IMU actif uniquement si GPS actif
+    
+    // Accélération en référentiel du corps (accélération totale - gravité)
+    real_accel_x = event.acceleration.x || 0;
+    real_accel_y = event.acceleration.y || 0;
+    real_accel_z = event.acceleration.z || 0;
+    $('imu-status').textContent = 'Actif';
+}
+
+function startIMUListeners() {
+    window.addEventListener('devicemotion', imuMotionHandler);
+    // Ajoutez ici les écouteurs pour DeviceOrientation s'ils sont utilisés pour le Roll/Pitch bruts
+}
+
+function stopIMUListeners() {
+    window.removeEventListener('devicemotion', imuMotionHandler);
+    $('imu-status').textContent = 'Inactif';
+    // Réinitialisation des accélérations brutes
+    real_accel_x = 0; real_accel_y = 0; real_accel_z = 0;
+}
+
+function toggleGPS() {
+    if (wID) {
+        // Arrêter GNSS/IMU
+        navigator.geolocation.clearWatch(wID);
+        stopIMUListeners();
+        wID = null;
+        lPos = null;
+        $('toggle-gps-btn').textContent = '▶️ MARCHE GNSS/IMU';
+        $('toggle-gps-btn').style.backgroundColor = '#28a745';
+        $('gps-status-dr').textContent = 'Arrêté';
+        // Arrêter la boucle rapide
+        if (domFastID) clearInterval(domFastID);
+        domFastID = null;
+    } else {
+        // Démarrer GNSS/IMU
+        wID = navigator.geolocation.watchPosition(handlePosition, handleErr, GPS_OPTS.HIGH_FREQ);
+        startIMUListeners();
+        $('toggle-gps-btn').textContent = '🛑 ARRÊT GNSS/IMU';
+        $('toggle-gps-btn').style.backgroundColor = '#dc3545';
+        $('gps-status-dr').textContent = 'En cours...';
+        // Redémarrer la boucle rapide
+        domFastID = setInterval(imuLoop, DOM_FAST_UPDATE_MS);
     }
-// =================================================================
-// APP CONTROLS (3/4) : Gestion des Capteurs, Carte et Boucle Principale
-// =================================================================
+}
 
-// Dépendances : EKFState, initEKF, predictEKF_IMU, updateEKF_GNSS, getEKFVelocity3D, getMeasurementNoiseR
-// (Accès aux variables globales : wID, lPos, lastUpdateTime, real_accel_x/y/z, G_ACC, lastP_hPa, map, marker, circle, sTime, distM, maxSpd, timeMoving, $, GPS_OPTS, emergencyStopActive, D2R)
+function handleErr(err) {
+    console.warn(`[GPS ERROR] (${err.code}): ${err.message}`);
+    $('gps-status-dr').textContent = `Erreur GPS: ${err.message}`;
+}
 
-let lastImuTime = 0; // NOUVEAU: Variable de temps pour le calcul du dt IMU
-
-// ... (fonctions imuMotionHandler, startIMUListeners, stopIMUListeners, handleErr, toggleGPS, updateMap - inchangées)
 
 /**
  * BOUCLE HAUTE FRÉQUENCE (IMU) : Gère la PRÉDICTION EKF et l'affichage rapide (Vitesse, Attitude).
  * Exécutée à DOM_FAST_UPDATE_MS (20 Hz).
  */
 function imuLoop() {
-    // Si le GPS n'est pas actif (wID === null) ou si l'arrêt d'urgence est actif
     if (wID === null || emergencyStopActive) {
         updateDisplayFast(); 
         return;
@@ -334,11 +389,11 @@ function imuLoop() {
     const dt = lastImuTime === 0 ? DOM_FAST_UPDATE_MS / 1000 : Math.max(MIN_DT, (cTime - lastImuTime) / 1000); 
     lastImuTime = cTime;
 
-    // EKF PRÉDICTION - MÀJ HAUTE FRÉQUENCE DE X (Position, Vitesse, Attitude)
+    // EKF PRÉDICTION - MÀJ HAUTE FRÉQUENCE
     const a_b = [real_accel_x, real_accel_y, real_accel_z]; 
     predictEKF_IMU(dt, a_b, G_ACC); 
 
-    // MISE À JOUR DES STATISTIQUES GLOBAL (Cumul de distance/temps)
+    // MISE À JOUR DES STATISTIQUES GLOBAL
     const V_ekf = getEKFVelocity3D();
     const sSpdFE = V_ekf < MIN_DT ? 0 : V_ekf; 
 
@@ -348,7 +403,7 @@ function imuLoop() {
         maxSpd = Math.max(maxSpd, sSpdFE * KMH_MS);
     }
     
-    // MÀJ DOM RAPIDE (Vitesse EKF, Accélération, Attitude)
+    // MÀJ DOM RAPIDE
     updateDisplayFast(V_ekf, dt);
 }
 
@@ -357,18 +412,18 @@ function imuLoop() {
 function handlePosition(pos) {
     if (emergencyStopActive) return;
 
-    // Calcul du Delta Temps du GPS
     const cTimePos = pos.timestamp;
     const dt_gps = lastUpdateTime === 0 ? MIN_DT : Math.max(MIN_DT, (cTimePos - lastUpdateTime) / 1000); 
     lastUpdateTime = cTimePos;
     
     if (lPos === null) {
+        // Initialisation si première lecture
         EKFState.lat = pos.coords.latitude; EKFState.lon = pos.coords.longitude;
         initEKF(EKFState.lat, EKFState.lon, pos.coords.altitude || DEFAULT_ALT);
         sTime = Date.now();
         lPos = pos;
         updateMap(EKFState.lat, EKFState.lon, pos.coords.accuracy);
-        updateDisplaySlow(0.0, MIN_DT, pos.coords.accuracy, pos); // Appel lent initial
+        updateDisplaySlow(0.0, MIN_DT, pos.coords.accuracy, pos); 
         return;
     }
 
@@ -398,17 +453,38 @@ function handlePosition(pos) {
     updateDisplaySlow(V_ekf, dt_gps, accRaw, pos);
     
     lPos = pos;
-                           }
-// =================================================================
-// MAIN INITIALIZER (4/4) : Variables Globales, Sync et Affichage
-// =================================================================
+}
 
-// Dépendances: EKFState, getCDate, updateAstro, fetchWeather, getEKFVelocity3D, getEKFAccuracy
-// calculateSpeedOfSound, calculateRelativisticFactors, calculateDynamicPressure, calculateCoriolisForce, getGravityLocal
-// (Accès à toutes les fonctions et constantes des autres fichiers)
+/** Initialise et met à jour la carte Leaflet. */
+function updateMap(latA, lonA, accuracy) {
+    if (typeof L === 'undefined') return;
+
+    const currentLat = EKFState.lat !== null ? EKFState.lat : DEFAULT_LAT;
+    const currentLon = EKFState.lon !== null ? EKFState.lon : DEFAULT_LON;
+
+    if (!map) {
+        map = L.map('map').setView([currentLat, currentLon], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        marker = L.marker([currentLat, currentLon]).addTo(map);
+        circle = L.circle([currentLat, currentLon], { radius: accuracy || 10.0 }).addTo(map);
+    } else {
+        const newLatLng = new L.LatLng(currentLat, currentLon);
+        marker.setLatLng(newLatLng);
+        circle.setLatLng(newLatLng).setRadius(accuracy || 10.0);
+        map.panTo(newLatLng);
+    }
+        }
+// =================================================================
+// 4/4 : main-initializer.js
+// Variables Globales, Initialisation DOM, Synchronisation, Météo et Affichage.
+// Dépend de : ekf-core.js, physics-services.js, app-controls.js
+// =================================================================
 
 const DOM_SLOW_UPDATE_MS = 1000;
-const DEFAULT_LAT = 48.8566; 
+const DEFAULT_LAT = 48.8566; // Paris
 const DEFAULT_LON = 2.3522;
 const DEFAULT_ALT = 50.0;
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
@@ -418,29 +494,30 @@ const GPS_OPTS = {
 };
 
 // --- VARIABLES D'ÉTAT GLOBAL ---
-let wID = null, domID = null, lPos = null, sTime = null;
+let wID = null, domID = null, domFastID = null; // IDs des boucles de surveillance
+let lPos = null, sTime = null; // Dernière position, temps de session
 let lastUpdateTime = 0; 
-let distM = 0, maxSpd = 0, timeMoving = 0;
-let lat = DEFAULT_LAT, lon = DEFAULT_LON;
-let lServH = null, lLocH = null; 
+let distM = 0, maxSpd = 0, timeMoving = 0; // Statistiques
+let lServH = null, lLocH = null; // Temps NTP
 let G_ACC = G_EARTH;
 let R_ALT_CENTER_REF = R_E_BASE;
 let currentCelestialBody = 'EARTH';
 let currentMass = 70.0; 
 let emergencyStopActive = false;
-let domFastID = null; // NOUVEAU: ID de la boucle rapide
 
 // Données externes et IMU
 let lastP_hPa = null, lastT_K = null; 
 let lastAirDensity = 1.225;
 let real_accel_x = 0, real_accel_y = 0, real_accel_z = 0;
-let map, marker, circle;
+let map, marker, circle; // Carte Leaflet
 
 // Fonction utilitaire DOM
 const $ = id => document.getElementById(id);
 
 
-/** Récupère et compense l'heure NTP (RTT). */
+// --- UTILITIES ET SYNCHRONISATION ---
+
+/** Récupère et compense l'heure NTP. */
 async function syncH(lServH_in, lLocH_in) {
     const t0 = performance.now();
     try {
@@ -465,20 +542,23 @@ function getCDate(lServH, lLocH) {
     return new Date(lServH + offsetSinceSync); 
 }
 
-/** Récupère les données météo et calcule la densité de l'air. */
+/** Récupère les données météo (simulées ou réelles via API). */
 async function fetchWeather(latA, lonA) {
     const API_KEY = "YOUR_API_KEY_HERE"; 
     
     if (API_KEY === "YOUR_API_KEY_HERE") {
+        // Données par défaut si l'API n'est pas configurée
         return { tempC: 15.0, pressure_hPa: 1013.25, humidity_perc: 60, tempK: 288.15, air_density: 1.225, dew_point: 7.0, status: "Données par défaut (API non configurée)" };
     }
-    // ... Logique d'appel API réelle et calcul de la densité de l'air ...
+    // TODO: Implémenter l'appel API réelle ici
     return null; 
 }
 
-// NOUVEAU: Fonction pour l'affichage à haute fréquence (20 Hz)
+
+// --- FONCTIONS DE MISE À JOUR DE L'AFFICHAGE DOM ---
+
+/** Mise à jour de l'affichage HAUTE FRÉQUENCE (20 Hz) pour la réactivité. */
 function updateDisplayFast(V_ekf) {
-    // Si V_ekf est indéfini ou si le GPS est à l'arrêt, met l'affichage en mode pause
     if (V_ekf === undefined || wID === null) {
         $('speed-stable').textContent = `--.- km/h`;
         $('speed-stable-ms').textContent = `-- m/s`;
@@ -489,7 +569,7 @@ function updateDisplayFast(V_ekf) {
     const sSpdKMH = V_ekf * KMH_MS;
     const X = EKFState.X;
 
-    // --- VITESSE & ACCÉLÉRATION --- (HAUTE RÉACTIVITÉ)
+    // --- VITESSE & ACCÉLÉRATION (HAUTE RÉACTIVITÉ) ---
     $('speed-stable').textContent = `${sSpdKMH.toFixed(3)} km/h`;
     $('speed-stable-ms').textContent = `${V_ekf.toFixed(3)} m/s`;
     if($('speed-status-text')) $('speed-status-text').textContent = 'EKF 3D (IMU FUSION)'; 
@@ -498,14 +578,13 @@ function updateDisplayFast(V_ekf) {
     $('imu-accel-y').textContent = `${real_accel_y.toFixed(2)} m/s² (Y)`;
     $('imu-accel-z').textContent = `${real_accel_z.toFixed(2)} m/s² (Z)`;
     
-    // --- ATTITUDE --- (HAUTE RÉACTIVITÉ)
+    // --- ATTITUDE (HAUTE RÉACTIVITÉ) ---
     $('roll').textContent = `${(X[6] * R2D).toFixed(2)} °`;
     $('pitch').textContent = `${(X[7] * R2D).toFixed(2)} °`;
     $('yaw').textContent = `${(X[8] * R2D).toFixed(2)} °`;
 }
 
-
-/** Mise à jour de l'affichage LENT (Stats, Biais, Forces, Astro). */
+/** Mise à jour de l'affichage LENT (1 Hz) pour les données complexes ou statiques. */
 function updateDisplaySlow(V_ekf, dt, accRaw, pos) {
     const X = EKFState.X;
     
@@ -560,6 +639,8 @@ function updateDisplaySlow(V_ekf, dt, accRaw, pos) {
 }
 
 
+// --- INITIALISATION PRINCIPALE ---
+
 document.addEventListener('DOMContentLoaded', () => {
     initEKF(DEFAULT_LAT, DEFAULT_LON, DEFAULT_ALT);
     updateMap(DEFAULT_LAT, DEFAULT_LON, 10.0);
@@ -568,14 +649,29 @@ document.addEventListener('DOMContentLoaded', () => {
     domFastID = setInterval(imuLoop, DOM_FAST_UPDATE_MS);
 
     // Initialisation affichage lent (utilise les valeurs par défaut)
-    const V_ekf_init = getEKFVelocity3D(); // 0
-    // Simuler un objet pos pour l'initialisation des champs GPS bruts
+    const V_ekf_init = getEKFVelocity3D(); 
     updateDisplaySlow(V_ekf_init, MIN_DT, 10.0, {coords: {speed: 0, altitude: DEFAULT_ALT}});
-    updateDisplayFast(V_ekf_init); // Appel initial pour la vitesse/attitude
+    updateDisplayFast(V_ekf_init); 
 
     $('toggle-gps-btn').addEventListener('click', toggleGPS);
+    
+    // Gestion de l'arrêt d'urgence (Exemple simple)
+    $('emergency-stop-btn').addEventListener('click', () => {
+        emergencyStopActive = !emergencyStopActive;
+        const btn = $('emergency-stop-btn');
+        if (emergencyStopActive) {
+            btn.textContent = '▶️ DÉBLOQUER ARRÊT URG.';
+            btn.style.backgroundColor = '#28a745';
+            $('speed-status-text').textContent = '🛑 ARRÊT URG. / PAUSE';
+        } else {
+            btn.textContent = '🛑 Arrêt d\'urgence';
+            btn.style.backgroundColor = '#dc3545';
+        }
+    });
+    
     $('toggle-mode-btn').addEventListener('click', () => document.body.classList.toggle('dark-mode'));
     
+    // Gestion du corps céleste
     if ($('celestial-body-select')) {
         $('celestial-body-select').addEventListener('change', (e) => {
             currentCelestialBody = e.target.value;
@@ -588,6 +684,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('gravity-base')) $('gravity-base').textContent = `${initialData.G.toFixed(4)} m/s²`;
     }
     
+    // Gestion de la masse
     if ($('mass-input')) {
         $('mass-input').addEventListener('input', (e) => {
             currentMass = parseFloat(e.target.value) || 70.0;
@@ -616,7 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Resynchronise NTP toutes les 10 minutes
+        // Resynchronise NTP toutes les 10 minutes (600 secondes)
         if (Math.floor(Date.now() / 1000) % 600 === 0) {
              syncH(lServH, lLocH).then(newTimes => {
                 lServH = newTimes.lServH;
