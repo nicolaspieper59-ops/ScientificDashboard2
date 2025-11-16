@@ -1,5 +1,5 @@
 // =================================================================
-// 1/4 : ekf-core.js
+// ekf-core.js (1/4)
 // Logique du Filtre de Kalman Étendu (EKF) : Constantes, États et Mathématiques.
 // =================================================================
 
@@ -173,9 +173,9 @@ function getMeasurementNoiseR(accRaw, P_hPa) {
         R *= Math.max(1.0, pressureFactor); 
     }
     return Math.max(R_POS_MIN, R); 
-}
+        }
 // =================================================================
-// 2/4 : physics-services.js
+// physics-services.js (2/4)
 // Fonctions de calcul Physique, Météo, Astro et Relativité.
 // Dépend de : ekf-core.js
 // =================================================================
@@ -306,15 +306,15 @@ function getSolarTime(date, lon) {
     };
 
     return { TST: toTimeString(tst_ms), MST: toTimeString(mst_ms), EOT: eot_min.toFixed(2), NoonSolar: toTimeString(NoonSolar_ms) };
-}
+        }
 // =================================================================
-// 3/4 : app-controls.js
+// app-controls.js (3/4)
 // Gestion des Capteurs, de la Carte et de la Double Boucle Principale.
 // Dépend de : ekf-core.js, physics-services.js, main-initializer.js (pour les fonctions updateDisplay)
 // =================================================================
 
 // (Accès aux variables globales définies dans main-initializer.js et ekf-core.js)
-// wID, lPos, lastUpdateTime, real_accel_x/y/z, G_ACC, lastP_hPa, map, marker, circle, sTime, distM, maxSpd, timeMoving, $, GPS_OPTS, emergencyStopActive, D2R, R_E_BASE
+// wID, lPos, lastUpdateTime, real_accel_x/y/z, G_ACC, lastP_hPa, map, marker, circle, sTime, distM, maxSpd, timeMoving, $, GPS_OPTS, emergencyStopActive, D2R, R_E_BASE, MIN_DT, DOM_FAST_UPDATE_MS
 
 let lastImuTime = 0; // Temps pour le calcul du dt IMU
 
@@ -476,9 +476,9 @@ function updateMap(latA, lonA, accuracy) {
         circle.setLatLng(newLatLng).setRadius(accuracy || 10.0);
         map.panTo(newLatLng);
     }
-        }
+}
 // =================================================================
-// 4/4 : main-initializer.js
+// main-initializer.js (4/4)
 // Variables Globales, Initialisation DOM, Synchronisation, Météo et Affichage.
 // Dépend de : ekf-core.js, physics-services.js, app-controls.js
 // =================================================================
@@ -574,14 +574,16 @@ function updateDisplayFast(V_ekf) {
     $('speed-stable-ms').textContent = `${V_ekf.toFixed(3)} m/s`;
     if($('speed-status-text')) $('speed-status-text').textContent = 'EKF 3D (IMU FUSION)'; 
 
-    $('imu-accel-x').textContent = `${real_accel_x.toFixed(2)} m/s² (X)`;
-    $('imu-accel-y').textContent = `${real_accel_y.toFixed(2)} m/s² (Y)`;
-    $('imu-accel-z').textContent = `${real_accel_z.toFixed(2)} m/s² (Z)`;
+    // Note: Utilise #accel-x/y/z du HTML pour les données brutes
+    $('accel-x').textContent = `${real_accel_x.toFixed(2)} m/s² (X)`;
+    $('accel-y').textContent = `${real_accel_y.toFixed(2)} m/s² (Y)`;
+    $('accel-z').textContent = `${real_accel_z.toFixed(2)} m/s² (Z)`;
     
     // --- ATTITUDE (HAUTE RÉACTIVITÉ) ---
-    $('roll').textContent = `${(X[6] * R2D).toFixed(2)} °`;
-    $('pitch').textContent = `${(X[7] * R2D).toFixed(2)} °`;
-    $('yaw').textContent = `${(X[8] * R2D).toFixed(2)} °`;
+    // Note: Roll/Pitch/Yaw ne sont pas dans le HTML pour l'instant, ces lignes sont à titre d'exemple
+    // if ($('roll')) $('roll').textContent = `${(X[6] * R2D).toFixed(2)} °`;
+    // if ($('pitch')) $('pitch').textContent = `${(X[7] * R2D).toFixed(2)} °`;
+    // if ($('yaw')) $('yaw').textContent = `${(X[8] * R2D).toFixed(2)} °`;
 }
 
 /** Mise à jour de l'affichage LENT (1 Hz) pour les données complexes ou statiques. */
@@ -595,7 +597,7 @@ function updateDisplaySlow(V_ekf, dt, accRaw, pos) {
     const accel_long = (V_ekf - (lPos?.coords?.speed || 0)) / dt || 0;
     const dynamicPressure = calculateDynamicPressure(lastAirDensity, V_ekf);
     const coriolisForce = calculateCoriolisForce(EKFState.lat, V_ekf, X, currentMass);
-    const forceLong = accel_long * currentMass;
+    // const forceLong = accel_long * currentMass; // Non utilisé dans l'affichage
 
     // --- VITESSE & DISTANCE (Stats) ---
     $('speed-raw-ms').textContent = `${(pos?.coords?.speed || 0).toFixed(3)} m/s`;
@@ -607,33 +609,24 @@ function updateDisplaySlow(V_ekf, dt, accRaw, pos) {
     $('lat-display').textContent = `${EKFState.lat.toFixed(6)} °`;
     $('lon-display').textContent = `${EKFState.lon.toFixed(6)} °`;
     $('alt-display').textContent = `${EKFState.alt.toFixed(2)} m`;
-    $('vertical-speed').textContent = `${(-X[5]).toFixed(2)} m/s (EKF)`; 
-    $('gps-precision').textContent = `${accRaw.toFixed(2)} m (Brut)`;
+    
+    if ($('gps-precision')) $('gps-precision').textContent = `${accRaw.toFixed(2)} m (Brut)`;
     
     // --- EKF/IMU & ATTITUDE (Slow/Debug) ---
-    $('kalman-uncert').textContent = `${getEKFAccuracy().toFixed(3)} m (EKF Pos)`;
-
-    // --- BIAIS EKF 15 ÉTATS ---
-    $('bias-accel-x').textContent = `${X[9].toFixed(6)} m/s²`;
-    $('bias-accel-y').textContent = `${X[10].toFixed(6)} m/s²`;
-    $('bias-accel-z').textContent = `${X[11].toFixed(6)} m/s²`;
-    $('bias-gyro-x').textContent = `${X[12].toFixed(6)} rad/s`;
-    $('bias-gyro-y').textContent = `${X[13].toFixed(6)} rad/s`;
-    $('bias-gyro-z').textContent = `${X[14].toFixed(6)} rad/s`;
+    if ($('kalman-uncert')) $('kalman-uncert').textContent = `${getEKFAccuracy().toFixed(3)} m (EKF Pos)`;
 
     // --- DYNAMIQUE ET RELATIVITÉ ---
-    $('speed-of-sound-calc').textContent = `${V_sound.toFixed(2)} m/s`;
-    $('mach-number').textContent = machNumber.toFixed(4);
-    $('perc-speed-c').textContent = `${percC.toExponential(2)} %`;
-    $('lorentz-factor').textContent = lorentzFactor.toFixed(4);
-    $('dynamic-pressure').textContent = `${dynamicPressure.toFixed(2)} Pa`;
-    $('coriolis-force').textContent = `${coriolisForce.toFixed(3)} N`;
-    $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
-    $('force-long').textContent = `${forceLong.toFixed(2)} N`;
-
+    if ($('speed-of-sound-calc')) $('speed-of-sound-calc').textContent = `${V_sound.toFixed(2)} m/s`;
+    if ($('mach-number')) $('mach-number').textContent = machNumber.toFixed(4);
+    if ($('perc-speed-c')) $('perc-speed-c').textContent = `${percC.toExponential(2)} %`;
+    if ($('lorentz-factor')) $('lorentz-factor').textContent = lorentzFactor.toFixed(4);
+    if ($('dynamic-pressure')) $('dynamic-pressure').textContent = `${dynamicPressure.toFixed(2)} Pa`;
+    if ($('coriolis-force')) $('coriolis-force').textContent = `${coriolisForce.toFixed(3)} N`;
+    if ($('accel-long')) $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
+    
     // --- PHYSIQUE & GRAVITÉ ---
     const local_g = getGravityLocal(EKFState.alt, currentCelestialBody, R_ALT_CENTER_REF);
-    $('gravity-local').textContent = `${local_g.toFixed(5)} m/s²`;
+    if ($('gravity-local')) $('gravity-local').textContent = `${local_g.toFixed(5)} m/s²`;
     
     updateMap(EKFState.lat, EKFState.lon, accRaw);
 }
@@ -675,12 +668,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('celestial-body-select')) {
         $('celestial-body-select').addEventListener('change', (e) => {
             currentCelestialBody = e.target.value;
-            const data = CELESTIAL_DATA[currentCelestialBody];
+            const data = CELESTIAL_DATA[currentCelestialBody] || CELESTIAL_DATA['EARTH'];
             G_ACC = data.G;
             R_ALT_CENTER_REF = data.R;
             if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC.toFixed(4)} m/s²`;
         });
-        const initialData = CELESTIAL_DATA[currentCelestialBody];
+        const initialData = CELESTIAL_DATA[currentCelestialBody] || CELESTIAL_DATA['EARTH'];
         if ($('gravity-base')) $('gravity-base').textContent = `${initialData.G.toFixed(4)} m/s²`;
     }
     
