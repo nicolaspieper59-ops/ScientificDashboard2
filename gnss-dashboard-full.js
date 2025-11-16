@@ -694,26 +694,6 @@ async function slowUpdateLoop() {
 // ===========================================
 // BLOC 3B/3 : main_logic.js (Partie B : Boucle Principale et Initialisation DOM)
 // ===========================================
-// Exemple de fonction de basculement (dans gnss-dashboard-full.js)
-// ...
-// Ajouter cette ligne au début de la fonction qui gère le bouton
-// L'objectif est de s'assurer que l'état 'isPaused' passe à false.
-// ...
-
-if (isPaused) {
-    isPaused = false; // Désactiver la pause
-    // ...
-    // Changer le texte du bouton en "PAUSE GPS"
-    // ...
-} else {
-    isPaused = true; // Activer la pause
-    // ...
-    // Changer le texte du bouton en "MARCHE GPS"
-    // ...
-}
-// FONCTION PRINCIPALE DE MISE À JOUR GPS (updateDisp)
-function updateDisp(pos) {
-    if (emergencyStopActive) return;
 
     // --- 1. ACQUISITION DES DONNÉES ---
     const cTimePos = pos.timestamp;
