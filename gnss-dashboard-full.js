@@ -1032,3 +1032,188 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Récupération Météo (si 
+            // =================================================================
+// BLOC 4/4 : Logique Applicative Principale (updateDisp & DOM/Init)
+// =================================================================
+
+// ... (Le code précédent de la partie 4) ...
+
+// --- INITIALISATION DOM ET BOUCLE LENTE ---
+document.addEventListener('DOMContentLoaded', () => {
+    
+    initMap(); 
+
+    // --- Initialisation des Contrôles (Mass, Corps Céleste, Environnement, etc.) ---
+    const massInput = $('mass-input'); 
+    if (massInput) {
+        massInput.addEventListener('input', () => { 
+            currentMass = parseFloat(massInput.value) || 70.0; 
+            if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+        });
+        currentMass = parseFloat(massInput.value) || 70.0; 
+        if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+    }
+
+    if ($('celestial-body-select')) {
+        $('celestial-body-select').addEventListener('change', (e) => { 
+            const newVals = updateCelestialBody(e.target.value, kAlt, rotationRadius, angularVelocity);
+            G_ACC = newVals.G_ACC;
+            R_ALT_CENTER_REF = newVals.R_ALT_CENTER_REF;
+            currentCelestialBody = e.target.value;
+            if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC.toFixed(4)} m/s²`;
+        });
+    }
+
+    const updateRotation = () => {
+        rotationRadius = parseFloat($('rotation-radius')?.value) || 100;
+        angularVelocity = parseFloat($('angular-velocity')?.value) || 0;
+        if (currentCelestialBody === 'ROTATING') {
+            const newVals = updateCelestialBody('ROTATING', kAlt, rotationRadius, angularVelocity);
+            G_ACC = newVals.G_ACC;
+            if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC.toFixed(4)} m/s²`;
+        }
+    };
+    if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
+    if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
+
+    if ($('environment-select')) {
+        $('environment-select').addEventListener('change', (e) => { 
+            if (emergencyStopActive) return;
+            selectedEnvironment = e.target.value; 
+            if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`; 
+        });
+        if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`;
+    }
+    
+    if ($('gps-accuracy-override')) {
+        $('gps-accuracy-override').addEventListener('change', (e) => {
+            gpsAccuracyOverride = parseFloat(e.target.value) || 0.0;
+        });
+    }
+
+    // --- Boutons Principaux ---
+    if ($('toggle-gps-btn')) {
+        $('toggle-gps-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) {
+                alert("Veuillez désactiver l'Arrêt d'urgence avant d'utiliser ce contrôle.");
+                return;
+            }
+            wID === null ? startGPS() : stopGPS(); 
+        });
+    }
+    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => setGPSMode(e.target.value));
+
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').addEventListener('click', () => { 
+            if (!emergencyStopActive) { emergencyStop(); } else { resumeSystem(); }
+        });
+    }
+    
+    if ($('nether-toggle-btn')) {
+        $('nether-toggle-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            netherMode = !netherMode; 
+            if ($('mode-nether')) $('mode-nether').textContent = netherMode ? `ACTIVÉ (1:8) 🔥` : "DÉSACTIVÉ (1:1)"; 
+        });
+    }
+    
+    // Réinitialisation
+    if ($('reset-dist-btn')) {
+        $('reset-dist-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            distM = 0; timeMoving = 0; 
+        });
+    }
+    
+    if ($('reset-max-btn')) {
+        $('reset-max-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            maxSpd = 0; 
+        });
+    }
+    
+    if ($('reset-all-btn')) {
+        $('reset-all-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            if (confirm("Réinitialiser toutes les données de session ?")) { 
+                distM = 0; maxSpd = 0; 
+                kSpd = 0; kUncert = 1000; 
+                timeMoving = 0; 
+                kAlt = null; kAltUncert = 10;
+                lPos = null; sTime = null;
+                ukfSpeed = null; 
+                if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`; 
+                if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`; 
+                alert("Système réinitialisé. Redémarrez le GPS pour recommencer.");
+            } 
+        });
+    }
+    
+    if ($('toggle-mode-btn')) {
+        $('toggle-mode-btn').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            document.body.classList.toggle('light-mode');
+        });
+    }
+    
+    // --- DÉMARRAGE DU SYSTÈME ---
+    const initVals = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+    G_ACC = initVals.G_ACC;
+    R_ALT_CENTER_REF = initVals.R_ALT_CENTER_REF;
+    
+    syncH(lServH, lLocH).then(newTimes => {
+        lServH = newTimes.lServH;
+        lLocH = newTimes.lLocH;
+        startGPS(); 
+    });
+
+    // Boucle de mise à jour lente (Astro/Météo/Horloge)
+    const DOM_SLOW_UPDATE_MS = 1000;
+    if (domID === null) {
+        domID = setInterval(() => {
+            const currentLat = lat || 43.296; 
+            const currentLon = lon || 5.370;
+            
+            if (typeof updateAstro === 'function') {
+                updateAstro(currentLat, currentLon, lServH, lLocH);
+            }
+            
+            // Resynchronisation NTP toutes les 60 secondes
+            if (Math.floor(Date.now() / 1000) % 60 === 0) {
+                 syncH(lServH, lLocH).then(newTimes => {
+                    lServH = newTimes.lServH;
+                    lLocH = newTimes.lLocH;
+                 });
+            }
+            
+            // Récupération Météo (si GPS actif)
+            if (lat && lon && !emergencyStopActive && typeof fetchWeather === 'function') {
+                fetchWeather(lat, lon).then(data => {
+                    if (data) {
+                        lastP_hPa = data.pressure_hPa;
+                        lastT_K = data.tempK;
+                        currentAirDensity = data.air_density; 
+                        currentSpeedOfSound = getSpeedOfSound(data.tempK);
+                        lastH_perc = data.humidity_perc / 100.0; // Stocke l'humidité en fraction
+                        
+                        if ($('temp-air-2')) $('temp-air-2').textContent = `${data.tempC.toFixed(1)} °C`;
+                        if ($('pressure-2')) $('pressure-2').textContent = `${data.pressure_hPa.toFixed(0)} hPa`;
+                        if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc.toFixed(0)} %`;
+                        if ($('air-density')) $('air-density').textContent = `${data.air_density.toFixed(3)} kg/m³`;
+                        if ($('dew-point')) $('dew-point').textContent = `${data.dew_point.toFixed(1)} °C`;
+                    }
+                });
+            }
+            
+            // Mise à jour de l'horloge locale
+            const now = getCDate(lServH, lLocH);
+            if (now) {
+                if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
+                    $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+                }
+                if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
+            }
+            
+        }, DOM_SLOW_UPDATE_MS); // Fin du setInterval
+    }
+}); // Fin du DOMContentLoaded
