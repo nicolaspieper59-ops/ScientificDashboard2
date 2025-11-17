@@ -19,9 +19,9 @@
             --bg-dark: #121220;
             --panel-dark: #1e1e1e;
             --text-light: #f4f7f6;
-            --accent-color: #28a745; /* Vert pour OK/Démarrer */
-            --warning-color: #ffc107; /* Jaune pour Pause */
-            --error-color: #dc3545; /* Rouge pour Erreur */
+            --accent-color: #28a745; 
+            --warning-color: #ffc107; 
+            --error-color: #dc3545; 
             --font-mono: 'Dosis', monospace;
         }
 
@@ -68,7 +68,7 @@
 
         /* --- CARTE --- */
         #map {
-            height: 250px; /* Hauteur définie pour le mobile */
+            height: 250px; 
             width: 100%;
             border-radius: 8px;
             margin-bottom: 10px;
@@ -108,6 +108,7 @@
         .data-point {
             display: flex;
             justify-content: space-between;
+            align-items: center; 
             padding: 6px 0;
             border-bottom: 1px dashed #333;
         }
@@ -135,6 +136,7 @@
             border-radius: 4px;
             font-weight: bold;
             cursor: pointer;
+            box-sizing: border-box; 
         }
         #toggle-gps-btn {
             background-color: var(--accent-color);
@@ -152,11 +154,6 @@
         }
         .status-bar i {
             margin-right: 5px;
-        }
-
-        /* Petits ajustements spécifiques (si besoin de faire une exception) */
-        @media (min-width: 768px) {
-            /* Pas de changements majeurs nécessaires, la structure reste verticale */
         }
     </style>
 </head>
@@ -178,6 +175,21 @@
 
     <div class="controls-panel">
         <button id="toggle-gps-btn">▶️ MARCHE GPS</button>
+        
+        <select id="gps-mode-select">
+            <option value="HIGH_FREQ">Mode GPS: Haute Fréquence (Précis)</option>
+            <option value="LOW_FREQ">Mode GPS: Basse Fréquence (Économie)</option>
+        </select>
+        
+        <select id="environment-select">
+            <option value="NORMAL">Environnement: Surface Standard</option>
+            <option value="URBAN">Environnement: Urbain Denser</option>
+            <option value="MOUNTAIN">Environnement: Montagne</option>
+            <option value="SUBTERRANEAN">Environnement: Souterrain/Tunnel</option>
+        </select>
+        
+        <button id="toggle-emergency-stop" style="background-color: var(--error-color);">🛑 ARRÊT D'URGENCE</button>
+
         <div class="data-point" style="border-bottom: none;">
             <span>Précision GPS (H-ACC)</span>
             <span id="gps-precision">N/A</span>
@@ -195,6 +207,7 @@
                 <div class="data-point"><span>Latitude</span><span id="lat-display">N/A</span></div>
                 <div class="data-point"><span>Longitude</span><span id="lon-display">N/A</span></div>
                 <div class="data-point"><span>Cap/Direction (True)</span><span id="heading-display">N/A</span></div>
+                <div class="data-point"><span>Vitesse Instant. Brute (3D)</span><span id="speed-3d-inst">0.00000 km/h</span></div>
                 <div class="data-point"><span>Distance Totale</span><span id="distance-total-km">0.00 km | 0.00 m</span></div>
                 <hr>
 
@@ -249,6 +262,14 @@
                     <input type="number" id="mass-input" value="70.0" min="1" step="0.1" style="width: 80px; text-align: right; background: #333; color: white;">
                 </div>
                 <div class="data-point"><span>Énergie Cinétique</span><span id="kinetic-energy">0.00 J</span></div>
+                <hr>
+                
+                <select id="celestial-body-select">
+                    <option value="EARTH">Corps Céleste: Terre</option>
+                    <option value="MOON">Corps Céleste: Lune</option>
+                    <option value="MARS">Corps Céleste: Mars</option>
+                    <option value="ROTATING">Simuler Rotation</option>
+                </select>
             </div>
         </details>
     </div>
@@ -261,14 +282,13 @@
                 <div class="data-point"><span>Heure Solaire Moyenne (MST)</span><span id="mst">N/A</span></div>
                 <div class="data-point"><span>Altitude Soleil</span><span id="sun-alt">N/A</span></div>
                 <div class="data-point"><span>Phase Lunaire</span><span id="moon-phase-name">N/A</span></div>
-                <div class="data-point"><span>Illumination Lunaire</span><span id="moon-illuminated">N/A</span></div>
             </div>
         </details>
     </div>
 
 </div>
 
-<script src="gnss-dashboard-full.js"></script>
+<script src="gnss-dashbord-full.js"></script>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
         integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
