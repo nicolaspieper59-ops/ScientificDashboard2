@@ -33,7 +33,7 @@ const GPS_OPTS = {
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
 };
 
-// --- FACTEURS D'ENVIRONNEMENT ---
+// --- FACTEURS D'ENVIRONNEMENT (Ajustent le bruit R du UKF) ---
 const ENVIRONMENT_FACTORS = {
     'NORMAL': { R_MULT: 1.0, DISPLAY: 'Surface Standard' },
     'URBAN': { R_MULT: 1.5, DISPLAY: 'Urbain Denser' },
@@ -46,8 +46,7 @@ const ENVIRONMENT_FACTORS = {
 // =================================================================
 
 // ===========================================
-// CLASSE UKF (Unscented Kalman Filter)
-// ... (code de la classe UKF) ...
+// CLASSE UKF (Unscented Kalman Filter - 1D Simplifié)
 // ===========================================
 class UKF {
     constructor(initialState, initialCovariance, processNoiseQ, measurementNoiseR, kappa) {
@@ -67,7 +66,8 @@ class UKF {
         return [ this.x[0], this.x[0] + gamma * sqrt_P, this.x[0] - gamma * sqrt_P ];
     }
 
-    stateTransition(sigma, u, dt) { return sigma + u * dt; }
+    // Modèle d'état (accel_input est la force/masse, i.e., m/s²)
+    stateTransition(sigma, accel_input, dt) { return sigma + accel_input * dt; } 
     observationFunction(sigma) { return sigma; }
     
     predict(accel_input, dt) {
@@ -100,6 +100,7 @@ class UKF {
         this.x[0] = this.x_pred[0] + K * y_diff;
         this.P[0] = this.P_pred[0] - K * Pyy * K;
         
+        // ZUPT (Zero Velocity Update) si l'incertitude est faible et la vitesse aussi
         if (this.P[0] < this.R_base * 0.1 && this.x[0] < MIN_SPD) {
              this.x[0] = 0;
              this.P[0] = this.P[0] * 0.5;
@@ -112,22 +113,25 @@ class UKF {
 
 // ===========================================
 // CLASSE QUATERNION (Pour gestion de l'IMU)
-// ... (code de la classe Quaternion) ...
 // ===========================================
 class Quaternion {
     constructor(w = 1, x = 0, y = 0, z = 0) {
         this.w = w; this.x = x; this.y = y; this.z = z;
     }
 
+    // Estime l'orientation à partir de l'accélération (assumant que le reste est la gravité)
     static fromAcc(ax, ay, az) {
         const g = Math.sqrt(ax * ax + ay * ay + az * az);
         if (g === 0) return new Quaternion(); 
 
         const gx = ax / g, gy = ay / g, gz = az / g;
+        
+        // Calcul des angles d'Euler à partir de l'accélération
         const roll = Math.atan2(gy, gz);
         const pitch = Math.atan2(-gx, Math.sqrt(gy * gy + gz * gz));
-        const yaw = 0; 
+        const yaw = 0; // L'accéléromètre seul ne peut pas déterminer le lacet (yaw)
 
+        // Conversion en Quaternion
         const c1 = Math.cos(roll / 2), s1 = Math.sin(roll / 2);
         const c2 = Math.cos(pitch / 2), s2 = Math.sin(pitch / 2);
         const c3 = Math.cos(yaw / 2), s3 = Math.sin(yaw / 2);
@@ -142,9 +146,12 @@ class Quaternion {
 
     toEuler() {
         const x = this.x, y = this.y, z = this.z, w = this.w;
+        // Roll (Rotation autour de X)
         const roll = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+        // Pitch (Rotation autour de Y)
         let pitch = 2 * (w * y - z * x);
         pitch = Math.asin(Math.min(1, Math.max(-1, pitch)));
+        // Yaw (Rotation autour de Z)
         const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
 
         return { roll: roll * R2D, pitch: pitch * R2D, yaw: yaw * R2D };
@@ -157,6 +164,7 @@ class Quaternion {
 // ===========================================
 
 function dist2D(lat1, lon1, lat2, lon2, R_earth) {
+    // Formule Haversine
     const dLat = (lat2 - lat1) * D2R;
     const dLon = (lon2 - lon1) * D2R;
     const lat1Rad = lat1 * D2R;
@@ -168,10 +176,12 @@ function dist2D(lat1, lon1, lat2, lon2, R_earth) {
 }
 
 function getKalmanR(accRaw, kAlt, lastP, env) {
+    // Calcul de la covariance de mesure R, dépendante de la précision GPS brute (accRaw)
     let R_gps_base = Math.min(accRaw, 100) ** 2; 
 
     if (accRaw > 100) { R_gps_base = 100 ** 2 + (accRaw - 100) * 10; }
     
+    // Facteur environnemental (influence le bruit en fonction du contexte sélectionné)
     const env_mult = ENVIRONMENT_FACTORS[env]?.R_MULT || 1.0;
     
     let R_dyn = Math.min(R_gps_base * env_mult, UKF_R_MAX);
@@ -182,16 +192,19 @@ function getKalmanR(accRaw, kAlt, lastP, env) {
 }
 
 function kFilterAltitude(kAlt_prev, P_prev, altRaw_gps, R_gps, dt, baroAlt) {
+    // Filtre de Kalman 1D simple pour l'altitude (fusion GPS + Baro)
     const Q = 0.01;
     const kAlt_pred = kAlt_prev || altRaw_gps || 0;
     const P_pred = P_prev + Q;
 
+    // Mise à jour 1 : GPS
     let H_gps = 1; 
     let R_eff_gps = R_gps || R_ALT_MIN; 
     let K_gps = P_pred * H_gps / (H_gps * P_pred * H_gps + R_eff_gps);
     let kAlt_1 = kAlt_pred + K_gps * (altRaw_gps - kAlt_pred);
     let P_1 = (1 - K_gps * H_gps) * P_pred;
     
+    // Mise à jour 2 : Baromètre (si disponible)
     if (baroAlt !== null && P_1 > R_ALT_MIN * 0.1) {
         const R_baro = 5.0; 
         let H_baro = 1;
@@ -207,25 +220,29 @@ function kFilterAltitude(kAlt_prev, P_prev, altRaw_gps, R_gps, dt, baroAlt) {
 }
 
 function getBarometricAltitude(P_hPa, P_ref_hPa, T_K) {
+    // Formule de l'atmosphère standard ISA
     if (P_hPa === null || T_K === null) return null;
     
-    const T0 = 288.15;
-    const L = 0.0065;
+    const T0 = 288.15; // Température standard au niveau de la mer (K)
+    const L = 0.0065;  // Taux de décroissance de la température (K/m)
     const g = G_ACC; 
     const R = R_AIR; 
     
+    // Équation barométrique standard
     const alt = (T_K / L) * (1 - (P_hPa / P_ref_hPa)**(R * L / g));
     
     return alt;
 }
 
 function calculateMRF(alt, netherMode) {
-    if (netherMode) { return 8.0; } 
+    // Facteur de correction pour la distance parcourue (simulé)
+    if (netherMode) { return 8.0; } // Mode Nether (Minecraft)
     if (alt < -20) { return 1.1; } 
     return 1.0;
 }
 
 function updateCelestialBody(body, alt, rotationRadius, angularVelocity) {
+    // Mise à jour des constantes physiques de base
     let G_ACC_NEW = 9.80665;
     let R_ALT_CENTER_REF_NEW = 6371000;
 
@@ -233,6 +250,7 @@ function updateCelestialBody(body, alt, rotationRadius, angularVelocity) {
         case 'MARS': G_ACC_NEW = 3.721; R_ALT_CENTER_REF_NEW = 3389500; break;
         case 'MOON': G_ACC_NEW = 1.62; R_ALT_CENTER_REF_NEW = 1737400; break;
         case 'ROTATING':
+            // Simule un objet tournant (ex: station spatiale)
             G_ACC_NEW = rotationRadius * angularVelocity ** 2;
             R_ALT_CENTER_REF_NEW = 10000; break;
         case 'EARTH':
@@ -243,13 +261,14 @@ function updateCelestialBody(body, alt, rotationRadius, angularVelocity) {
     R_ALT_CENTER_REF = R_ALT_CENTER_REF_NEW;
 
     return { G_ACC: G_ACC_NEW, R_ALT_CENTER_REF: R_ALT_CENTER_REF_NEW };
-            }
+}
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique
 // Dépend de: app_constants.js (BLOC 1)
 // =================================================================
 
 const NTP_API_URL = 'https://worldtimeapi.org/api/ip'; 
+// NOTE: REMPLACEZ CETTE CLEF PAR VOTRE CLEF OPENWEATHERMAP
 const WEATHER_API_KEY = 'YOUR_WEATHER_API_KEY_HERE'; 
 const WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather'; 
 
@@ -258,6 +277,7 @@ const WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather';
 // ===========================================
 
 async function syncH(lServH, lLocH) {
+    // Synchronisation de l'heure via NTP
     if (lServH === null) {
         try {
             const response = await fetch(NTP_API_URL);
@@ -283,6 +303,7 @@ async function syncH(lServH, lLocH) {
 }
 
 function getCDate(lServH, lLocH) {
+    // Retourne l'heure corrigée par l'offset NTP
     if (lServH === null || lLocH === null) { return new Date(); }
     const offset = lServH - lLocH;
     return new Date(Date.now() + offset);
@@ -293,15 +314,16 @@ function getCDate(lServH, lLocH) {
 // ===========================================
 
 function getWGS84Gravity(lat, alt) {
+    // Calcul de l'accélération gravitationnelle selon le modèle WGS84
     const latRad = lat * D2R;
     const g0 = 9.780327 * (1 + 0.0053024 * Math.sin(latRad)**2 - 0.0000058 * Math.sin(2 * latRad)**2);
-    const FAC = 3.086e-6 * alt; 
+    const FAC = 3.086e-6 * alt; // Correction de l'altitude (Free-Air)
     
     return g0 - FAC; 
 }
 
-
 function getTrueAirspeed(spdMS, rhoAir) {
+    // Calcul de la True Airspeed (TAS) à partir de la vitesse indiquée et de la densité de l'air
     const rho0 = RHO_SEA_LEVEL;
     if (rhoAir === 0 || rhoAir === null) return spdMS;
     
@@ -309,6 +331,7 @@ function getTrueAirspeed(spdMS, rhoAir) {
 }
 
 function getSpeedOfSound(tempK) {
+    // Calcul de la vitesse du son (fonction de la température)
     return Math.sqrt(GAMMA * R_AIR * tempK);
 }
 
@@ -318,6 +341,7 @@ function getSpeedOfSound(tempK) {
 // ===========================================
 
 async function fetchWeather(lat, lon) {
+    // Récupération de la pression et de la température via API
     if (!WEATHER_API_KEY.includes('YOUR_WEATHER_API_KEY')) {
         const url = `${WEATHER_API_URL}?lat=${lat}&lon=${lon}&units=metric&appid=${WEATHER_API_KEY}`;
         try {
@@ -329,6 +353,8 @@ async function fetchWeather(lat, lon) {
                 const T_C = data.main.temp;
                 const T_K = T_C + 273.15;
                 const P_Pa = P_hPa * 100; 
+                
+                // Calcul de la densité de l'air (rho = P / (R * T))
                 const air_density = P_Pa / (R_AIR * T_K);
 
                 return {
@@ -346,12 +372,13 @@ async function fetchWeather(lat, lon) {
 }
 
 // ===========================================
-// CALCULS ASTRONOMIQUES
+// CALCULS ASTRONOMIQUES (Simplifiés)
 // ===========================================
 
 function updateAstro(lat, lon, lServH, lLocH) {
     const now = getCDate(lServH, lLocH);
     
+    // Calcul de l'Heure Solaire Moyenne (MST)
     const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
     const mstHours = utcHours + lon / 15;
     
@@ -364,9 +391,10 @@ function updateAstro(lat, lon, lServH, lLocH) {
             `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     }
     
+    // Les calculs d'altitude et de phase sont omis ici pour la simplicité DOM
     if (document.getElementById('sun-alt')) document.getElementById('sun-alt').textContent = `~Calcul en cours...`;
     if (document.getElementById('moon-phase-name')) document.getElementById('moon-phase-name').textContent = `~Calcul en cours...`;
-}
+        }
 // =================================================================
 // BLOC 4/4 : Logique Applicative Principale (updateDisp & DOM/Init)
 // Dépend de: BLOC 1, BLOC 2, BLOC 3
@@ -384,7 +412,7 @@ let kAltUncert = 10;
 let ukfSpeed = null; 
 
 let currentGPSMode = 'HIGH_FREQ'; 
-let emergencyStopActive = false;
+let emergencyStopActive = false; 
 let netherMode = false; 
 let selectedEnvironment = 'NORMAL'; 
 let currentMass = 70.0; 
@@ -394,13 +422,13 @@ let rotationRadius = 100;
 let angularVelocity = 0.0; 
 let gpsAccuracyOverride = 0.0; 
 
-// Données externes
+// Données externes/fusionnées
 let lastP_hPa = BARO_ALT_REF_HPA, lastT_K = 288.15, currentAirDensity = RHO_SEA_LEVEL;
 let currentSpeedOfSound = 343;
 
 // IMU/Quaternion State
 let real_accel_x = 0, real_accel_y = 0, real_accel_z = 0;
-let currentAttitude = new Quaternion(); // Utilise la classe du BLOC 2
+let currentAttitude = new Quaternion(); 
 let lastAccelMagnitude = 0;
 
 // Objets Map (Leaflet)
@@ -413,25 +441,22 @@ const $ = id => document.getElementById(id);
 
 
 // ===========================================
-// GESTION DES CAPTEURS (IMU/GPS)
+// GESTION DES CAPTEURS ET CONTRÔLES
 // ===========================================
 function imuMotionHandler(event) {
     let accX = 0, accY = 0, accZ = 0;
-    if (event.accelerationIncludingGravity) { /* ... */ } else if (event.acceleration) { /* ... */ } 
-    // ... (Logique imuMotionHandler) ...
-    if (event.accelerationIncludingGravity) {
+    
+    // Récupère l'accélération AVEC la gravité (plus fiable pour l'orientation)
+    if (event.accelerationIncludingGravity) { 
         accX = event.accelerationIncludingGravity.x || 0;
         accY = event.accelerationIncludingGravity.y || 0;
         accZ = event.accelerationIncludingGravity.z || 0;
-    } else if (event.acceleration) {
-         accX = event.acceleration.x || 0;
-         accY = event.acceleration.y || 0;
-         accZ = event.acceleration.z || 0;
     } else {
         if ($('imu-status')) $('imu-status').textContent = "Erreur (Capteur N/A)";
         return;
     }
     
+    // Normalisation si les données sont trop brutes
     if (Math.abs(accZ) > 30) { accX /= 9.81; accY /= 9.81; accZ /= 9.81; }
 
     real_accel_x = accX;
@@ -439,12 +464,14 @@ function imuMotionHandler(event) {
     real_accel_z = accZ;
 
     lastAccelMagnitude = Math.sqrt(accX**2 + accY**2 + accZ**2);
-    currentAttitude = Quaternion.fromAcc(accX, accY, accZ);
+    // Utilise l'accélération pour estimer l'orientation
+    currentAttitude = Quaternion.fromAcc(accX, accY, accZ); 
     
     if ($('imu-status')) $('imu-status').textContent = "Actif";
 }
 
 function startIMUListeners() {
+    // Demande de permission pour iOS/Safari et ajout du listener
     const requestPermission = (EventClass, handler) => {
         if (typeof EventClass.requestPermission === 'function') {
             EventClass.requestPermission().then(permissionState => {
@@ -468,13 +495,14 @@ function stopIMUListeners() {
 
 function startGPS() {
     if (wID !== null) return; 
-    const options = (currentGPSMode === 'HIGH_FREQ') ? GPS_OPTS.HIGH_FREQ : GPS_OPTS.LOW_FREQ;
+    const options = GPS_OPTS[currentGPSMode]; // Utilise le mode sélectionné
     wID = navigator.geolocation.watchPosition(updateDisp, handleErr, options);
     startIMUListeners(); 
     if ($('toggle-gps-btn')) {
         $('toggle-gps-btn').textContent = '⏸️ PAUSE GPS';
         $('toggle-gps-btn').style.backgroundColor = '#ffc107'; 
     }
+    emergencyStopActive = false; 
 }
 
 function stopGPS(resetButton = true) {
@@ -491,6 +519,15 @@ function stopGPS(resetButton = true) {
     }
 }
 
+function toggleGPS() {
+    // Fonction de bascule du bouton principal
+    if (wID !== null) {
+        stopGPS(true); 
+    } else {
+        startGPS(); 
+    }
+}
+
 function handleErr(err) {
     if ($('gps-precision')) $('gps-precision').textContent = `Erreur: ${err.message}`;
     if (err.code === 1) { 
@@ -499,9 +536,9 @@ function handleErr(err) {
     }
 }
 
-// ===========================================
-// FONCTIONS CARTE (Leaflet)
-// ===========================================
+
+// --- MAP (Leaflet) ---
+
 function initMap() {
     try {
         if ($('map') && typeof L !== 'undefined' && !map) { 
@@ -538,7 +575,7 @@ function updateMap(lat, lon, acc) {
 // ===========================================
 
 function updateDisp(pos) {
-    if (emergencyStopActive) return;
+    if (emergencyStopActive) return; 
 
     // --- 1. ACQUISITION & INIT ---
     const cTimePos = pos.timestamp;
@@ -551,6 +588,7 @@ function updateDisp(pos) {
     if (gpsAccuracyOverride > 0.0) { accRaw = gpsAccuracyOverride; }
 
     if (ukfSpeed === null) {
+        // Initialisation du UKF de vitesse
         ukfSpeed = new UKF([0], [UKF_R_MAX], UKF_Q_SPD, UKF_R_MAX, KAPPA);
     }
 
@@ -565,18 +603,20 @@ function updateDisp(pos) {
     if (dt < MIN_DT || dt > 10) { lPos = pos; return; } 
     
     // --- 2. GESTION DU SIGNAL & BRUIT (R) ---
+    // R dépend de l'environnement sélectionné par l'utilisateur
     let R_dyn = getKalmanR(accRaw, kAlt, lastP_hPa, selectedEnvironment); 
     let isSignalPoor = (accRaw > 200 || R_dyn >= UKF_R_MAX * 0.75);
     let modeStatus = '';
     
     if (isSignalPoor) { 
-        modeStatus = `⚠️ ESTIMATION SEULE (Signal Faible/DR)`;
+        // En mode signal faible, on utilise le dead reckoning et les valeurs filtrées
+        modeStatus = `⚠️ ESTIMATION SEULE (${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY}) : Signal Faible`;
         cLat = lat; 
         cLon = lon;
         altRaw = kAlt; 
-        if ($('gps-precision')) $('gps-precision').textContent = `❌ ${accRaw.toFixed(0)} m (Signal Faible/Estimation)`; 
+        if ($('gps-precision')) $('gps-precision').textContent = `❌ ${accRaw.toFixed(0)} m (Estimation)`; 
     } else {
-        modeStatus = `🚀 UKF WGS84 FUSION TOTALE`;
+        modeStatus = `🚀 UKF FUSION (Mode ${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY})`;
         lat = cLat; 
         lon = cLon;
         if ($('gps-precision')) $('gps-precision').textContent = `${accRaw.toFixed(2)} m`; 
@@ -595,6 +635,8 @@ function updateDisp(pos) {
     const altDiff = (kAlt_new || 0) - (lPos.kAlt_old || 0);
     const dist3D = Math.sqrt(dist2D_val ** 2 + altDiff ** 2);
     let spd3D_raw = dist3D / dt; 
+    
+    // L'accélération inertielle selon l'axe Z (vers l'avant dans l'orientation du téléphone)
     const accel_sensor_input = real_accel_z; 
 
     // --- 5. LOGIQUE UKF VITESSE & ZUPT ---
@@ -620,9 +662,6 @@ function updateDisp(pos) {
     let local_g = G_ACC;
     if (currentCelestialBody === 'EARTH') {
         local_g = getWGS84Gravity(cLat, kAlt_new);
-        G_ACC = local_g;
-    } else if (currentCelestialBody === 'ROTATING') {
-        local_g = rotationRadius * angularVelocity ** 2;
         G_ACC = local_g;
     }
     
@@ -678,14 +717,14 @@ function updateDisp(pos) {
 
 
 // ===========================================
-// INITIALISATION DOM ET BOUCLE LENTE
+// INITIALISATION DOM ET GESTION DES BOUTONS/SÉLECTEURS
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
     
-    // ... (Initialisation Map & Contrôles) ...
     initMap(); 
     
+    // --- 1. Gestion de la Masse ---
     const massInput = $('mass-input'); 
     if (massInput) {
         massInput.addEventListener('input', () => { 
@@ -696,6 +735,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
     }
 
+    // --- 2. Sélecteur de Corps Céleste ---
     if ($('celestial-body-select')) {
         $('celestial-body-select').addEventListener('change', (e) => { 
             const newVals = updateCelestialBody(e.target.value, kAlt, rotationRadius, angularVelocity);
@@ -703,10 +743,60 @@ document.addEventListener('DOMContentLoaded', () => {
             if ($('gravity-base')) $('gravity-base').textContent = `${newVals.G_ACC.toFixed(4)} m/s²`;
         });
     }
-    
-    // Le reste des Event Listeners (boutons, etc.) doit être ici.
 
-    // --- DÉMARRAGE DU SYSTÈME ---
+    // ======================================================
+    // --- GESTION DES BOUTONS ET SÉLECTEURS DYNAMIQUES (CORRIGÉ) ---
+    // ======================================================
+    
+    // 3. Bouton GPS (Démarrer/Pause)
+    if ($('toggle-gps-btn')) {
+        $('toggle-gps-btn').addEventListener('click', toggleGPS);
+    }
+    
+    // 4. Sélecteur de Mode GPS (Haute/Basse Fréquence)
+    if ($('gps-mode-select')) {
+        $('gps-mode-select').addEventListener('change', (e) => {
+            currentGPSMode = e.target.value;
+            // Redémarre le GPS pour appliquer les nouvelles options immédiatement
+            if (wID !== null) {
+                stopGPS(false); 
+                startGPS();
+            }
+        });
+    }
+    
+    // 5. Sélecteur d'Environnement (Affecte R du Kalman)
+    if ($('environment-select')) {
+        const environmentSelect = $('environment-select');
+        environmentSelect.value = selectedEnvironment;
+        
+        environmentSelect.addEventListener('change', (e) => {
+            selectedEnvironment = e.target.value;
+            if ($('ukf-status-text')) {
+                 $('ukf-status-text').textContent = `Mode: ${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY}`;
+            }
+        });
+    }
+
+    // 6. Bouton Arrêt d'Urgence
+    if ($('toggle-emergency-stop')) {
+        $('toggle-emergency-stop').addEventListener('click', () => {
+            emergencyStopActive = !emergencyStopActive;
+            if (emergencyStopActive) {
+                stopGPS(false); 
+                $('toggle-emergency-stop').textContent = '🟢 SYSTÈME ACTIF (CLIC POUR ARRÊT)';
+                $('toggle-emergency-stop').style.backgroundColor = 'var(--accent-color)';
+                if ($('ukf-status-text')) $('ukf-status-text').textContent = '🛑 ARRÊT D’URGENCE : SYSTÈME SUSPENDU';
+            } else {
+                startGPS(); 
+                $('toggle-emergency-stop').textContent = '🛑 ARRÊT D\'URGENCE';
+                $('toggle-emergency-stop').style.backgroundColor = 'var(--error-color)';
+            }
+        });
+    }
+
+
+    // --- DÉMARRAGE DU SYSTÈME (Sync NTP puis GPS) ---
     const initVals = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
     
     syncH(lServH, lLocH).then(newTimes => {
