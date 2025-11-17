@@ -110,7 +110,8 @@ class UKF {
         let Pxy = 0;
         for (let i = 0; i < 3; i++) { Pxy += this.W_c[i] * (sigma_predicted[i] - this.x_pred[0]) * (sigma_measurement[i] - y_bar); }
         
-        const K = Pxy / Pyy;
+        // CORRIGÉ : Vérification pour éviter la division par zéro si Pyy est nul
+        const K = (Pyy === 0) ? 0 : Pxy / Pyy;
         const y_diff = measurement.spd - y_bar;
         this.x[0] = this.x_pred[0] + K * y_diff;
         this.P[0] = this.P_pred[0] - K * Pyy * K;
@@ -239,6 +240,7 @@ function getBarometricAltitude(P_hPa, P_ref_hPa, T_K) {
     const R = R_AIR; 
     
     // Équation barométrique standard
+    // (Utilise T_K, la température actuelle, pour une meilleure précision que T0)
     const alt = (T_K / L) * (1 - (P_hPa / P_ref_hPa)**(R * L / g));
     
     return alt;
@@ -253,31 +255,31 @@ function calculateMRF(alt, netherMode) {
 
 function updateCelestialBody(body, alt, rotationRadius, angularVelocity) {
     // Mise à jour des constantes physiques de base
-    let G_ACC_NEW = 9.80665;
+    let G_ACC_NEW = CELESTIAL_DATA['EARTH'].G;
     let R_ALT_CENTER_REF_NEW = WGS84_A; // Utilise WGS84 par défaut
 
-    switch (body) {
-        case 'MARS': G_ACC_NEW = 3.721; R_ALT_CENTER_REF_NEW = 3389500; break;
-        case 'MOON': G_ACC_NEW = 1.62; R_ALT_CENTER_REF_NEW = 1737400; break;
-        case 'ROTATING':
-            // Simule un objet tournant (ex: station spatiale)
-            G_ACC_NEW = rotationRadius * angularVelocity ** 2;
-            R_ALT_CENTER_REF_NEW = 10000; break;
-        case 'EARTH':
-        default: break;
+    const data = CELESTIAL_DATA[body];
+    if (data) {
+        G_ACC_NEW = data.G;
+        R_ALT_CENTER_REF_NEW = data.R;
+    }
+
+    if (body === 'ROTATING') {
+        // Simule un objet tournant (ex: station spatiale)
+        G_ACC_NEW = rotationRadius * angularVelocity ** 2;
     }
     
     G_ACC = G_ACC_NEW;
     R_ALT_CENTER_REF = R_ALT_CENTER_REF_NEW;
 
     return { G_ACC: G_ACC_NEW, R_ALT_CENTER_REF: R_ALT_CENTER_REF_NEW };
-            }
+              }
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique
 // Dépend de: app_constants.js (BLOC 1)
 // =================================================================
 
-// (Note : L'URL du proxy Vercel est utilisée, mais vous pouvez la remplacer par une API directe)
+// (URL du proxy Vercel pour éviter les problèmes de CORS avec OpenWeatherMap)
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
 const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
@@ -291,7 +293,7 @@ const dayMs = 1000 * 60 * 60 * 24;
 // ===========================================
 
 async function syncH(lServH, lLocH) {
-    // Synchronisation de l'heure via NTP
+    // Synchronisation de l'heure via NTP (API UTC)
     if (lServH === null) {
         try {
             const response = await fetch(SERVER_TIME_ENDPOINT, { cache: "no-store", mode: "cors" });
@@ -310,9 +312,11 @@ async function syncH(lServH, lLocH) {
             if (document.getElementById('local-time')) {
                 document.getElementById('local-time').textContent = '❌ SYNCHRO ÉCHOUÉE (Local)';
             }
+            // Fallback en cas d'échec
             return { lServH: Date.now(), lLocH: performance.now() };
         }
     }
+    // Si déjà synchronisé, retourne les valeurs existantes (la boucle lente gère la resynchro)
     return { lServH: lServH, lLocH: lLocH };
 }
 
@@ -358,6 +362,7 @@ function getSpeedOfSound(tempK) {
 
 async function fetchWeather(lat, lon) {
     // Récupération de la pression et de la température via API
+    // (Utilise le proxy Vercel pour éviter de stocker une clé API côté client)
     const url = `${PROXY_WEATHER_ENDPOINT}?lat=${lat}&lon=${lon}`;
     try {
         const response = await fetch(url);
@@ -463,7 +468,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     const now = getCDate(lServH, lLocH);
     
     if (typeof SunCalc === 'undefined' || !lat || !lon) {
-        $('clock-status').textContent = 'Astro (Attente GPS)...';
+        if($('clock-status')) $('clock-status').textContent = 'Astro (Attente GPS)...';
         return;
     }
 
@@ -482,7 +487,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString();
     if ($('date-solar-mean')) $('date-solar-mean').textContent = solarTimes.DateMST.toLocaleDateString();
     if ($('date-solar-true')) $('date-solar-true').textContent = solarTimes.DateTST.toLocaleDateString();
-    if ($('time-mst') || $('mst')) ($('time-mst') || $('mst')).textContent = solarTimes.MST;
+    if ($('mst')) $('mst').textContent = solarTimes.MST;
     if ($('tst')) $('tst').textContent = solarTimes.TST;
     if ($('noon-solar')) $('noon-solar').textContent = sunTimes.solarNoon.toLocaleTimeString();
     if ($('eot')) $('eot').textContent = `${solarTimes.EOT} min`;
@@ -502,9 +507,33 @@ function updateAstro(lat, lon, lServH, lLocH) {
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
     if ($('moon-times')) $('moon-times').textContent = moonTimes.rise ? `${moonTimes.rise.toLocaleTimeString()} / ${moonTimes.set.toLocaleTimeString()}` : 'Circumpolaire/Non visible';
-}// =================================================================
+
+    // Mise à jour de la visualisation de l'horloge (si elle existe)
+    const clockEl = $('minecraft-clock');
+    if (clockEl) {
+        body.classList.remove('sky-day', 'sky-sunset', 'sky-night', 'sky-night-light', 'dark-mode', 'light-mode');
+        clockEl.classList.remove('sky-day', 'sky-sunset', 'sky-night', 'sky-night-light');
+        
+        const nowMs = now.getTime();
+        let bodyClass;
+        if (nowMs >= sunTimes.sunriseEnd.getTime() && nowMs < sunTimes.sunsetStart.getTime()) {
+            bodyClass = 'sky-day';
+        } else if (nowMs >= sunTimes.dusk.getTime() || nowMs < sunTimes.dawn.getTime()) {
+            bodyClass = 'sky-night';
+        } else {
+            bodyClass = 'sky-sunset';
+        }
+        
+        document.body.classList.add(bodyClass);
+        document.body.classList.add(bodyClass === 'sky-day' ? 'light-mode' : 'dark-mode');
+        clockEl.classList.add(bodyClass);
+    }
+}
+// =================================================================
 // BLOC 4/4 : Logique Applicative Principale (updateDisp & DOM/Init)
-// Dépend de: BLOC 1, BLOC 2, BLOC 3
+// Dépend de: BLOC 1 (app_constants.js)
+// Dépend de: BLOC 2 (ukf_models.js)
+// Dépend de: BLOC 3 (astro_services.js)
 // =================================================================
 
 // --- VARIABLES D'ÉTAT (Globales) ---
@@ -553,7 +582,7 @@ const $ = id => document.getElementById(id);
 function imuMotionHandler(event) {
     let accX = 0, accY = 0, accZ = 0;
     
-    // Récupère l'accélération AVEC la gravité
+    // Récupère l'accélération AVEC la gravité (plus fiable pour l'orientation)
     if (event.accelerationIncludingGravity) { 
         accX = event.accelerationIncludingGravity.x || 0;
         accY = event.accelerationIncludingGravity.y || 0;
@@ -563,6 +592,7 @@ function imuMotionHandler(event) {
         return;
     }
     
+    // Normalisation si les données sont trop brutes
     if (Math.abs(accZ) > 30) { accX /= 9.81; accY /= 9.81; accZ /= 9.81; }
 
     real_accel_x = accX;
@@ -584,7 +614,7 @@ function startIMUListeners() {
                 if (permissionState === 'granted') {
                     window.addEventListener(EventClass.name.toLowerCase(), handler);
                 }
-            });
+            }).catch(console.error); // CORRIGÉ : Ajout du catch
         } else {
             window.addEventListener(EventClass.name.toLowerCase(), handler);
         }
@@ -756,13 +786,14 @@ function updateDisp(pos) {
     const dist3D = Math.sqrt(dist2D_val ** 2 + altDiff ** 2);
     let spd3D_raw = dist3D / dt; 
     
-    // CORRECTION ANTI-SPIKE : Rejette les accélérations GPS irréalistes
+    // CORRECTION ANTI-SPIKE (Rejet des accélérations GPS > 2G)
     const accel_provisional = (spd3D_raw - (lPos.speedMS_3D || 0)) / dt;
     if (Math.abs(accel_provisional) > MAX_PLAUSIBLE_ACCEL_GPS && lPos.speedMS_3D !== undefined) {
         console.warn(`Spike GPS détecté: ${accel_provisional.toFixed(1)} m/s². Utilisation de la vitesse prédite.`);
         spd3D_raw = lPos.speedMS_3D + (real_accel_z * dt); // Utilise la prédiction IMU
     }
 
+    // CORRIGÉ : L'entrée du modèle UKF doit être l'accélération inertielle (axe Z de l'appareil)
     const accel_sensor_input = real_accel_z; 
 
     // --- 5. LOGIQUE UKF VITESSE & ZUPT ---
@@ -794,9 +825,7 @@ function updateDisp(pos) {
     const tas_ms = getTrueAirspeed(sSpdFE, currentAirDensity);
     const coriolis_force = 2 * currentMass * OMEGA_EARTH * sSpdFE * Math.abs(Math.cos(lat * D2R));
 
-
     // --- 7. MISE À JOUR DU DOM (Assure que tous les ID du HTML sont servis) ---
-    // (Cette section met à jour TOUS les champs de 'index (7).html')
     
     if ($('speed-stable')) $('speed-stable').textContent = `${(sSpdFE * KMH_MS).toFixed(5)}`;
     if ($('speed-status-text')) $('speed-status-text').textContent = modeStatus;
@@ -806,7 +835,6 @@ function updateDisp(pos) {
     if ($('speed-raw-ms')) $('speed-raw-ms').textContent = `${spd3D_raw.toFixed(3)} m/s`;
     if ($('speed-max')) $('speed-max').textContent = `${(maxSpd * KMH_MS).toFixed(5)} km/h`;
     if ($('speed-avg-moving')) $('speed-avg-moving').textContent = timeMoving > 1 ? `${(distM / timeMoving * KMH_MS).toFixed(5)} km/h` : '0.0 km/h';
-    // if ($('speed-avg-total')) $('speed-avg-total').textContent = ... (logique à ajouter si nécessaire)
     if ($('speed-of-sound-calc')) $('speed-of-sound-calc').textContent = `${currentSpeedOfSound.toFixed(2)} m/s`;
     if ($('perc-speed-sound')) $('perc-speed-sound').textContent = `${(sSpdFE / currentSpeedOfSound * 100).toFixed(2)} %`;
     if ($('mach-number')) $('mach-number').textContent = `${(sSpdFE / currentSpeedOfSound).toFixed(4)}`;
@@ -817,9 +845,9 @@ function updateDisp(pos) {
     // Position & Altitude
     if ($('lat-display')) $('lat-display').textContent = `${lat.toFixed(6)} °`;
     if ($('lon-display')) $('lon-display').textContent = `${lon.toFixed(6)} °`;
-    if ($('alt-display')) $('alt-display').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m (UKF Fusion)` : 'N/A';
+    if ($('alt-display')) $('alt-display').textContent = kAlt_new !== null ? `${kAlt_new.toFixed(2)} m` : 'N/A';
     if ($('alt-baro')) $('alt-baro').textContent = baroAlt !== null ? `${baroAlt.toFixed(2)} m` : 'N/A';
-    if ($('alt-corrected-baro')) $('alt-corrected-baro').textContent = baroAlt !== null ? `${baroAlt.toFixed(2)} m` : 'N/A'; // (Répétition, mais l'ID existe)
+    if ($('alt-corrected-baro')) $('alt-corrected-baro').textContent = baroAlt !== null ? `${baroAlt.toFixed(2)} m` : 'N/A';
     if ($('heading-display')) $('heading-display').textContent = headingRaw !== null ? `${headingRaw.toFixed(1)} °` : 'N/A';
     
     // Dynamique
@@ -828,7 +856,7 @@ function updateDisp(pos) {
     if ($('gravity-local')) $('gravity-local').textContent = `${local_g.toFixed(5)} m/s²`;
     if ($('accel-long')) $('accel-long').textContent = `${accel_long.toFixed(3)} m/s²`;
     if ($('kinetic-energy')) $('kinetic-energy').textContent = `${(0.5 * currentMass * sSpdFE ** 2).toFixed(2)} J`;
-    if ($('mechanical-power')) $('mechanical-power').textContent = `${(0.5 * currentMass * sSpdFE ** 2 * accel_long).toFixed(2)} W`; // P = F*v = (m*a)*v
+    if ($('mechanical-power')) $('mechanical-power').textContent = `${(0.5 * currentMass * sSpdFE ** 2 * accel_long).toFixed(2)} W`;
 
     // Filtre
     if ($('kalman-uncert')) $('kalman-uncert').textContent = `${kUncert.toFixed(3)} m²/s² (P)`;
@@ -854,13 +882,14 @@ function updateDisp(pos) {
     updateMap(lat, lon, accRaw);
 }
 
+
 // ===========================================
 // INITIALISATION DOM ET GESTION DES BOUTONS/SÉLECTEURS
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
     
-    initMap(); // Initialise la carte Leaflet
+    initMap(); 
     
     // --- 1. Gestion de la Masse ---
     const massInput = $('mass-input'); 
@@ -881,21 +910,41 @@ document.addEventListener('DOMContentLoaded', () => {
             if ($('gravity-base')) $('gravity-base').textContent = `${newVals.G_ACC.toFixed(4)} m/s²`;
         });
     }
-    
+
+    // --- 3. Override Précision GPS ---
+    if ($('gps-accuracy-override')) {
+        $('gps-accuracy-override').addEventListener('change', (e) => {
+            gpsAccuracyOverride = parseFloat(e.target.value) || 0.0;
+            if ($('gps-accuracy-display')) $('gps-accuracy-display').textContent = `${gpsAccuracyOverride.toFixed(6)} m`;
+        });
+        if ($('gps-accuracy-display')) $('gps-accuracy-display').textContent = `${gpsAccuracyOverride.toFixed(6)} m`;
+    }
+
+    // --- 4. Sélecteur d'Environnement (UKF R) ---
+    if ($('environment-select')) {
+        const environmentSelect = $('environment-select');
+        environmentSelect.value = selectedEnvironment;
+        if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`;
+        
+        environmentSelect.addEventListener('change', (e) => {
+            selectedEnvironment = e.target.value;
+            if ($('env-factor')) {
+                 $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`;
+            }
+        });
+    }
+
     // ======================================================
-    // --- GESTION DES BOUTONS ET SÉLECTEURS DYNAMIQUES ---
+    // --- GESTION DES BOUTONS D'ACTION (CORRIGÉ) ---
     // ======================================================
     
-    // 3. Bouton GPS (Démarrer/Pause)
     if ($('toggle-gps-btn')) {
         $('toggle-gps-btn').addEventListener('click', toggleGPS);
     }
     
-    // 4. Sélecteur de Mode GPS (Haute/Basse Fréquence)
-    if ($('gps-mode-select')) {
-        $('gps-mode-select').addEventListener('change', (e) => {
+    if ($('freq-select')) {
+        $('freq-select').addEventListener('change', (e) => {
             currentGPSMode = e.target.value;
-            // Redémarre le GPS pour appliquer les nouvelles options immédiatement
             if (wID !== null) {
                 stopGPS(false); 
                 startGPS();
@@ -903,41 +952,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // 5. Sélecteur d'Environnement (Affecte R du Kalman)
-    if ($('environment-select')) {
-        const environmentSelect = $('environment-select');
-        environmentSelect.value = selectedEnvironment;
-        
-        environmentSelect.addEventListener('change', (e) => {
-            selectedEnvironment = e.target.value;
-            // Met à jour le texte du sélecteur pour un feedback immédiat
-            e.target.options[e.target.selectedIndex].text = `Environnement: ${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY}`;
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
+    }
+    
+    if ($('toggle-mode-btn')) {
+        $('toggle-mode-btn').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            const isDarkMode = document.body.classList.contains('dark-mode');
+            $('toggle-mode-btn').innerHTML = isDarkMode ? '<i class="fas fa-sun"></i> Mode Jour' : '<i class="fas fa-moon"></i> Mode Nuit';
+        });
+    }
+    
+    if ($('xray-button')) {
+        $('xray-button').addEventListener('click', () => {
+             if ($('minecraft-clock')) $('minecraft-clock').classList.toggle('x-ray');
         });
     }
 
-    // 6. Bouton Arrêt d'Urgence
-    if ($('toggle-emergency-stop')) {
-        $('toggle-emergency-stop').addEventListener('click', toggleEmergencyStop);
-    }
-
-    // 7. Autres boutons (X-Ray, Reset)
-    if ($('xray-toggle-btn')) {
-        $('xray-toggle-btn').addEventListener('click', () => {
-            $('minecraft-clock').classList.toggle('xray');
-        });
-    }
     if ($('reset-dist-btn')) {
         $('reset-dist-btn').addEventListener('click', () => { 
             if (emergencyStopActive) return; 
             distM = 0; timeMoving = 0; 
         });
     }
+    
     if ($('reset-max-btn')) {
         $('reset-max-btn').addEventListener('click', () => { 
             if (emergencyStopActive) return; 
             maxSpd = 0; 
         });
     }
+    
     if ($('reset-all-btn')) {
         $('reset-all-btn').addEventListener('click', () => { 
             if (emergencyStopActive) return; 
@@ -953,58 +999,50 @@ document.addEventListener('DOMContentLoaded', () => {
             } 
         });
     }
-    
+
+    // (Le 'capture-data-btn' n'a pas de logique assignée pour l'instant)
+
+
     // --- DÉMARRAGE DU SYSTÈME (Sync NTP puis GPS) ---
     const initVals = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
     
-    // Démarre la synchro NTP (depuis astro_services.js)
     syncH(lServH, lLocH).then(newTimes => {
         lServH = newTimes.lServH;
         lLocH = newTimes.lLocH;
-        startGPS(); // Démarre le GPS après la synchro
+        startGPS(); 
     });
 
     // Boucle de mise à jour lente (Astro/Météo/Horloge)
     const DOM_SLOW_UPDATE_MS = 1000;
     if (domID === null) {
         domID = setInterval(() => {
-            const currentLat = lat || 43.296; // Position par défaut si GPS non acquis
-            const currentLon = lon || 5.370;
+            const currentLat = lat || 43.296; 
+            const currentLon = lon || 5.37;
             
-            // Astro & Temps
-            if (typeof updateAstro === 'function') { 
-                // Voici la ligne complétée :
-                updateAstro(currentLat, currentLon, lServH, lLocH); 
-            }
+            // Met à jour les données astro
+            updateCelestialData(currentLat, currentLon); 
             
-            // Resynchronisation NTP toutes les 60 secondes
-            if (Math.floor(Date.now() / 1000) % 60 === 0) {
-                 syncH(lServH, lLocH).then(newTimes => {
-                    lServH = newTimes.lServH;
-                    lLocH = newTimes.lLocH;
-                 });
-            }
-            
-            // Récupération Météo (si GPS actif)
-            if (lat && lon && !emergencyStopActive && typeof fetchWeather === 'function') {
-                fetchWeather(lat, lon).then(data => {
+            // Tente de récupérer les données météo locales (pression, température)
+            // (La fonction doit être définie dans le BLOC 3 ou ailleurs)
+            if (typeof fetchMeteoData === 'function') {
+                fetchMeteoData(currentLat, currentLon).then(data => {
                     if (data) {
+                        // Met à jour les variables pour le filtre EKF
                         lastP_hPa = data.pressure_hPa;
                         lastT_K = data.tempK;
-                        currentAirDensity = data.air_density; 
-                        currentSpeedOfSound = getSpeedOfSound(data.tempK);
+                        lastH_perc = data.humidity_perc / 100.0;
                         
-                        // Mise à jour du DOM Météo
-                        if ($('weather-status')) $('weather-status').textContent = `Localisation (${(lat).toFixed(2)}, ${(lon).toFixed(2)})`;
+                        // Met à jour le DOM météo
                         if ($('temp-air-2')) $('temp-air-2').textContent = `${data.tempC.toFixed(1)} °C`;
                         if ($('pressure-2')) $('pressure-2').textContent = `${data.pressure_hPa.toFixed(0)} hPa`;
+                        if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc} %`;
                         if ($('air-density')) $('air-density').textContent = `${data.air_density.toFixed(3)} kg/m³`;
-                        if ($('speed-sound-calc')) $('speed-sound-calc').textContent = `${currentSpeedOfSound.toFixed(2)} m/s`;
+                        if ($('dew-point')) $('dew-point').textContent = `${data.dew_point.toFixed(1)} °C`;
                     }
                 });
             }
             
-            // Mise à jour de l'horloge locale
+            // Met à jour l'horloge locale (NTP)
             const now = getCDate(lServH, lLocH);
             if (now) {
                 if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
@@ -1015,4 +1053,5 @@ document.addEventListener('DOMContentLoaded', () => {
             
         }, DOM_SLOW_UPDATE_MS); 
     }
-});                                                              
+});
+            
