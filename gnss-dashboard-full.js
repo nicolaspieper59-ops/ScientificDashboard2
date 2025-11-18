@@ -502,10 +502,18 @@ let gpsStandbyTimeoutID = null;    // NOUVEAU: ID pour la gestion de l'énergie 
 
 
 // --- GESTION DES CAPTEURS (Nouvelle API) ---
+// ... dans le BLOC 4/4
+
+// --- GESTION DES CAPTEURS (Nouvelle API) ---
 function startIMUListeners() {
     if (emergencyStopActive) return;
     try {
         if ($('imu-status')) $('imu-status').textContent = "Activation...";
+        
+        // 1. VÉRIFICATION : S'assurer que l'API est supportée
+        if (typeof Accelerometer === 'undefined' || typeof Gyroscope === 'undefined') {
+             throw new Error("API Sensor non supportée (Accéléromètre/Gyroscope manquant).");
+        }
         
         const accSensor = new Accelerometer({ frequency: 50 }); 
         accSensor.addEventListener('reading', () => {
@@ -514,7 +522,9 @@ function startIMUListeners() {
             accel.z = accSensor.z;
         });
         accSensor.addEventListener('error', event => {
-            if ($('imu-status')) $('imu-status').textContent = "Erreur Accéléromètre";
+            // Gérer les erreurs de runtime (ex: désactivé par le système)
+            if ($('imu-status')) $('imu-status').textContent = `Erreur Accél: ${event.error.name}`;
+            console.error("Erreur Accéléromètre:", event.error);
         });
         accSensor.start();
 
@@ -525,7 +535,8 @@ function startIMUListeners() {
             gyro.z = gyroSensor.z;
         });
         gyroSensor.addEventListener('error', event => {
-             if ($('imu-status')) $('imu-status').textContent = "Erreur Gyroscope";
+             if ($('imu-status')) $('imu-status').textContent = `Erreur Gyro: ${event.error.name}`;
+             console.error("Erreur Gyroscope:", event.error);
         });
         gyroSensor.start();
         
@@ -535,10 +546,23 @@ function startIMUListeners() {
         startFastLoop();
 
     } catch (error) {
-        if ($('imu-status')) $('imu-status').textContent = "❌ API Sensor non supportée";
-        console.error("Erreur API Sensor:", error);
+        let errMsg = error.message;
+
+        if (error.name === 'SecurityError' || error.name === 'NotAllowedError') {
+            // Erreur la plus courante en HTTPS : la permission n'a pas été donnée par un clic explicite.
+            errMsg = "Permission Capteurs Refusée. 1. Cliquez sur le bouton 2. Autorisez la permission.";
+        } else if (error.name === 'NotReadableError') {
+             errMsg = "Capteurs Verrouillés par l'OS (Mode économie ou usage par une autre app).";
+        }
+
+        if ($('imu-status')) $('imu-status').textContent = `❌ ${errMsg}`;
+        console.error("ERREUR CRITIQUE IMU:", error.name, errMsg);
     }
 }
+
+// ... (Le reste du BLOC 4/4 est inchangé)
+
+
 
 function stopIMUListeners() {
     if (domFastID) clearInterval(domFastID);
@@ -613,10 +637,31 @@ function toggleEmergencyStop() {
 }
 
 function handleErr(err) {
-    if ($('gps-precision')) $('gps-precision').textContent = `Erreur: ${err.message}`;
-    if (err.code === 1) { 
-        stopGPS();
-        alert("Accès à la géolocalisation refusé. Veuillez l'activer.");
+    let errMsg = `Erreur GPS (Code ${err.code}): `;
+
+    switch (err.code) {
+        case 1:
+            errMsg += "Permission refusée par l'utilisateur. Vérifiez les réglages.";
+            stopGPS(); 
+            break;
+        case 2:
+            errMsg += "Position indisponible (Pas de signal ou GPS désactivé).";
+            break;
+        case 3:
+            errMsg += "Timeout : La requête GPS est trop lente (réseau ou puce GPS faible).";
+            break;
+        default:
+            errMsg += `Erreur inconnue: ${err.message}`;
+    }
+
+    // Affichage dans le DOM et la console
+    if ($('gps-precision')) $('gps-precision').textContent = errMsg;
+    console.error("ERREUR CRITIQUE GPS:", errMsg);
+    
+    // Alerte pour les erreurs de permission ou de timeout critiques
+    if (err.code === 1 || err.code === 3) {
+        // Optionnel : Vous pouvez commenter cette ligne si l'alerte est trop intrusive
+        // alert(errMsg); 
     }
 }
 
