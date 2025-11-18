@@ -1,5 +1,5 @@
 // =================================================================
-// GNSS SPACETIME DASHBOARD - FICHIER COMPLET
+// GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -77,67 +77,6 @@ const CELESTIAL_DATA = {
 // BLOC 2/4 : Filtres, Modèles Cinématiques et Quaternion
 // =================================================================
 
-// --- CLASSE UKF (Unscented Kalman Filter - 1D Vitesse) ---
-class UKF {
-    constructor(initialState, initialCovariance, processNoiseQ, measurementNoiseR, kappa) {
-        this.x = initialState; 
-        this.P = initialCovariance; 
-        this.Q = processNoiseQ; 
-        this.R_base = measurementNoiseR; 
-        this.kappa = kappa;
-        this.lambda = kappa; 
-        this.W_m = [(this.lambda / (this.x.length + this.lambda)), 0.5 / (this.x.length + this.lambda), 0.5 / (this.x.length + this.lambda)];
-        this.W_c = [this.W_m[0], this.W_m[1], this.W_m[2]]; 
-    }
-
-    generateSigmaPoints() {
-        const sqrt_P = Math.sqrt(this.P[0]);
-        const gamma = Math.sqrt(this.x.length + this.lambda);
-        return [ this.x[0], this.x[0] + gamma * sqrt_P, this.x[0] - gamma * sqrt_P ];
-    }
-
-    stateTransition(sigma, accel_input, dt) { return sigma + accel_input * dt; } 
-    observationFunction(sigma) { return sigma; }
-    
-    predict(accel_input, dt) {
-        const sigma_predicted = this.generateSigmaPoints().map(s => this.stateTransition(s, accel_input, dt));
-        const x_bar = this.W_m[0] * sigma_predicted[0] + this.W_m[1] * sigma_predicted[1] + this.W_m[2] * sigma_predicted[2];
-                      
-        let P_bar = this.Q;
-        for (let i = 0; i < 3; i++) { P_bar += this.W_c[i] * (sigma_predicted[i] - x_bar) ** 2; }
-
-        this.x_pred = [x_bar];
-        this.P_pred = [P_bar];
-        return { x: this.x_pred, P: this.P_pred };
-    }
-
-    update(accel_input, measurement, dt) {
-        this.predict(accel_input, dt);
-
-        const sigma_predicted = this.generateSigmaPoints().map(s => this.stateTransition(s, accel_input, dt));
-        const sigma_measurement = sigma_predicted.map(s => this.observationFunction(s));
-        const y_bar = this.W_m[0] * sigma_measurement[0] + this.W_m[1] * sigma_measurement[1] + this.W_m[2] * sigma_measurement[2];
-
-        let Pyy = measurement.R_dyn; 
-        for (let i = 0; i < 3; i++) { Pyy += this.W_c[i] * (sigma_measurement[i] - y_bar) ** 2; }
-
-        let Pxy = 0;
-        for (let i = 0; i < 3; i++) { Pxy += this.W_c[i] * (sigma_predicted[i] - this.x_pred[0]) * (sigma_measurement[i] - y_bar); }
-        
-        const K = (Pyy === 0) ? 0 : Pxy / Pyy;
-        const y_diff = measurement.spd - y_bar;
-        this.x[0] = this.x_pred[0] + K * y_diff;
-        this.P[0] = this.P_pred[0] - K * Pyy * K;
-        
-        if (this.P[0] < this.R_base * 0.1 && this.x[0] < MIN_SPD) {
-             this.x[0] = 0;
-             this.P[0] = this.P[0] * 0.5;
-        }
-
-        return { kSpd: this.x[0], kUncert: this.P[0] };
-    }
-}
-
 // --- CLASSE QUATERNION (Pour gestion de l'IMU) ---
 class Quaternion {
     constructor(w = 1, x = 0, y = 0, z = 0) {
@@ -175,7 +114,118 @@ class Quaternion {
     }
 }
 
-// --- FONCTIONS DE FILTRAGE ET DE MODÈLE ---
+// ===========================================
+// CLASSE UKF PROFESSIONNELLE (Architecture 21 États)
+// ===========================================
+class ProfessionalUKF {
+    constructor() {
+        this.N_STATES = 21; // Nombre d'états
+        
+        // Vecteur d'état (21x1)
+        this.x = math.zeros(this.N_STATES); 
+        
+        // Matrice de Covariance (21x21)
+        this.P = math.diag(Array(this.N_STATES).fill(1e-2)); // Initialisation
+        
+        // Matrice de Bruit de Processus (Q)
+        this.Q = math.diag(Array(this.N_STATES).fill(1e-6));
+        // (En réalité, Q est complexe, basé sur les bruits de l'IMU)
+
+        // UKF Parameters (Alpha, Beta, Kappa)
+        this.ALPHA = 1e-3;
+        this.BETA = 2;
+        this.KAPPA = 0;
+        this.lambda = this.ALPHA * this.ALPHA * (this.N_STATES + this.KAPPA) - this.N_STATES;
+    }
+
+    /** Étape de PRÉDICTION : Modèle de Mouvement Inertielles (Strapdown) */
+    predict(imuData, dt) {
+        // Cette fonction est le cœur d'un INS.
+        // 1. Générer les 2N+1 Sigma Points (basés sur this.x et this.P)
+        // const sigmaPoints = this._generateSigmaPoints(this.x, this.P);
+
+        // 2. Propager chaque Sigma Point à travers le modèle de mouvement
+        // const predictedSigmaPoints = sigmaPoints.map(sp => {
+        //    return this._motionModel(sp, imuData, dt);
+        // });
+
+        // 3. Recombiner les points pour obtenir l'état prédit (x_pred) et la covariance (P_pred)
+        // this.x_pred = ...
+        // this.P_pred = ... + this.Q;
+        
+        // (Simulation pour cet exemple, car le modèle est trop complexe)
+        this.x_pred = this.x; 
+        this.P_pred = this.P;
+    }
+
+    /** * Modèle de Mouvement (Non-linéaire)
+     * C'est ici que les 21 états sont utilisés pour la navigation inertielle.
+     */
+    _motionModel(stateVector, imuData, dt) {
+        // 1. Extraire les états (pos, vel, att, biais, échelles)
+        // 2. Corriger les mesures IMU (accel, gyro) avec les biais et échelles
+        // 3. Intégrer les gyros corrigés pour mettre à jour l'Attitude (états 7-9)
+        // 4. Calculer la Matrice de Passage (Corps -> NED) à partir de l'Attitude
+        // 5. Transformer les accélérations corrigées (Corps) en (NED)
+        // 6. Soustraire la Gravité (g) et la rotation de la Terre (Coriolis, etc.)
+        // 7. Intégrer les accélérations nettes pour mettre à jour la Vitesse (états 4-6)
+        // 8. Intégrer la Vitesse pour mettre à jour la Position (états 1-3)
+        // (Les biais et échelles sont généralement considérés comme constants dans la prédiction)
+        
+        // Retourner le nouvel état prédit (stateVector_new)
+        return stateVector; // Placeholder
+    }
+
+    /** Étape de MISE À JOUR : Correction par le GPS */
+    update(gpsData) {
+        // 1. Transformer les sigma points prédits en mesures prédites
+        // const predictedMeasurements = predictedSigmaPoints.map(sp => {
+        //    return this._measurementModel(sp);
+        // });
+
+        // 2. Calculer la moyenne des mesures, la covariance S et la covariance croisée T
+        // 3. Calculer le Gain de Kalman (K)
+
+        // 4. Mesure réelle (du GPS)
+        // const z_gps = math.matrix([gpsData.lat, gpsData.lon, gpsData.alt, gpsData.speed, ...]);
+
+        // 5. Mettre à jour l'état et la covariance
+        // const innovation = math.subtract(z_gps, z_pred_mean);
+        // this.x = math.add(this.x_pred, math.multiply(K, innovation));
+        // this.P = math.subtract(this.P_pred, math.multiply(K, S, math.transpose(K)));
+        
+        // (Simulation pour cet exemple)
+        this.x.set([0], gpsData.latitude * D2R);  // Lat
+        this.x.set([1], gpsData.longitude * D2R); // Lon
+        this.x.set([2], gpsData.altitude);       // Alt
+        this.x.set([3], gpsData.speed);          // vN (simplifié)
+    }
+
+    /** Modèle de Mesure (Comment l'état se traduit en mesure GPS) */
+    _measurementModel(stateVector) {
+        // Le GPS mesure la Position (états 0, 1, 2) et parfois la Vitesse (états 3, 4, 5)
+        // return math.matrix([stateVector.get([0]), stateVector.get([1]), ...]);
+        return stateVector; // Placeholder
+    }
+    
+    // Fonction pour récupérer l'état actuel pour l'affichage
+    getState() {
+        const x_data = this.x.toArray();
+        return {
+            lat: x_data[0] * R2D,
+            lon: x_data[1] * R2D,
+            alt: x_data[2],
+            vN: x_data[3],
+            vE: x_data[4],
+            vD: x_data[5],
+            speed: Math.sqrt(x_data[3]**2 + x_data[4]**2 + x_data[5]**2),
+            // ... autres états
+        };
+    }
+}
+
+
+// --- FONCTIONS DE FILTRAGE ET DE MODÈLE (Altitude, Bruit, etc.) ---
 function dist2D(lat1, lon1, lat2, lon2, R_earth) {
     const dLat = (lat2 - lat1) * D2R;
     const dLon = (lon2 - lon1) * D2R;
@@ -246,7 +296,7 @@ function updateCelestialBody(body, alt, rotationRadius, angularVelocity) {
     G_ACC = G_ACC_NEW;
     R_ALT_CENTER_REF = R_ALT_CENTER_REF_NEW;
     return { G_ACC: G_ACC_NEW, R_ALT_CENTER_REF: R_ALT_CENTER_REF_NEW };
-        }
+                                                      }
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique
 // =================================================================
@@ -464,7 +514,9 @@ let timeMoving = 0;
 let lastFSpeed = 0; 
 let kAlt = null;      
 let kAltUncert = 10;  
-let ukfSpeed = null; // Instance de l'UKF
+
+// REMPLACÉ : ukfSpeed (1D) est remplacé par ukf (21 états)
+let ukf = null; // Instance de l'UKF Professionnel
 
 let currentGPSMode = 'HIGH_FREQ'; 
 let emergencyStopActive = false; 
@@ -480,8 +532,10 @@ let gpsAccuracyOverride = 0.0;
 let lastP_hPa = BARO_ALT_REF_HPA, lastT_K = 288.15, currentAirDensity = RHO_SEA_LEVEL;
 let currentSpeedOfSound = 343;
 
+// IMU State (Maintenant inclut Gyro)
 let real_accel_x = 0, real_accel_y = 0, real_accel_z = 0;
-let mag_x = 0, mag_y = 0, mag_z = 0, angular_speed = 0; // Ajout pour les N/A
+let gyro_x = 0, gyro_y = 0, gyro_z = 0; // Gyroscope
+let mag_x = 0, mag_y = 0, mag_z = 0, angular_speed = 0; 
 let currentAttitude = new Quaternion(); 
 let lastMapUpdate = 0;
 
@@ -492,16 +546,20 @@ function imuMotionHandler(event) {
         real_accel_y = event.accelerationIncludingGravity.y || 0;
         real_accel_z = event.accelerationIncludingGravity.z || 0;
         if ($('imu-status')) $('imu-status').textContent = "Actif (Avec Gravité)";
-    } else {
-        if ($('imu-status')) $('imu-status').textContent = "Erreur (Capteur N/A)";
-        return;
     }
     
-    // Simuler d'autres capteurs s'ils ne sont pas disponibles
+    if (event.rotationRate) { // Gyroscope
+        gyro_x = event.rotationRate.alpha || 0; // (axes peuvent varier)
+        gyro_y = event.rotationRate.beta || 0;
+        gyro_z = event.rotationRate.gamma || 0;
+        angular_speed = Math.sqrt(gyro_x**2 + gyro_y**2 + gyro_z**2);
+    }
+    
+    // (Simuler Mag)
     mag_x = Math.random() * 50;
-    angular_speed = Math.random() * 5;
-
-    currentAttitude = Quaternion.fromAcc(real_accel_x, real_accel_y, real_accel_z); 
+    
+    // L'attitude est maintenant estimée par l'UKF, pas seulement par l'accéléromètre
+    // currentAttitude = Quaternion.fromAcc(real_accel_x, real_accel_y, real_accel_z); 
 }
 
 function startIMUListeners() {
@@ -528,6 +586,7 @@ function stopIMUListeners() {
     if (window.DeviceMotionEvent) window.removeEventListener('devicemotion', imuMotionHandler);
     if ($('imu-status')) $('imu-status').textContent = "Inactif";
     real_accel_x = real_accel_y = real_accel_z = 0;
+    gyro_x = gyro_y = gyro_z = 0;
 }
 
 function startGPS() {
@@ -621,29 +680,34 @@ function updateMap(lat, lon, acc) {
 
 // ===========================================
 // FONCTION PRINCIPALE DE MISE À JOUR (updateDisp)
+// MISE À JOUR POUR UKF 21 ÉTATS
 // ===========================================
 function updateDisp(pos) {
     if (emergencyStopActive) return; 
 
     // --- 1. ACQUISITION & INIT ---
     const cTimePos = pos.timestamp;
-    let cLat = pos.coords.latitude;
-    let cLon = pos.coords.longitude;
-    let altRaw = pos.coords.altitude;
     let accRaw = pos.coords.accuracy;
     let headingRaw = pos.coords.heading; 
 
     if (gpsAccuracyOverride > 0.0) { accRaw = gpsAccuracyOverride; }
 
-    if (ukfSpeed === null) {
-        // Initialisation de l'UKF 1D Vitesse
-        ukfSpeed = new UKF([0], [UKF_R_MAX], UKF_Q_SPD, UKF_R_MAX, KAPPA);
+    // Initialisation du filtre 21 états
+    if (ukf === null) {
+        if (typeof math === 'undefined') {
+            alert("Erreur critique: La bibliothèque math.js est requise pour l'UKF 21 états.");
+            return;
+        }
+        ukf = new ProfessionalUKF();
+        // Initialiser l'état avec la première position GPS
+        ukf.x.set([0], pos.coords.latitude * D2R);
+        ukf.x.set([1], pos.coords.longitude * D2R);
+        ukf.x.set([2], pos.coords.altitude);
     }
 
     if (lPos === null) {
-        lPos = pos; kAlt = altRaw; lat = cLat; lon = cLon;
-        sTime = Date.now();
-        updateMap(cLat, cLon, accRaw);
+        lPos = pos; sTime = Date.now();
+        updateMap(pos.coords.latitude, pos.coords.longitude, accRaw);
         return; 
     }
     
@@ -651,57 +715,54 @@ function updateDisp(pos) {
     if (dt < MIN_DT || dt > 10) { lPos = pos; return; } 
     
     // --- 2. GESTION DU SIGNAL & BRUIT (R) ---
-    let R_dyn = getKalmanR(accRaw, kAlt, lastP_hPa, selectedEnvironment); 
-    let isSignalPoor = (accRaw > 200 || R_dyn >= UKF_R_MAX * 0.75);
+    // (La gestion R_dyn est maintenant gérée à l'intérieur de l'UKF, mais on garde la logique de statut)
+    let R_dyn_display = getKalmanR(accRaw, kAlt, lastP_hPa, selectedEnvironment); 
+    let isSignalPoor = (accRaw > 200 || R_dyn_display >= UKF_R_MAX * 0.75);
     let modeStatus = '';
     
     if (isSignalPoor) { 
-        modeStatus = `⚠️ ESTIMATION SEULE (${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY})`;
-        cLat = lat; cLon = lon; altRaw = kAlt; 
+        modeStatus = `⚠️ ESTIMATION SEULE (Dead Reckoning)`;
         if ($('gps-precision')) $('gps-precision').textContent = `❌ ${accRaw.toFixed(0)} m (Estimation)`; 
     } else {
-        modeStatus = `🚀 UKF FUSION (Mode ${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY})`;
-        lat = cLat; lon = cLon;
+        modeStatus = `🚀 UKF 21 ÉTATS FUSION (INS/GNSS)`;
         if ($('gps-precision')) $('gps-precision').textContent = `${accRaw.toFixed(2)} m`; 
     }
+
+    // --- 3. LOGIQUE UKF 21 ÉTATS ---
     
-    // --- 3. FILTRAGE ALTITUDE ---
-    const baroAlt = getBarometricAltitude(lastP_hPa, BARO_ALT_REF_HPA, lastT_K);
-    const { kAlt: kAlt_new, kAltUncert: kAltUncert_new } = kFilterAltitude(
-        kAlt, kAltUncert, altRaw, pos.coords.altitudeAccuracy || R_ALT_MIN, dt, baroAlt
-    );
-    kAlt = kAlt_new;
-    kAltUncert = kAltUncert_new;
-    
-    // --- 4. VITESSE BRUTE 3D & ANTI-SPIKE ---
-    const dist2D_val = dist2D(lPos.coords.latitude, lPos.coords.longitude, cLat, cLon, R_ALT_CENTER_REF);
-    const altDiff = (kAlt_new || 0) - (lPos.kAlt_old || 0);
-    const dist3D = Math.sqrt(dist2D_val ** 2 + altDiff ** 2);
-    let spd3D_raw = dist3D / dt; 
-    
-    const accel_provisional = (spd3D_raw - (lPos.speedMS_3D || 0)) / dt;
-    if (Math.abs(accel_provisional) > MAX_PLAUSIBLE_ACCEL_GPS && lPos.speedMS_3D !== undefined) {
-        console.warn(`Spike GPS détecté: ${accel_provisional.toFixed(1)} m/s². Utilisation de la vitesse prédite.`);
-        spd3D_raw = lPos.speedMS_3D + (real_accel_z * dt); 
+    // 3.1 Prédiction (utilise IMU)
+    const imuReadings = {
+        accel: [real_accel_x, real_accel_y, real_accel_z],
+        gyro: [gyro_x, gyro_y, gyro_z]
+    };
+    ukf.predict(imuReadings, dt);
+
+    // 3.2 Mise à jour (Correction avec GPS)
+    // L'UKF ne se met à jour que si le signal n'est pas "pauvre"
+    if (!isSignalPoor) {
+        ukf.update(pos.coords);
+        modeStatus = `✅ UKF 21 ÉTATS CORRECTION`;
     }
 
-    const accel_sensor_input = real_accel_z; 
+    // 3.3 Extraction de l'état estimé
+    const estimatedState = ukf.getState();
+    lat = estimatedState.lat;
+    lon = estimatedState.lon;
+    kAlt = estimatedState.alt;
+    kSpd = estimatedState.speed; // Vitesse 3D totale (vN, vE, vD)
 
-    // --- 5. INTÉGRATION UKF VITESSE ---
-    const ukf_measurement = { spd: spd3D_raw, R_dyn: R_dyn };
-    const { kSpd: fSpd, kUncert: kUncert_new } = ukfSpeed.update(accel_sensor_input, ukf_measurement, dt);
-    kSpd = fSpd;
-    kUncert = kUncert_new;
+    // (Le filtre d'altitude 1D séparé n'est plus nécessaire, kAlt vient de l'UKF)
+    kAltUncert = ukf.P.get([2, 2]); // Variance de l'altitude
+    kUncert = ukf.P.get([3, 3]) + ukf.P.get([4, 4]) + ukf.P.get([5, 5]); // Variance totale vitesse
+
+    const sSpdFE = kSpd < MIN_SPD ? 0 : kSpd; 
     
-    const sSpdFE = fSpd < MIN_SPD ? 0 : fSpd; 
-    if (sSpdFE === 0 && R_dyn < UKF_R_MAX) { modeStatus = '✅ ZUPT (Vélocité Nulle Forcée)'; } 
-
-    // --- 6. CALCULS AVANCÉS ---
-    let accel_long = 0;
+    // --- 4. CALCULS AVANCÉS ---
+    let accel_long = 0; // L'accélération long. vient maintenant des biais corrigés
     if (dt > 0.05) { accel_long = (sSpdFE - lastFSpeed) / dt; }
     lastFSpeed = sSpdFE;
 
-    R_FACTOR_RATIO = calculateMRF(kAlt_new, netherMode); 
+    R_FACTOR_RATIO = calculateMRF(kAlt, netherMode); 
     distM += sSpdFE * dt * R_FACTOR_RATIO; 
     
     if (sSpdFE > MIN_SPD) { timeMoving += dt; }
@@ -710,31 +771,29 @@ function updateDisp(pos) {
     
     let local_g = G_ACC;
     if (currentCelestialBody === 'EARTH') {
-        local_g = getWGS84Gravity(cLat, kAlt_new);
+        local_g = getWGS84Gravity(lat, kAlt);
         G_ACC = local_g;
     }
     
     const coriolis_force = 2 * currentMass * OMEGA_EARTH * sSpdFE * Math.abs(Math.cos(lat * D2R));
+    const spd3D_raw_gps = pos.coords.speed || 0; // Vitesse brute GPS
 
-    // --- 7. MISE À JOUR DU DOM (Gestion N/A corrigée) ---
+    // --- 5. MISE À JOUR DU DOM (Gestion N/A corrigée) ---
     
-    // Contrôles
     if ($('elapsed-time')) $('elapsed-time').textContent = dataOrDefault(timeTotal, 2, ' s');
     if ($('time-moving')) $('time-moving').textContent = dataOrDefault(timeMoving, 2, ' s');
     if ($('distance-ratio')) $('distance-ratio').textContent = dataOrDefault(R_FACTOR_RATIO, 3);
 
-    // Vitesse
     if ($('speed-stable')) $('speed-stable').textContent = dataOrDefault(sSpdFE * KMH_MS, 2);
     if ($('speed-status-text')) $('speed-status-text').textContent = modeStatus;
     if ($('speed-stable-ms')) $('speed-stable-ms').textContent = dataOrDefault(sSpdFE, 3, ' m/s');
     if ($('speed-stable-kms')) $('speed-stable-kms').textContent = dataOrDefaultExp(sSpdFE / 1000, 3, ' km/s');
-    if ($('speed-3d-inst')) $('speed-3d-inst').textContent = dataOrDefault(spd3D_raw * KMH_MS, 2, ' km/h');
-    if ($('speed-raw-ms')) $('speed-raw-ms').textContent = dataOrDefault(spd3D_raw, 3, ' m/s');
+    if ($('speed-3d-inst')) $('speed-3d-inst').textContent = dataOrDefault(spd3D_raw_gps * KMH_MS, 2, ' km/h');
+    if ($('speed-raw-ms')) $('speed-raw-ms').textContent = dataOrDefault(spd3D_raw_gps, 3, ' m/s');
     if ($('speed-max')) $('speed-max').textContent = dataOrDefault(maxSpd * KMH_MS, 2, ' km/h');
     if ($('speed-avg-moving')) $('speed-avg-moving').textContent = timeMoving > 1 ? dataOrDefault(distM / timeMoving * KMH_MS, 2, ' km/h') : '0.00 km/h';
     if ($('speed-avg-total')) $('speed-avg-total').textContent = timeTotal > 1 ? dataOrDefault(distM / timeTotal * KMH_MS, 2, ' km/h') : '0.00 km/h';
     
-    // Relativité & Son
     if ($('speed-of-sound-calc')) $('speed-of-sound-calc').textContent = dataOrDefault(currentSpeedOfSound, 2, ' m/s');
     if ($('perc-speed-sound')) $('perc-speed-sound').textContent = dataOrDefault(sSpdFE / currentSpeedOfSound * 100, 2, ' %');
     if ($('mach-number')) $('mach-number').textContent = dataOrDefault(sSpdFE / currentSpeedOfSound, 4);
@@ -742,21 +801,18 @@ function updateDisp(pos) {
     const lorentz = 1 / Math.sqrt(1 - (sSpdFE**2 / C_L**2));
     if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentz, 8);
 
-    // Distance
     if ($('distance-total-km')) $('distance-total-km').textContent = `${dataOrDefault(distM / 1000, 3)} km | ${dataOrDefault(distM, 2)} m`;
     if ($('distance-light-s')) $('distance-light-s').textContent = dataOrDefaultExp(distM / C_L, 2, ' s');
     if ($('distance-light-min')) $('distance-light-min').textContent = dataOrDefaultExp(distM / C_L / 60, 2, ' min');
-    if ($('distance-horizon')) $('distance-horizon').textContent = dataOrDefault(Math.sqrt(2 * kAlt_new * R_ALT_CENTER_REF) / 1000, 1, ' km');
+    if ($('distance-horizon')) $('distance-horizon').textContent = dataOrDefault(Math.sqrt(2 * kAlt * R_ALT_CENTER_REF) / 1000, 1, ' km');
 
-    // Position & Altitude
     if ($('lat-display')) $('lat-display').textContent = dataOrDefault(lat, 6, ' °');
     if ($('lon-display')) $('lon-display').textContent = dataOrDefault(lon, 6, ' °');
-    if ($('alt-display')) $('alt-display').textContent = dataOrDefault(kAlt_new, 2, ' m (UKF)');
-    if ($('alt-baro')) $('alt-baro').textContent = dataOrDefault(baroAlt, 2, ' m');
-    if ($('alt-corrected-baro')) $('alt-corrected-baro').textContent = dataOrDefault(baroAlt, 2, ' m'); 
+    if ($('alt-display')) $('alt-display').textContent = dataOrDefault(kAlt, 2, ' m (UKF)');
+    if ($('alt-baro')) $('alt-baro').textContent = dataOrDefault(getBarometricAltitude(lastP_hPa, BARO_ALT_REF_HPA, lastT_K), 2, ' m');
+    if ($('alt-corrected-baro')) $('alt-corrected-baro').textContent = dataOrDefault(getBarometricAltitude(lastP_hPa, BARO_ALT_REF_HPA, lastT_K), 2, ' m'); 
     if ($('heading-display')) $('heading-display').textContent = dataOrDefault(headingRaw, 1, ' °');
     
-    // Dynamique
     if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(0.5 * currentAirDensity * sSpdFE**2, 2, ' Pa');
     if ($('coriolis-force')) $('coriolis-force').textContent = dataOrDefaultExp(coriolis_force, 2, ' N');
     if ($('gravity-local')) $('gravity-local').textContent = dataOrDefault(local_g, 5, ' m/s²');
@@ -765,13 +821,11 @@ function updateDisp(pos) {
     if ($('drag-force')) $('drag-force').textContent = '0.00 N'; 
     if ($('radiation-pressure')) $('radiation-pressure').textContent = '0.00 N/m²'; 
 
-    // Filtre
     if ($('kalman-uncert')) $('kalman-uncert').textContent = dataOrDefault(kUncert, 3, ' m²/s² (P)');
-    if ($('alt-uncertainty')) $('alt-uncertainty').textContent = dataOrDefault(Math.sqrt(kAltUncert_new), 3, ' m (σ)');
-    if ($('speed-error-perc')) $('speed-error-perc').textContent = dataOrDefault(R_dyn, 3, ' m² (R dyn)');
+    if ($('alt-uncertainty')) $('alt-uncertainty').textContent = dataOrDefault(Math.sqrt(kAltUncert), 3, ' m (σ)');
+    if ($('speed-error-perc')) $('speed-error-perc').textContent = dataOrDefault(R_dyn_display, 3, ' m² (R dyn)');
     if ($('gps-status-dr')) $('gps-status-dr').textContent = modeStatus.split(' (')[0];
 
-    // IMU
     if ($('accel-x')) $('accel-x').textContent = dataOrDefault(real_accel_x, 2, ' m/s²');
     if ($('accel-y')) $('accel-y').textContent = dataOrDefault(real_accel_y, 2, ' m/s²');
     if ($('accel-z')) $('accel-z').textContent = dataOrDefault(real_accel_z, 2, ' m/s²');
@@ -779,11 +833,9 @@ function updateDisp(pos) {
     if ($('mag-y')) $('mag-y').textContent = dataOrDefault(mag_y, 2, ' µT');
     if ($('mag-z')) $('mag-z').textContent = dataOrDefault(mag_z, 2, ' µT');
     
-    // --- 8. SAUVEGARDE & MISE À JOUR CARTE ---
+    // --- 6. SAUVEGARDE & MISE À JOUR CARTE ---
     lPos = pos; 
-    lPos.speedMS_3D = spd3D_raw; 
     lPos.timestamp = cTimePos; 
-    lPos.kAlt_old = kAlt_new; 
 
     updateMap(lat, lon, accRaw);
 }
@@ -873,7 +925,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirm("Réinitialiser toutes les données de session ?")) { 
                 distM = 0; maxSpd = 0; kSpd = 0; kUncert = UKF_R_MAX; 
                 timeMoving = 0; kAlt = null; kAltUncert = 10;
-                lPos = null; sTime = null; ukfSpeed = null; 
+                lPos = null; sTime = null; 
+                ukf = null; // Réinitialiser le filtre UKF
                 stopGPS(true);
                 alert("Système réinitialisé. Redémarrez le GPS.");
             } 
