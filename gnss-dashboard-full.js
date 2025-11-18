@@ -471,62 +471,68 @@ function startFastLoop() {
 // BLOC 4/4 : Initialisation DOM et Boucle Lente
 // ===========================================
 
-document.addEventListener('DOMContentLoaded', () => {
+JavaScript
+
+// ===========================================
+// BLOC 4/4 : Initialisation DOM et Boucle Lente (CORRIGÉ POUR LE CLIC)
+// ===========================================
+
+function initSystem() {
+    if (sTime !== null) return; // Empêche la réinitialisation si déjà démarré
     
-    initMap(); 
-    
-    // Initialisation du filtre UKF
+    // 1. Initialisation UKF
     if (typeof ProfessionalUKF === 'undefined') {
-        alert("Erreur critique: La classe ProfessionalUKF est manquante. Le système ne peut pas démarrer.");
+        alert("Erreur critique: La classe ProfessionalUKF est manquante.");
         return;
     }
     ukf = new ProfessionalUKF();
 
-    // --- ÉCOUTEURS DE CONTRÔLE (Inchangés) ---
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
-        if (emergencyStopActive) return;
-        wID === null ? startGPS() : stopGPS();
-    });
-    // ... (Ajouter ici tous les autres écouteurs : mass-input, celestial-body-select, emergency-stop-btn, etc.)
-    // ... (Utilisez les écouteurs de votre fichier pour les restaurer)
+    // 2. Démarrage des systèmes critiques
+    sTime = Date.now();
+    startGPS();        
+    startIMUListeners(); 
+    startFastLoop();
 
-    // --- DÉMARRAGE DU SYSTÈME ---
-    const initVals = updateCelestialBody(currentCelestialBody, kAlt, 0, 0);
-    G_ACC = initVals.G_ACC;
-    R_ALT_CENTER_REF = initVals.R_ALT_CENTER_REF;
-    
+    // 3. Sync NTP en parallèle
     syncH(lServH, lLocH).then(newTimes => {
         lServH = newTimes.lServH;
         lLocH = newTimes.lLocH;
-        
-        // DÉMARRAGE DES 3 COMPOSANTS CRITIQUES
-        startIMUListeners(); 
-        startGPS('HIGH_FREQ', gpsUpdateCallback); // Lie le GPS au callback UKF
-        startFastLoop(); // Démarre la boucle haute fréquence IMU/UKF
     });
 
-    // Boucle de mise à jour lente (Astro/Météo/Horloge)
-    if (domSlowID === null) {
-        domSlowID = setInterval(() => {
-            const currentLat = lat || 43.296; 
-            const currentLon = lon || 5.370;
-            
-            // Met à jour l'astro (soleil, lune, horloge)
-            if (typeof updateAstro === 'function') {
-                updateAstro(currentLat, currentLon, lServH, lLocH);
-            }
-            
-            // ... (Logique de resynchronisation NTP et météo, inchangée) ...
-            
-            // Met à jour l'horloge locale (NTP)
-            const now = getCDate(lServH, lLocH);
-            if (now) {
-                if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
-                    $('local-time').textContent = now.toLocaleTimeString('fr-FR');
-                }
-                if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
-            }
-            
-        }, DOM_SLOW_UPDATE_MS); 
+    // 4. Démarrage de la boucle lente (Astro/Météo)
+    const DOM_SLOW_UPDATE_MS = 3000;
+    domSlowID = setInterval(() => {
+        const currentLat = lat || 43.296; 
+        const currentLon = lon || 5.37;
+
+    }, DOM_SLOW_UPDATE_MS); 
+
+    // Cache le bouton de démarrage
+    if ($('init-system-btn')) $('init-system-btn').style.display = 'none';
+    
+    // Mettre à jour l'état GPS du bouton toggle-gps-btn
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '⏸️ PAUSE GPS';
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    
+    initMap(); 
+    
+    // Les valeurs initiales doivent être mises en place avant le démarrage
+    updateCelestialBody(currentCelestialBody, kAlt, 0, 0);
+
+    // --- LIER LE BOUTON DÉMARRER LE SYSTÈME ---
+    const startButton = $('init-system-btn'); // Assurez-vous que l'ID du bouton est 'init-system-btn'
+    if (startButton) {
+        startButton.addEventListener('click', initSystem, { once: true });
+    } else {
+         // Si le bouton n'existe pas, nous démarrons immédiatement (Fallback)
+         initSystem();
     }
+    
+    // --- Autres écouteurs (Inchangés) ---
+    if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGPS);
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
+    // ... (Ajouter ici tous les autres écouteurs de contrôles)
 });
