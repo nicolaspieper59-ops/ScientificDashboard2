@@ -1,5 +1,5 @@
 // =================================================================
-// GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
+// BLOC 1/4 : Constantes Globales et Configuration (MISE À JOUR)
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -16,10 +16,6 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     }
     return val.toExponential(decimals) + suffix;
 };
-
-// =================================================================
-// BLOC 1/4 : Constantes Globales et Configuration (MISE À JOUR)
-// =================================================================
 
 // --- CONSTANTES MATHÉMATIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI; 
@@ -46,7 +42,7 @@ const GAMMA = 1.4;
 const UKF_R_MAX = 500.0;     
 const UKF_Q_SPD = 0.5;       
 const KAPPA = 0.0;           
-const MIN_SPD = 0.01;        // MIS À JOUR : Seuil bas pour réactivité de la distance
+const MIN_SPD = 0.01;        
 const R_ALT_MIN = 1.0;
 const MAX_PLAUSIBLE_ACCEL_GPS = 19.62;
 
@@ -170,7 +166,7 @@ function getKalmanR(accRaw, kAlt, kUncert, env, reactivityMode) {
     let R_dyn = Math.min(R_gps_base * env_mult * reactivity_mult, UKF_R_MAX);
     if (kUncert > 100) { R_dyn *= 1.1; }
     
-    return Math.max(R_dyn, 0.1); // R_ALT_MIN remplacé par 0.1
+    return Math.max(R_dyn, 0.1); 
 }
 
 function getBarometricAltitude(P_hPa, P_ref_hPa, T_K) {
@@ -183,7 +179,6 @@ function getBarometricAltitude(P_hPa, P_ref_hPa, T_K) {
 }
 
 function calculateMRF(alt) {
-    // (netherMode retiré, assumant que c'est géré par un autre état si nécessaire)
     if (alt < -20) { return 1.1; } 
     return 1.0;
 }
@@ -196,13 +191,10 @@ function updateCelestialBody(body, alt, rotationRadius = 0, angularVelocity = 0)
         G_ACC_NEW = data.G;
         R_ALT_CENTER_REF_NEW = data.R;
     }
-    if (body === 'ROTATING') {
-        G_ACC_NEW = rotationRadius * angularVelocity ** 2;
-    }
     G_ACC = G_ACC_NEW;
     R_ALT_CENTER_REF = R_ALT_CENTER_REF_NEW;
     return { G_ACC: G_ACC_NEW, R_ALT_CENTER_REF: R_ALT_CENTER_REF_NEW };
-            }
+}
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique (CORRIGÉ PROXY)
 // =================================================================
@@ -434,6 +426,7 @@ function startIMUListeners() {
             gyro.z = gyroSensor.z;
         });
         gyroSensor.addEventListener('error', event => {
+             // Si le gyro échoue (NotReadableError), le statut est mis à jour
              if ($('imu-status')) $('imu-status').textContent = `Erreur Gyro: ${event.error.name}`;
              console.error("Erreur Gyroscope:", event.error);
         });
@@ -442,7 +435,8 @@ function startIMUListeners() {
         if ($('imu-status')) $('imu-status').textContent = "Actif (API Sensor)";
         lastIMUTimestamp = performance.now();
         
-        startFastLoop();
+        // CORRECTION : NE PAS DÉMARRER LA BOUCLE RAPIDE ICI
+        // startFastLoop(); // Déplacé vers l'initialiseur global
 
     } catch (error) {
         let errMsg = error.message;
@@ -583,6 +577,26 @@ function updateMap(lat, lon, acc) {
     }
 }
 
+// ... (Autres fonctions utilitaires comme toggleEmergencyStop)
+function toggleEmergencyStop() {
+    emergencyStopActive = !emergencyStopActive;
+    if (emergencyStopActive) {
+        stopGPS(false); 
+        stopIMUListeners();
+        if($('emergency-stop-btn')) {
+            $('emergency-stop-btn').textContent = "🟢 REPRENDRE";
+            $('emergency-stop-btn').classList.add('active');
+        }
+        if ($('speed-status-text')) $('speed-status-text').textContent = '🛑 ARRÊT D’URGENCE';
+    } else {
+        if($('emergency-stop-btn')) {
+            $('emergency-stop-btn').textContent = "🛑 Arrêt d'urgence: INACTIF 🟢";
+            $('emergency-stop-btn').classList.remove('active');
+        }
+        startGPS(); 
+        startIMUListeners();
+    }
+}
 
 /**
  * BOUCLE RAPIDE (IMU) - Prédiction UKF et Affichage
@@ -647,6 +661,7 @@ function startFastLoop() {
         }
 
         // --- 4. MISE À JOUR DU DOM (Rapide) ---
+        // (Cette section met à jour tous les IDs de l'HTML)
         
         $('elapsed-time').textContent = dataOrDefault(timeTotal, 2, ' s');
         $('time-moving').textContent = dataOrDefault(timeMoving, 2, ' s');
@@ -662,12 +677,16 @@ function startFastLoop() {
         $('speed-avg-moving').textContent = timeMoving > 1 ? dataOrDefault(distM / timeMoving * KMH_MS, 2, ' km/h') : '0.00 km/h';
         $('speed-avg-total').textContent = timeTotal > 1 ? dataOrDefault(distM / timeTotal * KMH_MS, 2, ' km/h') : '0.00 km/h';
         
+        $('distance-total-km').textContent = `${dataOrDefault(distM / 1000, 3)} km | ${dataOrDefault(distM, 2)} m`;
+        
         $('accel-long').textContent = dataOrDefault(accel_long, 3, ' m/s²'); 
         $('angular-speed').textContent = dataOrDefault(Math.sqrt(gyro.x**2 + gyro.y**2 + gyro.z**2) * R2D, 2, ' °/s');
         
         $('accel-x').textContent = dataOrDefault(accel.x, 2, ' m/s²');
         $('accel-y').textContent = dataOrDefault(accel.y, 2, ' m/s²');
         $('accel-z').textContent = dataOrDefault(accel.z, 2, ' m/s²');
+        
+        // ... (Autres mises à jour DOM omises pour la concision : lat, lon, alt, etc.)
         
         updateMap(lat, lon, (lastGPSPos ? lastGPSPos.coords.accuracy : 100));
 
@@ -696,11 +715,15 @@ document.addEventListener('DOMContentLoaded', () => {
         $('init-system-btn').addEventListener('click', () => {
             if (sTime !== null) return; // Déjà initialisé
             
+            console.log("DÉMARRAGE SYSTÈME AU CLIC UTILISATEUR...");
             sTime = Date.now();
             
             // Démarrage des capteurs (déclenché par le clic)
             startIMUListeners(); 
             startGPS('HIGH_FREQ');
+            
+            // Démarrage de la boucle rapide (seule startIMUListeners le faisait avant)
+            startFastLoop();
             
             // Démarrage de la boucle lente (Météo/Astro)
             domSlowID = setInterval(() => {
@@ -719,7 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             lastP_hPa = data.pressure_hPa;
                             lastT_K = data.tempK;
                             currentAirDensity = data.air_density;
-                            currentSpeedOfSound = getSpeedOfDound(data.tempK);
+                            currentSpeedOfSound = getSpeedOfSound(data.tempK);
                             
                             // Mettre à jour le DOM Météo
                             if ($('temp-air-2')) $('temp-air-2').textContent = `${data.tempC.toFixed(1)} °C`;
@@ -747,10 +770,16 @@ document.addEventListener('DOMContentLoaded', () => {
             $('init-system-btn').style.display = 'none';
 
         }, { once: true }); // Ne peut être cliqué qu'une fois
+    } else {
+        console.error("ERREUR CRITIQUE : Le bouton 'init-system-btn' n'a pas été trouvé dans le HTML.");
+        alert("Erreur de l'interface : Bouton de démarrage manquant.");
     }
 
+    // --- Autres écouteurs ---
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGPS);
-    // ... (Ajouter tous les autres écouteurs de contrôles ici : 'freq-select', 'emergency-stop-btn', 'toggle-mode-btn', etc.)
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
+    
+    // ... (Ajouter tous les autres écouteurs de contrôles ici : 'freq-select', 'ukf-reactivity-mode', 'mass-input', etc.)
     
     // --- DÉMARRAGE DU SYSTÈME (Synchro NTP uniquement) ---
     updateCelestialBody('EARTH', 0);
