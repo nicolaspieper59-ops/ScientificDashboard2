@@ -451,10 +451,10 @@ function updateAstro(latA, lonA, lServH, lLocH) {
         `↑ ${moonTimes.rise ? moonTimes.rise.toLocaleTimeString() : 'N/A'} / ↓ ${moonTimes.set ? moonTimes.set.toLocaleTimeString() : 'N/A'}` : 'N/D';
 
     updateClockVisualization(now, sunPos, moonPos, sunTimes);
-            }
+    }
 // =================================================================
 // BLOC 3/4 : app.js (Logique principale, Capteurs, Boucle)
-// (Utilise Generic Sensor API - CORRIGÉ)
+// (Utilise Generic Sensor API - CORRIGÉ v2)
 // =================================================================
 
 // --- CONSTANTES DE CONFIGURATION SYSTÈME ---
@@ -505,9 +505,9 @@ let map, marker, circle;
 const $ = id => document.getElementById(id);
 
 
-// --- GESTION DES CAPTEURS IMU (Generic Sensor API - CORRIGÉ) ---
+// --- GESTION DES CAPTEURS IMU (Generic Sensor API - CORRIGÉ v2) ---
 
-/** Gestionnaire d'erreurs IMU (CORRIGÉ) */
+/** Gestionnaire d'erreurs IMU (CORRIGÉ v2) */
 function handleIMUError(error, sensorName) {
     let errMsg = "Erreur inconnue"; 
 
@@ -521,23 +521,22 @@ function handleIMUError(error, sensorName) {
     
     console.error(`Erreur ${sensorName}: ${errMsg}`);
 
-    // Si un capteur critique (Accel/Gyro) a une erreur de permission, on bloque tout.
-    if (errMsg === 'NotReadableError' || errMsg === 'Permission Capteurs Refusée.') {
-        imuError = error || new Error(errMsg); 
-        if ($('imu-status')) $('imu-status').textContent = `❌ ERREUR GLOBALE: ${errMsg}`;
-        return; // Stoppe l'EKF
-    }
-    
-    // Si un capteur n'est pas supporté (ex: Magnétomètre), on l'ignore
-    if (errMsg === 'NotSupportedError' || errMsg === 'API Sensor non supportée.') {
-        if ($('imu-status') && !$('imu-status').textContent.includes('Critique')) {
-             $('imu-status').textContent = `⚠️ Capteurs partiels (Certains non supportés)`;
-        }
-        // NE PAS définir imuError, pour que l'EKF continue
+    // ** LA CORRECTION CLÉ **
+    // Seul l'Accéléromètre est critique pour l'EKF.
+    // Si l'Accéléromètre échoue, on bloque l'EKF.
+    if (sensorName === 'Accéléromètre') {
+        imuError = error || new Error(errMsg); // Bloque l'EKF
+        if ($('imu-status')) $('imu-status').textContent = `❌ ERREUR CRITIQUE: ${errMsg}`;
     } else {
-        // Autre erreur (potentiellement critique)
-        imuError = error || new Error(errMsg);
-        if ($('imu-status')) $('imu-status').textContent = `❌ Erreur ${sensorName}: ${errMsg}`;
+        // Si le Gyroscope ou le Magnétomètre échoue (NotSupported, undefined, etc.)
+        // On l'affiche, mais on NE bloque PAS l'EKF (imuError reste null).
+        if ($('imu-status') && !$('imu-status').textContent.includes('Critique')) {
+             $('imu-status').textContent = `⚠️ Capteurs Partiels (Erreur ${sensorName})`;
+        }
+        // On s'assure que l'affichage du capteur défaillant est à N/A
+        if (sensorName === 'Gyroscope' && $('angular-speed')) {
+            $('angular-speed').textContent = 'N/A';
+        }
     }
 }
 
@@ -574,7 +573,7 @@ function startIMUListeners() {
              throw new Error("API Sensor non supportée.");
         }
         
-        // GYROSCOPE (Critique)
+        // GYROSCOPE (Optionnel)
         const gyroSensor = new Gyroscope({ frequency: SENSOR_FREQUENCY });
         gyroSensor.addEventListener('reading', () => {
             angular_speed_x = gyroSensor.x || 0;
@@ -611,9 +610,11 @@ function startIMUListeners() {
         handleIMUError(error, 'Magnétomètre');
     }
         
-    // Si aucune erreur critique n'a été levée
+    // Si l'erreur Accéléromètre n'a pas été levée
     if (!imuError) {
-        if ($('imu-status')) $('imu-status').textContent = `Actif (${SENSOR_FREQUENCY} Hz)`;
+        if ($('imu-status') && !$('imu-status').textContent.includes('Partiels')) {
+             $('imu-status').textContent = `Actif (${SENSOR_FREQUENCY} Hz)`;
+        }
     }
 }
 
@@ -749,8 +750,8 @@ function updateDisp(pos) {
     // CORRECTION : Vérifie si l'IMU a une erreur CRITIQUE
     if (imuError !== null) {
         if ($('speed-status-text')) $('speed-status-text').textContent = '⚠️ UKF HORS SERVICE (IMU ÉCHOUÉ)';
-        // On ne s'arrête que si l'erreur n'est pas "NotSupportedError"
-        if (imuError.name !== 'NotSupportedError') {
+        // On ne s'arrête que si l'erreur n'est pas "NotSupportedError" ou "undefined"
+        if (imuError.name !== 'NotSupportedError' && imuError.message !== 'undefined') {
             return;
         }
     }
@@ -938,7 +939,7 @@ function updateDisp(pos) {
     lPos.kAlt_old = kAlt_new; 
 
     updateMap(lat, lon, accRaw);
-}
+    }
 // ===========================================
 // BLOC 4/4 : Initialisation des Événements DOM
 // (Utilise le bouton 'init-system-btn')
