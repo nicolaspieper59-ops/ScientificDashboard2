@@ -530,8 +530,20 @@ function startFastLoop() {
     domFastID = setInterval(() => {
         if (emergencyStopActive || !ukf) return;
 
+        // NOUVELLE VÉRIFICATION : Arrêter si les capteurs ont échoué
+        if (imuError !== null) { 
+            // Si une erreur IMU est présente, on arrête la boucle rapide.
+            // Le statut affichera l'erreur.
+            if (domFastID) clearInterval(domFastID);
+            domFastID = null;
+            $('speed-status-text').textContent = '⚠️ UKF HORS SERVICE (IMU ÉCHOUÉ)';
+            return;
+        }
+
         const now = Date.now();
         const dt = (now - ukf.lastTime) / 1000;
+        
+        // ... (Le reste du code de prédiction et de mise à jour UKF)
         
         // 1. Prédiction UKF (basée sur l'IMU)
         if (dt > 0.01) { // Ne prédire que si un temps significatif s'est écoulé
