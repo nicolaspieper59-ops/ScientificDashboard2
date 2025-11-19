@@ -162,7 +162,7 @@ function getKalmanR(acc, alt, P_hPa, selectedEnv) {
     } 
 
     return Math.max(R_MIN, Math.min(R_MAX, R)); 
-    }
+        }
 // =================================================================
 // BLOC 2/4 : astro_weather.js (NTP, Météo, Astro)
 // =================================================================
@@ -451,10 +451,10 @@ function updateAstro(latA, lonA, lServH, lLocH) {
         `↑ ${moonTimes.rise ? moonTimes.rise.toLocaleTimeString() : 'N/A'} / ↓ ${moonTimes.set ? moonTimes.set.toLocaleTimeString() : 'N/A'}` : 'N/D';
 
     updateClockVisualization(now, sunPos, moonPos, sunTimes);
-}
+            }
 // =================================================================
 // BLOC 3/4 : app.js (Logique principale, Capteurs, Boucle)
-// (Utilise Generic Sensor API)
+// (Utilise Generic Sensor API - CORRIGÉ)
 // =================================================================
 
 // --- CONSTANTES DE CONFIGURATION SYSTÈME ---
@@ -505,47 +505,93 @@ let map, marker, circle;
 const $ = id => document.getElementById(id);
 
 
-// --- GESTION DES CAPTEURS IMU (Generic Sensor API) ---
+// --- GESTION DES CAPTEURS IMU (Generic Sensor API - CORRIGÉ) ---
+
+/** Gestionnaire d'erreurs IMU (CORRIGÉ) */
+function handleIMUError(error, sensorName) {
+    let errMsg = "Erreur inconnue"; 
+
+    if (error && error.name) {
+        errMsg = error.name;
+    } else if (error && error.message) {
+        errMsg = error.message;
+    } else if (error) {
+        errMsg = error.toString();
+    }
+    
+    console.error(`Erreur ${sensorName}: ${errMsg}`);
+
+    // Si un capteur critique (Accel/Gyro) a une erreur de permission, on bloque tout.
+    if (errMsg === 'NotReadableError' || errMsg === 'Permission Capteurs Refusée.') {
+        imuError = error || new Error(errMsg); 
+        if ($('imu-status')) $('imu-status').textContent = `❌ ERREUR GLOBALE: ${errMsg}`;
+        return; // Stoppe l'EKF
+    }
+    
+    // Si un capteur n'est pas supporté (ex: Magnétomètre), on l'ignore
+    if (errMsg === 'NotSupportedError' || errMsg === 'API Sensor non supportée.') {
+        if ($('imu-status') && !$('imu-status').textContent.includes('Critique')) {
+             $('imu-status').textContent = `⚠️ Capteurs partiels (Certains non supportés)`;
+        }
+        // NE PAS définir imuError, pour que l'EKF continue
+    } else {
+        // Autre erreur (potentiellement critique)
+        imuError = error || new Error(errMsg);
+        if ($('imu-status')) $('imu-status').textContent = `❌ Erreur ${sensorName}: ${errMsg}`;
+    }
+}
+
 function startIMUListeners() {
     if (emergencyStopActive) return;
     
     const SENSOR_FREQUENCY = 10; 
+    if ($('imu-status')) $('imu-status').textContent = "Activation...";
 
     try {
-        if ($('imu-status')) $('imu-status').textContent = "Activation...";
-        
-        if (typeof Accelerometer === 'undefined' || typeof Gyroscope === 'undefined') {
+        if (typeof Accelerometer === 'undefined') {
              throw new Error("API Sensor non supportée.");
         }
         
-        // ACCÉLÉROMÈTRE
+        // ACCÉLÉROMÈTRE (Critique)
         const accSensor = new Accelerometer({ frequency: SENSOR_FREQUENCY }); 
         accSensor.addEventListener('reading', () => {
             real_accel_x = accSensor.x || 0;
             real_accel_y = accSensor.y || 0;
             real_accel_z = accSensor.z || 0;
-            
             if ($('accel-x')) $('accel-x').textContent = `${real_accel_x.toFixed(2)} m/s²`;
             if ($('accel-y')) $('accel-y').textContent = `${real_accel_y.toFixed(2)} m/s²`;
             if ($('accel-z')) $('accel-z').textContent = `${real_accel_z.toFixed(2)} m/s²`;
         });
-        accSensor.addEventListener('error', handleIMUError);
+        accSensor.addEventListener('error', (e) => handleIMUError(e, 'Accéléromètre'));
         accSensor.start();
 
-        // GYROSCOPE
+    } catch (error) {
+        handleIMUError(error, 'Accéléromètre');
+    }
+
+    try {
+        if (typeof Gyroscope === 'undefined') {
+             throw new Error("API Sensor non supportée.");
+        }
+        
+        // GYROSCOPE (Critique)
         const gyroSensor = new Gyroscope({ frequency: SENSOR_FREQUENCY });
         gyroSensor.addEventListener('reading', () => {
             angular_speed_x = gyroSensor.x || 0;
             angular_speed_y = gyroSensor.y || 0;
             angular_speed_z = gyroSensor.z || 0;
-            
             const totalAngularSpeed = Math.sqrt(angular_speed_x**2 + angular_speed_y**2 + angular_speed_z**2) * R2D;
             if ($('angular-speed')) $('angular-speed').textContent = `${totalAngularSpeed.toFixed(2)} °/s`;
         });
-        gyroSensor.addEventListener('error', handleIMUError);
+        gyroSensor.addEventListener('error', (e) => handleIMUError(e, 'Gyroscope'));
         gyroSensor.start();
-        
-        // MAGNÉTOMÈTRE
+
+    } catch (error) {
+        handleIMUError(error, 'Gyroscope');
+    }
+    
+    try {
+        // MAGNÉTOMÈTRE (Optionnel)
         if (typeof Magnetometer !== 'undefined') {
             const magSensor = new Magnetometer({ frequency: SENSOR_FREQUENCY });
             magSensor.addEventListener('reading', () => {
@@ -556,35 +602,24 @@ function startIMUListeners() {
                 if ($('mag-y')) $('mag-y').textContent = `${mag_y.toFixed(2)} µT`;
                 if ($('mag-z')) $('mag-z').textContent = `${mag_z.toFixed(2)} µT`;
             });
-            magSensor.addEventListener('error', handleIMUError);
+            magSensor.addEventListener('error', (e) => handleIMUError(e, 'Magnétomètre'));
             magSensor.start();
+        } else {
+            console.warn("Magnétomètre non supporté par ce navigateur.");
         }
-        
-        if ($('imu-status')) $('imu-status').textContent = `Actif (${SENSOR_FREQUENCY} Hz)`;
-        imuError = null; 
-
     } catch (error) {
-        handleIMUError(error);
+        handleIMUError(error, 'Magnétomètre');
+    }
+        
+    // Si aucune erreur critique n'a été levée
+    if (!imuError) {
+        if ($('imu-status')) $('imu-status').textContent = `Actif (${SENSOR_FREQUENCY} Hz)`;
     }
 }
 
-function handleIMUError(error) {
-    imuError = error; 
-    let errMsg = error.message;
-
-    if (error.name === 'SecurityError' || error.name === 'NotAllowedError') {
-        errMsg = "Permission Capteurs Refusée.";
-    } else if (error.name === 'NotReadableError') {
-         errMsg = "Capteurs Verrouillés (OS/Navigateur).";
-    } else if (error.name === 'NotSupportedError') {
-         errMsg = "Capteurs non supportés.";
-    }
-
-    if ($('imu-status')) $('imu-status').textContent = `❌ Erreur IMU: ${errMsg}`;
-    console.error("ERREUR CRITIQUE IMU:", error.name, errMsg);
-}
 
 function stopIMUListeners() {
+    // (L'API Generic Sensor n'a pas de .stop() facile, le rechargement de la page suffit)
     if ($('imu-status')) $('imu-status').textContent = "Inactif";
     real_accel_x = 0; real_accel_y = 0; real_accel_z = 0;
     angular_speed_x = 0; angular_speed_y = 0; angular_speed_z = 0;
@@ -711,9 +746,13 @@ function handleErr(err) {
 function updateDisp(pos) {
     if (emergencyStopActive) return;
     
+    // CORRECTION : Vérifie si l'IMU a une erreur CRITIQUE
     if (imuError !== null) {
         if ($('speed-status-text')) $('speed-status-text').textContent = '⚠️ UKF HORS SERVICE (IMU ÉCHOUÉ)';
-        return;
+        // On ne s'arrête que si l'erreur n'est pas "NotSupportedError"
+        if (imuError.name !== 'NotSupportedError') {
+            return;
+        }
     }
 
     // --- 1. ACQUISITION DES DONNÉES ---
@@ -899,7 +938,7 @@ function updateDisp(pos) {
     lPos.kAlt_old = kAlt_new; 
 
     updateMap(lat, lon, accRaw);
-        }
+}
 // ===========================================
 // BLOC 4/4 : Initialisation des Événements DOM
 // (Utilise le bouton 'init-system-btn')
@@ -1034,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 lServH = newTimes.lServH;
                 lLocH = newTimes.lLocH;
                 
-                // 3. Démarre le GPS (qui ne démarre PAS l'IMU)
+                // 3. Démarre le GPS 
                 startGPS(); 
                 
                 // 4. Démarre l'IMU (actionné par le clic pour les permissions)
