@@ -467,7 +467,7 @@ function startFastLoop() {
 
     }, IMU_UPDATE_RATE_MS);
 }
-    // ===========================================
+// ===========================================
 // BLOC 4/4 : Logique de Démarrage et Boucle Lente (FINAL)
 // ===========================================
 
@@ -630,3 +630,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Démarrage de la boucle lente (Astro/Météo)
     startSlowLoop();
 });
+          
