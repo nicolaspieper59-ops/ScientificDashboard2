@@ -865,15 +865,14 @@ function startFastLoop() {
     }, IMU_UPDATE_RATE_MS);
 }
 
-
 // ===========================================
-// INITIALISATION DOM (DÉMARRAGE) (FINAL)
+// INITIALISATION DOM (DÉMARRAGE) (FINAL - CORRIGÉ PERMISSION)
 // ===========================================
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
     
-    // --- Initialisation des contrôles ---
+    // --- Initialisation des contrôles (Existing Code) ---
     
     if ($('ukf-reactivity-mode')) { 
         const reactivitySelect = $('ukf-reactivity-mode');
@@ -910,7 +909,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // --- DÉMARRAGE DU SYSTÈME (Sync NTP puis GPS/IMU) ---
+    // --- GESTION DU NOUVEAU BOUTON D'ACTIVATION CAPTEURS ---
+    const startIMUBtn = $('start-imu-btn');
+    if (startIMUBtn) {
+        startIMUBtn.addEventListener('click', () => {
+            // L'appel à startIMUListeners() est désormais une action directe de l'utilisateur
+            startIMUListeners(); 
+            startIMUBtn.disabled = true;
+            startIMUBtn.textContent = '✅ Capteurs Activés (Cliquez OK si nécessaire)';
+        });
+    }
+
+
+    // --- DÉMARRAGE DU SYSTÈME (Sync NTP puis GPS) ---
     updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
     
     // Tentative de synchronisation NTP
@@ -926,10 +937,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Démarrage des systèmes critiques
+        // Démarrage du GPS (peut être démarré car il utilise une API différente/plus ancienne)
         sTime = Date.now();
         startGPS(); 
-        startIMUListeners(); 
+        
+        // La boucle UKF (startFastLoop) sera démarrée PAR le clic du bouton ACTIVER CAPTEURS
 
         // Démarrage de la boucle lente (Astro/Météo)
         const DOM_SLOW_UPDATE_MS = 3000;
@@ -973,13 +985,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc.toFixed(0)} %`;
                         if ($('air-density')) $('air-density').textContent = `${data.air_density.toFixed(3)} kg/m³`;
                         if ($('dew-point')) $('dew-point').textContent = `${data.dew_point.toFixed(1)} °C`;
+                        if ($('speed-of-sound')) $('speed-of-sound').textContent = `${currentSpeedOfSound.toFixed(2)} m/s`;
                     }
                 }).catch(err => {
                     if ($('weather-status')) $('weather-status').textContent = `❌ API ÉCHOUÉE`;
                 });
             }
             
-            // Met à jour l'
+            // Met à jour l'horloge locale (NTP)
             if (now) {
                 if ($('local-time') && !$('local-time').textContent.includes('Synchronisation...')) {
                     $('local-time').textContent = now.toLocaleTimeString('fr-FR');
@@ -989,4 +1002,5 @@ document.addEventListener('DOMContentLoaded', () => {
             
         }, DOM_SLOW_UPDATE_MS); 
     });
-});                    
+});
+           
