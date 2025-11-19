@@ -467,8 +467,8 @@ function startFastLoop() {
 
     }, IMU_UPDATE_RATE_MS);
 }
-// ===========================================
-// BLOC 4/4 : Initialisation DOM et Boucle Lente
+    // ===========================================
+// BLOC 4/4 : Logique de Démarrage et Boucle Lente (FINAL)
 // ===========================================
 
 /**
@@ -477,10 +477,8 @@ function startFastLoop() {
  * Météo, Astro, et Affichage de l'heure.
  */
 function startSlowLoop() {
-    // Définition de l'intervalle de rafraîchissement (3000 ms = 3 secondes)
     const DOM_SLOW_UPDATE_MS = 3000;
     
-    // Si la boucle est déjà lancée, on ne fait rien
     if (domSlowID !== null) return; 
 
     domSlowID = setInterval(() => {
@@ -541,16 +539,18 @@ function startSlowLoop() {
             }
         }
     }, DOM_SLOW_UPDATE_MS); 
-                }
+}
+
 /**
  * @function initSystem
  * Exécute l'initialisation critique du système (UKF, GPS, IMU, Boucle Rapide).
- * Cette fonction est appelée UNIQUEMENT par le clic de l'utilisateur.
+ * Cette fonction est appelée UNIQUEMENT par le clic de l'utilisateur sur le bouton de DÉMARRAGE.
  */
 function initSystem() {
     if (sTime !== null) return; // Sécurité anti-double-démarrage
     
-    // 1. Initialisation UKF (DOIT être fait avant le GPS/IMU)
+    // 1. Initialisation UKF (IMMÉDIATE)
+    // UKF doit être créé AVANT le GPS pour recevoir le premier fix
     if (typeof ProfessionalUKF === 'undefined') {
         alert("Erreur critique: La classe ProfessionalUKF est manquante.");
         return;
@@ -559,11 +559,11 @@ function initSystem() {
     
     // 2. Démarrage des systèmes critiques
     sTime = Date.now();
-    startGPS();        // Démarre la géolocalisation et le callback de correction UKF
-    startIMUListeners(); // Démarre les capteurs (Accél/Gyro)
-    startFastLoop(); // Démarre la boucle haute fréquence de PRÉDICTION UKF
+    startGPS();        
+    startIMUListeners(); 
+    startFastLoop(); 
 
-    // 3. Sync NTP en parallèle (Ne bloque pas l'initialisation)
+    // 3. Sync NTP en parallèle (Non bloquant)
     if ($('local-time')) $('local-time').textContent = 'Synchronisation...';
     syncH(lServH, lLocH).then(newTimes => {
         lServH = newTimes.lServH;
@@ -583,6 +583,12 @@ function initSystem() {
         toggleGpsBtn.textContent = '⏸️ PAUSE GPS';
     }
 }
+
+
+/**
+ * @function DOMContentLoaded
+ * Point d'entrée principal : se lance une fois le DOM chargé.
+ */
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
@@ -593,12 +599,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- BINDING DES CONTRÔLES (LIAISON AU DOM) ---
     
     // Bouton de Démarrage (▶️ DÉMARRER LE SYSTÈME)
-    // Assurez-vous que l'élément HTML qui contient le texte "DÉMARRER LE SYSTÈME" a l'ID `init-system-btn`
     const startButton = $('init-system-btn'); 
     if (startButton) {
+        // Lancement de initSystem() au premier clic (empêche la demande de capteurs sans action utilisateur)
         startButton.addEventListener('click', initSystem, { once: true });
     } else {
-         // Fallback : si pas de bouton de démarrage explicite, on lance tout immédiatement
+         // Fallback : si l'élément n'a pas l'ID, on lance initSystem immédiatement au chargement
          initSystem();
     }
     
@@ -606,11 +612,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGPS);
     if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
         currentGPSMode = e.target.value;
-        // Si le système est déjà lancé, on redémarre le GPS avec la nouvelle fréquence
         if (wID !== null) { stopGPS(false); startGPS(currentGPSMode); }
     });
     
-    // Autres contrôles
+    // Autres contrôles (à restaurer de votre code original)
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
     if ($('reset-distance-btn')) $('reset-distance-btn').addEventListener('click', resetDistance);
     if ($('reset-vmax-btn')) $('reset-vmax-btn').addEventListener('click', resetVMax);
@@ -623,6 +628,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Démarrage de la boucle lente (Astro/Météo)
-    // Celle-ci peut commencer immédiatement, car elle ne bloque rien de critique.
     startSlowLoop();
 });
