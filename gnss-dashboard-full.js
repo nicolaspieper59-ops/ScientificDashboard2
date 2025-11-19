@@ -4,7 +4,7 @@
 // =================================================================
 
 // =================================================================
-// BLOC 1/3 : ekf_logic.js (Constantes, EKF, Physique)
+// BLOC 1/4 : ekf_logic.js (Constantes, EKF, Physique)
 // =================================================================
 
 // --- CONSTANTES PHYSIQUES ET MATHÉMATIQUES ---
@@ -162,11 +162,9 @@ function getKalmanR(acc, alt, P_hPa, selectedEnv) {
     } 
 
     return Math.max(R_MIN, Math.min(R_MAX, R)); 
-}
-
-
+    }
 // =================================================================
-// BLOC 2/3 : astro_weather.js (NTP, Météo, Astro)
+// BLOC 2/4 : astro_weather.js (NTP, Météo, Astro)
 // =================================================================
 
 // --- CLÉS D'API & PROXY VERCEL ---
@@ -432,6 +430,7 @@ function updateAstro(latA, lonA, lServH, lLocH) {
     if ($('sun-alt')) $('sun-alt').textContent = `${(sunPos.altitude * R2D).toFixed(2)} °`;
     if ($('sun-azimuth')) $('sun-azimuth').textContent = `${(sunPos.azimuth * R2D).toFixed(2)} ° (S-O)`;
     
+    // CORRECTION (basé sur (9).html qui utilise 'moon-alt' et 'moon-azimuth')
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)} °`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)} ° (S-O)`;
     
@@ -451,18 +450,19 @@ function updateAstro(latA, lonA, lServH, lLocH) {
     if ($('moon-times')) $('moon-times').textContent = moonTimes ? 
         `↑ ${moonTimes.rise ? moonTimes.rise.toLocaleTimeString() : 'N/A'} / ↓ ${moonTimes.set ? moonTimes.set.toLocaleTimeString() : 'N/A'}` : 'N/D';
 
-    // (La fonction updateClockVisualization est appelée par updateAstro dans (5).js, mais pas ici. Ajoutons-la.)
     updateClockVisualization(now, sunPos, moonPos, sunTimes);
 }
-
-
 // =================================================================
-// BLOC 3/3 : app.js (Logique principale, Capteurs, DOM)
-// (VERSION FINALE UNIFIÉE)
+// BLOC 3/4 : app.js (Logique principale, Capteurs, Boucle)
+// (Utilise Generic Sensor API)
 // =================================================================
 
 // --- CONSTANTES DE CONFIGURATION SYSTÈME ---
-const DOM_SLOW_UPDATE_MS = 1000; 
+const MIN_DT = 0.01; 
+const GPS_OPTS = {
+    HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
+    LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
+};
 let lastMapUpdate = 0; 
 const MAP_UPDATE_INTERVAL = 3000; 
 
@@ -505,30 +505,26 @@ let map, marker, circle;
 const $ = id => document.getElementById(id);
 
 
-// --- GESTION DES CAPTEURS IMU (Generic Sensor API - La meilleure fonctionnalité) ---
+// --- GESTION DES CAPTEURS IMU (Generic Sensor API) ---
 function startIMUListeners() {
     if (emergencyStopActive) return;
     
-    // Fréquence de lecture des capteurs (Hz)
-    const SENSOR_FREQUENCY = 10; // 10 Hz (Compromis performance/batterie)
+    const SENSOR_FREQUENCY = 10; 
 
     try {
         if ($('imu-status')) $('imu-status').textContent = "Activation...";
         
-        // 1. VÉRIFICATION
         if (typeof Accelerometer === 'undefined' || typeof Gyroscope === 'undefined') {
              throw new Error("API Sensor non supportée.");
         }
         
-        // 2. ACCÉLÉROMÈTRE
+        // ACCÉLÉROMÈTRE
         const accSensor = new Accelerometer({ frequency: SENSOR_FREQUENCY }); 
         accSensor.addEventListener('reading', () => {
-            // Ces données sont SANS la gravité (accélération linéaire)
             real_accel_x = accSensor.x || 0;
             real_accel_y = accSensor.y || 0;
             real_accel_z = accSensor.z || 0;
             
-            // Mise à jour du DOM
             if ($('accel-x')) $('accel-x').textContent = `${real_accel_x.toFixed(2)} m/s²`;
             if ($('accel-y')) $('accel-y').textContent = `${real_accel_y.toFixed(2)} m/s²`;
             if ($('accel-z')) $('accel-z').textContent = `${real_accel_z.toFixed(2)} m/s²`;
@@ -536,7 +532,7 @@ function startIMUListeners() {
         accSensor.addEventListener('error', handleIMUError);
         accSensor.start();
 
-        // 3. GYROSCOPE
+        // GYROSCOPE
         const gyroSensor = new Gyroscope({ frequency: SENSOR_FREQUENCY });
         gyroSensor.addEventListener('reading', () => {
             angular_speed_x = gyroSensor.x || 0;
@@ -549,7 +545,7 @@ function startIMUListeners() {
         gyroSensor.addEventListener('error', handleIMUError);
         gyroSensor.start();
         
-        // 4. MAGNÉTOMÈTRE (Optionnel, mais présent dans l'HTML)
+        // MAGNÉTOMÈTRE
         if (typeof Magnetometer !== 'undefined') {
             const magSensor = new Magnetometer({ frequency: SENSOR_FREQUENCY });
             magSensor.addEventListener('reading', () => {
@@ -565,7 +561,7 @@ function startIMUListeners() {
         }
         
         if ($('imu-status')) $('imu-status').textContent = `Actif (${SENSOR_FREQUENCY} Hz)`;
-        imuError = null; // Réinitialise l'erreur en cas de succès
+        imuError = null; 
 
     } catch (error) {
         handleIMUError(error);
@@ -573,7 +569,7 @@ function startIMUListeners() {
 }
 
 function handleIMUError(error) {
-    imuError = error; // Stocke l'erreur
+    imuError = error; 
     let errMsg = error.message;
 
     if (error.name === 'SecurityError' || error.name === 'NotAllowedError') {
@@ -588,10 +584,7 @@ function handleIMUError(error) {
     console.error("ERREUR CRITIQUE IMU:", error.name, errMsg);
 }
 
-
 function stopIMUListeners() {
-    // (Note : L'API Generic Sensor n'a pas de méthode simple .stop() globale)
-    // Le rechargement de la page ou la fermeture de l'onglet les arrêtera.
     if ($('imu-status')) $('imu-status').textContent = "Inactif";
     real_accel_x = 0; real_accel_y = 0; real_accel_z = 0;
     angular_speed_x = 0; angular_speed_y = 0; angular_speed_z = 0;
@@ -697,7 +690,7 @@ function resumeSystem() {
         $('emergency-stop-btn').classList.remove('active');
     }
     startGPS();
-    startIMUListeners(); // Redémarre l'IMU aussi
+    startIMUListeners(); 
 }
 
 function handleErr(err) {
@@ -718,7 +711,6 @@ function handleErr(err) {
 function updateDisp(pos) {
     if (emergencyStopActive) return;
     
-    // Vérifie si l'IMU a échoué. Si oui, arrête la boucle de calcul EKF.
     if (imuError !== null) {
         if ($('speed-status-text')) $('speed-status-text').textContent = '⚠️ UKF HORS SERVICE (IMU ÉCHOUÉ)';
         return;
@@ -815,12 +807,11 @@ function updateDisp(pos) {
     let spd_kalman_input = spd3D_raw;
     let R_kalman_input = R_dyn;
     
-    // AMÉLIORATION : Utilise l'accélération linéaire de l'IMU (Generic Sensor API)
     const accel_mag_imu = Math.sqrt(real_accel_x**2 + real_accel_y**2 + real_accel_z**2);
     
     const isPlausiblyStopped = (
         spd3D_raw < ZUPT_RAW_THRESHOLD && 
-        accel_mag_imu < ZUPT_ACCEL_THRESHOLD && // Utilise l'IMU
+        accel_mag_imu < ZUPT_ACCEL_THRESHOLD && 
         R_dyn < R_MAX 
     ); 
     
@@ -831,7 +822,6 @@ function updateDisp(pos) {
     }
 
     // --- 7. FILTRE EKF VITESSE ---
-    // AMÉLIORATION : Utilise l'accélération IMU X comme entrée de contrôle (si alignée)
     let accel_sensor_input = real_accel_x; 
     
     const { kSpd: fSpd, kUncert: kUncert_new } = kFilter(kSpd, kUncert, spd_kalman_input, dt, R_kalman_input, accel_sensor_input);
@@ -909,11 +899,10 @@ function updateDisp(pos) {
     lPos.kAlt_old = kAlt_new; 
 
     updateMap(lat, lon, accRaw);
-}
-
-
+        }
 // ===========================================
-// INITIALISATION DES ÉVÉNEMENTS DOM
+// BLOC 4/4 : Initialisation des Événements DOM
+// (Utilise le bouton 'init-system-btn')
 // ===========================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -950,166 +939,158 @@ document.addEventListener('DOMContentLoaded', () => {
             if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC.toFixed(4)} m/s²`;
         }
     };
-    
-if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
-if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
+    if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
+    if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
 
-if ($('environment-select')) {
-    $('environment-select').addEventListener('change', (e) => { 
-        if (emergencyStopActive) return;
-        selectedEnvironment = e.target.value; 
-        if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`; 
-    });
-    if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`;
-}
-
-if ($('gps-accuracy-override')) {
-    $('gps-accuracy-override').addEventListener('change', (e) => {
-        gpsAccuracyOverride = parseFloat(e.target.value) || 0.0;
-    });
-}
-
-if ($('ukf-reactivity-mode')) {
-    $('ukf-reactivity-mode').addEventListener('change', (e) => {
-        // (Logique à implémenter si nécessaire, actuellement vide)
-    });
-}
-
-// --- Boutons Principaux ---
-if ($('toggle-gps-btn')) {
-    $('toggle-gps-btn').addEventListener('click', () => { 
-        if (emergencyStopActive) {
-            alert("Veuillez désactiver l'Arrêt d'urgence.");
-            return;
-        }
-        wID === null ? startGPS() : stopGPS(); 
-    });
-}
-if ($('freq-select')) $('freq-select').addEventListener('change', (e) => setGPSMode(e.target.value));
-
-if ($('emergency-stop-btn')) {
-    $('emergency-stop-btn').addEventListener('click', () => { 
-        if (!emergencyStopActive) { emergencyStop(); } else { resumeSystem(); }
-    });
-}
-
-// (Bouton Nether non trouvé dans (9).html, omis)
-
-if ($('reset-dist-btn')) {
-    $('reset-dist-btn').addEventListener('click', () => { 
-        if (emergencyStopActive) return; 
-        distM = 0; distMStartOffset = 0; timeMoving = 0; 
-    });
-}
-
-if ($('reset-max-btn')) {
-    $('reset-max-btn').addEventListener('click', () => { 
-        if (emergencyStopActive) return; 
-        maxSpd = 0; 
-    });
-}
-
-if ($('reset-all-btn')) {
-    $('reset-all-btn').addEventListener('click', () => { 
-        if (emergencyStopActive) return; 
-        if (confirm("Réinitialiser toutes les données de session ?")) { 
-            distM = 0; maxSpd = 0; distMStartOffset = 0; 
-            kSpd = 0; kUncert = 1000; 
-            timeMoving = 0; 
-            kAlt = null; kAltUncert = 10;
-            lPos = null; sTime = null;
-            if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`; 
-            if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`; 
-        } 
-    });
-}
-
-if ($('toggle-mode-btn')) {
-    $('toggle-mode-btn').addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-    });
-}
-
-// --- DÉMARRAGE DU SYSTÈME (Géré par le bouton init-system-btn) ---
-
-// --- DÉMARRAGE DU SYSTÈME (Géré par le bouton init-system-btn) ---
-
-const startButton = $('init-system-btn');
-if (startButton) {
-    startButton.addEventListener('click', () => {
-        
-        // 1. Initialise les valeurs de gravité
-        const initVals = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
-        G_ACC = initVals.G_ACC;
-        R_ALT_CENTER_REF = initVals.R_ALT_CENTER_REF;
-        
-        // 2. Démarre la synchro NTP, PUIS démarre le GPS et l'IMU
-        syncH(lServH, lLocH).then(newTimes => {
-            lServH = newTimes.lServH;
-            lLocH = newTimes.lLocH;
-            
-            // C'est ici que l'IMU (Generic Sensor API) et le GPS sont démarrés
-            startGPS(); // (startGPS démarre aussi l'IMU)
-            startIMUListeners(); // Redémarre l'IMU si non démarré par startGPS
+    if ($('environment-select')) {
+        $('environment-select').addEventListener('change', (e) => { 
+            if (emergencyStopActive) return;
+            selectedEnvironment = e.target.value; 
+            if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`; 
         });
-        
-        // 3. Cache le bouton de démarrage
-        startButton.style.display = 'none';
-        
-        // 4. Démarre la boucle lente (Astro/Météo/Horloge)
-        if (domID === null) {
-            domID = setInterval(() => {
-                const currentLat = lat || 43.296; 
-                const currentLon = lon || 5.370;
+        if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`;
+    }
+    
+    if ($('gps-accuracy-override')) {
+        $('gps-accuracy-override').addEventListener('change', (e) => {
+            gpsAccuracyOverride = parseFloat(e.target.value) || 0.0;
+        });
+    }
+    
+    if ($('ukf-reactivity-mode')) {
+        $('ukf-reactivity-mode').addEventListener('change', (e) => {
+            // (Logique à implémenter si nécessaire)
+        });
+    }
+
+    // --- Boutons Principaux ---
+    if ($('toggle-gps-btn')) {
+        $('toggle-gps-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) {
+                alert("Veuillez désactiver l'Arrêt d'urgence.");
+                return;
+            }
+            wID === null ? startGPS() : stopGPS(); 
+        });
+    }
+    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => setGPSMode(e.target.value));
+
+    if ($('emergency-stop-btn')) {
+        $('emergency-stop-btn').addEventListener('click', () => { 
+            if (!emergencyStopActive) { emergencyStop(); } else { resumeSystem(); }
+        });
+    }
+    
+    // (Bouton Nether non trouvé dans (9).html, omis)
+    
+    if ($('reset-dist-btn')) {
+        $('reset-dist-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            distM = 0; distMStartOffset = 0; timeMoving = 0; 
+        });
+    }
+    
+    if ($('reset-max-btn')) {
+        $('reset-max-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            maxSpd = 0; 
+        });
+    }
+    
+    if ($('reset-all-btn')) {
+        $('reset-all-btn').addEventListener('click', () => { 
+            if (emergencyStopActive) return; 
+            if (confirm("Réinitialiser toutes les données de session ?")) { 
+                distM = 0; maxSpd = 0; distMStartOffset = 0; 
+                kSpd = 0; kUncert = 1000; 
+                timeMoving = 0; 
+                kAlt = null; kAltUncert = 10;
+                lPos = null; sTime = null;
+                if ($('distance-total-km')) $('distance-total-km').textContent = `0.000 km | 0.00 m`; 
+                if ($('speed-max')) $('speed-max').textContent = `0.00000 km/h`; 
+            } 
+        });
+    }
+    
+    if ($('toggle-mode-btn')) {
+        $('toggle-mode-btn').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+        });
+    }
+    
+    // --- DÉMARRAGE DU SYSTÈME (Géré par le bouton init-system-btn) ---
+    
+    const startButton = $('init-system-btn');
+    if (startButton) {
+        startButton.addEventListener('click', () => {
+            
+            // 1. Initialise les valeurs de gravité
+            const initVals = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+            G_ACC = initVals.G_ACC;
+            R_ALT_CENTER_REF = initVals.R_ALT_CENTER_REF;
+            
+            // 2. Démarre la synchro NTP
+            syncH(lServH, lLocH).then(newTimes => {
+                lServH = newTimes.lServH;
+                lLocH = newTimes.lLocH;
                 
-                if (typeof updateAstro === 'function') {
-                    updateAstro(currentLat, currentLon, lServH, lLocH);
-                }
+                // 3. Démarre le GPS (qui ne démarre PAS l'IMU)
+                startGPS(); 
                 
-                // Resynchronisation NTP toutes les minutes
-                if (Math.floor(Date.now() / 1000) % 60 === 0) {
-                     syncH(lServH, lLocH).then(newTimes => {
-                        lServH = newTimes.lServH;
-                        lLocH = newTimes.lLocH;
-                     });
-                }
-                
-                // Récupération Météo (si position disponible)
-                if (lat && lon && !emergencyStopActive && typeof fetchWeather === 'function') {
-                    fetchWeather(lat, lon).then(data => {
-                        if (data) {
-                            // Stocke les valeurs pour le filtre EKF
-                            lastP_hPa = data.pressure_hPa;
-                            lastT_K = data.tempK;
-                            lastH_perc = data.humidity_perc / 100.0;
-                            
-                            // Met à jour le DOM météo
-                            if ($('temp-air-2')) $('temp-air-2').textContent = `${data.tempC.toFixed(1)} °C`;
-                            if ($('pressure-2')) $('pressure-2').textContent = `${data.pressure_hPa.toFixed(0)} hPa`;
-                            if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc} %`;
-                            if ($('air-density')) $('air-density').textContent = `${data.air_density.toFixed(3)} kg/m³`;
-                            if ($('dew-point')) $('dew-point').textContent = `${data.dew_point.toFixed(1)} °C`;
-                            if ($('weather-status')) $('weather-status').textContent = 'ACTIF';
-                        } else {
-                            if ($('weather-status')) $('weather-status').textContent = '❌ API ÉCHOUÉE';
-                        }
-                    });
-                }
-                
-                // Met à jour l'horloge locale (NTP)
-                const now = getCDate(lServH, lLocH);
-                if (now) {
-                    if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
-                        $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+                // 4. Démarre l'IMU (actionné par le clic pour les permissions)
+                startIMUListeners(); 
+            });
+            
+            // 5. Cache le bouton de démarrage
+            startButton.style.display = 'none';
+            
+            // 6. Démarre la boucle lente (Astro/Météo/Horloge)
+            if (domID === null) {
+                domID = setInterval(() => {
+                    const currentLat = lat || 43.296; 
+                    const currentLon = lon || 5.370;
+                    
+                    if (typeof updateAstro === 'function') {
+                        updateAstro(currentLat, currentLon, lServH, lLocH);
                     }
-                    if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
-                }
-                
-            }, DOM_SLOW_UPDATE_MS); 
-        }
-        
-    }, { once: true }); // Ne s'exécute qu'une seule fois
-}
-// Fin du document.addEventListener('DOMContentLoaded', ...)
+                    
+                    if (Math.floor(Date.now() / 1000) % 60 === 0) {
+                         syncH(lServH, lLocH).then(newTimes => {
+                            lServH = newTimes.lServH;
+                            lLocH = newTimes.lLocH;
+                         });
+                    }
+                    
+                    if (lat && lon && !emergencyStopActive && typeof fetchWeather === 'function') {
+                        fetchWeather(lat, lon).then(data => {
+                            if (data) {
+                                lastP_hPa = data.pressure_hPa;
+                                lastT_K = data.tempK;
+                                lastH_perc = data.humidity_perc / 100.0;
+                                
+                                if ($('temp-air-2')) $('temp-air-2').textContent = `${data.tempC.toFixed(1)} °C`;
+                                if ($('pressure-2')) $('pressure-2').textContent = `${data.pressure_hPa.toFixed(0)} hPa`;
+                                if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc} %`;
+                                if ($('air-density')) $('air-density').textContent = `${data.air_density.toFixed(3)} kg/m³`;
+                                if ($('dew-point')) $('dew-point').textContent = `${data.dew_point.toFixed(1)} °C`;
+                                if ($('weather-status')) $('weather-status').textContent = 'ACTIF';
+                            } else {
+                                if ($('weather-status')) $('weather-status').textContent = '❌ API ÉCHOUÉE';
+                            }
+                        });
+                    }
+                    
+                    const now = getCDate(lServH, lLocH);
+                    if (now) {
+                        if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
+                            $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+                        }
+                        if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
+                    }
+                    
+                }, DOM_SLOW_UPDATE_MS); 
+            }
+            
+        }, { once: true }); 
+    }
 });
-    // ... (Le code du bouton de démarrage principal que vous avez demandé dans la requête précédente suit ici)                            
