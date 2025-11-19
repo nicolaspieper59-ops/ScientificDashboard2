@@ -471,68 +471,158 @@ function startFastLoop() {
 // BLOC 4/4 : Initialisation DOM et Boucle Lente
 // ===========================================
 
-JavaScript
-
-// ===========================================
-// BLOC 4/4 : Initialisation DOM et Boucle Lente (CORRIGÉ POUR LE CLIC)
-// ===========================================
-
-function initSystem() {
-    if (sTime !== null) return; // Empêche la réinitialisation si déjà démarré
+/**
+ * @function startSlowLoop
+ * Démarre la boucle de rafraîchissement lente (3 secondes) pour les données non critiques :
+ * Météo, Astro, et Affichage de l'heure.
+ */
+function startSlowLoop() {
+    // Définition de l'intervalle de rafraîchissement (3000 ms = 3 secondes)
+    const DOM_SLOW_UPDATE_MS = 3000;
     
-    // 1. Initialisation UKF
+    // Si la boucle est déjà lancée, on ne fait rien
+    if (domSlowID !== null) return; 
+
+    domSlowID = setInterval(() => {
+        // Utilise la latitude/longitude EKF si disponible, sinon les valeurs de fallback
+        const currentLat = lat || 43.296; 
+        const currentLon = lon || 5.37;
+        
+        // Met à jour l'Astro
+        try {
+            updateAstro(currentLat, currentLon, lServH, lLocH);
+        } catch (e) {
+            console.error("Erreur dans updateAstro:", e);
+        }
+        
+        // Météo et Conditions Locales (Appel API externe)
+        if (lat && lon && !emergencyStopActive && typeof fetchWeather === 'function') {
+            fetchWeather(currentLat, currentLon).then(data => {
+                if (data) {
+                    // Stockage des données critiques pour l'UKF
+                    lastP_hPa = data.pressure_hPa;
+                    lastT_K = data.tempK;
+                    currentAirDensity = data.air_density;
+                    currentSpeedOfSound = getSpeedOfSound(data.tempK);
+                    
+                    // Mise à jour du DOM Météo
+                    if ($('weather-status')) $('weather-status').textContent = `ACTIF`;
+                    if ($('temp-air-2')) $('temp-air-2').textContent = `${data.tempC.toFixed(1)} °C`;
+                    if ($('pressure-2')) $('pressure-2').textContent = `${data.pressure_hPa.toFixed(0)} hPa`;
+                    if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc.toFixed(0)} %`;
+                    if ($('air-density')) $('air-density').textContent = `${data.air_density.toFixed(3)} kg/m³`;
+                    if ($('dew-point')) $('dew-point').textContent = `${data.dew_point.toFixed(1)} °C`;
+                }
+            }).catch(err => {
+                if ($('weather-status')) $('weather-status').textContent = `❌ API ÉCHOUÉE`;
+            });
+        }
+        
+        // Mise à jour de l'horloge locale (NTP)
+        const now = getCDate(lServH, lLocH);
+        if (now) {
+            if ($('local-time') && !$('local-time').textContent.includes('Synchronisation...')) {
+                $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+            }
+            if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
+        }
+        
+        // Logique Mode Nuit Auto (basée sur SunCalc)
+        if (typeof SunCalc !== 'undefined' && lat && lon) {
+            const sunTimes = SunCalc.getTimes(now, currentLat, currentLon);
+            const isNight = (now.getTime() < sunTimes.sunrise.getTime() || now.getTime() > sunTimes.sunset.getTime());
+            
+            if (isNight) {
+                document.body.classList.add('dark-mode');
+                if ($('toggle-mode-btn')) $('toggle-mode-btn').innerHTML = '<i class="fas fa-sun"></i> Mode Jour';
+            } else {
+                document.body.classList.remove('dark-mode');
+                if ($('toggle-mode-btn')) $('toggle-mode-btn').innerHTML = '<i class="fas fa-moon"></i> Mode Nuit';
+            }
+        }
+    }, DOM_SLOW_UPDATE_MS); 
+                }
+/**
+ * @function initSystem
+ * Exécute l'initialisation critique du système (UKF, GPS, IMU, Boucle Rapide).
+ * Cette fonction est appelée UNIQUEMENT par le clic de l'utilisateur.
+ */
+function initSystem() {
+    if (sTime !== null) return; // Sécurité anti-double-démarrage
+    
+    // 1. Initialisation UKF (DOIT être fait avant le GPS/IMU)
     if (typeof ProfessionalUKF === 'undefined') {
         alert("Erreur critique: La classe ProfessionalUKF est manquante.");
         return;
     }
     ukf = new ProfessionalUKF();
-
+    
     // 2. Démarrage des systèmes critiques
     sTime = Date.now();
-    startGPS();        
-    startIMUListeners(); 
-    startFastLoop();
+    startGPS();        // Démarre la géolocalisation et le callback de correction UKF
+    startIMUListeners(); // Démarre les capteurs (Accél/Gyro)
+    startFastLoop(); // Démarre la boucle haute fréquence de PRÉDICTION UKF
 
-    // 3. Sync NTP en parallèle
+    // 3. Sync NTP en parallèle (Ne bloque pas l'initialisation)
+    if ($('local-time')) $('local-time').textContent = 'Synchronisation...';
     syncH(lServH, lLocH).then(newTimes => {
         lServH = newTimes.lServH;
         lLocH = newTimes.lLocH;
+        if ($('local-time')) $('local-time').textContent = '✅ SYNCHRO NTP ACTIVE';
+    }).catch(() => {
+        if ($('local-time')) $('local-time').textContent = '❌ SYNCHRO ÉCHOUÉE';
     });
-
-    // 4. Démarrage de la boucle lente (Astro/Météo)
-    const DOM_SLOW_UPDATE_MS = 3000;
-    domSlowID = setInterval(() => {
-        const currentLat = lat || 43.296; 
-        const currentLon = lon || 5.37;
-
-    }, DOM_SLOW_UPDATE_MS); 
-
-    // Cache le bouton de démarrage
-    if ($('init-system-btn')) $('init-system-btn').style.display = 'none';
     
-    // Mettre à jour l'état GPS du bouton toggle-gps-btn
-    if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '⏸️ PAUSE GPS';
+    // 4. Mise à jour de l'UI après le clic
+    const startButton = $('init-system-btn');
+    if (startButton) {
+        startButton.style.display = 'none';
+    }
+    const toggleGpsBtn = $('toggle-gps-btn');
+    if (toggleGpsBtn) {
+        toggleGpsBtn.textContent = '⏸️ PAUSE GPS';
+    }
 }
-
-
 document.addEventListener('DOMContentLoaded', () => {
     
     initMap(); 
     
-    // Les valeurs initiales doivent être mises en place avant le démarrage
-    updateCelestialBody(currentCelestialBody, kAlt, 0, 0);
+    // Initialisation des valeurs géophysiques de base
+    updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
 
-    // --- LIER LE BOUTON DÉMARRER LE SYSTÈME ---
-    const startButton = $('init-system-btn'); // Assurez-vous que l'ID du bouton est 'init-system-btn'
+    // --- BINDING DES CONTRÔLES (LIAISON AU DOM) ---
+    
+    // Bouton de Démarrage (▶️ DÉMARRER LE SYSTÈME)
+    // Assurez-vous que l'élément HTML qui contient le texte "DÉMARRER LE SYSTÈME" a l'ID `init-system-btn`
+    const startButton = $('init-system-btn'); 
     if (startButton) {
         startButton.addEventListener('click', initSystem, { once: true });
     } else {
-         // Si le bouton n'existe pas, nous démarrons immédiatement (Fallback)
+         // Fallback : si pas de bouton de démarrage explicite, on lance tout immédiatement
          initSystem();
     }
     
-    // --- Autres écouteurs (Inchangés) ---
+    // GPS
     if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGPS);
+    if ($('freq-select')) $('freq-select').addEventListener('change', (e) => {
+        currentGPSMode = e.target.value;
+        // Si le système est déjà lancé, on redémarre le GPS avec la nouvelle fréquence
+        if (wID !== null) { stopGPS(false); startGPS(currentGPSMode); }
+    });
+    
+    // Autres contrôles
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
-    // ... (Ajouter ici tous les autres écouteurs de contrôles)
+    if ($('reset-distance-btn')) $('reset-distance-btn').addEventListener('click', resetDistance);
+    if ($('reset-vmax-btn')) $('reset-vmax-btn').addEventListener('click', resetVMax);
+    if ($('capture-data-btn')) $('capture-data-btn').addEventListener('click', captureData);
+    if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', resetAll);
+    if ($('toggle-mode-btn')) {
+        $('toggle-mode-btn').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+        });
+    }
+
+    // --- Démarrage de la boucle lente (Astro/Météo)
+    // Celle-ci peut commencer immédiatement, car elle ne bloque rien de critique.
+    startSlowLoop();
 });
