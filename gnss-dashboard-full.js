@@ -13,17 +13,13 @@ const dataOrDefault = (val, decimals, suffix = '') => {
 
 // --- CONSTANTES MATHÉMATIQUES ET PHYSIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-const C_L = 299792458;      // Vitesse de la lumière (m/s)
 const OMEGA_EARTH = 7.2921159e-5; // Vitesse de rotation de la Terre (rad/s)
 const R_AIR = 287.058;      // Constante spécifique de l'air sec (J/kg·K)
 const GAMMA = 1.4;          // Rapport des chaleurs spécifiques pour l'air sec
 const KMH_MS = 3.6;         // Conversion m/s vers km/h
 const MASS_KG = 70.0;       // Masse par défaut pour les calculs de force
-const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
-const WEATHER_CACHE_KEY = 'lastWeatherCache'; 
 const MIN_DT = 0.01; 
 const DOM_SLOW_UPDATE_MS = 1000;
-const WEATHER_UPDATE_MS = 30000;
 
 // --- PARAMÈTRES DU FILTRE DE KALMAN (EKF INS/GNSS - 15 ÉTATS) ---
 const STATE_SIZE = 15; 
@@ -147,6 +143,11 @@ function getMoonPhaseIcon(phase) {
     if (phase < 0.77) return "🌗"; 
     return "🌘"; 
 }
+function getMoonPhaseName(phase) {
+    if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune";
+    if (phase < 0.52) return "Pleine Lune";
+    return "Autres Phases"; 
+}
 function updateAstro(latA, lonA, lServH, lLocH) {
     const now = getCDate(lServH, lLocH); 
     if (typeof SunCalc === 'undefined' || !latA || !lonA || !now) return; 
@@ -154,11 +155,13 @@ function updateAstro(latA, lonA, lServH, lLocH) {
     const sunPos = SunCalc.getPosition(now, latA, lonA); 
     const moonIllum = SunCalc.getMoonIllumination(now); 
     const moonPos = SunCalc.getMoonPosition(now, latA, lonA); 
-    
+    const times = SunCalc.getTimes(now, latA, lonA);
+
     // Mise à jour DOM
     if ($('date-astro')) $('date-astro').textContent = now.toLocaleDateString('fr-FR');
     if ($('sun-altitude')) $('sun-altitude').textContent = `${(sunPos.altitude * R2D).toFixed(2)} °`; 
     if ($('sun-azimuth')) $('sun-azimuth').textContent = `${(sunPos.azimuth * R2D).toFixed(2)} °`; 
+    if ($('day-duration')) $('day-duration').textContent = `${((times.sunset - times.sunrise) / 3600000).toFixed(2)} h`;
     
     const phaseName = getMoonPhaseName(moonIllum.phase);
     const phaseIcon = getMoonPhaseIcon(moonIllum.phase);
@@ -167,13 +170,8 @@ function updateAstro(latA, lonA, lServH, lLocH) {
     if ($('moon-illuminated')) $('moon-illuminated').textContent = `${(moonIllum.fraction * 100).toFixed(1)} %`;
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)} °`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)} °`;
-}
-
-function getMoonPhaseName(phase) {
-    if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune";
-    if (phase < 0.52) return "Pleine Lune";
-    return "Autres Phases"; 
-                                                                                   }
+    if ($('moon-times')) $('moon-times').textContent = `N/A`; // Nécessite MoonCalc qui n'est pas inclus
+              }
 // =================================================================
 // BLOC 3/4 : Logique du Filtre EKF (Matricielle)
 // =================================================================
@@ -193,7 +191,7 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
     // 1. PRÉDICTION (INS)
     const P = X_k.subset(math.index([0, 1, 2], 0));
     const V = X_k.subset(math.index([3, 4, 5], 0));
-    const B_a = X_k.subset(math.index([9, 10, 11], 0)); // Biais Accel.
+    const B_a = X_k.subset(math.index([9, 10, 11], 0)); // Biais Accel. (simplifié, les autres états sont omis pour la démo)
     
     const Acc_corr_array = [imu.real_accel_x, imu.real_accel_y, imu.real_accel_z];
     const Acc_corr = math.subtract(math.matrix(Acc_corr_array).resize([3, 1]), B_a); 
@@ -217,6 +215,7 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
         const H_of_X = X_k_plus_1_nominal.subset(math.index([0, 1, 2], 0));
         const Z_RESIDUAL = math.subtract(Y_GPS, H_of_X);
         
+        // Matrice d'Observation H (pour Px, Py, Pz)
         const H_MATRIX = math.matrix([
             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -225,11 +224,13 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
         
         const R_MATRIX = math.identity(3).map(val => val * R_dyn);
 
+        // Gain de Kalman K
         const H_P = math.multiply(H_MATRIX, P_MATRIX);
         const S = math.add(math.multiply(H_P, math.transpose(H_MATRIX)), R_MATRIX); 
         const K_num = math.multiply(P_MATRIX, math.transpose(H_MATRIX));
         const K_GAIN = math.multiply(K_num, math.inv(S)); 
 
+        // Mise à jour de l'état final et de la covariance
         X_k_final = math.add(X_k_plus_1_nominal, math.multiply(K_GAIN, Z_RESIDUAL));
         const I = math.identity(STATE_SIZE);
         const I_K_H = math.subtract(I, math.multiply(K_GAIN, H_MATRIX));
@@ -240,7 +241,7 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
         stateVector: X_k_final.toArray().flat(), 
         covariance_diag: math.diag(P_MATRIX).toArray().flat()
     };
-}
+                                     }
 // =================================================================
 // BLOC 4/4 : Logique Principale et Boucle
 // =================================================================
@@ -266,7 +267,6 @@ let lastAirDensity = calculateAirDensity(lastP_hPa, lastT_K, hyperloopMode);
 let lastSpeedOfSound = calculateSpeedOfSound(lastT_K);
 
 let real_accel_x = 0, real_accel_y = 0, real_accel_z = 0;
-let sTime = null;
 
 // --- BOILERPLATE CARTES ---
 let map = null, marker = null, trace = [];
@@ -297,7 +297,9 @@ const gpsOptions = { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
 function gpsUpdateCallback(pos) { updateDisp(pos); }
 function startGPS() {
     if (navigator.geolocation) {
-        watchId = navigator.geolocation.watchPosition(gpsUpdateCallback, () => {}, gpsOptions);
+        watchId = navigator.geolocation.watchPosition(gpsUpdateCallback, () => {
+            if ($('speed-status-text')) $('speed-status-text').textContent = 'GPS ÉCHOUÉ';
+        }, gpsOptions);
     } 
 }
 function handleMotionEvent(event) {
@@ -315,7 +317,7 @@ function startIMUListeners() {
 function resetMaxValues() { distM = 0; maxSpd = 0; timeMoving = 0; }
 
 // ===========================================
-// FONCTION PRINCIPALE DE MISE À JOUR GPS (updateDisp) - CORRIGÉE
+// FONCTION PRINCIPALE DE MISE À JOUR GPS (updateDisp)
 // ===========================================
 
 function updateDisp(pos) {
@@ -335,7 +337,7 @@ function updateDisp(pos) {
         dt = (cTimePos - lPos.timestamp) / 1000; 
     } 
     else { 
-        // Initialisation de l'état EKF et de lPos (avec états filtrés)
+        // Initialisation de l'état EKF et de lPos
         EKF_STATE_VECTOR[0] = cLat; EKF_STATE_VECTOR[1] = cLon; EKF_STATE_VECTOR[2] = altRaw;
         lPos = { timestamp: cTimePos, speedMS_3D: 0, kAlt_old: altRaw, kLat_old: cLat, kLon_old: cLon }; 
         initMap(cLat, cLon); 
@@ -371,10 +373,9 @@ function updateDisp(pos) {
     kUncert = trace_V_cov; 
     const kAltUncert = Math.sqrt(newCovariance[2]);
     
-    // 💡 CORRECTION: Utilise les états EKF lissés pour le calcul de distance
+    // CORRECTION CRITIQUE: Utilise les états EKF lissés pour le calcul de distance
     const dist2D = dist(lPos.kLat_old, lPos.kLon_old, lat, lon, R_ALT_CENTER_REF);
-    distM += dist2D; // Utilise la distance EKF 2D (plus simple)
-    // Alternative: distM += V_ms * dt; // Utilise la vitesse EKF
+    distM += dist2D;
     
     if (V_ms > MIN_SPD) { timeMoving += dt; }
     if (V_ms > maxSpd) maxSpd = V_ms; 
@@ -403,7 +404,6 @@ function updateDisp(pos) {
     if ($('lon-display')) $('lon-display').textContent = dataOrDefault(lon, 6, ' °');
     if ($('alt-display')) $('alt-display').textContent = kAlt !== null ? dataOrDefault(kAlt, 2, ' m') : 'N/A';
     if ($('speed-sound')) $('speed-sound').textContent = dataOrDefault(lastSpeedOfSound, 2, ' m/s');
-
 
     // --- 5. SAUVEGARDE & MISE À JOUR CARTE ---
     // Enregistrement des états EKF lissés pour la prochaine itération
@@ -437,7 +437,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Boucle Lente (Astro/Météo/Temps)
         domID = setInterval(async () => {
-            const currentLat = lat || 43.284; // Default pour initialisation
+            const currentLat = lat || 43.284; 
             const currentLon = lon || 5.358;
             updateAstro(currentLat, currentLon, lServH, lLocH); 
             
