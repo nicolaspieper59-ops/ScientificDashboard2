@@ -110,14 +110,16 @@ class ProfessionalUKF {
 
     predict(imuData, dt) {
         // PLACEHOLDER (Simulation simplifiée)
-        const ax_corr = imuData.accel[0]; 
-        let vN = this.x.get([3]) + ax_corr * dt; 
-        if (Math.abs(vN) < MIN_SPD) vN = 0; // ZUPT
+        // La prédiction réelle utilise l'intégration Strapdown des données gyro et accel
+        const ax_corr = imuData.accel[0]; // Utilise l'accélération X de l'IMU
+        let vN = this.x.get([3]) + ax_corr * dt; // Simule la mise à jour de la vitesse Nord
+        
+        if (Math.abs(vN) < MIN_SPD) vN = 0; // ZUPT (Zero Velocity Update)
         this.x.set([3], vN); 
     }
 
     update(gpsData) {
-        // PLACEHOLDER : Correction directe
+        // PLACEHOLDER : Correction directe de la position et de la vitesse
         
         // 💡 CORRECTION CRITIQUE : Rejette les latitudes impossibles
         if (gpsData.latitude > 90.0 || gpsData.latitude < -90.0) {
@@ -125,10 +127,11 @@ class ProfessionalUKF {
             return; // Ne pas mettre à jour l'état avec des données corrompues
         }
         
-        this.x.set([0], gpsData.latitude * D2R);
-        this.x.set([1], gpsData.longitude * D2R);
-        this.x.set([2], gpsData.altitude);
+        this.x.set([0], gpsData.latitude * D2R); // Position Lat (rad)
+        this.x.set([1], gpsData.longitude * D2R); // Position Lon (rad)
+        this.x.set([2], gpsData.altitude); // Position Alt (m)
         
+        // Si le GPS fournit la vitesse, on l'utilise pour corriger la vitesse prédite
         if (gpsData.speed) {
             const oldSpeed = this.x.get([3]);
             this.x.set([3], oldSpeed * 0.8 + gpsData.speed * 0.2); // Simple fusion
@@ -208,7 +211,7 @@ function calculateDynamicMetrics(speed_ms, airDensity, soundSpeed, accel_long_im
     const coriolisForce = 2 * MASS_KG * speed_ms * OMEGA_EARTH * Math.cos(lat_rad); 
 
     return { mach, dynamicPressure, dragForce, accelLong, coriolisForce };
-            }
+                           }
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique
 // =================================================================
@@ -249,6 +252,14 @@ function getCDate(lServH, lLocH) {
     if (lServH === null || lLocH === null) { return new Date(); }
     const offset = performance.now() - lLocH;
     return new Date(lServH + offset);
+}
+
+function getWGS84Gravity(lat, alt) {
+    const latRad = lat * D2R; 
+    const sin2lat = Math.sin(latRad) ** 2;
+    const g_surface = WGS84_G_EQUATOR * (1 + WGS84_BETA * sin2lat) / Math.sqrt(1 - WGS84_E2 * sin2lat);
+    const g_local = g_surface * (1 - 2 * alt / WGS84_A);
+    return g_local; 
 }
 
 function getSpeedOfSound(tempK) {
@@ -362,7 +373,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
     if ($('moon-times')) $('moon-times').textContent = (moonTimes.rise && moonTimes.set) ? `${moonTimes.rise.toLocaleTimeString()} / ${moonTimes.set.toLocaleTimeString()}` : 'Circumpolaire';
-            }
+    }
 // =================================================================
 // BLOC 4/4 : Logique Applicative Principale (Core Loop & DOM Init)
 // =================================================================
@@ -576,9 +587,11 @@ function startFastLoop() {
         // 💡 CORRECTION CRITIQUE: Calcul de distance basé sur la trajectoire EKF
         let dist_step = 0;
         if (lPos && lPos.kLat_old !== undefined && isFinite(lat) && isFinite(lPos.kLat_old)) {
+            // Calcule la distance 2D depuis la *dernière position EKF*
             dist_step = dist2D(lPos.kLat_old, lPos.kLon_old, lat, lon, R_ALT_CENTER_REF);
         }
-        lPos = { kLat_old: lat, kLon_old: lon }; // Sauvegarde l'état EKF actuel
+        // Sauvegarde l'état EKF actuel (Lat/Lon) pour la prochaine itération
+        lPos = { kLat_old: lat, kLon_old: lon }; 
         
         distM += dist_step; // Ajoute la distance EKF lissée
         
@@ -670,10 +683,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('ukf-reactivity-mode')) {
         const reactivitySelect = $('ukf-reactivity-mode');
         reactivitySelect.value = currentUKFReactivity;
-        reactivitySelect.addEventListener('change', (e) => { currentUKFReactivity = e.target.value; });
+        reactivitySelect.addEventListener('change', (e) => { 
+            currentUKFReactivity = e.target.value;
+            const data = UKF_REACTIVITY_FACTORS[currentUKFReactivity];
+            if ($('ukf-reactivity-factor')) {
+                 $('ukf-reactivity-factor').textContent = `${data.DISPLAY} (x${data.MULT.toFixed(1)})`;
+            }
+        });
     }
     if ($('environment-select')) {
-        $('environment-select').addEventListener('change', (e) => { selectedEnvironment = e.target.value; });
+        $('environment-select').addEventListener('change', (e) => { 
+            selectedEnvironment = e.target.value; 
+            if ($('env-factor')) {
+                 $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].R_MULT.toFixed(1)})`;
+            }
+        });
     }
 
     // --- Boutons d'action ---
