@@ -63,6 +63,7 @@ const H_ISA_PERC = 50.0;
 // --- DYNAMIQUE DE TRAÎNÉE ---
 const REFERENCE_DRAG_AREA = 0.5; 
 const DRAG_COEFFICIENT = 1.2; 
+const MASS_KG = 70.0; // Masse par défaut (peut être écrasée par l'input)
 
 // --- CONFIGURATION SYSTÈME ---
 const MIN_DT = 0.01;        
@@ -110,16 +111,14 @@ class ProfessionalUKF {
 
     predict(imuData, dt) {
         // PLACEHOLDER (Simulation simplifiée)
-        // La prédiction réelle utilise l'intégration Strapdown des données gyro et accel
-        const ax_corr = imuData.accel[0]; // Utilise l'accélération X de l'IMU
-        let vN = this.x.get([3]) + ax_corr * dt; // Simule la mise à jour de la vitesse Nord
-        
-        if (Math.abs(vN) < MIN_SPD) vN = 0; // ZUPT (Zero Velocity Update)
+        const ax_corr = imuData.accel[0]; 
+        let vN = this.x.get([3]) + ax_corr * dt; 
+        if (Math.abs(vN) < MIN_SPD) vN = 0; // ZUPT
         this.x.set([3], vN); 
     }
 
     update(gpsData) {
-        // PLACEHOLDER : Correction directe de la position et de la vitesse
+        // PLACEHOLDER : Correction directe
         
         // 💡 CORRECTION CRITIQUE : Rejette les latitudes impossibles
         if (gpsData.latitude > 90.0 || gpsData.latitude < -90.0) {
@@ -131,7 +130,6 @@ class ProfessionalUKF {
         this.x.set([1], gpsData.longitude * D2R); // Position Lon (rad)
         this.x.set([2], gpsData.altitude); // Position Alt (m)
         
-        // Si le GPS fournit la vitesse, on l'utilise pour corriger la vitesse prédite
         if (gpsData.speed) {
             const oldSpeed = this.x.get([3]);
             this.x.set([3], oldSpeed * 0.8 + gpsData.speed * 0.2); // Simple fusion
@@ -211,7 +209,7 @@ function calculateDynamicMetrics(speed_ms, airDensity, soundSpeed, accel_long_im
     const coriolisForce = 2 * MASS_KG * speed_ms * OMEGA_EARTH * Math.cos(lat_rad); 
 
     return { mach, dynamicPressure, dragForce, accelLong, coriolisForce };
-                           }
+    }
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique
 // =================================================================
@@ -319,7 +317,7 @@ async function fetchWeather(lat, lon, currentAlt, hyperloopMode) {
     return { pressure_hPa: P_hPa, tempK: T_K, air_density: air_density, speed_sound: speed_sound };
 }
 
-// ... (Fonctions getSolarTime, getMinecraftTime omises) ...
+// ... (Fonctions getSolarTime omise) ...
 function getMinecraftTime(date) {
     if (date === null) return '00:00';
     const msSinceMidnightUTC = date.getUTCHours() * 3600000 + date.getUTCMilliseconds() + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000;
@@ -373,7 +371,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
     if ($('moon-times')) $('moon-times').textContent = (moonTimes.rise && moonTimes.set) ? `${moonTimes.rise.toLocaleTimeString()} / ${moonTimes.set.toLocaleTimeString()}` : 'Circumpolaire';
-    }
+}
 // =================================================================
 // BLOC 4/4 : Logique Applicative Principale (Core Loop & DOM Init)
 // =================================================================
@@ -590,8 +588,7 @@ function startFastLoop() {
             // Calcule la distance 2D depuis la *dernière position EKF*
             dist_step = dist2D(lPos.kLat_old, lPos.kLon_old, lat, lon, R_ALT_CENTER_REF);
         }
-        // Sauvegarde l'état EKF actuel (Lat/Lon) pour la prochaine itération
-        lPos = { kLat_old: lat, kLon_old: lon }; 
+        lPos = { kLat_old: lat, kLon_old: lon }; // Sauvegarde l'état EKF actuel
         
         distM += dist_step; // Ajoute la distance EKF lissée
         
