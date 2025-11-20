@@ -1,5 +1,5 @@
 // =================================================================
-// BLOC 1/4 : Constantes Globales et Configuration (MISE À JOUR)
+// BLOC 1/4 : Constantes Globales et Configuration
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -20,7 +20,6 @@ const GAMMA = 1.4;          // Rapport des chaleurs spécifiques pour l'air sec
 const KMH_MS = 3.6;         // Conversion m/s vers km/h
 const MASS_KG = 70.0;       // Masse par défaut pour les calculs de force
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
-const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
 const WEATHER_CACHE_KEY = 'lastWeatherCache'; 
 const MIN_DT = 0.01; 
 const DOM_SLOW_UPDATE_MS = 1000;
@@ -52,14 +51,14 @@ const T_ISA_C = 15.0;       // Température standard (°C)
 const H_ISA_PERC = 50.0;    // Humidité par défaut (%)
 const P_HYPERLOOP_PA = 10.0;     // Pression Hyperloop (Pascals)
 const RHO_VACUUM = 0.00001;      // Densité forcée pour Hyperloop
-const T_HYPERLOOP_C = 20.0;     
-const H_HYPERLOOP_PERC = 0.0;
+const T_HYPERLOOP_C = 20.0;
 // =================================================================
 // BLOC 2/4 : Fonctions Physiques, Météo et Astro
 // =================================================================
 
 // --- FONCTIONS MATHÉMATIQUES ET PHYSIQUES ---
 
+/** Calcule la distance de Haversine entre deux points (m) */
 const dist = (lat1, lon1, lat2, lon2, R_ref) => {
     const R = R_ref || R_ALT_CENTER_REF; 
     const dLat = (lat2 - lat1) * D2R, dLon = (lon2 - lon1) * D2R;
@@ -69,6 +68,7 @@ const dist = (lat1, lon1, lat2, lon2, R_ref) => {
     return R * c;
 };
 
+/** Gravité locale (simplifiée) */
 function getGravityLocal(alt, bodyKey = 'EARTH') {
     if (alt === null) alt = 0;
     const g_base = CELESTIAL_DATA[bodyKey]?.G || CELESTIAL_DATA['EARTH'].G;
@@ -76,17 +76,12 @@ function getGravityLocal(alt, bodyKey = 'EARTH') {
     return g_base * (R_base / (R_base + alt)) ** 2;
 }
 
+/** Bruit de mesure R dynamique pour le Kalman */
 function getKalmanR(acc, alt, P_hPa) {
     let acc_effective = acc;
     if (acc > MAX_ACC) return 1e9;
     
     let R = acc_effective * acc_effective; 
-    
-    // Ajout d'une pénalité pour les conditions d'isolation (souterrain/altitude)
-    if (P_hPa !== null) {
-        const pressureFactor = 1.0 + (P_ISA - P_hPa) / P_ISA * 0.1; 
-        R *= Math.max(1.0, pressureFactor); 
-    }
     if (alt !== null && alt < ALT_TH) R *= 4.0; 
 
     return Math.max(R_MIN, Math.min(R_MAX, R)); 
@@ -112,28 +107,73 @@ function calculateSpeedOfSound(T_K) {
 }
 
 // Fonction synchrone pour l'heure (simule NTP)
+let lServH = Date.now(), lLocH = Date.now(); 
 function getCDate(lServH, lLocH) {
     if (lServH === null || lLocH === null) return null; 
     const timeOffset = Date.now() - lLocH;
     return new Date(lServH + timeOffset);
 }
 
+// Fonction de récupération Météo (Simulée pour la démo)
+async function fetchWeather(lat, lon, currentAlt, hyperloopMode) {
+    const isIsolatedByAltitude = currentAlt !== null && (currentAlt > ALT_HIGH_TH || currentAlt < ALT_TH);
+
+    if (hyperloopMode) { 
+        // Mode Hyperloop
+        return { 
+            tempC: T_HYPERLOOP_C, tempK: T_HYPERLOOP_C + 273.15, 
+            pressure_hPa: P_HYPERLOOP_PA / 100, humidity_perc: 0.0 
+        };
+    } else if (isIsolatedByAltitude) {
+        // Mode Isolation (ISA par défaut)
+        return { 
+            tempC: T_ISA_C, tempK: T_ISA_C + 273.15, 
+            pressure_hPa: P_ISA, humidity_perc: H_ISA_PERC
+        };
+    } else {
+        // Simulation d'un appel API/Cache standard
+        return { 
+            tempC: T_ISA_C, tempK: T_ISA_C + 273.15, 
+            pressure_hPa: P_ISA, humidity_perc: H_ISA_PERC
+        };
+    }
+}
+
 // --- FONCTIONS ASTRO (SunCalc) ---
 function getMoonPhaseIcon(phase) {
     if (phase < 0.03 || phase > 0.97) return "🌑"; 
-    if (phase < 0.23) return "🌒"; 
     if (phase < 0.27) return "🌓"; 
-    if (phase < 0.48) return "🌔"; 
     if (phase < 0.52) return "🌕"; 
-    if (phase < 0.73) return "🌖"; 
     if (phase < 0.77) return "🌗"; 
     return "🌘"; 
 }
+function updateAstro(latA, lonA, lServH, lLocH) {
+    const now = getCDate(lServH, lLocH); 
+    if (typeof SunCalc === 'undefined' || !latA || !lonA || !now) return; 
+    
+    const sunPos = SunCalc.getPosition(now, latA, lonA); 
+    const moonIllum = SunCalc.getMoonIllumination(now); 
+    const moonPos = SunCalc.getMoonPosition(now, latA, lonA); 
+    
+    // Mise à jour DOM
+    if ($('date-astro')) $('date-astro').textContent = now.toLocaleDateString('fr-FR');
+    if ($('sun-altitude')) $('sun-altitude').textContent = `${(sunPos.altitude * R2D).toFixed(2)} °`; 
+    if ($('sun-azimuth')) $('sun-azimuth').textContent = `${(sunPos.azimuth * R2D).toFixed(2)} °`; 
+    
+    const phaseName = getMoonPhaseName(moonIllum.phase);
+    const phaseIcon = getMoonPhaseIcon(moonIllum.phase);
+    
+    if ($('moon-phase-name')) $('moon-phase-name').textContent = `${phaseName} ${phaseIcon}`;
+    if ($('moon-illuminated')) $('moon-illuminated').textContent = `${(moonIllum.fraction * 100).toFixed(1)} %`;
+    if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)} °`;
+    if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)} °`;
+}
+
 function getMoonPhaseName(phase) {
     if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune";
     if (phase < 0.52) return "Pleine Lune";
     return "Autres Phases"; 
-}
+                                                                                   }
 // =================================================================
 // BLOC 3/4 : Logique du Filtre EKF (Matricielle)
 // =================================================================
@@ -151,16 +191,14 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
     let X_k = math.matrix(stateVector).resize([STATE_SIZE, 1]); 
 
     // 1. PRÉDICTION (INS)
-    // Extraire Position (P), Vitesse (V), Biais Accéléromètre (B_a)
     const P = X_k.subset(math.index([0, 1, 2], 0));
     const V = X_k.subset(math.index([3, 4, 5], 0));
     const B_a = X_k.subset(math.index([9, 10, 11], 0)); // Biais Accel.
     
     const Acc_corr_array = [imu.real_accel_x, imu.real_accel_y, imu.real_accel_z];
     const Acc_corr = math.subtract(math.matrix(Acc_corr_array).resize([3, 1]), B_a); 
-    const G_vector = math.matrix([0, 0, -G_ACC]).resize([3, 1]); // Gravité sur l'axe Z
+    const G_vector = math.matrix([0, 0, -G_ACC]).resize([3, 1]); 
     
-    // Équations de mouvement : Vitesse et Position
     const V_k_plus_1 = math.add(V, math.multiply(math.add(Acc_corr, G_vector), dt));
     const P_k_plus_1 = math.add(P, math.multiply(V, dt));
 
@@ -168,7 +206,6 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
     X_k_plus_1_nominal.subset(math.index([0, 1, 2], 0), P_k_plus_1);
     X_k_plus_1_nominal.subset(math.index([3, 4, 5], 0), V_k_plus_1);
 
-    // Mise à jour de la Covariance P (Propagation du bruit de Processus Q)
     const Q_MATRIX = math.identity(STATE_SIZE).map(val => val * Q_PROCESS * dt); 
     P_MATRIX = math.add(P_MATRIX, Q_MATRIX); 
 
@@ -176,12 +213,10 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
     let X_k_final = X_k_plus_1_nominal;
 
     if (gps.lat !== null && R_dyn < R_MAX) { 
-        // Observation GPS
         const Y_GPS = math.matrix([gps.lat, gps.lon, gps.alt]).resize([3, 1]);
         const H_of_X = X_k_plus_1_nominal.subset(math.index([0, 1, 2], 0));
         const Z_RESIDUAL = math.subtract(Y_GPS, H_of_X);
         
-        // Matrice d'Observation H (pour Px, Py, Pz)
         const H_MATRIX = math.matrix([
             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -190,13 +225,11 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
         
         const R_MATRIX = math.identity(3).map(val => val * R_dyn);
 
-        // Gain de Kalman K
         const H_P = math.multiply(H_MATRIX, P_MATRIX);
         const S = math.add(math.multiply(H_P, math.transpose(H_MATRIX)), R_MATRIX); 
         const K_num = math.multiply(P_MATRIX, math.transpose(H_MATRIX));
         const K_GAIN = math.multiply(K_num, math.inv(S)); 
 
-        // Mise à jour de l'état final et de la covariance
         X_k_final = math.add(X_k_plus_1_nominal, math.multiply(K_GAIN, Z_RESIDUAL));
         const I = math.identity(STATE_SIZE);
         const I_K_H = math.subtract(I, math.multiply(K_GAIN, H_MATRIX));
@@ -207,13 +240,13 @@ function gnssInsEKF_step(dt, imu, gps, stateVector, R_dyn, G_ACC) {
         stateVector: X_k_final.toArray().flat(), 
         covariance_diag: math.diag(P_MATRIX).toArray().flat()
     };
-        }
+}
 // =================================================================
 // BLOC 4/4 : Logique Principale et Boucle
 // =================================================================
 
 // --- VARIABLES D'ÉTAT (Globales) ---
-let wID = null, domID = null, weatherID = null, lPos = null;
+let wID = null, domID = null, lPos = null;
 let distM = 0, maxSpd = 0, timeMoving = 0; 
 
 let EKF_STATE_VECTOR = Array(STATE_SIZE).fill(0.0);
@@ -227,7 +260,6 @@ let lat = 0, lon = 0;
 let emergencyStopActive = false;
 let hyperloopMode = false;
 
-let lServH = Date.now(), lLocH = Date.now(); 
 let lastP_hPa = P_ISA;      
 let lastT_K = T_ISA_C + 273.15;         
 let lastAirDensity = calculateAirDensity(lastP_hPa, lastT_K, hyperloopMode); 
@@ -259,7 +291,7 @@ function updateMap(cLat, cLon) {
     traceLine.setLatLngs(trace);
 }
 
-// --- BOILERPLATE CAPTEURS ---
+// --- GESTION CAPTEURS ---
 let watchId = null; 
 const gpsOptions = { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
 function gpsUpdateCallback(pos) { updateDisp(pos); }
@@ -269,7 +301,7 @@ function startGPS() {
     } 
 }
 function handleMotionEvent(event) {
-    // Simplification pour mobile: utilise l'accélération en m/s²
+    // Utilise l'accélération en m/s²
     real_accel_x = event.accelerationIncludingGravity.x; 
     real_accel_y = event.accelerationIncludingGravity.y; 
     real_accel_z = event.accelerationIncludingGravity.z; 
@@ -279,47 +311,6 @@ function startIMUListeners() {
         window.addEventListener('devicemotion', handleMotionEvent);
         if ($('speed-status-text')) $('speed-status-text').textContent = 'IMU ACTIF';
     }
-}
-function fetchWeather(lat, lon, currentAlt, hyperloopMode) {
-    // La logique fetchWeather est conservée de la version précédente (dans le BLOC 2)
-    // Elle nécessite un proxy pour fonctionner hors-ligne. Ici on utilise l'API/cache/ISA.
-    return new Promise(async (resolve, reject) => {
-        // Logique complète de récupération/cache/fallback (Non incluse ici pour la concision)
-        // Se résoud avec { tempC, tempK, pressure_hPa, humidity_perc, air_density, speed_sound, isIsolated }
-        
-        let data = null, isIsolated = false;
-        const isIsolatedByAltitude = currentAlt !== null && (currentAlt > ALT_HIGH_TH || currentAlt < ALT_TH);
-
-        if (hyperloopMode) { 
-            data = { tempC: T_HYPERLOOP_C, pressure_hPa: P_HYPERLOOP_PA / 100, humidity_perc: H_HYPERLOOP_PERC };
-        } else if (isIsolatedByAltitude) {
-            data = { tempC: T_ISA_C, pressure_hPa: P_ISA, humidity_perc: H_ISA_PERC };
-            isIsolated = true;
-        } else {
-             // Simulation de l'appel API ou Cache
-             data = { tempC: T_ISA_C, pressure_hPa: P_ISA, humidity_perc: H_ISA_PERC };
-        }
-        
-        const T_C = data.tempC;
-        const T_K = T_C + 273.15;
-        const P_hPa = data.pressure_hPa;
-        const H_perc = data.humidity_perc;
-        
-        resolve({
-            tempC: T_C, tempK: T_K, pressure_hPa: P_hPa, humidity_perc: H_perc,
-            air_density: calculateAirDensity(P_hPa, T_K, hyperloopMode), 
-            speed_sound: calculateSpeedOfSound(T_K), isIsolated: isIsolated
-        });
-    });
-}
-function updateAstro(latA, lonA, lServH, lLocH) {
-    // La logique SunCalc est conservée de la version précédente (dans le BLOC 2)
-    const now = getCDate(lServH, lLocH); 
-    if (typeof SunCalc === 'undefined' || !latA || !lonA || !now) return; 
-    
-    const sunPos = SunCalc.getPosition(now, latA, lonA); 
-    const moonIllum = SunCalc.getMoonIllumination(now); 
-    // Mise à jour DOM...
 }
 function resetMaxValues() { distM = 0; maxSpd = 0; timeMoving = 0; }
 
@@ -344,7 +335,7 @@ function updateDisp(pos) {
         dt = (cTimePos - lPos.timestamp) / 1000; 
     } 
     else { 
-        // Initialisation du premier état avec les données GPS brutes
+        // Initialisation de l'état EKF et de lPos (avec états filtrés)
         EKF_STATE_VECTOR[0] = cLat; EKF_STATE_VECTOR[1] = cLon; EKF_STATE_VECTOR[2] = altRaw;
         lPos = { timestamp: cTimePos, speedMS_3D: 0, kAlt_old: altRaw, kLat_old: cLat, kLon_old: cLon }; 
         initMap(cLat, cLon); 
@@ -380,9 +371,11 @@ function updateDisp(pos) {
     kUncert = trace_V_cov; 
     const kAltUncert = Math.sqrt(newCovariance[2]);
     
-    // CORRECTION CRITIQUE : Utilise les états EKF lissés de l'itération précédente (lPos.kLat_old) et actuels (lat)
+    // 💡 CORRECTION: Utilise les états EKF lissés pour le calcul de distance
     const dist2D = dist(lPos.kLat_old, lPos.kLon_old, lat, lon, R_ALT_CENTER_REF);
-    distM += V_ms * dt; // Utilise la vitesse lissée EKF
+    distM += dist2D; // Utilise la distance EKF 2D (plus simple)
+    // Alternative: distM += V_ms * dt; // Utilise la vitesse EKF
+    
     if (V_ms > MIN_SPD) { timeMoving += dt; }
     if (V_ms > maxSpd) maxSpd = V_ms; 
 
@@ -395,8 +388,10 @@ function updateDisp(pos) {
     
     // --- 4. MISE À JOUR DU DOM ---
     if ($('speed-stable')) $('speed-stable').textContent = dataOrDefault(V_ms * KMH_MS, 2);
+    if ($('speed-stable-ms')) $('speed-stable-ms').textContent = dataOrDefault(V_ms, 3, ' m/s');
     if ($('distance-total-km')) $('distance-total-km').textContent = `${dataOrDefault(distM / 1000, 3)} km | ${dataOrDefault(distM, 2)} m`;
     if ($('speed-max')) $('speed-max').textContent = dataOrDefault(maxSpd * KMH_MS, 2, ' km/h');
+    if ($('time-moving')) $('time-moving').textContent = dataOrDefault(timeMoving, 2, ' s');
     if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach_number, 4);
     if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(dynamic_pressure_q, 2, ' Pa');
     if ($('drag-force')) $('drag-force').textContent = dataOrDefault(drag_force, 2, ' N');
@@ -407,6 +402,8 @@ function updateDisp(pos) {
     if ($('lat-display')) $('lat-display').textContent = dataOrDefault(lat, 6, ' °');
     if ($('lon-display')) $('lon-display').textContent = dataOrDefault(lon, 6, ' °');
     if ($('alt-display')) $('alt-display').textContent = kAlt !== null ? dataOrDefault(kAlt, 2, ' m') : 'N/A';
+    if ($('speed-sound')) $('speed-sound').textContent = dataOrDefault(lastSpeedOfSound, 2, ' m/s');
+
 
     // --- 5. SAUVEGARDE & MISE À JOUR CARTE ---
     // Enregistrement des états EKF lissés pour la prochaine itération
@@ -423,11 +420,12 @@ function updateDisp(pos) {
 document.addEventListener('DOMContentLoaded', () => {
     $('hyperloop-toggle-btn').addEventListener('click', () => {
         hyperloopMode = !hyperloopMode;
-        // La logique d'affichage et de mise à jour de la météo est gérée dans l'intervalle lent
+        $('hyperloop-toggle-btn').textContent = hyperloopMode ? 'HYPERLOOP ACTIF' : 'HYPERLOOP INACTIF';
+        $('hyperloop-toggle-btn').classList.toggle('active', hyperloopMode);
     });
     $('emergency-stop-btn').addEventListener('click', () => {
         emergencyStopActive = !emergencyStopActive;
-        // Logique de Stop/Start GPS/IMU
+        $('emergency-stop-btn').textContent = emergencyStopActive ? 'ARRÊT D\'URGENCE (ON)' : 'ARRÊT D\'URGENCE (OFF)';
     });
     $('reset-dist-btn').addEventListener('click', resetMaxValues);
 
@@ -438,30 +436,35 @@ document.addEventListener('DOMContentLoaded', () => {
         $('init-system-btn').style.display = 'none';
         
         // Boucle Lente (Astro/Météo/Temps)
-        domID = setInterval(() => {
-            const currentLat = lat || 43.284; 
+        domID = setInterval(async () => {
+            const currentLat = lat || 43.284; // Default pour initialisation
             const currentLon = lon || 5.358;
-            updateAstro(currentLat, currentLon, lServH, lLocH); // Assurez-vous que SunCalc est chargé
+            updateAstro(currentLat, currentLon, lServH, lLocH); 
             
             // Mise à jour Météo Périodique
             if (!emergencyStopActive) {
-                fetchWeather(currentLat, currentLon, kAlt, hyperloopMode).then(data => {
-                    if (data) {
-                        lastP_hPa = data.pressure_hPa;
-                        lastT_K = data.tempK;
-                        lastAirDensity = data.air_density;
-                        lastSpeedOfSound = data.speed_sound;
-                        
-                        // Mise à jour DOM Météo (à compléter)
-                        if ($('temp-air')) $('temp-air').textContent = `${data.tempC.toFixed(1)} °C`;
-                    }
-                });
+                const data = await fetchWeather(currentLat, currentLon, kAlt, hyperloopMode);
+                if (data) {
+                    lastP_hPa = data.pressure_hPa;
+                    lastT_K = data.tempK;
+                    lastAirDensity = calculateAirDensity(lastP_hPa, lastT_K, hyperloopMode);
+                    lastSpeedOfSound = calculateSpeedOfSound(lastT_K);
+                    
+                    // Mise à jour DOM Météo
+                    if ($('weather-status')) $('weather-status').textContent = `ACTIF`;
+                    if ($('temp-air')) $('temp-air').textContent = `${data.tempC.toFixed(1)} °C`;
+                    if ($('pressure-2')) $('pressure-2').textContent = `${data.pressure_hPa.toFixed(0)} hPa`;
+                    if ($('humidity-2')) $('humidity-2').textContent = `${data.humidity_perc.toFixed(0)} %`;
+                    if ($('air-density')) $('air-density').textContent = `${lastAirDensity.toFixed(3)} kg/m³`;
+                    if ($('dew-point')) $('dew-point').textContent = `${calculateDewPoint(data.tempC, data.humidity_perc).toFixed(1)} °C`;
+                }
             }
             
             // Mise à jour Horloge
             const now = getCDate(lServH, lLocH);
             if (now) $('local-time').textContent = now.toLocaleTimeString('fr-FR');
             if (now) $('date-display').textContent = now.toLocaleDateString('fr-FR');
+            
         }, DOM_SLOW_UPDATE_MS); 
         
     }, { once: true });
