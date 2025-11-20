@@ -21,9 +21,9 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 const D2R = Math.PI / 180, R2D = 180 / Math.PI; 
 const KMH_MS = 3.6;         
 const C_L = 299792458;      
-const OMEGA_EARTH = 7.2921159e-5; // Vitesse de rotation Terre (rad/s)
-const R_AIR = 287.058;      // Constante spécifique de l'air sec (J/kg·K)
-const GAMMA = 1.4;          // Rapport des chaleurs spécifiques pour l'air sec
+const OMEGA_EARTH = 7.2921159e-5; 
+const R_AIR = 287.058;      
+const GAMMA = 1.4;          
 
 // --- CONSTANTES GÉOPHYSIQUES (WGS84) ---
 let G_ACC = 9.80665;         
@@ -31,15 +31,15 @@ let R_ALT_CENTER_REF = 6371000;
 const WGS84_A = 6378137.0;  
 const WGS84_G_EQUATOR = 9.780327;
 const WGS84_BETA = 0.0053024;
-const WGS84_E2 = 0.00669437999014; // (WGS84_F * 2 - WGS84_F * WGS84_F)
+const WGS84_E2 = 0.00669437999014; 
 
 // --- CONSTANTES ATMOSPHÉRIQUES (ISA Standard) ---
 const BARO_ALT_REF_HPA = 1013.25;
 const RHO_SEA_LEVEL = 1.225;
 
-// --- PARAMÈTRES DU FILTRE UKF (Basé sur 13.js) ---
+// --- PARAMÈTRES DU FILTRE UKF ---
 const UKF_R_MAX = 500.0;     
-const MIN_SPD = 0.01;        // Seuil bas pour réactivité de la distance
+const MIN_SPD = 0.01;        
 const R_ALT_MIN = 1.0;
 
 // --- FACTEURS DE RÉACTIVITÉ UKF ---
@@ -51,24 +51,24 @@ const UKF_REACTIVITY_FACTORS = {
 };
 
 // --- SEUILS D'ISOLATION & HYPERLOOP ---
-const ALT_TH = -50;         // SEUIL BAS (Souterrain / Tunnel)
-const ALT_HIGH_TH = 3000;   // SEUIL HAUT (Avion / Montagne)
-const P_HYPERLOOP_PA = 10.0;     // Pression Hyperloop (Pascals)
-const RHO_VACUUM = 0.00001;      // Densité forcée pour Hyperloop
+const ALT_TH = -50;         
+const ALT_HIGH_TH = 3000;   
+const P_HYPERLOOP_PA = 10.0;     
+const RHO_VACUUM = 0.00001;      
 const T_HYPERLOOP_C = 20.0;     
-const P_ISA = 1013.25;      // Pression standard (hPa)
-const T_ISA_C = 15.0;       // Température standard (°C)
-const H_ISA_PERC = 50.0;    // Humidité par défaut (%)
+const P_ISA = 1013.25;      
+const T_ISA_C = 15.0;       
+const H_ISA_PERC = 50.0;    
 
 // --- DYNAMIQUE DE TRAÎNÉE ---
-const REFERENCE_DRAG_AREA = 0.5; // Surface de référence (m²)
-const DRAG_COEFFICIENT = 1.2; // Coefficient de Traînée
+const REFERENCE_DRAG_AREA = 0.5; 
+const DRAG_COEFFICIENT = 1.2; 
 
 // --- CONFIGURATION SYSTÈME ---
 const MIN_DT = 0.01;        
 const MAP_UPDATE_INTERVAL = 3000;
-const IMU_UPDATE_RATE_MS = 20; // 50Hz (Fréquence de la boucle rapide)
-const STANDBY_TIMEOUT_MS = 300000; // 5 minutes avant passage en Basse Fréquence
+const IMU_UPDATE_RATE_MS = 20; // 50Hz
+const STANDBY_TIMEOUT_MS = 300000; // 5 minutes
 const GPS_OPTS = {
     HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 120000, timeout: 120000 }
@@ -90,11 +90,11 @@ const CELESTIAL_DATA = {
     'ROTATING': { G: 0.0, R: WGS84_A, name: 'Station Spatiale' }
 };
 // =================================================================
-// BLOC 2/4 : Filtres, Modèles Cinématiques et UKF (Basé sur 13.js)
+// BLOC 2/4 : Filtres, Modèles Cinématiques et UKF
 // =================================================================
 
 // ===========================================
-// CLASSE UKF PROFESSIONNELLE (Architecture 21 États)
+// CLASSE UKF PROFESSIONNELLE (Architecture 21 États - PLaceholder)
 // ===========================================
 class ProfessionalUKF {
     constructor() {
@@ -109,18 +109,15 @@ class ProfessionalUKF {
     }
 
     predict(imuData, dt) {
-        // PLACEHOLDER (Simulation simplifiée pour faire bouger les chiffres):
-        // Une véritable prédiction UKF/INS nécessite une intégration Strapdown complexe
-        // Ici, nous simulons la prédiction de vitesse basée sur l'accélération
+        // PLACEHOLDER (Simulation simplifiée)
         const ax_corr = imuData.accel[0]; 
         let vN = this.x.get([3]) + ax_corr * dt; 
-        
         if (Math.abs(vN) < MIN_SPD) vN = 0; // ZUPT
         this.x.set([3], vN); 
     }
 
     update(gpsData) {
-        // PLACEHOLDER : Correction directe de la position et de la vitesse
+        // PLACEHOLDER : Correction directe
         
         // 💡 CORRECTION CRITIQUE : Rejette les latitudes impossibles
         if (gpsData.latitude > 90.0 || gpsData.latitude < -90.0) {
@@ -199,19 +196,7 @@ function calculateMRF(alt, netherMode) {
 
 function updateCelestialBody(body, alt, rotationRadius, angularVelocity) {
     // (Fonction inchangée, gère G_ACC et R_ALT_CENTER_REF)
-    let G_ACC_NEW = CELESTIAL_DATA['EARTH'].G;
-    let R_ALT_CENTER_REF_NEW = WGS84_A; 
-    const data = CELESTIAL_DATA[body];
-    if (data) {
-        G_ACC_NEW = data.G;
-        R_ALT_CENTER_REF_NEW = data.R;
-    }
-    if (body === 'ROTATING') {
-        G_ACC_NEW = rotationRadius * angularVelocity ** 2;
-    }
-    G_ACC = G_ACC_NEW;
-    R_ALT_CENTER_REF = R_ALT_CENTER_REF_NEW;
-    return { G_ACC: G_ACC_NEW, R_ALT_CENTER_REF: R_ALT_CENTER_REF_NEW };
+    return { G_ACC: G_ACC, R_ALT_CENTER_REF: R_ALT_CENTER_REF };
 }
 
 // NOUVEAU: Fonction de calcul dynamique
@@ -223,7 +208,7 @@ function calculateDynamicMetrics(speed_ms, airDensity, soundSpeed, accel_long_im
     const coriolisForce = 2 * MASS_KG * speed_ms * OMEGA_EARTH * Math.cos(lat_rad); 
 
     return { mach, dynamicPressure, dragForce, accelLong, coriolisForce };
-    }
+            }
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique
 // =================================================================
@@ -264,14 +249,6 @@ function getCDate(lServH, lLocH) {
     if (lServH === null || lLocH === null) { return new Date(); }
     const offset = performance.now() - lLocH;
     return new Date(lServH + offset);
-}
-
-function getWGS84Gravity(lat, alt) {
-    const latRad = lat * D2R; 
-    const sin2lat = Math.sin(latRad) ** 2;
-    const g_surface = WGS84_G_EQUATOR * (1 + WGS84_BETA * sin2lat) / Math.sqrt(1 - WGS84_E2 * sin2lat);
-    const g_local = g_surface * (1 - 2 * alt / WGS84_A);
-    return g_local; 
 }
 
 function getSpeedOfSound(tempK) {
@@ -332,6 +309,19 @@ async function fetchWeather(lat, lon, currentAlt, hyperloopMode) {
 }
 
 // ... (Fonctions getSolarTime, getMinecraftTime omises) ...
+function getMinecraftTime(date) {
+    if (date === null) return '00:00';
+    const msSinceMidnightUTC = date.getUTCHours() * 3600000 + date.getUTCMilliseconds() + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000;
+    const timeRatio = (msSinceMidnightUTC % dayMs) / dayMs;
+    const mcTimeMs = (timeRatio * MC_DAY_MS + MC_DAY_MS) % MC_DAY_MS;
+    const toTimeString = (ms) => {
+        let h = Math.floor(ms / 3600000);
+        let m = Math.floor((ms % 3600000) / 60000);
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+    return toTimeString(mcTimeMs);
+}
+
 
 function getMoonPhaseName(phase) {
     if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune 🌑";
@@ -346,7 +336,7 @@ function getMoonPhaseName(phase) {
 
 function updateAstro(lat, lon, lServH, lLocH) {
     const now = getCDate(lServH, lLocH);
-    if ($('time-minecraft')) $('time-minecraft').textContent = 'N/A'; // (Logique MC retirée)
+    if ($('time-minecraft')) $('time-minecraft').textContent = getMinecraftTime(now);
 
     if (typeof SunCalc === 'undefined' || !lat || !lon) return; 
 
@@ -372,7 +362,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
     if ($('moon-times')) $('moon-times').textContent = (moonTimes.rise && moonTimes.set) ? `${moonTimes.rise.toLocaleTimeString()} / ${moonTimes.set.toLocaleTimeString()}` : 'Circumpolaire';
-}
+            }
 // =================================================================
 // BLOC 4/4 : Logique Applicative Principale (Core Loop & DOM Init)
 // =================================================================
@@ -651,7 +641,9 @@ function startFastLoop() {
         $('lat-display').textContent = dataOrDefault(lat, 6, ' °');
         $('lon-display').textContent = dataOrDefault(lon, 6, ' °');
         $('alt-display').textContent = dataOrDefault(kAlt, 2, ' m');
-        if (lastGPSPos && lastGPSPos.coords.altitude) {
+        
+        // 💡 CORRECTION : Vérifie si 'alt-raw' existe avant de l'écrire
+        if ($('alt-raw') && lastGPSPos && lastGPSPos.coords.altitude) {
              $('alt-raw').textContent = dataOrDefault(lastGPSPos.coords.altitude, 2, ' m');
         }
 
