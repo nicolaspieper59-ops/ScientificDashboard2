@@ -371,7 +371,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
     if ($('moon-times')) $('moon-times').textContent = (moonTimes.rise && moonTimes.set) ? `${moonTimes.rise.toLocaleTimeString()} / ${moonTimes.set.toLocaleTimeString()}` : 'Circumpolaire';
-}
+                    }
 // =================================================================
 // BLOC 4/4 : Logique Applicative Principale (Core Loop & DOM Init)
 // =================================================================
