@@ -1,6 +1,5 @@
 // =================================================================
 // BLOC 1/4 : Constantes Globales et Configuration
-// Basé sur les fichiers (10), (12), (13)
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -30,6 +29,9 @@ const GAMMA = 1.4;          // Rapport des chaleurs spécifiques pour l'air sec
 let G_ACC = 9.80665;         
 let R_ALT_CENTER_REF = 6371000;
 const WGS84_A = 6378137.0;  
+const WGS84_G_EQUATOR = 9.780327;
+const WGS84_BETA = 0.0053024;
+const WGS84_E2 = 0.00669437999014; // (WGS84_F * 2 - WGS84_F * WGS84_F)
 
 // --- CONSTANTES ATMOSPHÉRIQUES (ISA Standard) ---
 const BARO_ALT_REF_HPA = 1013.25;
@@ -40,7 +42,7 @@ const UKF_R_MAX = 500.0;
 const MIN_SPD = 0.01;        // Seuil bas pour réactivité de la distance
 const R_ALT_MIN = 1.0;
 
-// --- NOUVEAU : FACTEURS DE RÉACTIVITÉ UKF ---
+// --- FACTEURS DE RÉACTIVITÉ UKF ---
 const UKF_REACTIVITY_FACTORS = {
     'AUTO': { MULT: 1.0, DISPLAY: 'Automatique' },
     'NORMAL': { MULT: 1.0, DISPLAY: 'Normal' },
@@ -48,7 +50,7 @@ const UKF_REACTIVITY_FACTORS = {
     'STABLE': { MULT: 2.5, DISPLAY: 'Microscopique' },
 };
 
-// --- NOUVEAU : SEUILS D'ISOLATION & HYPERLOOP ---
+// --- SEUILS D'ISOLATION & HYPERLOOP ---
 const ALT_TH = -50;         // SEUIL BAS (Souterrain / Tunnel)
 const ALT_HIGH_TH = 3000;   // SEUIL HAUT (Avion / Montagne)
 const P_HYPERLOOP_PA = 10.0;     // Pression Hyperloop (Pascals)
@@ -58,7 +60,7 @@ const P_ISA = 1013.25;      // Pression standard (hPa)
 const T_ISA_C = 15.0;       // Température standard (°C)
 const H_ISA_PERC = 50.0;    // Humidité par défaut (%)
 
-// --- NOUVEAU : DYNAMIQUE DE TRAÎNÉE ---
+// --- DYNAMIQUE DE TRAÎNÉE ---
 const REFERENCE_DRAG_AREA = 0.5; // Surface de référence (m²)
 const DRAG_COEFFICIENT = 1.2; // Coefficient de Traînée
 
@@ -103,7 +105,7 @@ class ProfessionalUKF {
         this.x = math.zeros(this.N_STATES); 
         this.P = math.diag(Array(this.N_STATES).fill(1e-2)); 
         this.Q = math.diag(Array(this.N_STATES).fill(1e-6));
-        // (Initialisation complète de l'UKF)
+        // (Initialisation complète des poids UKF omise pour la concision)
     }
 
     predict(imuData, dt) {
@@ -119,7 +121,6 @@ class ProfessionalUKF {
 
     update(gpsData) {
         // PLACEHOLDER : Correction directe de la position et de la vitesse
-        // Une véritable mise à jour UKF utilise les Sigma Points pour corriger l'état
         
         // 💡 CORRECTION CRITIQUE : Rejette les latitudes impossibles
         if (gpsData.latitude > 90.0 || gpsData.latitude < -90.0) {
@@ -131,7 +132,6 @@ class ProfessionalUKF {
         this.x.set([1], gpsData.longitude * D2R);
         this.x.set([2], gpsData.altitude);
         
-        // Si le GPS fournit la vitesse, on l'utilise pour corriger la vitesse prédite
         if (gpsData.speed) {
             const oldSpeed = this.x.get([3]);
             this.x.set([3], oldSpeed * 0.8 + gpsData.speed * 0.2); // Simple fusion
@@ -193,7 +193,7 @@ function getBarometricAltitude(P_hPa, P_ref_hPa, T_K) {
 }
 
 function calculateMRF(alt, netherMode) {
-    if (netherMode) { return 8.0; } 
+    // (Logique Nether retirée, MRF est 1.0)
     return 1.0;
 }
 
@@ -223,7 +223,7 @@ function calculateDynamicMetrics(speed_ms, airDensity, soundSpeed, accel_long_im
     const coriolisForce = 2 * MASS_KG * speed_ms * OMEGA_EARTH * Math.cos(lat_rad); 
 
     return { mach, dynamicPressure, dragForce, accelLong, coriolisForce };
-            }
+    }
 // =================================================================
 // BLOC 3/4 : Services Externes & Calculs Astro/Physique
 // =================================================================
@@ -234,6 +234,7 @@ const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 const J1970 = 2440588, J2000 = 2451545.0;
 const dayMs = 1000 * 60 * 60 * 24;
 const MC_DAY_MS = 72 * 60 * 1000; 
+const WEATHER_CACHE_KEY = 'lastWeatherCache'; // Pour la météo hors ligne
 
 async function syncH(lServH_in, lLocH_in) {
     let lServH = lServH_in;
@@ -263,6 +264,14 @@ function getCDate(lServH, lLocH) {
     if (lServH === null || lLocH === null) { return new Date(); }
     const offset = performance.now() - lLocH;
     return new Date(lServH + offset);
+}
+
+function getWGS84Gravity(lat, alt) {
+    const latRad = lat * D2R; 
+    const sin2lat = Math.sin(latRad) ** 2;
+    const g_surface = WGS84_G_EQUATOR * (1 + WGS84_BETA * sin2lat) / Math.sqrt(1 - WGS84_E2 * sin2lat);
+    const g_local = g_surface * (1 - 2 * alt / WGS84_A);
+    return g_local; 
 }
 
 function getSpeedOfSound(tempK) {
@@ -322,7 +331,7 @@ async function fetchWeather(lat, lon, currentAlt, hyperloopMode) {
     return { pressure_hPa: P_hPa, tempK: T_K, air_density: air_density, speed_sound: speed_sound };
 }
 
-// ... (Fonctions getSolarTime, getMinecraftTime, getMoonPhaseName omises, voir 13.js) ...
+// ... (Fonctions getSolarTime, getMinecraftTime omises) ...
 
 function getMoonPhaseName(phase) {
     if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune 🌑";
@@ -346,7 +355,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     const moonPos = SunCalc.getMoonPosition(now, lat, lon);
     const sunTimes = SunCalc.getTimes(now, lat, lon);
     const moonTimes = SunCalc.getMoonTimes(now, lat, lon, true);
-    // const solarTimes = getSolarTime(now, lon); // (getSolarTime est complexe et peut être omis si non requis)
+    // const solarTimes = getSolarTime(now, lon); // (getSolarTime est complexe)
 
     if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString() || 'En attente...';
     // ... (Mise à jour TST/MST/EOT omise)
@@ -363,7 +372,7 @@ function updateAstro(lat, lon, lServH, lLocH) {
     if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
     if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
     if ($('moon-times')) $('moon-times').textContent = (moonTimes.rise && moonTimes.set) ? `${moonTimes.rise.toLocaleTimeString()} / ${moonTimes.set.toLocaleTimeString()}` : 'Circumpolaire';
-        }
+}
 // =================================================================
 // BLOC 4/4 : Logique Applicative Principale (Core Loop & DOM Init)
 // =================================================================
@@ -378,7 +387,7 @@ let ukf = null;
 
 let currentGPSMode = 'HIGH_FREQ'; 
 let emergencyStopActive = false; 
-let hyperloopMode = false; // NOUVEAU
+let hyperloopMode = false; 
 let selectedEnvironment = 'NORMAL'; 
 let currentUKFReactivity = 'AUTO'; 
 let lastGPSPos = null;
@@ -576,7 +585,7 @@ function startFastLoop() {
         
         // 💡 CORRECTION CRITIQUE: Calcul de distance basé sur la trajectoire EKF
         let dist_step = 0;
-        if (lPos && lPos.kLat_old !== undefined) {
+        if (lPos && lPos.kLat_old !== undefined && isFinite(lat) && isFinite(lPos.kLat_old)) {
             dist_step = dist2D(lPos.kLat_old, lPos.kLon_old, lat, lon, R_ALT_CENTER_REF);
         }
         lPos = { kLat_old: lat, kLon_old: lon }; // Sauvegarde l'état EKF actuel
@@ -595,6 +604,15 @@ function startFastLoop() {
             accel.x, // Accélération longitudinale (IMU)
             lat * D2R // Latitude en radians
         );
+        
+        // GESTION DE L'ÉNERGIE GPS AUTOMATIQUE
+        if (sSpdFE < MIN_SPD * 2 && gpsStandbyTimeoutID === null && currentGPSMode === 'HIGH_FREQ') {
+            gpsStandbyTimeoutID = setTimeout(() => startGPS('LOW_FREQ'), STANDBY_TIMEOUT_MS);
+        } else if (sSpdFE >= MIN_SPD * 2 && currentGPSMode === 'LOW_FREQ') {
+            startGPS('HIGH_FREQ');
+            if (gpsStandbyTimeoutID) clearTimeout(gpsStandbyTimeoutID);
+            gpsStandbyTimeoutID = null;
+        }
 
         // --- 4. MISE À JOUR DU DOM (Rapide) ---
         $('elapsed-time').textContent = dataOrDefault(timeTotal, 2, ' s');
@@ -672,21 +690,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; });
     if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
     
-    // NOUVEAU: Bouton Hyperloop
     if ($('hyperloop-toggle-btn')) {
         $('hyperloop-toggle-btn').addEventListener('click', () => {
             hyperloopMode = !hyperloopMode;
             $('hyperloop-toggle-btn').textContent = hyperloopMode ? 'HYPERLOOP ACTIF' : 'HYPERLOOP INACTIF';
             $('hyperloop-toggle-btn').classList.toggle('active', hyperloopMode);
-            // Forcer une mise à jour météo immédiate pour appliquer les constantes
-            if (lat && lon) {
-                fetchWeather(lat, lon, kAlt, hyperloopMode).then(data => {
-                    if (data) {
-                        lastP_hPa = data.pressure_hPa; lastT_K = data.tempK;
-                        currentAirDensity = data.air_density; currentSpeedOfSound = data.speed_sound;
-                    }
-                });
-            }
         });
     }
 
@@ -713,28 +721,27 @@ document.addEventListener('DOMContentLoaded', () => {
             $('init-system-btn').style.display = 'none';
 
             // 5. Démarrage de la boucle lente (Astro/Météo)
-            domSlowID = setInterval(() => {
+            domSlowID = setInterval(async () => {
                 const currentLat = lat || 43.296; 
-                const currentLon = lon || 5.37;
+                const currentLon = lon || 5.358;
                 
                 updateAstro(currentLat, currentLon, lServH, lLocH);
                 
-                // Gestion Météo (avec logique Hyperloop/Isolation)
                 if (lat && lon && !emergencyStopActive) {
-                    fetchWeather(currentLat, currentLon, kAlt, hyperloopMode).then(data => {
+                    try {
+                        const data = await fetchWeather(currentLat, currentLon, kAlt, hyperloopMode);
                         if (data) {
                             lastP_hPa = data.pressure_hPa;
                             lastT_K = data.tempK;
                             currentAirDensity = data.air_density;
                             currentSpeedOfSound = data.speed_sound;
                             
-                            // Mise à jour de l'altitude barométrique (si nécessaire)
                             const baroAlt = getBarometricAltitude(lastP_hPa, BARO_ALT_REF_HPA, lastT_K);
                             if ($('alt-baro') && baroAlt !== null) $('alt-baro').textContent = `${baroAlt.toFixed(2)} m`;
                         }
-                    }).catch(err => {
-                        if ($('weather-status')) $('weather-status').textContent = `❌ API ÉCHOUÉE`;
-                    });
+                    } catch(e) {
+                         if ($('weather-status')) $('weather-status').textContent = `❌ API ÉCHOUÉE`;
+                    }
                 }
                 
                 // Met à jour l'horloge locale (NTP)
