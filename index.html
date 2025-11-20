@@ -3,40 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • UKF Fusion Professionnel</title>
+    <title>GNSS SpaceTime Dashboard • EKF 15-États Fusion</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
-        /* (Styles CSS de index (8).html - Omis pour la concision, mais ils sont ici) */
+        /* (Styles CSS de index (10).html - Omis pour la concision) */
         :root {
-            --bg-light: #f4f7f6; --bg-dark: #121220; --panel-light: #ffffff;
-            --panel-dark: #1e1e1e; --text-light: #333; --text-dark: #e0e0e0;
-            --border-light: #ddd; --border-dark: #333; --accent-color: #007bff;
-            --error-color: #dc3545;
+            --bg-dark: #121220; --panel-dark: #1e1e1e; --text-dark: #e0e0e0;
+            --border-dark: #333; --accent-color: #007bff; --error-color: #dc3545;
         }
-        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: var(--bg-dark); color: var(--text-dark); transition: background-color 0.8s, color 0.8s; }
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: var(--bg-dark); color: var(--text-dark); }
         .dashboard-container { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 15px; padding: 15px; max-width: 1800px; margin: auto; }
         section.panel { background-color: var(--panel-dark); padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
         section.panel h2 { margin-top: 0; border-bottom: 2px solid var(--border-dark); padding-bottom: 10px; font-size: 1.2em; color: #4da6ff; }
         .data-point { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #2a2a2a; font-size: 0.95em; min-height: 24px; }
-        .data-point span:first-child { font-weight: bold; color: #ccc; margin-right: 10px; }
-        .data-point span:last-child { font-family: 'Courier New', Courier, monospace; font-weight: bold; color: #99ccff; text-align: right; }
+        .data-point span:first-child { font-weight: bold; color: #ccc; }
+        .data-point span:last-child { font-family: 'Courier New', Courier, monospace; font-weight: bold; color: #99ccff; }
         .speed-display { text-align: center; background-color: #222; color: #00ff66; padding: 20px; border-radius: 12px; font-size: 2em; margin-bottom: 15px; font-family: 'Orbitron', sans-serif; }
         .speed-display small { display: block; font-size: 0.5em; color: #aaa; margin-top: 5px; }
-        #speed-stable { font-size: 2.5em; font-weight: 700; letter-spacing: 1px; }
+        #speed-stable { font-size: 2.5em; font-weight: 700; }
         .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
         .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
         .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
         .control-input-full input, .control-input-full select { width: 98%; padding: 5px; border-radius: 4px; border: 1px solid #555; background-color: #333; color: var(--text-dark); }
-        button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: background-color 0.2s, transform 0.1s; }
+        button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         #toggle-gps-btn { background-color: #28a745; color: white; }
         #emergency-stop-btn { background-color: var(--error-color); color: white; }
-        #emergency-stop-btn.active { animation: pulse-red 1s infinite alternate; }
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 100% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } }
+        /* Style Hyperloop */
+        #hyperloop-toggle-btn { background-color: #ffc107; color: #333; }
+        #hyperloop-toggle-btn.active { background-color: #dc3545; color: white; }
         #map { height: 350px; width: 100%; border-radius: 8px; margin-top: 15px; background-color: #333; }
-        /* (Styles Astro Clock omis pour la concision) */
     </style>
 </head>
 <body class="dark-mode"> 
@@ -65,7 +63,7 @@
                     </select>
                     <button id="emergency-stop-btn" title="Arrêt d'urgence" aria-live="polite">🛑 Arrêt d'urgence: INACTIF 🟢</button>
                     
-                    <button id="hyperloop-toggle-btn" style="background-color: #ffc107; color: black;">HYPERLOOP INACTIF</button>
+                    <button id="hyperloop-toggle-btn" class="btn-hyperloop">HYPERLOOP INACTIF</button>
                     
                     <button id="reset-dist-btn"><i class="fas fa-route"></i> Réinit. Dist.</button>
                     <button id="reset-max-btn"><i class="fas fa-tachometer-alt"></i> Réinit. V-Max</button>
@@ -91,7 +89,6 @@
                         </select>
                         <span id="env-factor">Normal (x1.0)</span>
                     </div>
-                    
                 </div>
             </section>
 
@@ -206,4 +203,4 @@
     
     <script src="gnss-dashboard-full.js"></script>
 </body>
-                                                   </html>
+    </html>
