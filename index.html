@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • EKF Professionnel</title>
+    <title>GNSS SpaceTime Dashboard • EKF Fusion Professionnel</title>
     
-    <link rel="stylesheet" href="./libs/leaflet.css" crossorigin=""/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
           
     <style>
@@ -17,56 +17,38 @@
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0; padding: 0; background-color: var(--bg-light); color: var(--text-light);
+            margin: 0; padding: 0; background-color: var(--bg-dark); color: var(--text-dark);
             transition: background-color 0.3s, color 0.3s;
-        }
-        body.dark-mode {
-            background-color: var(--bg-dark); color: var(--text-dark);
         }
         main {
             display: grid; grid-template-columns: 1fr 2fr; grid-gap: 15px; padding: 15px;
             max-width: 1400px; margin: 0 auto;
         }
         .dashboard-panel {
-            background-color: var(--panel-light); padding: 20px; border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); transition: background-color 0.3s, box-shadow 0.3s;
-        }
-        body.dark-mode .dashboard-panel {
-            background-color: var(--panel-dark); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            background-color: var(--panel-dark); padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); transition: background-color 0.3s, box-shadow 0.3s;
         }
         h2, h3 { color: var(--highlight); margin-top: 0; border-bottom: 1px solid rgba(0, 123, 255, 0.3); padding-bottom: 5px; }
         .data-point { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed rgba(128, 128, 128, 0.2); }
         .data-point span:last-child { font-weight: bold; }
         #map { height: 500px; border-radius: 8px; margin-top: 15px; }
-
-        /* Vitesse Spéciale */
         #speed-stable-container { text-align: center; margin-bottom: 20px; }
         #speed-stable { font-size: 4em; font-weight: 700; color: var(--success); }
-        #speed-stable-unit { font-size: 1.2em; color: var(--text-light); display: block; }
-        body.dark-mode #speed-stable-unit { color: var(--text-dark); }
-        
-        /* Grille de Gauche */
+        #speed-stable-unit { font-size: 1.2em; color: var(--text-dark); display: block; }
         .left-column { display: grid; grid-template-rows: auto auto auto 1fr; grid-gap: 15px; }
         .right-column { display: grid; grid-template-rows: auto 1fr; grid-gap: 15px; }
-
-        /* Boutons */
         .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
         button {
             padding: 10px 15px; border: none; border-radius: 6px; cursor: pointer;
             font-weight: bold; transition: background-color 0.2s, opacity 0.2s;
         }
         .btn-start { background-color: var(--success); color: white; }
-        .btn-start:hover { background-color: #1e7e34; }
         .btn-reset { background-color: #6c757d; color: white; }
-        .btn-reset:hover { background-color: #5a6268; }
-        
-        /* STYLE POUR LE BOUTON HYPERLOOP */
         .btn-hyperloop { background-color: #ffc107; color: #333; }
         .btn-hyperloop.active { background-color: #dc3545; color: white; }
-        .btn-hyperloop:hover { opacity: 0.8; }
     </style>
 </head>
-<body class="dark-mode"> 
+<body> 
     <main>
         <div class="left-column">
             <section class="dashboard-panel">
@@ -130,7 +112,7 @@
                 <div class="data-point"><span>Latitude</span><span id="lat-display">0.000000 °</span></div>
                 <div class="data-point"><span>Longitude</span><span id="lon-display">0.000000 °</span></div>
                 <div class="data-point"><span>Altitude (Lissée)</span><span id="alt-display">0.00 m</span></div>
-                <div class="data-point"><span>GPS RAW (à implémenter)</span><span id="alt-raw">N/A</span></div>
+                <div class="data-point"><span>Altitude RAW (GPS)</span><span id="alt-raw">N/A</span></div>
             </section>
         </div>
         
@@ -176,10 +158,10 @@
         </div>
     </main>
     
-    <script src="./libs/leaflet.js"></script>
-    <script src="./libs/math.min.js"></script>
-    <script src="./libs/suncalc.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.3.0/math.js"></script>
+    <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
     
     <script src="gnss-dashboard-full.js"></script>
 </body>
-                    </html>
+    </html>
