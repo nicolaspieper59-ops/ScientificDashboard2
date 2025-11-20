@@ -317,7 +317,7 @@ async function fetchWeather(lat, lon, currentAlt, hyperloopMode) {
     return { pressure_hPa: P_hPa, tempK: T_K, air_density: air_density, speed_sound: speed_sound };
 }
 
-// ... (Fonctions getSolarTime omise) ...
+// ... (Fonctions getSolarTime, getMinecraftTime omises) ...
 function getMinecraftTime(date) {
     if (date === null) return '00:00';
     const msSinceMidnightUTC = date.getUTCHours() * 3600000 + date.getUTCMilliseconds() + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000;
