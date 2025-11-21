@@ -350,11 +350,24 @@
         </div>
     </main>
     
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20n95j3X7VqJ8c6XvR7D4v/1/g6p5qC5+484l+7+QxY=" crossorigin=""></script>
-    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script> 
+                <div id="map-container">
+                    <div id="map" role="img" aria-label="Carte interactive affichant la position GPS en temps réel.">Chargement de la carte...</div>
+                    <button id="xray-button" title="Rayons X : Biome transparent" aria-label="Basculer le mode Rayons X de l'horloge céleste">X</button>
+                    </div>
+             </section>
+        </div> <div class="column-3">
+            <section class="panel" aria-labelledby="astro-heading">
+                </section>
+        </div>
+    </main>
     
-    <script src="gnss-dashboard-full.js"></script>
-
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+        integrity="sha256-20n95j3X7VqJ8c6XvR7D4v/1/g6p5qC5+484lJ/k17W8Y680Q720pB8=" 
+        crossorigin=""></script> 
+        
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/turf.js/6.5.0/turf.min.js"></script> 
+    
+    <script src="gnss-dashboard-full.js"></script> 
+    
 </body>
 </html>
