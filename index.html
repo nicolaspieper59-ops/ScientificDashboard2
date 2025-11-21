@@ -48,6 +48,7 @@
             margin-top: 0; border-bottom: 2px solid var(--border-light); 
             padding-bottom: 10px; font-size: 1.2em; color: var(--accent-color);
         }
+        h3 { color: var(--accent-color); margin-top: 15px; margin-bottom: 5px; font-size: 1em; }
         .data-point { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.95em; min-height: 24px; }
         .data-point span:first-child { font-weight: bold; color: #555; margin-right: 10px; }
         .data-point span:last-child { font-family: 'Courier New', Courier, monospace; font-weight: bold; color: #0056b3; text-align: right; }
@@ -104,9 +105,8 @@
         @media (max-width: 800px) { .dashboard-container { grid-template-columns: 1fr; } }
     </style>
 </head>
-<body>
-    <header>
-        <h1>GNSS SpaceTime Dashboard • UKF 21 États Fusion Professionnel</h1>
+<body class="dark-mode"> <header>
+        <h1 style="text-align: center; color: var(--accent-color);">GNSS SpaceTime Dashboard • UKF 21 États Fusion Professionnel</h1>
     </header>
     
     <main class="dashboard-container">
@@ -226,6 +226,7 @@
                 <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.0 km/h</span></div>
                 <div class="data-point"><span>Vitesse Moyenne (Totale)</span><span id="speed-avg-total">0.0 km/h</span></div>
                 <hr>
+                <h3>Physique & Relativité</h3>
                 <div class="data-point"><span>Vitesse du Son Locale (Cor.)</span><span id="speed-of-sound-calc">N/A</span></div>
                 <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">0.00 %</span></div>
                 <div class="data-point"><span>Nombre de Mach</span><span id="mach-number">0.0000</span></div>
@@ -233,8 +234,6 @@
                 <div class="data-point"><span>Facteur de Lorentz (γ)</span><span id="lorentz-factor">1.0000</span></div>
                 <div class="data-point"><span>Temps Dilation (Vitesse)</span><span id="time-dilation-v">0.00 ns/j</span></div>
                 <div class="data-point"><span>Temps Dilation (Gravité)</span><span id="time-dilation-g">0.00 ns/j</span></div>
-                <hr>
-                <h3>Physique Relativiste (Sim)</h3>
                 <div class="data-point"><span>Énergie Relativiste (E)</span><span id="energy-relativistic">N/A</span></div>
                 <div class="data-point"><span>Énergie de Masse au Repos (E₀)</span><span id="energy-rest-mass">N/A</span></div>
                 <div class="data-point"><span>Quantité de Mouvement (p)</span><span id="momentum">N/A</span></div>
@@ -305,7 +304,6 @@
                 <div class="data-point"><span>Bande Passante (Nyquist)</span><span id="nyquist-frequency">N/A</span></div>
                 <div class="data-point"><span>Forcer Précision GPS</span><span id="gps-accuracy-display">0.000000 m</span></div>
             </section>
-
             <section class="panel" aria-labelledby="astro-heading">
                 <h2 id="astro-heading"><i class="fas fa-globe-americas"></i> Position & Astro</h2>
                 <div id="minecraft-clock-container" role="timer" aria-label="Horloge céleste affichant la position du Soleil">
@@ -322,7 +320,7 @@
                 <div class="data-point"><span>Longitude (EKF)</span><span id="lon-display">N/A</span></div>
                 <div class="data-point"><span>Altitude (EKF)</span><span id="alt-display">N/A</span></div>
                 <div class="data-point"><span>Altitude Géopotentielle</span><span id="geopotential-alt">N/A</span></div>
-                <div class="data-point"><span>Altitude Corrigée (Baro)</span><span id="alt-corrected-baro">N/A</span></div>
+                <div class="data-point"><span>Altitude Corrigée (Baro)
                 <div class="data-point"><span>Cap (Direction)</span><span id="heading-display">N/A</span></div>
                 <hr>
                 <h3>Temps Solaire & Sidéral</h3>
