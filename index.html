@@ -3,30 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • UKF 21 États PROFESSIONNEL (FINAL)</title>
+    <title>GNSS SpaceTime Dashboard • UKF 21 États PROFESSIONNEL (VERSION FINALE)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script> 
     
     <style>
-        /* --- Styles Complets (Thème Sombre) --- */
+        /* --- Styles CSS Complets (Thème Sombre Professionnel) --- */
         :root {
-            --bg-dark: #121220; --panel-dark: #1e1e1e; --text-dark: #e0e0e0;
+            --bg-light: #f4f7f6; --bg-dark: #121220; --panel-light: #ffffff;
+            --panel-dark: #1e1e1e; --text-light: #333; --text-dark: #e0e0e0;
             --highlight: #f9d342; --secondary: #b0b0b0;
         }
+        
         body {
-            font-family: 'Consolas', monospace; background-color: var(--bg-dark); color: var(--text-dark);
-            margin: 0; padding: 20px; transition: background-color 0.5s, color 0.5s;
+            font-family: 'Consolas', monospace; 
+            background-color: var(--bg-dark); 
+            color: var(--text-dark);
+            margin: 0; padding: 20px; 
+            transition: background-color 0.5s, color 0.5s;
         }
-        .dashboard-container { display: flex; flex-wrap: wrap; gap: 20px; }
-        .data-section { background-color: var(--panel-dark); padding: 15px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); flex: 1 1 300px; min-width: 300px; }
+        
+        .dashboard-container { 
+            display: flex; flex-wrap: wrap; gap: 20px; 
+        }
+        
+        .data-section { 
+            background-color: var(--panel-dark); 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); 
+            flex: 1 1 300px; min-width: 300px; 
+        }
+        
+        h1 { color: var(--highlight); margin-bottom: 10px; }
         h2 { color: var(--highlight); border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 0; }
-        .data-point { display: flex; justify-content: space-between; padding: 5px 0; font-size: 0.9em; }
-        .controls button { padding: 8px 12px; margin: 4px; background-color: #333; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        h3 { color: var(--secondary); margin-top: 10px; margin-bottom: 5px; }
+        
+        .data-point { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 5px 0; 
+            font-size: 0.9em; 
+        }
+        
+        hr { border-color: #333; margin: 10px 0; }
+
+        .controls button { 
+            padding: 8px 12px; margin: 4px; 
+            background-color: #333; color: white; 
+            border: none; border-radius: 4px; 
+            cursor: pointer; 
+        }
         .controls button:hover { background-color: #555; }
-        /* Style spécifique pour la carte (Globe Interactif) */
-        #map-globe { height: 400px; width: 100%; margin-top: 15px; border-radius: 4px; }
+        
+        #map-globe { 
+            height: 400px; width: 100%; margin-top: 15px; border-radius: 4px; 
+        }
+
+        /* Thème Mode Nuit Alternatif (si activé par le JS) */
+        .night-mode {
+            background-color: #000033;
+            color: #99ccff;
+        }
     </style>
 </head>
 <body>
@@ -39,13 +79,14 @@
             <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">SYNCHRO ÉCHOUÉE (Local)</span></div>
             <div class="data-point"><span>Date Locale (UTC)</span><span id="date-display">12/11/2025</span></div>
             <div class="data-point"><span>Temps écoulé (Session)</span><span id="session-time">0.00 s</span></div>
-            <div class="data-point"><span>Temps de Mouvement</span><span id="move-time">0.00 s</span></div>
-            <div class="data-point"><span>Heure Minecraft (MC)</span><span id="mc-time">00:52 PAUSE</span></div>
+            <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
+            <div class="data-point"><span>Heure Minecraft (MC)</span><span id="mc-time">00:00:00</span></div>
+            <div class="data-point"><span>Mode Nether (1:8)</span><span id="nether-indicator">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>GPS Haute Fréquence</span><span id="hf-gps-status">Arrêt d'ur-gence: INACTIF</span></div>
             <div class="data-point"><span>Rapport Distance (MRF)</span><span id="distance-ratio">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>Environnement (Filtre Kalman)</span><span id="ekf-env">Normal (x1.0) Normal (x1.0)</span></div>
             <div class="data-point"><span>Masse de l'objet (kg)</span><span id="mass">70 / 70.000 kg</span></div>
-            <div class="data-point"><span>Corps Céleste (Gra-vité)</span><span id="gravity">Terre 9.8067 m/s²</span></div>
+            <div class="data-point"><span>Corps Céleste (Gravité)</span><span id="gravity">Terre 9.8067 m/s²</span></div>
             
             <div class="controls">
                 <button id="reset-dist">Réinit. Dist.</button>
@@ -58,44 +99,53 @@
         </section>
 
         <section class="data-section">
-            <h2><i class="fas fa-tachometer-alt"></i> Vitesse & Distance (3D)</h2>
+            <h2><i class="fas fa-tachometer-alt"></i> Vitesse & Relativité</h2>
             <div class="data-point"><span>Vitesse 3D (Instantanée)</span><span id="speed-3d">- km/h</span></div>
             <div class="data-point"><span>Vitesse Stable (m/s)</span><span id="speed-stable-m">- m/s</span></div>
             <div class="data-point"><span>Vitesse Max (Session 3D)</span><span id="speed-max-3d">0.0 km/h</span></div>
-            <div class="data-point"><span>Vitesse Moyenne (Mvt 3D)</span><span id="speed-avg-mvt-3d">0.0 km/h</span></div>
             <div class="data-point"><span>Vitesse Moyenne Totale (Session)</span><span id="speed-avg-total">0.0 km/h</span></div>
+            <hr>
             <div class="data-point"><span>% Vitesse du Son (Corrigé Météo)</span><span id="perc-sound">0.00%</span></div>
             <div class="data-point"><span>Nombre de Mach</span><span id="mach-number">0.0000</span></div>
             <div class="data-point"><span>% Vitesse Lumière ($\mathbf{c}$)</span><span id="perc-light">0.00e+0%</span></div>
             <div class="data-point"><span>Facteur de Lorentz ($\gamma$)</span><span id="lorentz-factor">1.0000</span></div>
+            <div class="data-point"><span>Temps Dilation (Vitesse)</span><span id="time-dilation-v">0.00 ns/j</span></div>
+            <div class="data-point"><span>Temps Dilation (Gravité)</span><span id="time-dilation-g">0.00 ns/j</span></div>
             <hr>
+            <h3>Distance (Référence 3D)</h3>
             <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-total-3d">0.000 km | 0.00 m</span></div>
             <div class="data-point"><span>Distance Maximale Visible (Horizon)</span><span id="max-visible-dist">N/A</span></div>
             <div class="data-point"><span>Distance (s-lumière)</span><span id="dist-light-s">0.00e+00 s</span></div>
         </section>
         
         <section class="data-section">
-            <h2><i class="fas fa-map-marker-alt"></i> Position & Astro</h2>
+            <h2><i class="fas fa-map-marker-alt"></i> Position UKF (21 États)</h2>
             <div class="data-point"><span>Latitude (UKF) / Longitude (UKF)</span><span id="lat-lon">N/A</span></div>
             <div class="data-point"><span>Altitude (EKF)</span><span id="altitude-ekf">N/A</span></div>
             <div class="data-point"><span>Altitude Niveaux de la Mer (Corrigée)</span><span id="altitude-sea-level">N/A</span></div>
             <div class="data-point"><span>Cap (Direction/Magnétomètre)</span><span id="cap-direction">N/A</span></div>
             <div class="data-point"><span>Midi Solaire Local (Corrigé EOT)</span><span id="midi-solaire-local">N/A</span></div>
-            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">15.93 min</span></div>
-            <div class="data-point"><span>Date Solaire Moyenne / Vraie</span><span id="date-solar">N/A / N/A</span></div>
+            <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/A</span></div>
+            <div class="data-point"><span>Longitude Écliptique</span><span id="ecl-long">N/A</span></div>
             <hr>
-            <h3><i class="fas fa-sun"></i> Soleil & <i class="fas fa-moon"></i> Lune</h3>
-            <div class="data-point"><span>Altitude (Soleil) / Azimut</span><span id="sun-alt-azimuth">N/A / N/A</span></div>
-            <div class="data-point"><span>Altitude (Lune) / Azimut</span><span id="moon-alt-azimuth">N/A / N/A</span></div>
+            <h3><i class="fas fa-sun"></i> Soleil</h3>
+            <div class="data-point"><span>Altitude (Soleil)</span><span id="sun-alt">N/A</span></div>
+            <div class="data-point"><span>Azimut (Soleil)</span><span id="sun-azimuth">N/A</span></div>
+            <div class="data-point"><span>Durée du Jour</span><span id="day-duration">N/A</span></div>
             <div class="data-point"><span>Lever/Coucher Soleil (TSL/TSM/TSV)</span><span id="sun-times">N/A</span></div>
-            <div class="data-point"><span>Lever/Coucher Lune (TSL/TSM/TSV)</span><span id="moon-times">N/A</span></div>
-            <div class="data-point"><span>Phase Lune / Illumination</span><span id="moon-phase">N/A / 0.0 %</span></div>
+            <hr>
+            <h3><i class="fas fa-moon"></i> Lune</h3>
+            <div class="data-point"><span>Phase Lune (Nom)</span><span id="moon-phase-name">N/A</span></div>
+            <div class="data-point"><span>Illumination</span><span id="moon-illuminated">N/A</span></div>
+            <div class="data-point"><span>Altitude (Lune)</span><span id="moon-alt">N/A</span></div>
+            <div class="data-point"><span>Azimut (Lune)</span><span id="moon-azimuth">N/A</span></div>
+            <div class="data-point"><span>Lever/Coucher Lune</span><span id="moon-times">N/A</span></div>
         </section>
 
         <section class="data-section">
-            <h2><i class="fas fa-cube"></i> IMU, Mag & UKF (21 États)</h2>
+            <h2><i class="fas fa-cube"></i> IMU & Mag</h2>
             <div class="data-point"><span>Accélération X/Y/Z</span><span id="accel-xyz">0.10 / 0.00 / 0.10 m/s²</span></div>
-            <div class="data-point"><span>Statut Capteur IMU</span><span id="imu-status">Actif</span></div>
+            <div class="data-point"><span>Statut Capteur IMU</span><span id="imu-status">Inactif</span></div>
             <div class="data-point"><span>Champ Magnétique ($\mu\text{T}$) (3D)</span><span id="mag-field-ut">N/A</span></div>
             <hr>
             <h3><i class="fas fa-brain"></i> Filtre UKF & Debug</h3>
@@ -108,11 +158,11 @@
         <section class="data-section">
             <h2><i class="fas fa-flask"></i> Météo & Chimie de l'Air</h2>
             <div class="data-point"><span>Statut API Météo</span><span id="weather-status">ACTIF / ❌ API ÉCHOUÉE</span></div>
-            <div class="data-point"><span>Temp. Air</span><span id="temp-air-2">17.3 °C</span></div>
-            <div class="data-point"><span>Pression Atm.</span><span id="pressure-2">1021 hPa</span></div>
-            <div class="data-point"><span>Humidité Relative</span><span id="humidity-2">81%</span></div>
-            <div class="data-point"><span>Point de Rosée</span><span id="dew-point">14.0 °C</span></div>
-            <div class="data-point"><span>Densité de l'Air ($\rho$)</span><span id="air-density">1.225 kg/m³</span></div>
+            <div class="data-point"><span>Temp. Air</span><span id="temp-air-2">N/A</span></div>
+            <div class="data-point"><span>Pression Atm.</span><span id="pressure-2">N/A</span></div>
+            <div class="data-point"><span>Humidité Relative</span><span id="humidity-2">N/A</span></div>
+            <div class="data-point"><span>Point de Rosée</span><span id="dew-point">N/A</span></div>
+            <div class="data-point"><span>Densité de l'Air ($\rho$)</span><span id="air-density">N/A</span></div>
             <hr>
             <div class="data-point"><span>Taux d'Oxygène (O₂)</span><span id="o2-level">20.9 % vol</span></div>
             <div class="data-point"><span>Taux de CO₂ (ppm)</span><span id="co2-level">N/A (Capteur/API)</span></div>
@@ -126,27 +176,27 @@
             <div class="data-point"><span>Force de Traînée</span><span id="drag-force">0.00 N</span></div>
             <div class="data-point"><span>Puissance de Traînée ($\mathbf{kW}$)</span><span id="drag-power-kw">0.00 kW</span></div>
             <div class="data-point"><span>Nombre de Reynolds</span><span id="reynolds-number">N/A</span></div>
-            <div class="data-point"><span>Temps Dilation (Vitesse)</span><span id="time-dilation-v">0.00 ns/j</span></div>
-            <div class="data-point"><span>Temps Dilation (Gravité)</span><span id="time-dilation-g">0.00 ns/j</span></div>
             <hr>
             <h2><i class="fas fa-globe-europe"></i> SVT & Environnement</h2>
             <div class="data-point"><span>Niveau Sonore (dB) [Max/Moy]</span><span id="noise-level">N/A (Capteur)</span></div>
             <div class="data-point"><span>Radiation Solaire (W/m²)</span><span id="solar-radiation">N/A</span></div>
             <div class="data-point"><span>Potentiel Hydrogène (pH)</span><span id="ph-level">N/A (Capteur)</span></div>
+            <div class="data-point"><span>Vitesse du Vent (m/s)</span><span id="wind-speed-ms">N/A</span></div>
             <div class="data-point"><span>Type de Sol (Capteur/API)</span><span id="soil-type">N/A</span></div>
             <div class="data-point"><span>Biomasse NDVI (API Sat.)</span><span id="ndvi-index">N/A</span></div>
         </section>
         
         <section class="data-section" style="flex: 1 1 100%;">
             <h2><i class="fas fa-map"></i> Carte GNSS / Globe Interactif</h2>
-            <div id="map-globe">Erreur: Bibliothèque Leaflet non char-gée.</div>
-            </section>
+            <div id="map-globe">Initialisation de la carte Leaflet...</div>
+        </section>
 
     </main>
     
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20n95j3X7VqJ8c6XvR7D4v/1/g6p5qC5+484l..." crossorigin=""></script>
-    <script src="suncalc.js"></script> <script src="1_global-constants-and-utilities.js"></script>
-    <script src="gnss-dashbord-full.js"></script>
+    <script src="suncalc.js"></script> 
     
+    <script src="1_global-constants-and-utilities.js"></script>
+    <script src="gnss-dashbord-full.js"></script>
 </body>
-                                                                                     </html>
+                </html>
