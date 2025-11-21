@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • UKF/EKF Fusion Professionnel (COMPLET)</title>
+    <title>GNSS SpaceTime Dashboard • UKF 21 États Fusion Professionnel (COMPLET)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
           integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" 
@@ -101,11 +101,12 @@
         .sky-night { background-color: #121220 !important; color: var(--text-dark) !important; } 
         
         @media (max-width: 1200px) { .dashboard-container { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 800px) { .dashboard-container { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
     <header>
-        <h1>GNSS SpaceTime Dashboard • UKF/EKF Fusion Professionnel (COMPLET)</h1>
+        <h1>GNSS SpaceTime Dashboard • UKF 21 États Fusion Professionnel</h1>
     </header>
     
     <main class="dashboard-container">
@@ -271,7 +272,7 @@
                 <div class="data-point"><span>Vitesse Verticale (EKF)</span><span id="vertical-speed">N/A</span></div>
                 <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">N/A</span></div>
                 <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">N/A</span></div>
-                <div class="data-point"><span>Vitesse Angulaire</span><span id="angular-speed">N/A</span></div>
+                <div class="data-point"><span>Vitesse Angulaire (Gyro)</span><span id="angular-speed">N/A</span></div>
                 <hr>
                 <h3>Mécanique des Fluides</h3>
                 <div class="data-point"><span>Pression Dynamique (q)</span><span id="dynamic-pressure">0.00 Pa</span></div>
