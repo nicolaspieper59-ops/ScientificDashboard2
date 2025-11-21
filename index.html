@@ -260,4 +260,50 @@
                     <button id="xray-button" title="Rayons X : Biome transparent" aria-label="Basculer le mode Rayons X de l'horloge céleste">X</button>
                     </div>
              </section>
-        
+
+            <div id="map-container">
+                    <div id="map" role="img" aria-label="Carte interactive affichant la position GPS en temps réel.">Chargement de la carte...</div>
+                    <button id="xray-button" title="Rayons X : Biome transparent" aria-label="Basculer le mode Rayons X de l'horloge céleste">X</button>
+                    </div>
+             </section>
+        </div> <div class="column-3">
+            <section class="panel" aria-labelledby="astro-heading">
+                <h2 id="astro-heading"><i class="fas fa-globe-americas"></i> Chronométrie Céleste & Astro</h2>
+                
+                <div id="minecraft-clock-container">
+                    <div id="minecraft-clock" class="sky-day" title="Heure Minecraft / Cycle Jour-Nuit">
+                        <div id="biome-half"></div>
+                        <div class="sun-element" style="transform: rotate(0deg);"><i class="fas fa-sun sun-icon"></i></div>
+                        <div class="moon-element" style="transform: rotate(180deg);"><i class="fas fa-moon moon-icon"></i></div>
+                    </div>
+                    <div class="clock-display">Heure Solaire: <span id="time-solar">N/A</span></div>
+                </div>
+                
+                <hr>
+                <h3>Chronométrie Spatio-Temporelle</h3>
+                <div class="data-point"><span>Jour Julien (JD)</span><span id="julian-day">N/A</span></div>
+                <div class="data-point"><span>Temps Sidéral Local (LST)</span><span id="lst">N/A</span></div>
+                <div class="data-point"><span>Temps Sidéral Greenwich (GST)</span><span id="gst">N/A</span></div>
+                <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">N/A</span></div>
+                <div class="data-point"><span>Longitude Écliptique</span><span id="ecl-long">N/A</span></div>
+                <hr>
+                
+                <h3><i class="fas fa-sun"></i> Soleil</h3>
+                <div class="data-point"><span>Altitude (Soleil)</span><span id="sun-alt">N/A</span></div>
+                <div class="data-point"><span>Azimut (Soleil)</span><span id="sun-azimuth">N/A</span></div>
+                <div class="data-point"><span>Durée du Jour</span><span id="day-duration">N/A</span></div>
+                <hr>
+
+                <h3><i class="fas fa-moon"></i> Lune</h3>
+                <div class="data-point"><span>Phase</span><span id="moon-phase-name">N/A</span></div>
+                <div class="data-point"><span>Illumination</span><span id="moon-illuminated">N/A</span></div>
+                <div class="data-point"><span>Altitude (Lune)</span><span id="moon-alt">N/A</span></div>
+                <div class="data-point"><span>Azimut (Lune)</span><span id="moon-azimuth">N/A</span></div>
+                <div class="data-point"><span>Lever/Coucher Lune</span><span id="moon-times">N/A</span></div>
+            </section>
+        </div>
+    </main>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/turf.js/6.5.0/turf.min.js"></script>
+    <script src="gnss-dashboard-full.js"></script> </body>
+</html>
