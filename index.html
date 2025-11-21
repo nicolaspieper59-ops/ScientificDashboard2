@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • UKF 21 États PROFESSIONNEL</title>
+    <title>GNSS SpaceTime Dashboard • UKF 21 États PROFESSIONNEL (FINAL)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfBIHUPz0M7mR1mZ9/3wPzSS6i8tD6U4=" crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" integrity="sha512-Fo3rlrZj/k7ujTnHg4CfmjR7mQUFm94/Nfae/Y55JjNfX/YvD9eD+N6n7N2+3X5C6ZqT2C2F+V+h/lVj7T1/qA=" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script> 
     
     <style>
-        /* --- Styles Complets (Thème Sombre par défaut) --- */
+        /* --- Styles Complets (Thème Sombre) --- */
         :root {
             --bg-dark: #121220; --panel-dark: #1e1e1e; --text-dark: #e0e0e0;
             --highlight: #f9d342; --secondary: #b0b0b0;
@@ -30,7 +30,7 @@
     </style>
 </head>
 <body>
-    <h1>GNSS SpaceTime Dashboard <i class="fas fa-satellite-dish"></i></h1>
+    <h1>GNSS SpaceTime Dashboard • UKF 21 États <i class="fas fa-satellite-dish"></i></h1>
 
     <main class="dashboard-container">
         
@@ -45,7 +45,7 @@
             <div class="data-point"><span>Rapport Distance (MRF)</span><span id="distance-ratio">DÉSACTIVÉ (1:1)</span></div>
             <div class="data-point"><span>Environnement (Filtre Kalman)</span><span id="ekf-env">Normal (x1.0) Normal (x1.0)</span></div>
             <div class="data-point"><span>Masse de l'objet (kg)</span><span id="mass">70 / 70.000 kg</span></div>
-            <div class="data-point"><span>Corps Céleste (Gravité)</span><span id="gravity">Terre 9.8067 m/s²</span></div>
+            <div class="data-point"><span>Corps Céleste (Gra-vité)</span><span id="gravity">Terre 9.8067 m/s²</span></div>
             
             <div class="controls">
                 <button id="reset-dist">Réinit. Dist.</button>
@@ -58,7 +58,7 @@
         </section>
 
         <section class="data-section">
-            <h2><i class="fas fa-tachometer-alt"></i> Vitesse & Distance</h2>
+            <h2><i class="fas fa-tachometer-alt"></i> Vitesse & Distance (3D)</h2>
             <div class="data-point"><span>Vitesse 3D (Instantanée)</span><span id="speed-3d">- km/h</span></div>
             <div class="data-point"><span>Vitesse Stable (m/s)</span><span id="speed-stable-m">- m/s</span></div>
             <div class="data-point"><span>Vitesse Max (Session 3D)</span><span id="speed-max-3d">0.0 km/h</span></div>
@@ -69,7 +69,6 @@
             <div class="data-point"><span>% Vitesse Lumière ($\mathbf{c}$)</span><span id="perc-light">0.00e+0%</span></div>
             <div class="data-point"><span>Facteur de Lorentz ($\gamma$)</span><span id="lorentz-factor">1.0000</span></div>
             <hr>
-            <h3>Distance (Référence 3D)</h3>
             <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-total-3d">0.000 km | 0.00 m</span></div>
             <div class="data-point"><span>Distance Maximale Visible (Horizon)</span><span id="max-visible-dist">N/A</span></div>
             <div class="data-point"><span>Distance (s-lumière)</span><span id="dist-light-s">0.00e+00 s</span></div>
@@ -83,10 +82,14 @@
             <div class="data-point"><span>Cap (Direction/Magnétomètre)</span><span id="cap-direction">N/A</span></div>
             <div class="data-point"><span>Midi Solaire Local (Corrigé EOT)</span><span id="midi-solaire-local">N/A</span></div>
             <div class="data-point"><span>Équation du Temps (EOT)</span><span id="eot">15.93 min</span></div>
-            <div class="data-point"><span>Phase Lune</span><span id="moon-phase-name">N/A</span></div>
-            <div class="data-point"><span>Illumination Lune (%)</span><span id="moon-illuminated">0.0 %</span></div>
+            <div class="data-point"><span>Date Solaire Moyenne / Vraie</span><span id="date-solar">N/A / N/A</span></div>
+            <hr>
+            <h3><i class="fas fa-sun"></i> Soleil & <i class="fas fa-moon"></i> Lune</h3>
+            <div class="data-point"><span>Altitude (Soleil) / Azimut</span><span id="sun-alt-azimuth">N/A / N/A</span></div>
+            <div class="data-point"><span>Altitude (Lune) / Azimut</span><span id="moon-alt-azimuth">N/A / N/A</span></div>
             <div class="data-point"><span>Lever/Coucher Soleil (TSL/TSM/TSV)</span><span id="sun-times">N/A</span></div>
             <div class="data-point"><span>Lever/Coucher Lune (TSL/TSM/TSV)</span><span id="moon-times">N/A</span></div>
+            <div class="data-point"><span>Phase Lune / Illumination</span><span id="moon-phase">N/A / 0.0 %</span></div>
         </section>
 
         <section class="data-section">
@@ -122,7 +125,9 @@
             <div class="data-point"><span>Pression Dynamique ($\mathbf{q}$)</span><span id="dyn-pressure">0.00 Pa</span></div>
             <div class="data-point"><span>Force de Traînée</span><span id="drag-force">0.00 N</span></div>
             <div class="data-point"><span>Puissance de Traînée ($\mathbf{kW}$)</span><span id="drag-power-kw">0.00 kW</span></div>
-            <div class="data-point"><span>Gravité Locale ($\mathbf{g}$)</span><span id="local-g">N/A</span></div>
+            <div class="data-point"><span>Nombre de Reynolds</span><span id="reynolds-number">N/A</span></div>
+            <div class="data-point"><span>Temps Dilation (Vitesse)</span><span id="time-dilation-v">0.00 ns/j</span></div>
+            <div class="data-point"><span>Temps Dilation (Gravité)</span><span id="time-dilation-g">0.00 ns/j</span></div>
             <hr>
             <h2><i class="fas fa-globe-europe"></i> SVT & Environnement</h2>
             <div class="data-point"><span>Niveau Sonore (dB) [Max/Moy]</span><span id="noise-level">N/A (Capteur)</span></div>
@@ -142,5 +147,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20n95j3X7VqJ8c6XvR7D4v/1/g6p5qC5+484l..." crossorigin=""></script>
     <script src="suncalc.js"></script> <script src="1_global-constants-and-utilities.js"></script>
     <script src="gnss-dashbord-full.js"></script>
+    
 </body>
-                                                                              </html>
+                                                                                     </html>
