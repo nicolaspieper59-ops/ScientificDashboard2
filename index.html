@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GNSS SpaceTime Dashboard • UKF 21 États Fusion Professionnel (COMPLET)</title>
+    <title>GNSS SpaceTime Dashboard • UKF 21 États Fusion (COMPLET/HORS LIGNE)</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /><link rel="stylesheet" href="leaflet.css" /><link rel="stylesheet" href="fontawesome.min.css" /><style>
+    <link rel="stylesheet" href="leaflet.css" />
+    <link rel="stylesheet" href="fontawesome.min.css" />
           
     <style>
         /* --- Styles CSS Complets (Thème Sombre Professionnel) --- */
@@ -77,16 +78,23 @@
         }
         #biome-half { 
             content: ''; position: absolute; top: 50%; left: 0; right: 0; bottom: 0; 
-            background-color: #795548; transition: opacity 0.8s; z-index: 1;
+            background-color: var(--panel-dark); /* CORRIGÉ : utilise la couleur du biome (panneau) */
+            transition: opacity 0.8s; z-index: 1;
         }
-        #minecraft-clock.x-ray #biome-half { opacity: 0; }
+        #minecraft-clock.x-ray #biome-half { opacity: 0; } /* CORRIGÉ : Logique X-Ray */
 
         .sun-element, .moon-element { 
             position: absolute; width: 100%; height: 100%; top: 0; left: 0; 
             display: flex; justify-content: center; align-items: flex-start; 
-            transform-origin: center center; transition: transform 1s linear; z-index: 2; 
+            transform-origin: center center; 
+            transition: transform 1s linear; /* Maintient l'animation fluide */
+            z-index: 2; 
         }
-        .sun-icon, .moon-icon { font-size: 1.5em; transform: translateY(-50%); }
+        .sun-icon, .moon-icon { 
+            font-size: 1.5em; 
+            /* CORRIGÉ : Position Zénith en haut (0deg) */
+            transform: translateY(calc(-50px + 50%)); 
+        }
         .sun-icon { color: #ffdd00; text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
         .moon-icon { color: #f0f0f0; text-shadow: 0 0 5px rgba(200, 200, 255, 0.3); }
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
@@ -100,7 +108,7 @@
         @media (max-width: 800px) { .dashboard-container { grid-template-columns: 1fr; } }
     </style>
 </head>
-<body class="dark-mode">
+<body class="dark-mode"> 
     <header>
         <h1 style="text-align: center; color: var(--accent-color);">GNSS SpaceTime Dashboard • UKF 21 États Fusion Professionnel</h1>
     </header>
@@ -170,28 +178,10 @@
                         <input type="number" id="angular-velocity" value="0.0" step="0.1">
                     </div>
                     <div class="control-input-full">
-                        <button id="nether-toggle-btn" style="width: 100%;">Mode Nether: DÉSACTIVÉ (1:1)</button>
+                        <button id="distance-ratio-toggle-btn" style="width: 100%;">Rapport Distance: SURFACE (1.000)</button>
                         <span id="nether-mode-status" style="display:none;">1.000</span>
                     </div>
                 </div>
-            </section>
-
-            <section class="panel" aria-labelledby="meteo-heading">
-                <h2 id="meteo-heading"><i class="fas fa-temperature-high"></i> Météo & Biophysique</h2>
-                <div class="data-point"><span>Statut Météo</span><span id="weather-status">INACTIF</span></div>
-                <div class="data-point"><span>Température Air</span><span id="temp-air-2">N/A</span></div>
-                <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure-2">N/A</span></div>
-                <div class="data-point"><span>Humidité Relative</span><span id="humidity-2">N/A</span></div>
-                <div class="data-point"><span>Point de Rosée</span><span id="dew-point">N/A</span></div>
-                <div class="data-point"><span>Densité de l'Air (ρ)</span><span id="air-density">N/A</span></div>
-                <div class="data-point"><span>Altitude Barométrique</span><span id="alt-baro">N/A</span></div>
-                <hr>
-                <h3>Bio/SVT (Simulation)</h3>
-                <div class="data-point"><span>Humidité Absolue (Sim)</span><span id="abs-humidity-sim">N/A</span></div>
-                <div class="data-point"><span>Temp. Thermomètre Mouillé (Sim)</span><span id="wet-bulb-temp-sim">N/A</span></div>
-                <div class="data-point"><span>Indice de Stabilité (CAPE Sim)</span><span id="CAPE-sim">N/A</span></div>
-                <div class="data-point"><span>Saturation O₂ Théo. (Sim)</span><span id="O2-saturation-sim">N/A</span></div>
-                <div class="data-point"><span>Photosynthèse (Sim)</span><span id="photosynthesis-rate-sim">N/A</span></div>
             </section>
 
             <section class="panel" aria-labelledby="imu-heading">
@@ -203,6 +193,14 @@
                 <div class="data-point"><span>Champ Magnétique X</span><span id="mag-x">N/A</span></div>
                 <div class="data-point"><span>Champ Magnétique Y</span><span id="mag-y">N/A</span></div>
                 <div class="data-point"><span>Champ Magnétique Z</span><span id="mag-z">N/A</span></div>
+            </section>
+            
+            <section class="panel" aria-labelledby="env-sensors-heading">
+                <h2 id="env-sensors-heading"><i class="fas fa-camera-retro"></i> Capteurs Environnementaux</h2>
+                <div class="data-point"><span>Lumière Ambiante (Lux)</span><span id="ambient-light">N/A</span></div>
+                <div class="data-point"><span>Lumière (Max)</span><span id="ambient-light-max">0 Lux</span></div>
+                <div class="data-point"><span>Niveau Sonore (dB)</span><span id="sound-level">N/A</span></div>
+                <div class="data-point"><span>Son (Max)</span><span id="sound-level-max">0 dB</span></div>
             </section>
         </div>
 
@@ -237,7 +235,7 @@
                 <hr>
                 <h3>Distance (3D)</h3>
                 <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
-                <div class="data-point"><span>Rapport de Distance (MRF)</span><span id="distance-ratio">1.000</span></div>
+                <div class="data-point"><span>Rapport de Distance (Alt)</span><span id="distance-ratio">1.000</span></div>
                 <div class="data-point"><span>Distance (s-lumière)</span><span id="distance-light-s">0.00e+00 s</span></div>
                 <div class="data-point"><span>Distance (min-lumière)</span><span id="distance-light-min">0.00e+00 min</span></div>
                 <div class="data-point"><span>Distance (h-lumière)</span><span id="distance-light-h">0.00e+00 h</span></div>
@@ -252,7 +250,9 @@
                 <h2 id="map-heading"><i class="fas fa-map-marked-alt"></i> Carte GNSS / Globe Interactif</h2>
                 <div class="data-point"><span>Précision GPS (Acc)</span><span id="gps-precision">N/A</span></div>
                 <div id="map-container">
+                    <div id="globe-container" style="display:none; width: 100%; height: 350px; background: #000; border-radius: 8px;"></div>
                     <div id="map" role="img" aria-label="Carte interactive affichant la position GPS en temps réel.">Chargement de la carte...</div>
+                    <button id="toggle-globe-btn" style="position: absolute; top: 25px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.6); color: white; padding: 5px; border-radius: 4px;">Globe</button>
                     <button id="xray-button" title="Rayons X : Biome transparent" aria-label="Basculer le mode Rayons X de l'horloge céleste">X</button>
                     </div>
              </section>
@@ -335,6 +335,8 @@
                 <div class="data-point"><span>Altitude (Soleil)</span><span id="sun-alt">N/A</span></div>
                 <div class="data-point"><span>Azimut (Soleil)</span><span id="sun-azimuth">N/A</span></div>
                 <div class="data-point"><span>Durée du Jour</span><span id="day-duration">N/A</span></div>
+                <div class="data-point"><span>Lever (TSM/TST)</span><span id="sunrise-times">N/A</span></div>
+                <div class="data-point"><span>Coucher (TSM/TST)</span><span id="sunset-times">N/A</span></div>
                 <hr>
                 <h3><i class="fas fa-moon"></i> Lune</h3>
                 <div class="data-point"><span>Phase</span><span id="moon-phase-name">N/A</span></div>
@@ -346,19 +348,12 @@
         </div>
     </main>
     
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-    integrity="sha256-20n95j3X7VqJ8c6XvR7D4v/1/g6p5qC5+484l+7+QxY=" 
-    crossorigin=""></script>
-
-<script src="leaflet.js"></script>
+    <script src="leaflet.js"></script>
+    <script src="suncalc.js"></script>
+    <script src="math.min.js"></script> 
+    <script src="turf.min.js"></script> 
     
-<script src="turf.min.js"></script> 
-        
-<script src="suncalc.js"></script>
-        
-<script src="math.min.js"></script>   
-    
-<script src="gnss-dashboard-full.js"></script>
+    <script src="gnss-dashboard-full.js"></script>
 
 </body>
 </html>
