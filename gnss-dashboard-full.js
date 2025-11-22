@@ -976,3 +976,124 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
                     }
                 } catch (e) { 
                     // CORRECTION HORS LIGNE : Gérer l'échec de fetchWeather
+                    $('weather-status').textContent = `❌ HORS LIGNE`;
+                    // Utiliser les valeurs par défaut/précédentes pour les calculs
+                    currentAirDensity = RHO_SEA_LEVEL;
+                    currentSpeedOfSound = getSpeedOfSound(TEMP_SEA_LEVEL_K); // ISA 15°C
+                    lastT_K = TEMP_SEA_LEVEL_K;
+                    lastP_hPa = BARO_ALT_REF_HPA;
+                    
+                    $('temp-air-2').textContent = `15.0 °C (Défaut)`;
+                    $('pressure-2').textContent = `1013 hPa (Défaut)`;
+                    $('air-density').textContent = `${currentAirDensity.toFixed(3)} kg/m³ (Défaut)`;
+                    $('dew-point').textContent = `N/A (Hors Ligne)`;
+                    console.warn("Échec du fetch Météo (Hors ligne ?). Utilisation des valeurs par défaut.");
+                }
+            }
+
+            // 3. Mise à jour Heure NTP
+            if (now) {
+                if ($('local-time') && !$('local-time').textContent.includes('Synchronisation...')) {
+                    $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+                }
+                if ($('date-display')) $('date-display').textContent = now.toUTCString();
+                if ($('time-minecraft')) $('time-minecraft').textContent = getMinecraftTime(now);
+            }
+        };
+        
+        domSlowID = setInterval(updateSlowData, DOM_SLOW_UPDATE_MS);
+        updateSlowData(); 
+    }
+
+    // ===========================================
+    // INITIALISATION DOM (DÉMARRAGE)
+    // ===========================================
+    document.addEventListener('DOMContentLoaded', () => {
+        
+        initMap(); 
+        
+        // --- Écouteurs d'événements pour tous les contrôles ---
+        $('toggle-gps-btn').addEventListener('click', () => {
+            if (!ukf) { 
+                 if (typeof math === 'undefined') {
+                    alert("Erreur: math.js n'a pas pu être chargé. Le filtre UKF est désactivé.");
+                    return;
+                }
+                ukf = new ProfessionalUKF(); 
+                sTime = Date.now();
+                startGPS(); 
+                startSlowLoop(); 
+            } else {
+                toggleGPS(); 
+            }
+        });
+
+        $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
+        $('toggle-mode-btn').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            $('toggle-mode-btn').innerHTML = document.body.classList.contains('dark-mode') ? '<i class="fas fa-sun"></i> Mode Jour' : '<i class="fas fa-moon"></i> Mode Nuit';
+        });
+        $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; });
+        $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
+        $('reset-all-btn').addEventListener('click', () => {
+            distM = 0; maxSpd = 0; kSpd = 0; kUncert = UKF_R_MAX; kAlt = null; kAltUncert = 10; timeMoving = 0; timeTotal = 0; sTime = Date.now();
+            if (ukf) ukf = new ProfessionalUKF(); 
+        });
+        $('capture-data-btn').addEventListener('click', () => console.log({
+            etat: ukf.getState(),
+            physique: calculateAdvancedPhysics(kSpd, kAlt, currentMass, 0.5, lastT_K, currentAirDensity, lat, kAltUncert, getWGS84Gravity(lat, kAlt), accel.x),
+            astro: getSolarTime(getCDate(), lon)
+        }));
+        $('xray-button').addEventListener('click', () => $('minecraft-clock').classList.toggle('x-ray'));
+        
+        // --- Écouteurs pour les Inputs & Selects ---
+        $('freq-select').addEventListener('change', (e) => startGPS(e.target.value));
+        $('gps-accuracy-override').addEventListener('change', (e) => gpsAccuracyOverride = parseFloat(e.target.value) || 0.0);
+        $('environment-select').addEventListener('change', (e) => {
+            selectedEnvironment = e.target.value;
+            const factor = ENVIRONMENT_FACTORS[selectedEnvironment];
+            $('env-factor').textContent = `${factor.DISPLAY} (x${factor.R_MULT.toFixed(1)})`;
+        });
+        $('mass-input').addEventListener('input', (e) => {
+            currentMass = parseFloat(e.target.value) || 70.0;
+            $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+        });
+        $('celestial-body-select').addEventListener('change', (e) => {
+            currentCelestialBody = e.target.value;
+            const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+            $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+        });
+        const updateRotation = () => {
+            rotationRadius = parseFloat($('rotation-radius').value) || 100;
+            angularVelocity = parseFloat($('angular-velocity').value) || 0.0;
+            if (currentCelestialBody === 'ROTATING') {
+                const { G_ACC_NEW } = updateCelestialBody('ROTATING', kAlt, rotationRadius, angularVelocity);
+                $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+            }
+        };
+        $('rotation-radius').addEventListener('input', updateRotation);
+        $('angular-velocity').addEventListener('input', updateRotation);
+        
+        // CORRECTION : Bouton "Rapport Distance"
+        $('distance-ratio-toggle-btn').addEventListener('click', () => {
+            distanceRatioMode = !distanceRatioMode;
+            const ratio = distanceRatioMode ? calculateDistanceRatio(kAlt || 0) : 1.0;
+            $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
+        });
+        $('ukf-reactivity-mode').addEventListener('change', (e) => currentUKFReactivity = e.target.value);
+
+        // --- DÉMARRAGE DU SYSTÈME ---
+        updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+        
+        // Démarrer la synchro NTP (gère l'échec hors ligne)
+        syncH();
+        
+        // Initialiser les valeurs par défaut hors ligne pour la physique
+        currentAirDensity = RHO_SEA_LEVEL;
+        currentSpeedOfSound = getSpeedOfSound(TEMP_SEA_LEVEL_K); // 15°C ISA
+        lastT_K = TEMP_SEA_LEVEL_K;
+        lastP_hPa = BARO_ALT_REF_HPA;
+
+    }); // Fin de DOMContentLoaded
+
+})(window); // Fin de l'IIFE    
