@@ -384,20 +384,32 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     /**
      * Tente de synchroniser l'heure locale avec l'heure du serveur (NTP Like).
      */
-    function syncH() {
-        fetch(SERVER_TIME_ENDPOINT)
-            .then(res => res.json())
-            .then(data => {
-                const serverTimeMs = new Date(data.utc_datetime).getTime();
-                lServH = serverTimeMs; // Heure du serveur
-                lLocH = Date.now();    // Heure locale au moment de la réception
-                if ($('local-time')) $('local-time').textContent = '✅ Synchronisé';
-            })
-            .catch(err => {
-                console.error("Erreur de synchronisation NTP:", err);
-                if ($('local-time')) $('local-time').textContent = '❌ SYNCHRO ÉCHOUÉE';
-            });
-    }
+    // gnss-dashboard-full.js
+
+function syncH() {
+    lLocH = Date.now();
+    
+    // Tente de se connecter au serveur NTP
+    fetch(SERVER_TIME_ENDPOINT)
+    .then(res => {
+        // CORRECTION: Assurer que l'état du réseau est vérifié
+        if (!res.ok) throw new Error("Erreur de statut réseau ou hors ligne"); 
+        return res.json();
+    })
+    .then(data => {
+        const serverTimeMs = new Date(data.utc_datetime).getTime();
+        lServH = serverTimeMs;
+        if ($('local-time')) $('local-time').textContent = 'Synchronisé';
+    })
+    .catch(err => {
+        // FALLBACK HORS LIGNE
+        lServH = lLocH; // Utilise l'heure locale comme référence
+        if ($('local-time')) $('local-time').textContent = 'SYNCHRO HORS LIGNE ⚠️'; 
+        console.warn("Synchronisation de l'heure échouée. Utilisation de l'heure système locale.");
+        
+        // CORRECTION CRITIQUE: Si getCDate utilise lServH et lLocH, il faut s'assurer qu'ils sont initialisés. C'est fait ici.
+    });
+          }
 
     /**
      * Obtient l'heure synchronisée en utilisant l'offset.
