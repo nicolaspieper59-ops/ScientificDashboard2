@@ -316,7 +316,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             coriolisForce, geopotentialAltitude, force_g_long,
             nyquistFrequency, altSigma, radiationPressure
         };
-                       }
+                           }
     // =================================================================
 // BLOC 3/5 : Fonctions Météo, Astro, Capteurs et Contrôle GPS
 // =================================================================
@@ -628,7 +628,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             // CORRECTION : Démarrer quand même la boucle rapide pour le temps écoulé !
             if (!domFastID) startFastLoop();
         }
-            }
+}
     // =================================================================
 // BLOC 4/5 : Gestion GPS, Boucles UKF (Rapide) et Contrôles
 // =================================================================
@@ -1001,7 +1001,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             updateSpiritLevel(accel.x, accel.y, accel.z);
             
         }, IMU_UPDATE_RATE_MS);
-}
+            }
     // =================================================================
 // BLOC 5/5 : Boucle Lente (Astro/Météo) et Initialisation
 // =================================================================
