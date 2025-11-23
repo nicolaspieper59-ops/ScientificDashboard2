@@ -18,23 +18,108 @@
         }
         body { 
             font-family: 'Arial', sans-serif; margin: 0; padding: 0; 
-            background-color: var(--bg-dark); color: var(--text-dark); /* Défaut en mode sombre */
+            background-color: var(--bg-dark); color: var(--text-dark); 
             transition: background-color 0.8s, color 0.8s; 
         }
         .dashboard-container { 
-            display: grid; grid-template-columns: 1fr 1.5fr 1fr; 
+            display: grid; 
+            grid-template-columns: 1fr 1.5fr 1fr; /* Structure 3 colonnes de base */
             gap: 15px; padding: 15px; max-width: 1800px; margin: auto;
         }
         
-        /* Maintient 3 colonnes sur petits écrans */
+        /* CORRECTION : Maintient 3 colonnes sur petits écrans */
         @media (max-width: 1200px) { .dashboard-container { grid-template-columns: 1fr 1.5fr 1fr; } }
         @media (max-width: 800px) { .dashboard-container { grid-template-columns: 1fr 1.5fr 1fr; overflow-x: auto; } }
 
-        /* (Le reste de vos styles CSS est correct et omis pour la concision) */
-        
         body.dark-mode section.panel { background-color: var(--panel-dark); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
         body.dark-mode section.panel h2 { border-bottom-color: var(--border-dark); color: #4da6ff; }
-        /* ... */
+        body.dark-mode .data-point span:first-child { color: #ccc; }
+        body.dark-mode .data-point span:last-child { color: #99ccff; }
+        body.dark-mode .data-point { border-bottom-color: #2a2a2a; }
+        body.dark-mode .control-input-full input, 
+        body.dark-mode .control-input-full select { background-color: #333; color: var(--text-dark); border-color: #555; }
+        body.dark-mode #map { background-color: #333; filter: invert(0.9) hue-rotate(180deg); }
+        body.dark-mode #emergency-stop-btn { background-color: var(--error-color); }
+
+        section.panel { 
+            background-color: var(--panel-dark); padding: 15px 20px; 
+            border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); 
+        }
+        section.panel h2 { 
+            margin-top: 0; border-bottom: 2px solid var(--border-dark); 
+            padding-bottom: 10px; font-size: 1.2em; color: var(--accent-color);
+        }
+        h3 { color: var(--accent-color); margin-top: 15px; margin-bottom: 5px; font-size: 1em; }
+        .data-point { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #2a2a2a; font-size: 0.95em; min-height: 24px; }
+        .data-point span:first-child { font-weight: bold; color: #ccc; margin-right: 10px; }
+        .data-point span:last-child { font-family: 'Courier New', Courier, monospace; font-weight: bold; color: #99ccff; text-align: right; }
+        .speed-display { text-align: center; background-color: #222; color: #00ff66; padding: 20px; border-radius: 12px; font-size: 2em; margin-bottom: 15px; font-family: 'Orbitron', sans-serif; }
+        .speed-display small { display: block; font-size: 0.5em; color: #aaa; margin-top: 5px; font-family: Arial, sans-serif; }
+        #speed-stable { font-size: 2.5em; font-weight: 700; letter-spacing: 1px; }
+        .controls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .control-input-full { grid-column: 1 / -1; margin-top: 5px; }
+        .control-input-full label { display: block; font-size: 0.9em; margin-bottom: 3px; }
+        .control-input-full input, .control-input-full select { width: 98%; padding: 5px; border-radius: 4px; border: 1px solid #555; background-color: #333; color: var(--text-dark); }
+        button, select { padding: 8px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: background-color 0.2s, transform 0.1s; background-color: #555; color: #fff; }
+        button:active { transform: scale(0.98); }
+        #toggle-gps-btn { background-color: #28a745; color: white; }
+        #emergency-stop-btn { background-color: var(--error-color); color: white; }
+        #emergency-stop-btn.active { animation: pulse-red 1s infinite alternate; }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 100% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } }
+        #map-container { position: relative; }
+        #map { height: 350px; width: 100%; border-radius: 8px; margin-top: 15px; background-color: #333; }
+        #xray-button { position: absolute; top: 25px; right: 10px; z-index: 1000; background-color: rgba(0,0,0,0.6); color: white; border-radius: 50%; width: 30px; height: 30px; padding: 0; font-size: 0.8em; line-height: 30px; text-align: center; }
+
+        /* Styles de l'horloge astro (Minecraft) */
+        #minecraft-clock-container { display: flex; justify-content: center; align-items: center; flex-direction: column; padding-top: 10px; position: relative; }
+        #minecraft-clock { 
+            width: 100px; height: 100px; position: relative; border: 3px solid #333; 
+            overflow: hidden; background-color: transparent; border-radius: 50%; 
+            transition: background-color 0.8s, border-color 0.8s; z-index: 0;
+        }
+        #minecraft-clock::before { 
+            content: ''; position: absolute; top: 50%; left: 0; right: 0; 
+            height: 2px; background-color: #555; transform: translateY(-50%); z-index: 3;
+        }
+        #biome-half { 
+            content: ''; position: absolute; top: 50%; left: 0; right: 0; bottom: 0; 
+            background-color: var(--panel-dark);
+            transition: opacity 0.8s; z-index: 1;
+        }
+        #minecraft-clock.x-ray #biome-half { opacity: 0; }
+
+        .sun-element, .moon-element { 
+            position: absolute; width: 100%; height: 100%; top: 0; left: 0; 
+            display: flex; justify-content: center; align-items: flex-start; 
+            transform-origin: center center; 
+            transition: transform 1s linear;
+            z-index: 2; 
+        }
+        .sun-icon, .moon-icon { 
+            font-size: 1.5em; 
+            transform: translateY(calc(-50px + 50%)); /* Zénith en haut */
+        }
+        .sun-icon { color: #ffdd00; text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
+        .moon-icon { color: #f0f0f0; text-shadow: 0 0 5px rgba(200, 200, 255, 0.3); }
+        .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
+
+        /* Styles Ciel & Mode Sombre */
+        .sky-day { background-color: #87ceeb !important; } 
+        .sky-sunset { background-color: #ff8c00 !important; } 
+        .sky-night { background-color: #121220 !important; } 
+        
+        /* Styles pour le Niveau à Bulle */
+        .spirit-level-container {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            margin: 15px auto;
+            border: 2px solid var(--accent-color);
+            border-radius: 50%;
+            background-color: var(--bg-dark);
+            overflow: hidden;
+            transform: rotate(0deg); 
+        }
         .spirit-level-bubble {
             position: absolute;
             width: 90px;
@@ -45,10 +130,17 @@
             box-shadow: 0 0 10px #007bff;
             transition: transform 0.05s linear;
         }
-        /* ... (Reste des styles) ... */
+        .crosshair-h, .crosshair-v {
+            position: absolute;
+            background-color: rgba(255, 0, 0, 0.5);
+            z-index: 10;
+        }
+        .crosshair-h { top: 50%; left: 0; width: 100%; height: 1px; transform: translateY(-50%); }
+        .crosshair-v { left: 50%; top: 0; height: 100%; width: 1px; transform: translateX(-50%); }
+        
     </style>
 </head>
-<body> 
+<body class="dark-mode"> 
     <header>
         <h1 style="text-align: center; color: var(--accent-color);">GNSS SpaceTime Dashboard • UKF 21 États Fusion Professionnel</h1>
     </header>
@@ -293,7 +385,7 @@
     <script src="suncalc.js"></script>
     <script src="turf.min.js"></script> 
         
-    <script src="gnss-dashboard-full (15) (2).js"></script>
+    <script src="gnss-dashboard-full.js"></script>
 
 </body>
-                                                                        </html>
+</html>
