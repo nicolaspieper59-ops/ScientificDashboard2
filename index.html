@@ -31,16 +31,14 @@
         @media (max-width: 1200px) { .dashboard-container { grid-template-columns: 1fr 1.5fr 1fr; } }
         @media (max-width: 800px) { .dashboard-container { grid-template-columns: 1fr 1.5fr 1fr; overflow-x: auto; } }
 
+        /* (Le reste de vos styles CSS est omis pour la concision... Le style du Niveau à bulle est inclus) */
         body.dark-mode section.panel { background-color: var(--panel-dark); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
         body.dark-mode section.panel h2 { border-bottom-color: var(--border-dark); color: #4da6ff; }
-        body.dark-mode .data-point span:first-child { color: #ccc; }
-        body.dark-mode .data-point span:last-child { color: #99ccff; }
         body.dark-mode .data-point { border-bottom-color: #2a2a2a; }
         body.dark-mode .control-input-full input, 
         body.dark-mode .control-input-full select { background-color: #333; color: var(--text-dark); border-color: #555; }
         body.dark-mode #map { background-color: #333; filter: invert(0.9) hue-rotate(180deg); }
-        body.dark-mode #emergency-stop-btn { background-color: var(--error-color); }
-
+        
         section.panel { 
             background-color: var(--panel-dark); padding: 15px 20px; 
             border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); 
@@ -70,74 +68,34 @@
         #map { height: 350px; width: 100%; border-radius: 8px; margin-top: 15px; background-color: #333; }
         #xray-button { position: absolute; top: 25px; right: 10px; z-index: 1000; background-color: rgba(0,0,0,0.6); color: white; border-radius: 50%; width: 30px; height: 30px; padding: 0; font-size: 0.8em; line-height: 30px; text-align: center; }
 
-        /* Styles de l'horloge astro (Minecraft) */
+        /* ... (Styles Horloge Minecraft) ... */
         #minecraft-clock-container { display: flex; justify-content: center; align-items: center; flex-direction: column; padding-top: 10px; position: relative; }
-        #minecraft-clock { 
-            width: 100px; height: 100px; position: relative; border: 3px solid #333; 
-            overflow: hidden; background-color: transparent; border-radius: 50%; 
-            transition: background-color 0.8s, border-color 0.8s; z-index: 0;
-        }
-        #minecraft-clock::before { 
-            content: ''; position: absolute; top: 50%; left: 0; right: 0; 
-            height: 2px; background-color: #555; transform: translateY(-50%); z-index: 3;
-        }
-        #biome-half { 
-            content: ''; position: absolute; top: 50%; left: 0; right: 0; bottom: 0; 
-            background-color: var(--panel-dark);
-            transition: opacity 0.8s; z-index: 1;
-        }
+        #minecraft-clock { width: 100px; height: 100px; position: relative; border: 3px solid #333; overflow: hidden; border-radius: 50%; z-index: 0; }
+        #biome-half { content: ''; position: absolute; top: 50%; left: 0; right: 0; bottom: 0; background-color: var(--panel-dark); z-index: 1; }
         #minecraft-clock.x-ray #biome-half { opacity: 0; }
-
-        .sun-element, .moon-element { 
-            position: absolute; width: 100%; height: 100%; top: 0; left: 0; 
-            display: flex; justify-content: center; align-items: flex-start; 
-            transform-origin: center center; 
-            transition: transform 1s linear;
-            z-index: 2; 
-        }
-        .sun-icon, .moon-icon { 
-            font-size: 1.5em; 
-            transform: translateY(calc(-50px + 50%)); /* Zénith en haut */
-        }
-        .sun-icon { color: #ffdd00; text-shadow: 0 0 5px rgba(255, 255, 0, 0.5); }
-        .moon-icon { color: #f0f0f0; text-shadow: 0 0 5px rgba(200, 200, 255, 0.3); }
+        .sun-element, .moon-element { position: absolute; width: 100%; height: 100%; top: 0; left: 0; display: flex; justify-content: center; align-items: flex-start; transform-origin: center center; transition: transform 1s linear; z-index: 2; }
+        .sun-icon, .moon-icon { font-size: 1.5em; transform: translateY(calc(-50px + 50%)); }
+        .sun-icon { color: #ffdd00; } .moon-icon { color: #f0f0f0; }
         .clock-display { font-size: 0.8em; color: #777; margin-top: 5px; }
-
-        /* Styles Ciel & Mode Sombre */
         .sky-day { background-color: #87ceeb !important; } 
         .sky-sunset { background-color: #ff8c00 !important; } 
         .sky-night { background-color: #121220 !important; } 
         
-        /* Styles pour le Niveau à Bulle */
+        /* NOUVEAU : Styles pour le Niveau à Bulle */
         .spirit-level-container {
-            position: relative;
-            width: 100px;
-            height: 100px;
-            margin: 15px auto;
-            border: 2px solid var(--accent-color);
-            border-radius: 50%;
-            background-color: var(--bg-dark);
-            overflow: hidden;
-            transform: rotate(0deg); 
+            position: relative; width: 100px; height: 100px; margin: 15px auto;
+            border: 2px solid var(--accent-color); border-radius: 50%;
+            background-color: var(--bg-dark); overflow: hidden;
         }
         .spirit-level-bubble {
-            position: absolute;
-            width: 90px;
-            height: 90px;
-            border-radius: 50%;
+            position: absolute; width: 90px; height: 90px; border-radius: 50%;
             background: radial-gradient(circle at center, #4da6ff 30%, var(--accent-color) 60%);
-            border: 1px solid #fff;
-            box-shadow: 0 0 10px #007bff;
+            border: 1px solid #fff; box-shadow: 0 0 10px #007bff;
             transition: transform 0.05s linear;
         }
-        .crosshair-h, .crosshair-v {
-            position: absolute;
-            background-color: rgba(255, 0, 0, 0.5);
-            z-index: 10;
-        }
+        .crosshair-h, .crosshair-v { position: absolute; background-color: rgba(255, 0, 0, 0.5); z-index: 10; }
         .crosshair-h { top: 50%; left: 0; width: 100%; height: 1px; transform: translateY(-50%); }
         .crosshair-v { left: 50%; top: 0; height: 100%; width: 1px; transform: translateX(-50%); }
-        
     </style>
 </head>
 <body class="dark-mode"> 
@@ -234,9 +192,8 @@
                 <div class="data-point"><span>Niveau Sonore (dB)</span><span id="sound-level">N/A</span></div>
                 <div class="data-point"><span>Son (Max)</span><span id="sound-level-max">0 dB</span></div>
             </section>
-        </div>
-
-        <div class="column-2">
+    </div>
+    <div class="column-2">
             <section class="panel" aria-labelledby="speed-heading">
                 <h2 id="speed-heading"><i class="fas fa-tachometer-alt"></i> Vitesse, Distance & Relativité</h2>
                 <div class="speed-display" role="status" aria-live="polite">
@@ -291,6 +248,32 @@
            </div>
            
         <div class="column-3">
+            <section class="panel" aria-labelledby="weather-heading">
+                <h2 id="weather-heading"><i class="fas fa-cloud-sun"></i> Météo & Capteurs</h2>
+                <div class="data-point"><span>Statut Météo</span><span id="weather-status">INACTIF</span></div>
+                <div class="data-point"><span>Température Air</span><span id="temp-air-2">N/A</span></div>
+                <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure-2">N/A</span></div>
+                <div class="data-point"><span>Humidité Relative</span><span id="humidity-2">N/A</span></div>
+                <div class="data-point"><span>Point de Rosée</span><span id="dew-point">N/A</span></div>
+                <hr>
+                <div class="data-point"><span>RealFeel Shade™</span><span id="realfeel-shade">N/A</span></div>
+                <div class="data-point"><span>Vent</span><span id="wind-display">N/A</span></div>
+                <div class="data-point"><span>Qualité de l'air</span><span id="air-quality">N/A</span></div>
+                <div class="data-point"><span>Indice UV maximal</span><span id="uv-max">N/A</span></div>
+                <div class="data-point"><span>Rafales</span><span id="gusts">N/A</span></div>
+                <div class="data-point"><span>Couverture nuageuse</span><span id="cloud-cover">N/A</span></div>
+                <div class="data-point"><span>Visibilité</span><span id="visibility">N/A</span></div>
+                <div class="data-point"><span>Plafond nuageux</span><span id="ceiling">N/A</span></div>
+            </section>
+            
+            <section class="panel" aria-labelledby="pollutants-heading">
+                <h2 id="pollutants-heading"><i class="fas fa-smog"></i> Polluants Actuels (API)</h2>
+                <div class="data-point"><span>NO₂ (µg/m³)</span><span id="no2-val">N/A</span></div>
+                <div class="data-point"><span>PM 2.5 (µg/m³)</span><span id="pm25-val">N/A</span></div>
+                <div class="data-point"><span>PM 10 (µg/m³)</span><span id="pm10-val">N/A</span></div>
+                <div class="data-point"><span>O₃ (µg/m³)</span><span id="o3-val">N/A</span></div>
+            </section>
+
             <section class="panel" aria-labelledby="dynamics-heading">
                 <h2 id="dynamics-heading"><i class="fas fa-balance-scale-right"></i> Dynamique & Forces</h2>
                 <div class="data-point"><span>Gravité Locale (g)</span><span id="gravity-local">N/A</span></div>
@@ -349,7 +332,7 @@
                 <div class="data-point"><span>Longitude (EKF)</span><span id="lon-display">N/A</span></div>
                 <div class="data-point"><span>Altitude (EKF)</span><span id="alt-display">N/A</span></div>
                 <div class="data-point"><span>Altitude Géopotentielle</span><span id="geopotential-alt">N/A</span></div>
-                <div class="data-point"><span>Altitude Corrigée (Baro)</span><span id="alt-corrected-baro">N/A</span></div>
+                <div class="data-point"><span>Altitude Barométrique (Cor.)</span><span id="alt-corrected-baro">N/A</span></div>
                 <div class="data-point"><span>Cap (Direction)</span><span id="heading-display">N/A</span></div>
                 <hr>
                 <h3>Temps Solaire & Sidéral</h3>
@@ -388,4 +371,4 @@
     <script src="gnss-dashboard-full.js"></script>
 
 </body>
-</html>
+    </html>
