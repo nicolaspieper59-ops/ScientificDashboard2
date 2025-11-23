@@ -3,7 +3,23 @@
 // BLOC 1/5 : Constantes, Utilitaires, et État Global
 // CORRIGÉ : Fonctions métrologiques et offline-first
 // =================================================================
+// =================================================================
+// MODIFICATIONS CRITIQUES DE L'ÉTAT GLOBAL (À PLACER EN HAUT DU FICHIER)
+// =================================================================
 
+// --- ÉTAT GLOBAL ET VARIABLES DE CONTRÔLE ---
+let isGpsPaused = false; // MODIFICATION 1 : La pause GPS est désactivée par défaut
+
+let currentPosition = { 
+    // MODIFICATION 2 : Initialisation avec des coordonnées de travail (ex: Marseille)
+    // REMPLACER ces valeurs par votre emplacement si nécessaire
+    lat: 43.2964,   // Latitude (ex: pour débloquer Astro/Météo)
+    lon: 5.3697,    // Longitude
+    acc: 10.0,      // Précision initiale (pour le filtre)
+    spd: 0.0        // Vitesse initiale (pour le filtre)
+};
+
+// ... autres variables globales ...
 // --- FONCTIONS UTILITAIRES GLOBALES ---
 const $ = id => document.getElementById(id);
 const dataOrDefault = (val, decimals, suffix = '') => {
