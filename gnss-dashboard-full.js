@@ -94,7 +94,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         'MARS': { G: 3.71, R: 3389500, name: 'Mars' }, 'ROTATING': { G: 0.0, R: WGS84_A, name: 'Station Spatiale' }
     };
 
-    // ... (Fin du Bloc 1)
+    // ... (Suite du Bloc 1/4)
  // =================================================================
 // BLOC 2/4 : État Global, UKF et Fonctions Métrologiques Core
 // =================================================================
@@ -129,8 +129,8 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let currentAirDensity = RHO_SEA_LEVEL;
     let currentSpeedOfSound = 343.0; 
     let local_g = CELESTIAL_DATA.EARTH.G;
-    let G_ACC = local_g; // Gravité Base
-    let R_ALT_CENTER_REF = WGS84_A; // Rayon Base
+    let G_ACC = local_g; // Gravité Base (peut changer avec le corps céleste)
+    let R_ALT_CENTER_REF = WGS84_A; // Rayon Base (peut changer avec le corps céleste)
 
     // ===========================================
     // CLASSE UKF PROFESSIONNELLE (Architecture 21 États - Simplifiée)
@@ -141,16 +141,20 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             this.x = math.zeros(this.N_STATES); 
             this.P = math.diag(Array(this.N_STATES).fill(1e-2)); 
             this.Q = math.diag(Array(this.N_STATES).fill(1e-6));
+            // Initialisation de la position (Indices 0, 1, 2)
             this.x.set([0], 0); this.x.set([1], 0); this.x.set([2], 0);
         }
         predict(imuData, dt) {
+            // Logique de prédiction simplifiée (mouvement dans l'axe Nord pour l'exemple)
             const accel_biais_corrigé = imuData.accel[1] - (this.x.get([9]) || 0); // Utilise l'axe Y comme axe de mouvement
             let vN = this.x.get([3]) + accel_biais_corrigé * dt; 
             this.x.set([3], vN); 
             let lat_pred = this.x.get([0]) + (vN / R_E_BASE) * dt;
             this.x.set([0], lat_pred);
+            // La matrice de covariance P devrait être mise à jour ici (simplifié)
         }
         update(gpsData, R_dyn) {
+            // Mise à jour de Kalman simplifiée
             const K = 0.1; // Gain de Kalman constant simplifiée
             this.x.set([0], this.x.get([0]) * (1-K) + (gpsData.latitude * D2R) * K);
             this.x.set([1], this.x.get([1]) * (1-K) + (gpsData.longitude * D2R) * K);
@@ -159,6 +163,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
                 const oldSpeed = this.x.get([3]);
                 this.x.set([3], oldSpeed * (1-K) + gpsData.speed * K);
             }
+            // La matrice de covariance P devrait être mise à jour ici (simplifié)
         }
         getState() {
             const x_data = this.x.toArray(); 
@@ -174,14 +179,15 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
     // --- FONCTIONS CORE ET MÉTROLOGIQUES ---
     
-    // CORRECTION MÉTROLOGIQUE : Calcul de l'Altitude Barométrique
+    // Correction Métrologique : Calcul de l'Altitude Barométrique
     function getBarometricAltitude(P_hPa, P_ref_hPa, T_K) {
         if (P_hPa <= 0 || P_ref_hPa <= 0 || T_K <= 0) return NaN;
-        // Utilise G_ACC pour la gravité de la planète sélectionnée
+        // Utilise G_ACC pour la gravité de la planète sélectionnée (correction métrologique)
         const pressure_ratio = P_hPa / P_ref_hPa;
         return (T_K / 0.0065) * (1 - Math.pow(pressure_ratio, (R_AIR * 0.0065) / G_ACC));
     }
     
+    // Correction Métrologique : Gravité Locale (g) WGS84
     function getWGS84Gravity(lat, alt) {
         const latRad = lat * D2R; 
         const sin2lat = Math.sin(latRad) ** 2;
@@ -195,8 +201,14 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         return Math.sqrt(GAMMA_AIR * R_AIR * tempK);
     }
 
+    // Fonction Utilitaire : Calcul du Rapport de Distance (Altitude)
+    function calculateDistanceRatio(alt) {
+        if (alt < 0) alt = 0;
+        return WGS84_A / (WGS84_A + alt);
+    }
+    
     // Fonction de Physique Avancée (avec Correction Métrologique intégrée)
-    function calculateAdvancedPhysics(kSpd, kAlt, mass, CdA, tempK, airDensity, lat, kAltUncert, localG, accel_long) {
+    function calculateAdvancedPhysics(kSpd, kAlt, mass, CdA, tempK, airDensity, lat, localG, accel_long) {
         let V = kSpd; if(isNaN(V)) V = 0;
         
         // Relativité
@@ -217,7 +229,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         const coriolisForce = 2 * mass * V * OMEGA_EARTH * Math.sin(lat * D2R);
         const geopotentialAltitude = (localG > 0.1) ? kAlt * (G_ACC / localG) : kAlt;
         const force_g_long = localG > 0.1 ? (accel_long / localG) : 0;
-        const radiationPressure = (SOLAR_FLUX_DENSITY * Math.max(0, Math.sin(SunCalc.getPosition(new Date(), lat, lon).altitude))) / C_L; 
+        const radiationPressure = (SOLAR_FLUX_DENSITY * Math.max(0, Math.sin(SunCalc.getPosition(getCurrentTime(), lat, currentLon).altitude))) / C_L; 
 
         return { 
             lorentzFactor, timeDilationSpeed, gravitationalDilation, Rs_object,
@@ -225,9 +237,9 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             coriolisForce, geopotentialAltitude, force_g_long, radiationPressure
         };
     }
-    // ... (Fin du Bloc 2)
+    // ... (Suite du Bloc 2/4)
  // =================================================================
-// BLOC 3/4 : Fonctions Météo Détaillée, Astro et Gestion du Temps
+// BLOC 3/4 : Fonctions Météo Détaillée, Polluants, Astro et Gestion du Temps
 // =================================================================
     
     // --- GESTION DE L'HEURE (NTP) ---
@@ -250,6 +262,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     }
 
     // --- FONCTIONS ASTRO & CONVERSIONS ---
+    const D2R = Math.PI / 180, R2D = 180 / Math.PI; // Redéfini pour la clarté si ce bloc est isolé, mais défini globalement.
     const J2000 = 2451545.0; 
     const dayMs = 1000 * 60 * 60 * 24;
     const MC_DAY_MS = 72 * 60 * 1000; 
@@ -284,15 +297,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
         return { TST: toTimeString(tst_ms), MST: toTimeString(mst_ms), EOT: eot_min.toFixed(2), ECL_LONG: (L * R2D).toFixed(2) };
     }
-    function getMinecraftTime(date) {
-        if (date === null) return '00:00';
-        const msSinceMidnightUTC = date.getUTCHours() * 3600000 + date.getUTCMilliseconds() + date.getUTCMinutes() * 60000 + date.getUTCSeconds() * 1000;
-        const timeRatio = (msSinceMidnightUTC % dayMs) / dayMs;
-        const mcTimeMs = (timeRatio * MC_DAY_MS + MC_DAY_MS) % MC_DAY_MS;
-        const mcHours = Math.floor(mcTimeMs / 3600000);
-        const mcMinutes = Math.floor((mcTimeMs % 3600000) / 60000);
-        return `${String(mcHours).padStart(2, '0')}:${String(mcMinutes).padStart(2, '0')}`;
-    }
+    
     function getCardinalDirection(deg) {
         const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO'];
         const index = Math.round(deg / (360 / directions.length)) % directions.length;
@@ -375,8 +380,8 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             $('air-quality').textContent = 'N/A (Échoué)';
         }
     }
-    // ... (Fin du Bloc 3)
- // =================================================================
+    // ... (Suite du Bloc 3/4)
+    // =================================================================
 // BLOC 4/4 : Gestion GPS/IMU, Boucles de Mise à Jour et Initialisation
 // =================================================================
 
@@ -389,6 +394,14 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let gpsStandbyTimeoutID = null;
     let lastGPSPos = null;
 
+    // NOTE: getKalmanR() est omise ici pour simplification car elle dépend des paramètres R/Q de l'UKF
+    function getKalmanR(accRaw, override, env, reactivity) {
+        let R_mult = ENVIRONMENT_FACTORS[env].R_MULT;
+        let R_fact = UKF_REACTIVITY_FACTORS[reactivity].MULT;
+        let acc_val = override > 0 ? override : (accRaw || 10.0);
+        return Math.min(UKF_R_MAX, (acc_val * R_mult * R_fact)**2);
+    }
+    
     function startGPS(mode) {
         if (wID !== null) navigator.geolocation.clearWatch(wID);
         currentGPSMode = mode;
@@ -449,7 +462,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         lastTime = now;
         if (dt < MIN_DT) return; 
         
-        // 1. Prédiction UKF (Les données IMU sont ici des placeholders pour l'exemple)
+        // 1. Prédiction UKF 
         ukf.predict({ accel: [accel.x, accel.y, accel.z], gyro: [gyro.x, gyro.y, gyro.z] }, dt);
         const estimatedState = ukf.getState();
         kSpd = estimatedState.speed;
@@ -464,7 +477,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         const advancedPhysics = calculateAdvancedPhysics(
             kSpd, kAlt, currentMass, currentCdA, 
             lastT_K, currentAirDensity, // Données météo locales pour la correction
-            currentLat, kAltUncert, local_g, accel_long
+            currentLat, local_g, accel_long
         );
         
         // 3. Mise à jour Vitesse et Physique Corrigée
@@ -579,9 +592,10 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
         });
         
+        // CORRECTION : Utilisation de la fonction utilitaire de rapport de distance
         $('distance-ratio-toggle-btn').addEventListener('click', () => {
             distanceRatioMode = !distanceRatioMode;
-            const ratio = distanceRatioMode ? (R_E_BASE / (R_E_BASE + kAlt)) : 1.0;
+            const ratio = distanceRatioMode ? calculateDistanceRatio(kAlt || 0) : 1.0;
             $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
         });
 
@@ -595,3 +609,4 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     window.addEventListener('load', initDashboard);
 
 })(window);
+ 
