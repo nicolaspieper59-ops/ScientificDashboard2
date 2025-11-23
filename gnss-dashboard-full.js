@@ -690,10 +690,105 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         }
     }
 
-    // --- GESTION GPS (GÉOLOCALISATION) ---
-    function startGPS(mode = currentGPSMode) {
-        if (emergencyStopActive) return;
-        if (wID !== null) navigator.geolocation.clearWatch(wID);
+    // =================================================================
+// BLOC 1/2 : INITIALISATION GPS (WATCH POSITION)
+// =================================================================
+
+function startGPSAcquisition() {
+    // Vérifie si l'API de Géolocalisation est disponible
+    if ('geolocation' in navigator) {
+        
+        // Options de précision et timeout pour le capteur GPS
+        const gpsOptions = {
+            enableHighAccuracy: true,
+            maximumAge: 5000, // 5 secondes (réutiliser une position récente)
+            timeout: 15000    // 15 secondes max d'attente
+        };
+
+        // Utilise watchPosition pour obtenir des mises à jour continues du GPS
+        // L'ID doit être stocké pour pouvoir ARRETER l'acquisition (stopGPSAcquisition)
+        gpsWatchId = navigator.geolocation.watchPosition(
+            (position) => {
+                // Succès : LA BONNE FORMULE pour récupérer les données brutes
+                const { latitude, longitude, altitude, speed, accuracy } = position.coords;
+                
+                // Mettre à jour l'état global et alimenter le filtre UKF
+                currentRawGPSData = {
+                    lat: latitude, 
+                    lon: longitude, 
+                    alt: altitude, 
+                    spd: speed, 
+                    acc: accuracy
+                };
+                
+                // Le filtre UKF s'exécute ici avec currentRawGPSData
+            },
+            (error) => {
+                // Échec : Gère les erreurs (permissions refusées, timeout, etc.)
+                console.error(`Erreur GPS (${error.code}): ${error.message}`);
+                // Mettre à jour le tableau de bord avec le message d'erreur.
+                $('gps-status').textContent = `Erreur: ${error.message}`;
+            },
+            gpsOptions
+        );
+        
+        // Met à jour l'état du tableau de bord
+        $('gps-status').textContent = 'Acquisition en cours...';
+
+    } else {
+        // Géolocalisation non supportée
+        console.error("Erreur: Géolocalisation non supportée par ce navigateur.");
+        $('gps-status').textContent = 'GPS NON SUPPORTÉ';
+    }
+}
+    // =================================================================
+// BLOC 2/2 : INITIALISATION CAPTEURS IMU (DEVICEMOTION)
+// =================================================================
+
+function startIMUSensors() {
+    // Vérifie si l'événement devicemotion est supporté
+    if ('DeviceMotionEvent' in window) {
+
+        // Vérification des permissions spécifiques (nécessaire pour iOS 13+ et certains Android)
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(permissionState => {
+                    if (permissionState === 'granted') {
+                        // Permissions accordées, ajouter l'écouteur
+                        window.addEventListener('devicemotion', handleDeviceMotion);
+                        $('imu-status').textContent = 'Actif (Motion)';
+                    } else {
+                        // Permissions refusées
+                        $('imu-status').textContent = 'Inactif (Permission Refusée)';
+                    }
+                })
+                .catch(console.error);
+        } else {
+            // Pas besoin de permissions explicites (anciens navigateurs)
+            window.addEventListener('devicemotion', handleDeviceMotion);
+            $('imu-status').textContent = 'Actif (Multi-Capteurs)';
+        }
+        
+    } else {
+        // L'API n'est pas supportée
+        $('imu-status').textContent = 'Inactif (Non Supporté)';
+    }
+}
+
+// Fonction pour traiter les données
+function handleDeviceMotion(event) {
+    // Récupère l'accélération filtrée par le matériel
+    const acc = event.accelerationIncludingGravity;
+    
+    // Mettre à jour l'état global avec les données brutes
+    currentRawIMUData = {
+        accX: acc.x, 
+        accY: acc.y, 
+        accZ: acc.z,
+        // Les données du Magnétomètre (Magnetometer) nécessitent un autre événement: 'deviceorientation'
+    };
+    // Le filtre UKF consomme ces données.
+                }
         
         requestWakeLock(); // Activer l'anti-veille
         
