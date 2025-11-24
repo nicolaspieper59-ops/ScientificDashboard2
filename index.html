@@ -1,140 +1,175 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GNSS SpaceTime Dashboard — Fusion complète</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    :root{
-      --bg:#071022; --card:#0b1220; --muted:#9aa4b2; --accent:#52b3ff;
-      --glass: rgba(255,255,255,0.03); --radius:10px; --mono: "Courier New", monospace;
-    }
-    html,body{height:100%;margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#02101a 0%,#071022 70%);color:#dbe7f2}
-    .wrap{max-width:1400px;margin:12px auto;padding:12px;display:grid;grid-template-columns:360px 1fr 360px;gap:12px}
-    .card{background:var(--glass);border-radius:var(--radius);padding:12px;box-shadow:0 8px 24px rgba(0,0,0,0.6)}
-    h1{text-align:center;color:var(--accent);margin:6px 0 14px 0}
-    h2{margin:6px 0;color:#9ed8ff}
-    .dp{display:flex;justify-content:space-between;padding:8px;border-bottom:1px dashed rgba(255,255,255,0.03);font-size:0.95rem}
-    .controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-    .btn{background:var(--accent);border:none;padding:8px;border-radius:8px;font-weight:700;color:#02243a;cursor:pointer}
-    input[type=number], select, input[type=text]{background:transparent;border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:6px;color:inherit}
-    #map{height:360px;border-radius:8px}
-    canvas{background:transparent;border-radius:6px}
-    .small{font-size:0.82rem;color:var(--muted)}
-    footer{max-width:1400px;margin:12px auto;padding:12px;color:var(--muted);font-size:0.82rem;text-align:center}
-    /* additional classes from ZIP preserved */
-    .dashboard-container{}
-    .controls-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-    .control-input-full{grid-column:1 / -1}
-    .column-1,.column-2,.column-3{min-height:20px}
-    #minecraft-clock{width:84px;height:84px;border-radius:50%;position:relative;border:2px solid rgba(255,255,255,0.06);overflow:hidden}
-    #biome-half{position:absolute;left:0;right:0;top:50%;bottom:0;background:linear-gradient(#4caf50,#8bc34a)}
-    @media(max-width:1100px){.wrap{grid-template-columns:1fr}}
-    code{background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:4px}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GNSS SpaceTime • Tableau Scientifique (Pro)</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+:root{
+  --bg:#061226; --card:#071428; --muted:#9fb6c9; --accent:#58c1ff;
+  --glass: rgba(255,255,255,0.03); --radius:12px; --mono: "Courier New", monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;color:#d9eef9;background:linear-gradient(180deg,#02101a 0%,#061226 75%)}
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;max-width:1400px;margin:10px auto;color:var(--muted)}
+.header h1{margin:0;color:var(--accent);font-size:1.05rem}
+.container{max-width:1400px;margin:0 auto;padding:12px;display:grid;grid-template-columns:320px 1fr 360px;gap:12px}
+.card{background:var(--glass);border-radius:var(--radius);padding:12px;box-shadow:0 10px 30px rgba(0,0,0,0.6);backdrop-filter:blur(6px)}
+.section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.section-title h2{margin:0;color:#9ed8ff;font-size:0.98rem}
+.controls-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.button{background:var(--accent);border:none;padding:8px;border-radius:8px;font-weight:700;color:#02243a;cursor:pointer}
+.input{background:transparent;border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:6px;color:inherit;width:100%}
+.dp{display:flex;justify-content:space-between;padding:8px;border-bottom:1px dashed rgba(255,255,255,0.03);font-size:0.92rem}
+.small{font-size:0.82rem;color:var(--muted)}
+#map{height:360px;border-radius:10px;overflow:hidden}
+.row{display:flex;gap:8px;align-items:center}
+.minecraft-clock{width:96px;height:96px;border-radius:50%;position:relative;border:3px solid rgba(255,255,255,0.06);overflow:hidden;background:linear-gradient(180deg,#2b7a2b,#60b05d)}
+.biome-half{position:absolute;left:0;right:0;top:50%;bottom:0;background:linear-gradient(#4caf50,#8bc34a);transition:all .4s}
+.sun-disc,.moon-disc{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px}
+.sun-disc{background: radial-gradient(circle at 30% 30%, #fff7b2, #ffda47); box-shadow:0 0 32px rgba(255,200,40,0.35)}
+.moon-disc{background: radial-gradient(circle at 30% 30%, #f8f8ff, #d6d6df); box-shadow:0 0 10px rgba(255,255,255,0.06)}
+.xray-btn{position:absolute;right:10px;top:10px;background:rgba(0,0,0,0.5);color:white;border:none;border-radius:8px;padding:6px;cursor:pointer}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.legend .item{background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;font-size:0.8rem}
+.footer{max-width:1400px;margin:14px auto;padding:12px;color:var(--muted);font-size:0.82rem;text-align:center}
+
+/* responsive */
+@media (max-width:1100px){ .container{grid-template-columns:1fr} .header{padding:8px} }
+</style>
 </head>
 <body>
-  <h1>GNSS SpaceTime Dashboard — Fusion complète</h1>
-  <div class="wrap">
 
-    <!-- LEFT: Controls & Sensors -->
-    <div class="card column-1">
-      <h2>Contrôles & Capteurs</h2>
-      <div class="dp"><span>Latitude</span><strong id="lat">N/A</strong></div>
-      <div class="dp"><span>Longitude</span><strong id="lon">N/A</strong></div>
-      <div class="dp"><span>Altitude</span><strong id="alt">N/A</strong></div>
-      <div class="dp"><span>Precision GPS</span><strong id="gps-acc">N/A</strong></div>
+<header class="header">
+  <h1>GNSS SpaceTime — Tableau Scientifique Professionnel</h1>
+  <div class="small">Fusion complète • EKF/UKF • IMU • Astronomie • Météo • Physique • Logs</div>
+</header>
 
-      <div class="controls-grid" style="margin-top:10px">
-        <button id="btn-locate" class="btn">📍 Localiser</button>
-        <button id="btn-watch" class="btn">🔁 Watch</button>
-        <button id="btn-stop-watch" class="btn">⏹ Stop</button>
-        <button id="btn-imu" class="btn">📡 IMU ON</button>
-        <button id="btn-export-csv" class="btn">⬇︎ Export</button>
-        <button id="btn-clear-logs" class="btn">🧹 Clear</button>
-      </div>
+<main class="container">
 
-      <h2 style="margin-top:12px">Paramètres physiques</h2>
-      <div class="dp"><span>Masse (kg)</span><input id="mass" type="number" value="70" /></div>
-      <div class="dp"><span>Surface (m²)</span><input id="area" type="number" step="0.01" value="0.5" /></div>
-      <div class="dp"><span>Cd</span><input id="cd" type="number" step="0.01" value="1.0" /></div>
+  <!-- LEFT: Controls & Sensors -->
+  <aside class="card" aria-labelledby="controls-title">
+    <div class="section-title"><h2 id="controls-title">Contrôles & Capteurs</h2></div>
 
-      <h2 style="margin-top:12px">Diagnostics</h2>
-      <div class="dp"><span>IMU</span><strong id="imu-status">N/A</strong></div>
-      <div class="dp"><span>GPS</span><strong id="gps-status">N/A</strong></div>
-      <div class="dp"><span>EKF/UKF</span><strong id="filter-status">N/A</strong></div>
+    <div class="dp"><span>Latitude</span><strong id="lat">N/A</strong></div>
+    <div class="dp"><span>Longitude</span><strong id="lon">N/A</strong></div>
+    <div class="dp"><span>Altitude (m)</span><strong id="alt">N/A</strong></div>
+    <div class="dp"><span>Precision GPS</span><strong id="gps-acc">N/A</strong></div>
+
+    <div class="controls-grid" style="margin-top:10px">
+      <button id="btn-locate" class="button">📍 Localiser</button>
+      <button id="btn-watch" class="button">🔁 Watch</button>
+      <button id="btn-stop" class="button">⏹ Stop</button>
+      <button id="btn-imu" class="button">📡 IMU ON</button>
+      <button id="btn-capture" class="button" title="Capturer un snapshot de toutes les données">📸 Capturer</button>
+      <button id="btn-export" class="button">⬇︎ Export CSV</button>
     </div>
 
-    <!-- CENTER: Map, Charts, Astro -->
-    <div class="card column-2">
-      <h2>Carte & Trajectoire</h2>
-      <div id="map"></div>
-      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-        <button id="btn-iss-track" class="btn">🛰 Suivre ISS</button>
-        <button id="btn-show-trail" class="btn">✳️ Trace ISS</button>
-        <button id="btn-replay" class="btn">▶️ Replay</button>
-        <span class="small">Dernière ISS: <strong id="iss-last">N/A</strong></span>
+    <h2 style="margin-top:12px">Paramètres physiques</h2>
+    <div class="dp"><span>Masse (kg)</span><input id="mass" class="input" type="number" value="70"></div>
+    <div class="dp"><span>Surface (m²)</span><input id="area" class="input" type="number" step="0.01" value="0.5"></div>
+    <div class="dp"><span>Cd</span><input id="cd" class="input" type="number" step="0.01" value="1"></div>
+
+    <h2 style="margin-top:12px">Statuts & Diagnostics</h2>
+    <div class="dp"><span>IMU</span><strong id="imu-status">N/A</strong></div>
+    <div class="dp"><span>GPS</span><strong id="gps-status">N/A</strong></div>
+    <div class="dp"><span>Filtre (EKF/UKF)</span><strong id="filter-status">N/A</strong></div>
+
+    <div style="margin-top:12px" class="small">
+      <div>Mode : <select id="ui-mode"><option value="day">Jour</option><option value="night">Nuit</option></select></div>
+      <div style="margin-top:6px">Activer Variante Filtre :
+        <select id="filter-select"><option value="EKF">EKF (Stable)</option><option value="UKF21">UKF21 (Plugin)</option></select>
       </div>
+    </div>
+  </aside>
 
-      <h2 style="margin-top:12px">Graphiques & Séries</h2>
-      <canvas id="chartTemp" height="90"></canvas>
-      <canvas id="chartAQI" height="90" style="margin-top:8px"></canvas>
-
-      <h2 style="margin-top:12px">Astronomie</h2>
-      <div class="dp"><span>Soleil (alt/az)</span><strong id="sun-altaz">N/A</strong></div>
-      <div class="dp"><span>Lune (phase/illum.)</span><strong id="moon-phase">N/A</strong></div>
-      <div class="dp"><span>Équation du Temps</span><strong id="eot">N/A</strong></div>
-
-      <div style="display:flex;gap:12px;margin-top:10px;align-items:center">
-        <div id="minecraft-clock">
-          <div id="biome-half"></div>
-          <div id="sun-element" class="sun-element">☀️</div>
-          <div id="moon-element" class="moon-element">🌙</div>
-        </div>
-        <div>
-          <div class="small">Clock</div>
-          <div id="clock-status">N/A</div>
-        </div>
+  <!-- CENTER: Map / charts / astro -->
+  <section class="card" aria-labelledby="map-title">
+    <div class="section-title">
+      <h2 id="map-title">Carte • ISS • Trajectoires</h2>
+      <div class="row">
+        <button id="btn-iss-track" class="button">🛰 Suivre ISS</button>
+        <button id="btn-trail" class="button">✳️ Trace</button>
+        <button id="btn-replay" class="button">▶️ Replay</button>
       </div>
     </div>
 
-    <!-- RIGHT: Science & Derived -->
-    <div class="card column-3">
-      <h2>Météo & Atmosphère</h2>
-      <div class="dp"><span>Temp (°C)</span><strong id="temp">N/A</strong></div>
-      <div class="dp"><span>Humidité (%)</span><strong id="rh">N/A</strong></div>
-      <div class="dp"><span>Pression (hPa)</span><strong id="pressure">N/A</strong></div>
-      <div class="dp"><span>Point de rosée (°C)</span><strong id="dew">N/A</strong></div>
-      <div class="dp"><span>Densité air ρ (kg/m³)</span><strong id="rho">N/A</strong></div>
-      <div class="dp"><span>Viscosité μ (Pa·s)</span><strong id="mu">N/A</strong></div>
-      <div class="dp"><span>Vitesse du son (m/s)</span><strong id="c_sound">N/A</strong></div>
-
-      <h2 style="margin-top:12px">Dynamique & Conversions</h2>
-      <div class="dp"><span>Vitesse brute (m/s)</span><strong id="speed-raw-ms">N/A</strong></div>
-      <div class="dp"><span>Vitesse stable (m/s)</span><strong id="speed-stable-ms">N/A</strong></div>
-      <div class="dp"><span>Mach</span><strong id="mach-number">N/A</strong></div>
-      <div class="dp"><span>γ (Lorentz)</span><strong id="lorentz-factor">N/A</strong></div>
-
-      <h2 style="margin-top:12px">Forces & Gravité</h2>
-      <div class="dp"><span>Pression dynamique q (Pa)</span><strong id="qdyn">N/A</strong></div>
-      <div class="dp"><span>Force traînée (N)</span><strong id="drag">N/A</strong></div>
-      <div class="dp"><span>Force Coriolis (N)</span><strong id="coriolis">N/A</strong></div>
-      <div class="dp"><span>Gravité locale g (m/s²)</span><strong id="g_local">N/A</strong></div>
+    <div id="map" role="region" aria-label="Carte"></div>
+    <div class="legend">
+      <div class="item">Dernière ISS: <strong id="iss-last">N/A</strong></div>
+      <div class="item">Logs: <strong id="log-count">0</strong></div>
+      <div class="item">Mode Nethe r: <strong id="nether-mode">OFF</strong></div>
     </div>
 
-  </div>
+    <h2 style="margin-top:12px">Graphiques</h2>
+    <canvas id="chartTemp" height="80"></canvas>
+    <canvas id="chartAQI" height="80" style="margin-top:8px"></canvas>
 
-  <footer>
-    Version fusionnée — tout le contenu du ZIP a été intégré. Pour endpoints HTTP bloqués (Open-Notify), déployez le proxy optionnel fourni. © Dashboard
-  </footer>
+    <h2 style="margin-top:12px">Astronomie & Horloge Solaire</h2>
+    <div class="row" style="align-items:center;gap:14px">
+      <div class="minecraft-clock" aria-hidden="true">
+        <div class="biome-half" id="biome-half"></div>
+        <div class="sun-disc" id="sun-disc">☀️</div>
+        <div class="moon-disc" id="moon-disc">🌙</div>
+      </div>
+      <div>
+        <div class="dp"><span>Soleil alt/az</span><strong id="sun-altaz">N/A</strong></div>
+        <div class="dp"><span>Lune phase / illum.</span><strong id="moon-phase">N/A</strong></div>
+        <div class="dp"><span>Equation du Temps</span><strong id="eot">N/A</strong></div>
+        <div class="dp"><span>Midi solaire local</span><strong id="solar-noon">N/A</strong></div>
+      </div>
+    </div>
 
-  <!-- app.js (séparé) -->
-  <script src="gnss-dashbord-full.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
+    <div class="small" style="margin-top:8px">Animation Soleil/Lune : disque interactif (zénith, horizon, demi-disque Minecraft-style), mode « nether » (transparent / souterrain) et aurora placeholder.</div>
+  </section>
+
+  <!-- RIGHT: Science / derived quantities -->
+  <aside class="card" aria-labelledby="science-title">
+    <div class="section-title"><h2 id="science-title">Météo • Physique • Dynamique</h2></div>
+
+    <div class="dp"><span>Temp (°C)</span><strong id="temp">N/A</strong></div>
+    <div class="dp"><span>Humidité (%)</span><strong id="rh">N/A</strong></div>
+    <div class="dp"><span>Pression (hPa)</span><strong id="pressure">N/A</strong></div>
+    <div class="dp"><span>Point de rosée (°C)</span><strong id="dew">N/A</strong></div>
+    <div class="dp"><span>Densité air ρ</span><strong id="rho">N/A</strong></div>
+    <div class="dp"><span>Viscosité μ</span><strong id="mu">N/A</strong></div>
+    <div class="dp"><span>Vitesse son c</span><strong id="c_sound">N/A</strong></div>
+
+    <h2 style="margin-top:12px">Vitesse & Relativité</h2>
+    <div class="dp"><span>Vitesse brute (m/s)</span><strong id="speed-raw-ms">N/A</strong></div>
+    <div class="dp"><span>Vitesse stable (m/s)</span><strong id="speed-stable-ms">N/A</strong></div>
+    <div class="dp"><span>Vitesse max (session)</span><strong id="speed-max">N/A</strong></div>
+    <div class="dp"><span>Mach</span><strong id="mach-number">N/A</strong></div>
+    <div class="dp"><span>γ (Lorentz)</span><strong id="lorentz-factor">N/A</strong></div>
+
+    <h2 style="margin-top:12px">Forces & Energie</h2>
+    <div class="dp"><span>Pression dynamique q</span><strong id="qdyn">N/A</strong></div>
+    <div class="dp"><span>Force traînée</span><strong id="drag">N/A</strong></div>
+    <div class="dp"><span>Force Coriolis</span><strong id="coriolis">N/A</strong></div>
+    <div class="dp"><span>Gravité locale</span><strong id="g_local">N/A</strong></div>
+
+    <h2 style="margin-top:12px">Distances & conversions</h2>
+    <div class="dp"><span>Distance totale (3D)</span><strong id="distance-total">N/A</strong></div>
+    <div class="dp"><span>Horizon visible (km)</span><strong id="horizon-distance">N/A</strong></div>
+    <div class="dp"><span>Distance (années-lumière)</span><strong id="distance-ly">N/A</strong></div>
+
+    <div class="small" style="margin-top:8px">Tous les indicateurs suivent les règles décrites dans vos captures : priorité aux capteurs (baromètre pour altitude corrigée), affichage solaire/lunaire corrigé, capacité de simulation si données non-réelles mais toujours avec trace et export.</div>
+  </aside>
+
+</main>
+
+<footer class="footer">Dashboard fusionné — toutes les fonctionnalités demandées intégrées. Pour ISS/Open-Notify, utilisez le proxy si besoin (voir README / server snippet).</footer>
+
+<!-- scripts (app.js must be collé en 5 parties dans un fichier app.js) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.js"></script>
+<script src="gnss-dashbord-full.js"></script>
+
 </body>
-    </html>
-                                                                            
+  </html>
+                                                    
