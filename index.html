@@ -118,6 +118,10 @@
         .crosshair-h, .crosshair-v { position: absolute; background-color: rgba(255, 0, 0, 0.5); z-index: 10; }
         .crosshair-h { top: 50%; left: 0; width: 100%; height: 1px; transform: translateY(-50%); }
         .crosshair-v { left: 50%; top: 0; height: 100%; width: 1px; transform: translateX(-50%); }
+
+        /* Theoretical quantities panel styling */
+        .theoretical-list { max-height: 420px; overflow: auto; margin-top: 8px; }
+        .theoretical-crit { color: #ffcf59; font-weight: 800; }
     </style>
 </head>
 <body class="dark-mode"> 
@@ -131,6 +135,7 @@
             <section class="panel" aria-labelledby="controls-heading">
                 <h2 id="controls-heading"><i class="fas fa-cog"></i> Contrôles & Système</h2>
                 <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">N/A</span></div>
+<!-- original content unchanged... -->
                 <div class="data-point"><span>Date & Heure (UTC/GMT)</span><span id="date-display">N/A</span></div>
                 <div class="data-point"><span>Temps écoulé (Session)</span><span id="elapsed-time">0.00 s</span></div>
                 <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
@@ -193,6 +198,8 @@
                     </div>
                 </div>
             </section>
+
+            <!-- IMU and Environment panels kept same -->
 
             <section class="panel" aria-labelledby="imu-heading">
                 <h2 id="imu-heading"><i class="fas fa-microchip"></i> IMU (Accéléromètre/Magnétomètre)</h2>
@@ -448,11 +455,203 @@
         </div>
     </main>
     
+    <!-- Bibliothèques JS existantes -->
     <script src="math.min.js"></script> 
     <script src="leaflet.js"></script>
     <script src="suncalc.js"></script>
     <script src="turf.min.js"></script> 
         
+    <!-- Script principal ajouté: gestion des grandeurs théoriques / mesurables -->
+    <script>
+    /* Classe JS légère pour enregistrer, convertir et afficher des grandeurs mesurables
+       - Permet d'enregistrer des grandeurs théoriques et mesurées
+       - Expose des helpers de conversion SI <-> unités usuelles
+       - Peut être étendue par la bibliothèque scientifique que tu connecteras (ex: units.js, mathjs)
+    */
+    class TheoreticalQuantities {
+        constructor() {
+            this.q = {}; // stocke les grandeurs: id -> {name, value, unit, siUnit, critical}
+        }
+        register(id, name, value = 'N/A', unit = '', siUnit = '', critical = false) {
+            this.q[id] = { id, name, value, unit, siUnit, critical };
+            return this.q[id];
+        }
+        setValue(id, value, unit = null) {
+            if (!this.q[id]) return null;
+            this.q[id].value = value;
+            if (unit) this.q[id].unit = unit;
+            // update DOM if exists
+            const el = document.getElementById(id);
+            if (el) el.textContent = `${value} ${this.q[id].unit || ''}`.trim();
+            return this.q[id];
+        }
+        getValue(id){ return this.q[id] || null; }
+        toSI(id){ /* placeholder pour conversion vers SI (à implémenter selon la bibliothèque) */ return this.q[id]; }
+        fromSI(id, targetUnit){ /* placeholder */ return this.q[id]; }
+        populateDOM(prefix = ''){
+            // parcourt et affiche chaque grandeur dans l'élément correspondant
+            for (const k in this.q){
+                const el = document.getElementById(k);
+                if (el) {
+                    const q = this.q[k];
+                    el.textContent = `${q.value} ${q.unit || ''}`.trim();
+                    if (q.critical) el.classList.add('theoretical-crit');
+                }
+            }
+        }
+    }
+
+    // création de la table et enregistrement des grandeurs (essentiel + dérivées + utiles)
+    const TQ = new TheoreticalQuantities();
+
+    // --- Unités de base SI (étiquettes et constantes) ---
+    TQ.register('u_length','Longueur','m','m','m', true);
+    TQ.register('u_mass','Masse','kg','kg','kg', true);
+    TQ.register('u_time','Temps / Durée','s','s','s', true);
+    TQ.register('u_current','Courant électrique','A','A','A');
+    TQ.register('u_temp','Température thermodynamique','K','K','K', true);
+    TQ.register('u_amount','Quantité de matière','mol','mol','mol');
+    TQ.register('u_lum','Intensité lumineuse','cd','cd','cd');
+
+    // --- Grandeurs dérivées / usuelles ---
+    TQ.register('dens_mass','Densité de masse','kg/m³','kg/m^3','kg/m^3');
+    TQ.register('area','Surface','m²','m^2','m^2');
+    TQ.register('volume','Volume','m³','m^3','m^3');
+    TQ.register('speed','Vitesse typique','m/s','m/s','m/s', true);
+    TQ.register('accel','Accélération','m/s²','m/s^2','m/s^2');
+    TQ.register('force','Force','N','N','kg·m·s^-2');
+    TQ.register('pressure','Pression','Pa','Pa','N/m^2', true);
+    TQ.register('energy','Énergie / Travail','J','J','kg·m^2·s^-2');
+    TQ.register('power','Puissance','W','W','J/s');
+    TQ.register('charge','Charge électrique','C','C','A·s');
+    TQ.register('voltage','Tension','V','V','J/C');
+    TQ.register('resistance','Résistance','Ω','Ohm','V/A');
+    TQ.register('capacitance','Capacitance','F','F','C/V');
+    TQ.register('inductance','Inductance','H','H','V·s/A');
+    TQ.register('frequency','Fréquence','Hz','Hz','s^-1');
+
+    // --- Physique appliquée / météorologie / atmosphère ---
+    TQ.register('temp_air','Température Air (°C)','N/A','°C','K', true);
+    TQ.register('temp_air_k','Température Air (K)','N/A','K','K');
+    TQ.register('pressure_atm','Pression Atmosphérique','N/A','Pa','Pa', true);
+    TQ.register('humidity_rel','Humidité Relative','N/A','%','');
+    TQ.register('dewpoint','Point de Rosée','N/A','°C','K');
+    TQ.register('air_density','Densité de l\'air','N/A','kg/m³','kg/m^3');
+    TQ.register('speed_sound','Vitesse du Son Locale','N/A','m/s','m/s');
+    TQ.register('wind_speed','Vent (m/s)','N/A','m/s','m/s');
+    TQ.register('wind_gust','Rafales','N/A','m/s','m/s');
+    TQ.register('visibility_val','Visibilité','N/A','m','m');
+
+    // --- Chimie & SVT ---
+    TQ.register('molar_mass','Masse molaire','N/A','g/mol','kg/mol');
+    TQ.register('concentration','Concentration molaire','N/A','mol/m³','mol/m^3');
+    TQ.register('ph_val','pH','N/A','','');
+    TQ.register('partial_pressure','Pression partielle','N/A','Pa','Pa');
+    TQ.register('co2_ppm','CO2 atmosphérique','N/A','ppm','');
+    TQ.register('o2_pct','O2 atmosphérique','N/A','%','');
+
+    // --- Astronomie & distances cosmiques ---
+    TQ.register('au_m','Unité astronomique (m)','149597870700 m','m','m');
+    TQ.register('parsec_m','Parsec (m)','3.085677581e16 m','m','m');
+    TQ.register('lightsec_m','Seconde-lumière (m)','299792458 m','m','m');
+    TQ.register('sidereal_day','Jour sidéral','23.9344696 h','h','s');
+
+    // --- GNSS / Navigation ---
+    TQ.register('lat','Latitude','N/A','°','rad', true);
+    TQ.register('lon','Longitude','N/A','°','rad', true);
+    TQ.register('alt','Altitude (ellipsoïde)','N/A','m','m', true);
+    TQ.register('hdop','HDOP','N/A','','');
+    TQ.register('vdop','VDOP','N/A','','');
+    TQ.register('num_sats','Nombre Satellites','0','','');
+    TQ.register('gps_prec','Précision GPS (CEP)','N/A','m','m');
+
+    // --- Mathématiques utiles et conversions ---
+    TQ.register('pi_const','π','3.141592653589793','','');
+    TQ.register('e_const','e','2.718281828459045','','');
+    TQ.register('deg2rad','deg→rad','Math.PI/180','','rad');
+
+    // --- Optique / Radiométrie / Photométrie ---
+    TQ.register('luminous_flux','Flux lumineux (lm)','N/A','lm','lm');
+    TQ.register('illuminance','Éclairement (lux)','N/A','lx','lm/m^2');
+    TQ.register('irradiance','Irradiance (W/m²)','N/A','W/m²','W/m^2');
+    TQ.register('uv_index','Indice UV','N/A','','');
+
+    // --- Radioactivité & rayonnement ---
+    TQ.register('radiation_rate','Rayonnement naturel','N/A','µSv/h','Sv/s');
+    TQ.register('activity_bq','Activité (Becquerel)','N/A','Bq','s^-1');
+
+    // --- Électronique & signaux ---
+    TQ.register('signal_snr','Rapport SNR (dB)','N/A','dB','');
+    TQ.register('bandwidth','Bande passante','N/A','Hz','Hz');
+    TQ.register('nyquist_freq','Nyquist','N/A','Hz','Hz');
+
+    // --- Thermodynamique ---
+    TQ.register('enthalpy','Enthalpie (J)','N/A','J','J');
+    TQ.register('entropy','Entropie (J/K)','N/A','J/K','J/K');
+
+    // --- Matériaux / mécanique ---
+    TQ.register('youngs_modulus','Module d\'Young','N/A','Pa','Pa');
+    TQ.register('yield_strength','Limite élastique','N/A','Pa','Pa');
+
+    // --- Fluides & Hydraulique ---
+    TQ.register('flow_rate','Débit volumique','N/A','m³/s','m^3/s');
+    TQ.register('shear_viscosity','Viscosité (dyn)','N/A','Pa·s','Pa·s');
+
+    // --- Conversions pratiques (exemples) ---
+    TQ.register('km2m','1 km en m','1000 m','m','m');
+    TQ.register('mph2ms','1 mph en m/s','0.44704 m/s','m/s','m/s');
+
+    // Marqueurs critiques quotidiens mis en évidence (ex: temp, pression, humidité, lat/lon, précision GPS, vitesse)
+    TQ.q['temp_air'].critical = true;
+    TQ.q['pressure_atm'].critical = true;
+    TQ.q['humidity_rel'].critical = true;
+    TQ.q['lat'].critical = true;
+    TQ.q['lon'].critical = true;
+    TQ.q['gps_prec'].critical = true;
+    TQ.q['speed'].critical = true;
+
+    // populate initial DOM (attempt)
+    document.addEventListener('DOMContentLoaded', ()=>{
+        // create placeholders in DOM for every registered quantity if missing
+        const container = document.createElement('div');
+        container.className = 'panel';
+        container.style.gridColumn = '1 / -1';
+        const header = document.createElement('h2');
+        header.innerHTML = '<i class="fas fa-flask"></i> Grandeurs Mesurables & Théoriques (Register JS)';
+        container.appendChild(header);
+        const list = document.createElement('div');
+        list.className = 'theoretical-list';
+
+        for (const k in TQ.q){
+            // only create DOM if element id not present in document
+            if (!document.getElementById(k)) {
+                const dp = document.createElement('div');
+                dp.className = 'data-point';
+                const left = document.createElement('span');
+                left.textContent = TQ.q[k].name;
+                const right = document.createElement('span');
+                right.id = k;
+                right.textContent = TQ.q[k].value + (TQ.q[k].unit ? (' ' + TQ.q[k].unit) : '');
+                if (TQ.q[k].critical) right.classList.add('theoretical-crit');
+                dp.appendChild(left);
+                dp.appendChild(right);
+                list.appendChild(dp);
+            }
+        }
+        container.appendChild(list);
+        // insert container before scripts
+        const main = document.querySelector('main');
+        if (main) main.appendChild(container);
+
+        // also populate preexisting elements
+        TQ.populateDOM();
+    });
+
+    // Exports pour usage externe (lib scientifique)
+    window.TheoreticalQuantities = TheoreticalQuantities;
+    window.TQ = TQ;
+    </script>
+
     <script src="gnss-dashboard-full.js"></script>
 
 </body>
