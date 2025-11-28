@@ -1,6 +1,7 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// BLOC 1/5 : Constantes, Utilitaires, et État Global (Offline-First)
+// BLOC 1/5 : Constantes, Utilitaires, État Global, et Classe TQ
+// =ignée pour index_complet.html
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -15,6 +16,7 @@ const dataOrDefault = (val, decimals, suffix = '') => {
 
 const dataOrDefaultExp = (val, decimals, suffix = '') => {
     if (val === undefined || val === null || isNaN(val)) {
+        // Assure que le format '0.00e+0' est respecté pour le nombre de décimales
         const zeroDecimals = '0.' + Array(decimals).fill('0').join('');
         return zeroDecimals + 'e+0' + suffix;
     }
@@ -23,8 +25,8 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
 // --- CONSTANTES GÉNÉRALES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI; 
-const KMH_MS = 3.6;          // Conversion m/s vers km/h
-const DOM_SLOW_UPDATE_MS = 2000; // Mise à jour lente du DOM (2 secondes)
+const KMH_MS = 3.6;          
+const DOM_SLOW_UPDATE_MS = 2000; 
 
 // --- CLÉS D'API & ENDPOINTS (Exemple) ---
 const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
@@ -53,10 +55,10 @@ const WEATHER_CACHE_DURATION_MS = 12 * 60 * 60 * 1000; // 12 heures de validité
 
 // --- ÉTAT GLOBAL ET CACHES ---
 let isGpsPaused = false;
-let currentPosition = { lat: 43.2964, lon: 5.3697, acc: 10.0, spd: 0.0, alt: 0.0 };
+let currentPosition = { lat: 43.2964, lon: 5.3697, acc: 10.0, spd: 0.0, alt: 0.0 }; // Marseille par défaut
 let currentIMU = { acc_x: 0, acc_y: 0, acc_z: G_EARTH, gyro_roll: 0, gyro_pitch: 0, gyro_yaw: 0 };
 let currentMass = 70.0;
-let kAlt = 0; // Altitude du GPS
+let kAlt = 0; // Altitude du GPS/EKF
 let currentCelestialBody = 'EARTH';
 let rotationRadius = 100;
 let angularVelocity = 0.0;
@@ -70,8 +72,7 @@ let currentSpeedOfSound;
 let lServH = 0; // Heure serveur pour synchro NTP
 let lLocH = 0;  // Heure locale de la synchro NTP
 
-// --- DUMMY/FALLBACK EKF/UKF OBJECTS (Assumés) ---
-// Note: Le code UKF 21 états complet est omis mais ces structures simulent l'état du filtre.
+// --- UKF/EKF DUMMY OBJECTS (Simulent l'état du filtre) ---
 const kf_alt = { x: [0], P: [[100]] }; 
 const kf_vel = { x: [0], P: [[100]] };
 
@@ -98,28 +99,26 @@ const ENVIRONMENT_FACTORS = {
     ROTATING: { G: 9.80665, DISPLAY: 'Centrifuge (Défaut)', MULT: 1.0 }
 };
 
-// --- CLASSE THÉORIQUE (TQ) ---
+// --- CLASSE TheoreticalQuantities (TQ) ---
 class TheoreticalQuantities {
     constructor() {
         this.q = {
             'gravity-base': { name: 'Gravité locale (Base)', value: G_EARTH, unit: 'm/s²', critical: true },
             'gravity-centrifugal': { name: 'Force centrifuge (Estimée)', value: 0, unit: 'm/s²' },
-            'speed-of-sound-calc': { name: 'Vitesse du Son (ISA)', value: getSpeedOfSound(TEMP_SEA_LEVEL_K), unit: 'm/s' },
+            'speed-of-sound-calc': { name: 'Vitesse du Son (ISA)', value: 340.29, unit: 'm/s' }, // Valeur ISA par défaut
             'air-density': { name: 'Densité de l\'air', value: RHO_SEA_LEVEL, unit: 'kg/m³' },
             'current-alt': { name: 'Altitude (GPS/EKF)', value: 0, unit: 'm', critical: true },
             'time-dilation': { name: 'Dilatation du Temps (rel.)', value: 1.0000000000, unit: '' }
         };
     }
+    // La mise à jour du DOM est gérée par la boucle d'intervalle dans le BLOC 5.
     set(id, value) {
         if (this.q[id]) {
             this.q[id].value = value;
-            if ($) {
-                const el = $(id);
-                if (el) el.textContent = dataOrDefault(value, 10) + (this.q[id].unit ? ' ' + this.q[id].unit : '');
-            }
         }
     }
-    populateDOM() { /* Simule la mise à jour du DOM */ }
+    // Le contenu de populateDOM est défini dans le script de l'HTML
+    populateDOM() {} 
 }
 const TQ = new TheoreticalQuantities();
 // =================================================================
@@ -128,9 +127,6 @@ const TQ = new TheoreticalQuantities();
 
 /**
  * Calcule la densité de l'air (kg/m³) en utilisant la formule des gaz parfaits.
- * @param {number} P_hPa - Pression en hectopascals (hPa).
- * @param {number} T_K - Température en Kelvin (K).
- * @returns {number} Densité de l'air en kg/m³.
  */
 function getAirDensity(P_hPa, T_K) {
     // P_Pa = P_hPa * 100
@@ -140,8 +136,6 @@ function getAirDensity(P_hPa, T_K) {
 
 /**
  * Calcule la vitesse du son (m/s) en fonction de la température (K).
- * @param {number} T_K - Température en Kelvin (K).
- * @returns {number} Vitesse du son en m/s.
  */
 function getSpeedOfSound(T_K) {
     const GAMMA = 1.4; 
@@ -238,7 +232,7 @@ function getUKFWeatherAt(date) {
     const H_perc = p1[3] + (p2[3] - p1[3]) * dt;
 
     return { P_hPa, T_K, H_perc };
-                     }
+}
 // =================================================================
 // BLOC 3/5 : Logique de Caching et Initialisation des Données Hors Ligne
 // =================================================================
@@ -265,6 +259,7 @@ async function fetchAndCacheCelestialEphemeris(bodyId) {
                 data: data.ephemeris 
             };
             
+            // ATTENTION: Risque de QuotaExceededError pour ~28 Mo.
             localStorage.setItem(CELESTIAL_CACHE_KEY, JSON.stringify(celestialEphemerisCache));
             console.log(`✅ Ephémérides ${bodyId} mises en cache (1s/1j).`);
         } else {
@@ -314,6 +309,7 @@ function initializeCelestialData() {
     if (cachedData) {
         try {
             const parsedCache = JSON.parse(cachedData);
+            // Fusionne le cache avec les données de secours pour MARS (si nécessaire)
             celestialEphemerisCache = { ...celestialEphemerisCache, ...parsedCache };
         } catch (e) {
             console.error("Erreur de parsing du cache d'éphémérides. Cache effacé.", e);
@@ -343,13 +339,13 @@ function initializeWeatherCache() {
     }
     const isExpired = weatherForecastCache.expires < Date.now();
     
-    if (isExpired && currentPosition.lat !== 0) {
+    // Ne lance le fetch que si la position par défaut a été mise à jour par le GPS
+    if (isExpired && (currentPosition.lat !== 43.2964 || currentPosition.lon !== 5.3697)) {
         fetchAndCacheWeatherForecast();
     }
-}
+            }
 // =================================================================
 // BLOC 4/5 : Fonctions de Mise à Jour UKF/DOM
-// Inclut les fonctions de mise à jour des facteurs environnementaux et des affichages.
 // =================================================================
 
 /**
@@ -367,7 +363,6 @@ function getCDate(serverTimeMs, localTimeMs) {
  * [UKF ENTRY POINT] Met à jour les facteurs environnementaux pour le filtre.
  */
 function updateUKFEnvironmentalFactors() {
-    // Utilise l'heure synchronisée (NTP)
     const now = getCDate(lServH, lLocH); 
     
     // 1. Mise à jour Météo (Interpolation à la seconde)
@@ -375,11 +370,11 @@ function updateUKFEnvironmentalFactors() {
     lastP_hPa = weather.P_hPa;
     lastT_K = weather.T_K;
     
-    // Mise à jour des variables physiques utilisées par l'UKF
+    // Mise à jour des variables physiques
     currentAirDensity = getAirDensity(lastP_hPa, lastT_K); 
     currentSpeedOfSound = getSpeedOfSound(lastT_K); 
     
-    // Mise à jour des quantités théoriques
+    // Mise à jour des quantités théoriques (TQ)
     TQ.set('speed-of-sound-calc', currentSpeedOfSound);
     TQ.set('air-density', currentAirDensity);
 
@@ -387,19 +382,16 @@ function updateUKFEnvironmentalFactors() {
     const sunPos = getCelestialPositionAt('SUN', now);
     const moonPos = getCelestialPositionAt('MOON', now);
     const marsPos = getCelestialPositionAt('MARS', now);
-
-    // Les vecteurs (sunPos, moonPos, marsPos) alimentent le modèle de mesure h(x) du UKF.
-
-    // Mise à jour de l'affichage de l'heure
+    
+    // 3. Mise à jour du DOM Météo/Air (Affichage de la donnée interpolée)
+    if ($('temp-air-2')) $('temp-air-2').textContent = `${(lastT_K - 273.15).toFixed(1)} °C`;
+    if ($('pressure-2')) $('pressure-2').textContent = `${lastP_hPa.toFixed(0)} hPa`;
+    
+    // 4. Mise à jour du DOM Heure
     if (now) {
         if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString('fr-FR');
         if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
     }
-
-    // Mise à jour du DOM Météo/Air
-    if ($('temp-air-2')) $('temp-air-2').textContent = `${(lastT_K - 273.15).toFixed(1)} °C`;
-    if ($('pressure-2')) $('pressure-2').textContent = `${lastP_hPa.toFixed(0)} hPa`;
-    
 }
 
 /**
@@ -410,10 +402,9 @@ function updateCelestialBody(body, alt, rotRadius, rotVel) {
     const G_BASE = factor.G;
     let G_ACC_NEW = G_BASE;
 
-    // Simulation de la force centrifuge pour le mode ROTATING (centrifugeuse)
     if (body === 'ROTATING') {
         const a_cent = rotRadius * rotVel * rotVel;
-        G_ACC_NEW = G_BASE + a_cent; // Ajout/Retrait selon l'axe de rotation
+        G_ACC_NEW = G_BASE + a_cent; 
         TQ.set('gravity-centrifugal', a_cent);
     } else {
         TQ.set('gravity-centrifugal', 0);
@@ -424,25 +415,41 @@ function updateCelestialBody(body, alt, rotRadius, rotVel) {
     return { G_ACC_NEW };
 }
 
+/**
+ * Fonction fictive de l'UKF (Unscented Kalman Filter)
+ * (Le code mathématique complet du filtre est omis)
+ */
+function runUKFStep(dt) {
+    // X(k+1) = f(X(k), U(k), V(k))
+    // U(k) est l'entrée IMU (acc, gyro), V(k) est le bruit.
+    // L'UKF calcule 21 états (position, vitesse, attitude, biais capteur, etc.)
+}
 
-// --- DUMMY FUNCTIONS (Assumées d'exister pour le code complet) ---
+/**
+ * Calcule le rapport de distance pour le mode "ALTITUDE"
+ */
+function calculateDistanceRatio(altMeters) {
+    // Calcul de l'effet relativiste ou autre correction basée sur l'altitude
+    // Exemple simple: 1 - (2*G_EARTH*altMeters / C_L^2) 
+    return 1.0 + (altMeters / R_E_BASE); 
+}
 
-// Simule la synchro NTP
+// --- DUMMY FUNCTIONS ---
 function syncH() {
     lServH = Date.now();
     lLocH = Date.now();
-    if ($('local-time')) $('local-time').textContent = new Date(lServH).toLocaleTimeString('fr-FR');
 }
 
-// Simule la mise à jour de la carte Leaflet
-function updateMap() {} 
-
-// Simule la gestion de l'UKF (prédiction/mise à jour)
-function runUKFStep(dt) {
-    // UKF 21 États : X(k+1) = f(X(k), U(k), V(k))
-    // X : position (3), vitesse (3), quaternion (4), biais acc (3), biais gyro (3), correction drag (1), correction gravité (1), ...
-    // ... Logique UKF non incluse ...
-        }
+function updateMap() {
+    // Logique de mise à jour de la carte Leaflet
+    if ($('lat-val')) $('lat-val').textContent = dataOrDefault(currentPosition.lat, 6);
+    if ($('lon-val')) $('lon-val').textContent = dataOrDefault(currentPosition.lon, 6);
+    if ($('alt-val')) $('alt-val').textContent = dataOrDefault(currentPosition.alt, 2);
+    if ($('acc-val')) $('acc-val').textContent = dataOrDefault(currentPosition.acc, 1);
+    if ($('speed-val')) $('speed-val').textContent = dataOrDefault(currentPosition.spd, 2);
+    
+    TQ.set('current-alt', currentPosition.alt);
+}
 // =================================================================
 // BLOC 5/5 : DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
 // =================================================================
@@ -457,7 +464,7 @@ function runUKFStep(dt) {
             (typeof turf === 'undefined' ? "turf.min.js" : "")
         ].filter(Boolean).join(', ');
         if (missing) {
-             console.error(`DÉPENDANCES CRITIQUES MANQUANTES: ${missing}. Le tableau de bord risque de ne pas fonctionner.`);
+             console.error(`DÉPENDANCES CRITIQUES MANQUANTES: ${missing}. Veuillez vous assurer qu'elles sont chargées dans l'HTML.`);
         }
     }
 
@@ -487,14 +494,13 @@ function runUKFStep(dt) {
     
     $('distance-ratio-toggle-btn').addEventListener('click', () => {
         distanceRatioMode = !distanceRatioMode;
-        // La fonction calculateDistanceRatio n'est pas définie ici, on simule l'effet
-        const ratio = distanceRatioMode ? 0.999 : 1.0;
-        $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
+        const ratio = distanceRatioMode ? calculateDistanceRatio(kAlt || 0) : 1.0;
+        $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toExponential(4)})`;
     });
     
     $('ukf-reactivity-mode').addEventListener('change', (e) => currentUKFReactivity = e.target.value);
     
-    // --- GESTION DU CAPTEUR GPS (MOCK/SIMULATION) ---
+    // --- GESTION DU CAPTEUR GPS (REAL) ---
     function handleGpsUpdate(position) {
         if (isGpsPaused) return;
         
@@ -504,20 +510,16 @@ function runUKFStep(dt) {
         const newAcc = position.coords.accuracy || 10.0;
         const newSpd = position.coords.speed || 0.0;
 
-        // Mise à jour de la position globale
         currentPosition = { lat: newLat, lon: newLon, acc: newAcc, spd: newSpd, alt: newAlt };
         kAlt = newAlt;
         
-        // Mise à jour des caches Astro/Météo si la position est nouvelle
-        initializeCelestialData(); // Relance si le cache a expiré
-        initializeWeatherCache();  // Relance si le cache a expiré
+        initializeCelestialData(); 
+        initializeWeatherCache();  
         
-        // Exécution de l'UKF
-        // runUKFStep(dt) // dt est le pas de temps entre deux mesures
-        updateMap();
+        // runUKFStep(dt) 
+        updateMap(); // Met à jour l'affichage GPS/EKF
     }
     
-    // Démarrage de la géolocalisation réelle
     if (navigator.geolocation) {
         navigator.geolocation.watchPosition(handleGpsUpdate, (error) => {
             console.error("Erreur GPS:", error.message);
@@ -529,24 +531,25 @@ function runUKFStep(dt) {
     // Démarrer la synchro NTP
     syncH(); 
     
-    // Initialiser la gestion du cache haute précision
+    // Initialiser le cache Astro/Météo
     initializeCelestialData();
     initializeWeatherCache(); 
     
-    // Initialiser les valeurs de physique par défaut
+    // Initialiser les valeurs de physique
     currentAirDensity = getAirDensity(lastP_hPa, lastT_K); 
     currentSpeedOfSound = getSpeedOfSound(lastT_K); 
     
     // Mise à jour initiale de l'affichage
-    updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+    const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+    if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
     
-    // Boucle de mise à jour lente du DOM/UKF (appel de la fonction environnementale haute-fréquence)
+    // Boucle de mise à jour haute fréquence (10 Hz)
     setInterval(() => {
-        // La fonction updateUKFEnvironmentalFactors utilise la cache 1s pour les données critiques
+        // Mise à jour des facteurs environnementaux (utilise l'interpolation 1s)
         updateUKFEnvironmentalFactors(); 
-        // Les fonctions DOM de TQ sont mises à jour ici (vitesse, densité, etc.)
+        // Mise à jour des affichages des quantités théoriques
         TQ.populateDOM(); 
         
-    }, 100); // 10 Hz (pour une réactivité de l'UKF et de l'affichage)
+    }, 100); 
 
 })(window);
