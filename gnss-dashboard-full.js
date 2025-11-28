@@ -471,6 +471,7 @@ function refreshScientificDashboard(gnssState) {
     }
 }
 
+
 /* --- Orchestrateur (Moteur de Boucle) --- */
 const orchestrator = (function(){
     let intervalId = null;
@@ -492,27 +493,36 @@ const orchestrator = (function(){
         const mainLoop = () => {
             if (isStopped) return;
             
+            // --- DÉBUT DU CORE DE LA BOUCLE ---
+            
             // 1. Simuler l'acquisition de données GNSS brutes/capteurs
+            // currentPosition DOIT être défini dans l'état global (Bloc 2/5)
             const rawGnssData = { lat: currentPosition.lat, lon: currentPosition.lon, alt: currentPosition.alt, spd: currentPosition.speed3D };
             const sensorData = { tempK: currentPosition.tempK, pressurePa: currentPosition.pressurePa };
             
             // 2. Mettre à jour l'état fusionné (via le filtre UKF)
+            // FilterEngine DOIT être défini (Bloc 2/5)
             const currentState = FilterEngine.updateState(rawGnssData, sensorData);
             
             // 3. Mettre à jour les affichages GNSS bruts
+            // safeSet et dataOrDefault DOIVENT être définis (Bloc 1/5)
             safeSet('lat', dataOrDefault(currentState.lat, 6, '°'));
             safeSet('lon', dataOrDefault(currentState.lon, 6, '°'));
             safeSet('alt', dataOrDefault(currentState.alt, 2, ' m'));
             safeSet('speed-3d-inst', dataOrDefault(currentState.speed3D, 3, ' m/s'));
 
             // 4. Exécuter la logique scientifique réelle
+            // refreshScientificDashboard DOIT être défini (Bloc 4/5)
             refreshScientificDashboard(currentState);
 
             // 5. Mettre à jour la carte
+            // updateMapAndTrajectory DOIT être défini (Bloc 3/5)
             updateMapAndTrajectory(currentState.lat, currentState.lon);
 
             // Mettre à jour l'heure locale
             safeSet('local-time', new Date().toLocaleTimeString('fr-FR'));
+
+            // --- FIN DU CORE DE LA BOUCLE ---
         };
 
         // Lancer la boucle toutes les 2 secondes
@@ -565,15 +575,30 @@ function toggleDashboardLoop() {
 
 /* --- SÉQUENCE D'INITIALISATION --- */
 window.onload = function init() {
+    // --- VÉRIFICATION DE DÉPENDANCES CRITIQUES (DEBOGAGE) ---
+    if (typeof $ === 'undefined' || typeof safeSet === 'undefined') {
+        console.error("ERREUR CRITIQUE: Les utilitaires de base ($ ou safeSet) ne sont pas définis. Le script ne peut pas démarrer l'UI.");
+        return;
+    }
+    if (typeof FilterEngine === 'undefined' || typeof FilterEngine.initFromGnss !== 'function') {
+         console.error("ERREUR CRITIQUE: FilterEngine n'est pas défini ou mal structuré.");
+         // Tente de continuer, mais l'appli sera limitée
+    }
+    if (typeof initMap !== 'function' || typeof initCharts !== 'function') {
+         console.error("ERREUR CRITIQUE: Les fonctions d'initialisation de l'UI (initMap/initCharts) sont manquantes.");
+         // Tente de continuer, mais l'appli sera limitée
+    }
+    // --------------------------------------------------------
+
     // 1. Initialiser le mode d'affichage par défaut (sombre par CSS)
     document.body.classList.add('dark-mode');
     
-    // 2. Initialiser les variables d'UI modifiables
+    // 2. Initialiser les variables d'UI modifiables (dépend de currentMass, currentCd, currentArea)
     safeSet('current-mass', dataOrDefault(currentMass, 1, ' kg'));
     safeSet('current-cd', dataOrDefault(currentCd, 2));
     safeSet('current-area', dataOrDefault(currentArea, 2, ' m²'));
 
-    // 3. Initialiser le filtre et la position par défaut (Paris)
+    // 3. Initialiser le filtre et la position par défaut (dépend de currentPosition)
     const lat0 = currentPosition.lat;
     const lon0 = currentPosition.lon;
     const alt0 = currentPosition.alt;
@@ -593,7 +618,6 @@ window.onload = function init() {
     }
     
     // 6. Démarrer la boucle de rafraîchissement
-    // C'est l'appel qui démarre tout ! Il est crucial que 'orchestrator' soit déjà défini.
     orchestrator.runRefresh();
 
     console.log('Dashboard Scientifique initialisé (fusion des 5 blocs).');
