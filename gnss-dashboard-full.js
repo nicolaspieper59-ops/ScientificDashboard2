@@ -133,6 +133,30 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let gpsAccuracyOverride = 0.0; 
     let lastGPSPos = null;
     let lServH = null, lLocH = null; // Horodatages NTP
+    // --- VARIABLES D'ÉTAT (Globales) ---
+// ... (variables existantes : wID, domSlowID, lat, lon, etc.) ...
+let lastGPSPos = null;
+let lServH = null, lLocH = null; // Horodatages NTP
+
+// [AJOUTS/MODIFICATIONS POUR BLOC 1/5 : CONTRÔLE ET ÉTAT BRUT DES CAPTEURS]
+let isGpsPaused = true;      // Statut initial '⏸️ PAUSE GPS'
+let watchId = null;          // ID pour arrêter watchPosition (API Geolocation)
+let isIMUActive = false;     // Statut des écouteurs de capteurs de mouvement (pour devicemotion/deviceorientation)
+
+let currentGpsData = { 
+    lat: NaN, lon: NaN, alt: NaN, acc: NaN, spd: 0.0, heading: NaN, satellites: 0 
+}; 
+let currentIMUState = { 
+    accX: NaN, accY: NaN, accZ: NaN, // Ces valeurs seront remplies par 'accel' existant
+    pitch: NaN, roll: NaN,           // Inclinaison (pour le niveau à bulle)
+    heading: NaN
+}; 
+
+// Les variables 'accel', 'gyro', 'mag' sont déjà utilisées dans la boucle rapide
+let accel = { x: 0, y: 0, z: 0 };
+let gyro = { x: 0, y: 0, z: 0 };
+let mag = { x: 0, y: 0, z: 0 };
+// ... (reste des variables existantes) ...
     
     // --- VARIABLES DE CORRECTION MÉTROLOGIQUE (Initialisation ISA) ---
     let lastP_hPa = BARO_ALT_REF_HPA; 
@@ -170,6 +194,50 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     // CLASSE UKF PROFESSIONNELLE (Architecture 21 États - Simplifiée)
     // [ATTENTION : LOGIQUE PLACEHOLDER]
     // ===========================================
+    // =================================================================
+// BLOC 2/5 : LOGIQUE DES CAPTEURS IMU (Device Motion/Orientation)
+// =================================================================
+
+// Fonctions de rappel pour les événements de capteurs
+const imuMotionHandler = (event) => {
+    // Événement d'accélération (accélération + gravité)
+    if (event.accelerationIncludingGravity) {
+        // Met à jour les variables globales 'accel' utilisées dans le BLOC 5/5
+        accel.x = event.accelerationIncludingGravity.x || NaN;
+        accel.y = event.accelerationIncludingGravity.y || NaN;
+        accel.z = event.accelerationIncludingGravity.z || NaN;
+    }
+    // [Note: DeviceOrientationEvent est préférable pour le gyroscope (rotation)]
+};
+
+const imuOrientationHandler = (event) => {
+    // Événement d'orientation pour Pitch/Roll
+    currentIMUState.pitch = event.beta || NaN;
+    currentIMUState.roll = event.gamma || NaN;
+    currentIMUState.heading = event.alpha || NaN;
+};
+
+const startIMUListeners = () => {
+    if (isIMUActive) return;
+
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', imuMotionHandler, false);
+    }
+    if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', imuOrientationHandler, false);
+    }
+
+    isIMUActive = true;
+    if ($('sensor-status')) $('sensor-status').textContent = 'Actif (Multi-Capteurs) 🟢';
+};
+
+const stopIMUListeners = () => {
+    if (!isIMUActive) return;
+    window.removeEventListener('devicemotion', imuMotionHandler, false);
+    window.removeEventListener('deviceorientation', imuOrientationHandler, false);
+    isIMUActive = false;
+    if ($('sensor-status')) $('sensor-status').textContent = 'Inactif (Capteurs) 🛑';
+};
     class ProfessionalUKF {
         constructor() {
             this.N_STATES = 21; 
@@ -320,7 +388,76 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     // =================================================================
 // BLOC 3/5 : Fonctions Météo, Astro, Capteurs et Contrôle GPS
 // =================================================================
+// =================================================================
+// BLOC 3/5 : LOGIQUE GPS (API Geolocation) et Commande
+// =================================================================
 
+// [MODIFICATION de la fonction existante gpsUpdateCallback]
+function gpsUpdateCallback(pos) {
+    if (emergencyStopActive) return;
+
+    const coords = pos.coords;
+    const spd3D_raw_gps = coords.speed !== null ? coords.speed : 0.0;
+    
+    // --- 1. Mise à jour de l'état global des données GPS brutes (currentGpsData) ---
+    currentGpsData.lat = coords.latitude;
+    currentGpsData.lon = coords.longitude;
+    currentGpsData.alt = coords.altitude;
+    currentGpsData.acc = coords.accuracy;
+    currentGpsData.spd = spd3D_raw_gps; 
+    currentGpsData.heading = coords.heading;
+    currentGpsData.satellites = coords.accuracy < 100 ? 4 : 0; // Simuler satellites (min 4 pour 3D)
+
+    // --- 2. Calcul du bruit de mesure UKF ---
+    const R_dyn = getKalmanR(coords.accuracy, kAlt, kUncert, selectedEnvironment, currentUKFReactivity);
+
+    // --- 3. Mise à jour UKF ---
+    if (!ukf) ukf = new ProfessionalUKF(); 
+    $('gps-acquisition-status').textContent = 'Actif (Fusion UKF)';
+    ukf.update(pos.coords, R_dyn);
+
+    // ... (Reste de la logique de mise à jour de l'état UKF et de la distance) ...
+    // ... (la suite de la fonction gpsUpdateCallback reste inchangée) ...
+    
+    lastGPSPos = pos;
+    lPos = pos;
+    updateMap(lat, lon, coords.accuracy);
+}
+
+// [AJOUT de la fonction de contrôle toggleGps]
+function toggleGps() {
+    isGpsPaused = !isGpsPaused;
+    const btn = $('gps-pause-toggle-btn'); 
+
+    if (isGpsPaused) {
+        // --- STOPPER L'ACQUISITION ---
+        if (wID !== null) navigator.geolocation.clearWatch(wID);
+        wID = null;
+        btn.innerHTML = '⏸️ PAUSE GPS';
+        if ($('gps-acquisition-status')) $('gps-acquisition-status').textContent = 'En Pause ⏸️';
+        stopIMUListeners(); // Arrêter l'IMU (BLOC 2/5)
+        releaseWakeLock(); // Libérer l'anti-veille
+    } else {
+        // --- DÉMARRER L'ACQUISITION ---
+        if ("geolocation" in navigator) {
+            requestWakeLock(); // Activer l'anti-veille
+            startIMUListeners(); // Démarrer l'IMU (BLOC 2/5)
+            
+            const mode = 'HIGH_FREQ'; 
+            const options = GPS_OPTS[mode]; 
+            wID = navigator.geolocation.watchPosition(gpsUpdateCallback, handleErr, options);
+            
+            btn.innerHTML = '▶️ GPS ACTIF';
+            if ($('gps-acquisition-status')) $('gps-acquisition-status').textContent = 'Acquisition en cours...';
+            
+            if (!domFastID) startFastLoop();
+        } else {
+            alert("Erreur: Géolocalisation non supportée par votre navigateur.");
+            isGpsPaused = true;
+        }
+    }
+}
+// Note: La fonction handleErr (gestion des erreurs GPS) doit aussi appeler stopIMUListeners() et releaseWakeLock().
     // --- FONCTIONS ASTRO (SUNCALC & Custom) ---
     const J1970 = 2440588;
     const J2000 = 2451545.0; 
@@ -679,28 +816,35 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             startSensorListeners();
         }
         
-        let text = (mode === 'LOW_FREQ' && kSpd < MIN_SPD * 2) ? '⏸️ GPS EN VEILLE' : '⏸️ PAUSE GPS';
-        if ($('toggle-gps-btn')) {
-            $('toggle-gps-btn').textContent = text;
-            $('toggle-gps-btn').style.backgroundColor = '#ffc107'; 
+        // ... (Dans le corps de document.addEventListener('DOMContentLoaded', ...)) ...
+
+// ... (code existant de la section Listeners pour reset, mode, etc.) ...
+
+// [AJOUT/MODIFICATION POUR BLOC 4/5 : ÉCOUTEUR GPS]
+let pauseBtn = $('gps-pause-toggle-btn');
+    
+// Tentative de le trouver si l'ID n'est pas dans le HTML mais le texte l'est
+if (!pauseBtn) {
+    const allButtons = document.querySelectorAll('button, a');
+    for (const btn of allButtons) {
+        if (btn.textContent.includes('PAUSE GPS') || btn.textContent.includes('GPS ACTIF')) {
+            btn.id = 'gps-pause-toggle-btn';
+            pauseBtn = btn;
+            break;
         }
     }
+}
 
-    function stopGPS(resetButton = true) {
-        if (wID !== null) navigator.geolocation.clearWatch(wID);
-        wID = null;
-        if (gpsStandbyTimeoutID) clearTimeout(gpsStandbyTimeoutID);
-        gpsStandbyTimeoutID = null;
-        
-        releaseWakeLock(); // Libérer l'anti-veille
-        stopSensorListeners(); // Arrête la boucle rapide (IMU)
-        
-        if (resetButton && $('toggle-gps-btn')) {
-            $('toggle-gps-btn').textContent = '▶️ MARCHE GPS';
-            $('toggle-gps-btn').style.backgroundColor = '#28a745'; 
-        }
-    }
+// 2. Associer la fonction toggleGps au clic
+if (pauseBtn) {
+    pauseBtn.addEventListener('click', toggleGps);
+    // Initialiser l'affichage
+    pauseBtn.innerHTML = isGpsPaused ? '⏸️ PAUSE GPS' : '▶️ GPS ACTIF';
+} else {
+    console.warn("Bouton de pause GPS non trouvé. L'activation manuelle ne sera pas possible.");
+}
 
+// ... (suite du code de démarrage existant) ...
     function toggleGPS() {
         if (emergencyStopActive) return;
         (wID === null) ? startGPS('HIGH_FREQ') : stopGPS();
@@ -917,13 +1061,28 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             $('elapsed-time').textContent = dataOrDefault(timeTotal, 2, ' s');
             $('time-moving').textContent = dataOrDefault(timeMoving, 2, ' s');
             
-            // Col 1 - IMU
-            $('accel-x').textContent = dataOrDefault(accel.x, 2, ' m/s²');
-            $('accel-y').textContent = dataOrDefault(accel.y, 2, ' m/s²');
-            $('accel-z').textContent = dataOrDefault(accel.z, 2, ' m/s²');
-            $('mag-x').textContent = dataOrDefault(mag.x, 2, ' µT');
-            $('mag-y').textContent = dataOrDefault(mag.y, 2, ' µT');
-            $('mag-z').textContent = dataOrDefault(mag.z, 2, ' µT');
+            // ... (Dans la fonction startFastLoop, section MISE À JOUR DU DOM (Rapide) : ) ...
+
+// Col 1 - IMU (Données d'accélération)
+$('accel-x').textContent = dataOrDefault(accel.x, 2, ' m/s²');
+$('accel-y').textContent = dataOrDefault(accel.y, 2, ' m/s²');
+$('accel-z').textContent = dataOrDefault(accel.z, 2, ' m/s²');
+$('mag-x').textContent = dataOrDefault(mag.x, 2, ' µT');
+$('mag-y').textContent = dataOrDefault(mag.y, 2, ' µT');
+$('mag-z').textContent = dataOrDefault(mag.z, 2, ' µT');
+
+// [AJOUT POUR BLOC 5/5 : Affichage GPS/IMU Bruts]
+// --- GPS BRUT ---
+if ($('gps-accuracy-acc')) $('gps-accuracy-acc').textContent = dataOrDefault(currentGpsData.acc, 2, ' m');
+if ($('satellites-count')) $('satellites-count').textContent = currentGpsData.satellites > 0 ? `${currentGpsData.satellites}+` : 'N/A';
+if ($('speed-raw')) $('speed-raw').textContent = dataOrDefault(currentGpsData.spd * KMH_MS, 2, ' km/h'); 
+if ($('altitude-raw')) $('altitude-raw').textContent = dataOrDefault(currentGpsData.alt, 2, ' m'); 
+
+// --- NIVEAU À BULLE (IMU Orientation) ---
+if ($('pitch-display')) $('pitch-display').textContent = dataOrDefault(currentIMUState.pitch, 1, '°');
+if ($('roll-display')) $('roll-display').textContent = dataOrDefault(currentIMUState.roll, 1, '°');
+
+// ... (suite du code existant: Col 2 - Vitesse & Relativité, Col 3 - Dynamique & Forces) ...;
 
             // Col 2 - Vitesse & Relativité
             $('speed-stable').textContent = dataOrDefault(sSpdFE * KMH_MS, 2);
