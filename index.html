@@ -652,7 +652,24 @@
     window.TQ = TQ;
     </script>
 
-    <script src="gnss-dashboard-full.js"></script>
+    <!-- 1. Dépendances CSS -->
+<link rel="stylesheet" href="leaflet.css" />
+<link rel="stylesheet" href="fontawesome.min.css" />
+<!-- ... vos autres styles ... -->
 
+<!-- 2. Librairies externes (Leaflet, Chart.js, etc.) -->
+<script src="leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script> 
+<!-- Chart.js n'était pas listé dans vos fichiers, mais est utilisé par initCharts() -->
+<script src="math.min.js"></script>
+<script src="turf.min.js"></script>
+<script src="suncalc.js"></script>
+
+<!-- 3. Votre code principal qui dépend des libs ci-dessus -->
+<script src="gnss-dashboard-full.js"></script>
+
+</body>
+</html>
+    Si vous n'avez pas inclus Chart.js dans votre `index.html`, c'est une cause majeure d'erreur !
 </body>
 </html>
