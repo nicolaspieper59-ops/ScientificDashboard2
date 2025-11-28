@@ -1,6 +1,10 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// BLOC 1/5 : Constantes, Utilitaires, et Bibliothèque Scientifique SciencePro
+// FUSION DES 5 BLOCS JAVASCRIPT
+// =================================================================
+
+// =================================================================
+// BLOC 1/5 : Constantes, SciencePro offline, utilitaires de base
 // =================================================================
 
 /* --- FONCTIONS UTILITAIRES GLOBALES --- */
@@ -56,7 +60,7 @@ const SciencePro = (function(){
             P_Pa = C.PRES_SEA_LEVEL * Math.pow(T_K / C.TEMP_SEA_LEVEL_K, power);
         } else {
             T_K = 216.65; // Stratosphère (simplifié)
-            // Le calcul de pression plus haut est omis pour la simplicité, mais le modèle ISA réel devrait continuer
+            // Pour des altitudes > 11km, les calculs de pression et de densité deviennent plus complexes (isothermie)
         }
         
         const rho_air = P_Pa / (C.R_d * T_K); 
@@ -102,8 +106,6 @@ const SciencePro = (function(){
 
     /** Approximation de la position du Soleil (Azimut/Altitude) et Phase de la Lune. */
     function getAstroData(date, lat_deg, lon_deg) {
-        // Logique d'approximation solaire et lunaire (calculs étendus pour l'heure et la position)
-        // ... (Logique basée sur le bloc précédent pour SunAlt/Azimuth/MoonPhase) ...
         const jd = toJulian(date);
         const n = jd - 2451545.0; 
         const L = (280.460 + 0.98564736 * n) % 360;
@@ -134,15 +136,19 @@ const SciencePro = (function(){
         const alt_deg = alt * 180 / C.pi;
         const az_deg = (az * 180 / C.pi + 360) % 360;
         
-        const moonAgeDays = (jd - 2451550.1 + 29.530588) % 29.530588; 
-        const moonIllumination = 0.5 * (1 - Math.cos(moonAgeDays * 2 * C.pi / 29.530588));
+        const moonAgeDays = (jd - 2451550.1) % 29.5305888; 
+        const moonIllumination = 0.5 * (1 - Math.cos(moonAgeDays * 2 * C.pi / 29.5305888));
         
-        let moonPhaseName = 'Inconnu';
-        if (moonAgeDays >= 13.5 && moonAgeDays < 15.5) moonPhaseName = 'Pleine Lune';
-        else if (moonAgeDays >= 27.5 || moonAgeDays < 1.5) moonPhaseName = 'Nouvelle Lune';
-        else if (moonAgeDays >= 6 && moonAgeDays < 8) moonPhaseName = 'Premier Quartier';
-        else if (moonAgeDays >= 21 && moonAgeDays < 23) moonPhaseName = 'Dernier Quartier';
-        else moonPhaseName = 'Autre Phase';
+        let moonPhaseName = 'Autre Phase';
+        if (moonAgeDays < 1.84566) moonPhaseName = 'Nouvelle Lune';
+        else if (moonAgeDays < 5.53699) moonPhaseName = 'Croissant';
+        else if (moonAgeDays < 9.22831) moonPhaseName = 'Premier Quartier';
+        else if (moonAgeDays < 12.91963) moonPhaseName = 'Gibbeuse Croissante';
+        else if (moonAgeDays < 16.61096) moonPhaseName = 'Pleine Lune';
+        else if (moonAgeDays < 20.30228) moonPhaseName = 'Gibbeuse Décroissante';
+        else if (moonAgeDays < 23.99361) moonPhaseName = 'Dernier Quartier';
+        else if (moonAgeDays < 27.68493) moonPhaseName = 'Dernier Croissant';
+        else moonPhaseName = 'Nouvelle Lune';
 
         return { sunAlt: alt_deg, sunAzimuth: az_deg, moonIllumination: moonIllumination * 100, moonPhase: moonPhaseName, moonAgeDays: moonAgeDays };
     }
@@ -170,9 +176,9 @@ const SciencePro = (function(){
         R_d: C.R_d,
     };
 })();
+
 // =================================================================
-// GNSS SPACETIME DASHBOARD - BLOC 2/5
-// État Global, Moteur de Filtre UKF (Placeholder) et Traitement de Données
+// BLOC 2/5 : État Global, Moteur de Filtre (UKF Placeholder) et Traitement de Données
 // =================================================================
 
 /* --- ÉTAT GLOBAL (Variables Modifiables par l'utilisateur/capteurs) --- */
@@ -184,6 +190,8 @@ let currentPosition = {     // Dernière position connue (initialisée à Paris)
     lon: 2.3522,
     alt: 35.0, // Altitude MSL (m)
     speed3D: 0.0, // Vitesse totale (m/s)
+    tempK: undefined, // Capteur météo indisponible par défaut
+    pressurePa: undefined,
 };
 let trajectoryPoints = [];  // Historique pour le tracé de la carte et des graphiques
 
@@ -194,8 +202,8 @@ const FilterEngine = (function(){
         lon: currentPosition.lon,
         alt: currentPosition.alt,
         speed3D: currentPosition.speed3D,
-        tempK: undefined, // Simule la non-disponibilité initiale de capteurs météo
-        pressurePa: undefined,
+        tempK: currentPosition.tempK, 
+        pressurePa: currentPosition.pressurePa,
         P: [[0.5, 0], [0, 0.5]], // Matrice de covariance (précision)
     };
 
@@ -213,18 +221,16 @@ const FilterEngine = (function(){
 
     /** Simule la mise à jour de l'état (en production, ce serait l'algorithme UKF/EKF). */
     function updateState(gnssData, sensorData) {
-        // En conditions réelles, l'UKF/EKF fusionnerait gnssData (GPS) et sensorData (IMU, Baro, etc.)
-        
         // Simulation d'une mise à jour (pour le test)
-        state.lat += (Math.random() - 0.5) * 0.0001; // Petite dérive pour l'exemple
-        state.lon += (Math.random() - 0.5) * 0.0001;
-        state.alt = Math.max(35, state.alt + (Math.random() - 0.5) * 0.5); // Altitude qui varie un peu
-        state.speed3D = Math.max(0.01, state.speed3D + (Math.random() - 0.5) * 0.1); // Vitesse qui varie un peu
+        state.lat += (Math.random() - 0.5) * 0.00005; // Très petite dérive
+        state.lon += (Math.random() - 0.5) * 0.00005;
+        state.alt = Math.max(30, state.alt + (Math.random() - 0.5) * 0.1); // Altitude qui varie un peu
+        state.speed3D = Math.max(0.01, state.speed3D + (Math.random() - 0.5) * 0.05); // Vitesse qui varie un peu
         
         // Simulation de capteurs (pour tester ISA vs Météo réelle)
         if (Math.random() > 0.3) {
-            state.tempK = 290.0 + (Math.random() * 2); // Température simulée (290K ~ 17°C)
-            state.pressurePa = 101000 + (Math.random() * 500);
+            state.tempK = SciencePro.isaModel(state.alt).T_K + (Math.random() * 2 - 1); // Température simulée proche de ISA
+            state.pressurePa = SciencePro.isaModel(state.alt).P_Pa + (Math.random() * 500 - 250); // Pression simulée proche de ISA
         } else {
             state.tempK = undefined; // Capteurs hors ligne occasionnellement
             state.pressurePa = undefined;
@@ -250,10 +256,10 @@ function updateTrajectory(state) {
     if (trajectoryPoints.length > maxPoints) {
         trajectoryPoints.shift();
     }
-    }
+}
+
 // =================================================================
-// GNSS SPACETIME DASHBOARD - BLOC 3/5
-// Interface Utilisateur, Carte Leaflet, Graphiques Chart.js
+// BLOC 3/5 : UI, Carte Leaflet, Graphiques Chart.js
 // =================================================================
 
 /* --- VARIABLES D'INTERFACE --- */
@@ -261,7 +267,6 @@ let map = null;
 let userMarker = null;
 let trajectoryPolyline = null;
 let speedChart = null;
-let timeDilationChart = null;
 
 /* --- CARTE (Leaflet) --- */
 /** Initialise la carte et le marqueur utilisateur. */
@@ -281,14 +286,14 @@ function initMap(lat, lon) {
     userMarker = L.marker([lat, lon], {
         icon: L.divIcon({
             className: 'custom-div-icon',
-            html: '<div style="background-color: var(--accent-color); width: 15px; height: 15px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 5px #007bff;"></div>',
-            iconSize: [15, 15],
-            iconAnchor: [7.5, 7.5]
+            html: '<div style="background-color: var(--accent-color); width: 15px; height: 15px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 5px var(--accent-color);"></div>',
+            iconSize: [21, 21],
+            iconAnchor: [10.5, 10.5]
         })
     }).addTo(map).bindPopup("Position actuelle (UKF)").openPopup();
     
     // Polyline pour la trajectoire
-    trajectoryPolyline = L.polyline([], { color: '#dc3545', weight: 2 }).addTo(map);
+    trajectoryPolyline = L.polyline([], { color: '#dc3545', weight: 3, opacity: 0.7 }).addTo(map);
 }
 
 /** Met à jour la position du marqueur et le tracé de la trajectoire. */
@@ -296,7 +301,7 @@ function updateMapAndTrajectory(lat, lon) {
     if (userMarker) {
         const newLatLng = [lat, lon];
         userMarker.setLatLng(newLatLng);
-        map.setView(newLatLng);
+        // map.setView(newLatLng); // Commenté pour éviter le "saut" constant de la carte
         
         // Mise à jour de la polyline
         const latLngs = trajectoryPoints.map(p => [p.lat, p.lon]);
@@ -308,66 +313,65 @@ function updateMapAndTrajectory(lat, lon) {
 /** Initialise les graphiques (vitesse et dilatation du temps). */
 function initCharts() {
     // Configuration de base pour les graphiques
-    const baseConfig = (title, unit) => ({
+    const baseConfig = (title, unit, color) => ({
         type: 'line',
+        data: { datasets: [{ label: title, borderColor: color, backgroundColor: color.replace(')', ', 0.2)').replace('rgb', 'rgba'), data: [], tension: 0.3, pointRadius: 0 }] },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 0 },
-            plugins: { legend: { display: false }, title: { display: true, text: title, color: 'var(--text-dark)' } },
+            plugins: { 
+                legend: { display: false }, 
+                title: { display: true, text: title, color: 'var(--text-dark)' },
+                autoscroll: { mode: 'x', resizer: chart => chart.canvas.parentNode } // Plugin pour le temps réel
+            },
             scales: {
-                x: { type: 'realtime', realtime: { delay: 2000, onRefresh: chart => { /* logic in updateCharts */ } }, display: false },
-                y: { title: { display: true, text: unit, color: 'var(--text-dark)' }, grid: { color: 'var(--border-dark)' }, ticks: { color: 'var(--text-dark)' } }
+                x: { 
+                    type: 'time', // Utiliser l'échelle de temps
+                    time: { unit: 'second' }, 
+                    grid: { color: 'rgba(51, 51, 51, 0.5)' },
+                    ticks: { color: 'var(--text-dark)' }
+                },
+                y: { 
+                    title: { display: true, text: unit, color: 'var(--text-dark)' }, 
+                    grid: { color: 'rgba(51, 51, 51, 0.5)' }, 
+                    ticks: { color: 'var(--text-dark)' } 
+                }
             }
         }
     });
 
     // Graphique de Vitesse
     const speedCtx = $('speed-chart-canvas').getContext('2d');
-    speedChart = new Chart(speedCtx, {
-        ...baseConfig("Vitesse 3D (m/s)", "m/s"),
-        data: { datasets: [{ label: 'Vitesse', borderColor: '#007bff', backgroundColor: 'rgba(0, 123, 255, 0.2)', data: [] }] }
-    });
+    speedChart = new Chart(speedCtx, baseConfig("Vitesse 3D (m/s)", "m/s", '#007bff'));
 
-    // Graphique de Dilatation du Temps
-    const dilationCtx = $('dilation-chart-canvas').getContext('2d');
-    timeDilationChart = new Chart(dilationCtx, {
-        ...baseConfig("Dilatation Temporelle Totale (ns/j)", "ns/j"),
-        data: { datasets: [{ label: 'Dilatation Totale', borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.2)', data: [] }] }
-    });
+    // Note: Le second graphique de dilatation est retiré de cette version pour simplifier et se concentrer sur l'essentiel dans la colonne centrale.
 }
 
 /** Met à jour les données des graphiques. */
-function updateCharts(speed3D, totalTimeDilation) {
-    const now = Date.now();
+function updateCharts(speed3D, timestamp) {
     
     // Vitesse
     if (speedChart && speedChart.data.datasets.length > 0) {
-        speedChart.data.datasets[0].data.push({ x: now, y: speed3D });
-        if (speedChart.data.datasets[0].data.length > 30) speedChart.data.datasets[0].data.shift();
+        speedChart.data.datasets[0].data.push({ x: timestamp, y: speed3D });
+        // Limiter les points pour ne pas surcharger la mémoire
+        const maxPoints = 50;
+        if (speedChart.data.datasets[0].data.length > maxPoints) speedChart.data.datasets[0].data.shift();
         speedChart.update('none');
     }
-
-    // Dilatation du Temps
-    if (timeDilationChart && timeDilationChart.data.datasets.length > 0) {
-        timeDilationChart.data.datasets[0].data.push({ x: now, y: totalTimeDilation });
-        if (timeDilationChart.data.datasets[0].data.length > 30) timeDilationChart.data.datasets[0].data.shift();
-        timeDilationChart.update('none');
-    }
 }
+
 // =================================================================
-// GNSS SPACETIME DASHBOARD - BLOC 4/5
-// Logique de Calcul Scientifique Réelle (refreshScientificDashboard) et Orchestrateur
+// BLOC 4/5 : Logique de Calcul Scientifique Réelle et Orchestrateur
 // =================================================================
 
 /**
  * Fonction principale de rafraîchissement qui calcule et met à jour TOUS les indicateurs scientifiques réels.
- * Cette fonction NE FAIT AUCUNE SIMULATION. Elle prend l'état du filtre (UKF/EKF) et le traite.
  * @param {object} gnssState - État du filtre UKF/EKF.
  */
 function refreshScientificDashboard(gnssState) {
-    if (!gnssState || isNaN(gnssState.lat) || isNaN(gnssState.lon) || isNaN(gnssState.alt) || isNaN(gnssState.speed3D)) {
-        console.warn("État GNSS incomplet ou invalide pour les calculs scientifiques. Affichage en 'N/A'.");
+    if (!gnssState || isNaN(gnssState.lat) || isNaN(gnssState.alt) || isNaN(gnssState.speed3D)) {
+        console.warn("État GNSS incomplet ou invalide. Affichage en 'N/A'.");
         return; 
     }
 
@@ -385,14 +389,12 @@ function refreshScientificDashboard(gnssState) {
         let isIsaModel = true;
 
         if (gnssState.tempK !== undefined && gnssState.pressurePa !== undefined) {
-            // Utiliser les données de capteur/météo si disponibles
             T_K = gnssState.tempK;
             P_Pa = gnssState.pressurePa;
             v_son = SciencePro.getSpeedOfSound(T_K);
             rho_air = P_Pa / (SciencePro.R_d * T_K); 
             isIsaModel = false;
         } else {
-            // Sinon, utiliser le modèle ISA basé sur l'altitude
             const isa = SciencePro.isaModel(alt);
             T_K = isa.T_K;
             P_Pa = isa.P_Pa;
@@ -448,20 +450,21 @@ function refreshScientificDashboard(gnssState) {
         safeSet('drag-kw', dataOrDefault(puissance_trainee, 3, ' kW'));
 
         const omega_earth = PHYS.omega_earth;
+        // Approximation de Coriolis: force perpendiculaire à v et omega. Ici, seule la composante verticale est simplifiée.
         const force_coriolis = 2 * mass * omega_earth * v * Math.sin(lat * PHYS.pi / 180); 
         safeSet('coriolis-force', dataOrDefault(force_coriolis, 4, ' N'));
         
         // --- 4. Astronomie & Temps ---
-        const astroData = SciencePro.getAstroData(new Date(), lat, lon);
+        const now = new Date();
+        const astroData = SciencePro.getAstroData(now, lat, lon);
 
         safeSet('sun-alt', dataOrDefault(astroData.sunAlt, 3, '°'));
         safeSet('sun-azimuth', dataOrDefault(astroData.sunAzimuth, 3, '°'));
         safeSet('moon-phase-name', astroData.moonPhase);
         safeSet('moon-illuminated', dataOrDefault(astroData.moonIllumination, 1, '%'));
-        safeSet('moon-age-days', dataOrDefault(astroData.moonAgeDays, 2, ' j'));
-
+        
         // Mise à jour des graphiques
-        updateCharts(v, dt_total);
+        updateCharts(v, now.getTime());
 
     } catch(e) {
         console.error("Erreur critique lors du calcul des données dérivées:", e);
@@ -471,12 +474,24 @@ function refreshScientificDashboard(gnssState) {
 /* --- Orchestrateur (Moteur de Boucle) --- */
 const orchestrator = (function(){
     let intervalId = null;
+    let isStopped = false;
 
     /** Exécute la boucle de rafraîchissement. */
     function runRefresh() {
-        if (intervalId) clearInterval(intervalId); // S'assurer qu'une seule boucle tourne
+        if (intervalId) clearInterval(intervalId); // Assurer qu'une seule boucle tourne
+        isStopped = false;
+        
+        // Mise à jour de l'UI du bouton
+        const stopBtn = $('emergency-stop-btn');
+        if (stopBtn) {
+            stopBtn.textContent = "Arrêt d'Urgence";
+            stopBtn.classList.remove('bg-green-500');
+            stopBtn.classList.add('bg-red-500');
+        }
 
         const mainLoop = () => {
+            if (isStopped) return;
+            
             // 1. Simuler l'acquisition de données GNSS brutes/capteurs
             const rawGnssData = { lat: currentPosition.lat, lon: currentPosition.lon, alt: currentPosition.alt, spd: currentPosition.speed3D };
             const sensorData = { tempK: currentPosition.tempK, pressurePa: currentPosition.pressurePa };
@@ -505,66 +520,81 @@ const orchestrator = (function(){
         intervalId = setInterval(mainLoop, 2000); 
     }
 
-    return { runRefresh };
-})();
-// =================================================================
-// GNSS SPACETIME DASHBOARD - BLOC 5/5
-// Initialisation, Événements et Démarrage
-// =================================================================
+    /** Arrête la boucle de rafraîchissement. */
+    function stopRefresh() {
+        if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+            isStopped = true;
+            console.log("Boucle du tableau de bord arrêtée.");
+        }
+    }
 
-/** Gestionnaire du Mode Jour/Nuit */
+    return { runRefresh, stopRefresh, get isStopped() { return isStopped; } };
+})();
+
+
+/* --- Gestionnaire du Mode Jour/Nuit --- */
 function toggleDarkMode() {
+    // La classe dark-mode est sur le body dans le CSS
     document.body.classList.toggle('dark-mode');
-    const isDark = !document.body.classList.contains('dark-mode');
-    $('toggle-mode-btn').innerHTML = isDark 
-        ? '<i class="fas fa-moon"></i> Mode Nuit' 
-        : '<i class="fas fa-sun"></i> Mode Jour';
+    const isDark = document.body.classList.contains('dark-mode');
+    const btn = $('toggle-mode-btn');
+
+    if (btn) {
+        btn.innerHTML = isDark 
+            ? '<i class="fas fa-sun"></i> Mode Jour'
+            : '<i class="fas fa-moon"></i> Mode Nuit';
+    }
 }
 
 /** Gestionnaire pour l'arrêt d'urgence/re-start */
 function toggleDashboardLoop() {
     if (orchestrator.isStopped) {
         orchestrator.runRefresh();
-        $('emergency-stop-btn').textContent = "Arrêt d'Urgence";
-        $('emergency-stop-btn').classList.remove('bg-green-500');
-        $('emergency-stop-btn').classList.add('bg-red-500');
-        orchestrator.isStopped = false;
     } else {
-        if (orchestrator.intervalId) clearInterval(orchestrator.intervalId);
-        orchestrator.isStopped = true;
-        $('emergency-stop-btn').textContent = "Démarrer Simulation"; // Change pour un mode simulation pour l'exemple
-        $('emergency-stop-btn').classList.remove('bg-red-500');
-        $('emergency-stop-btn').classList.add('bg-green-500');
-        console.log("Boucle du tableau de bord arrêtée.");
+        orchestrator.stopRefresh();
+        const stopBtn = $('emergency-stop-btn');
+        if (stopBtn) {
+            stopBtn.textContent = "Démarrer Simulation"; 
+            stopBtn.classList.remove('bg-red-500');
+            stopBtn.classList.add('bg-green-500');
+        }
     }
 }
 
 /* --- SÉQUENCE D'INITIALISATION --- */
-(async function init() {
-    // 1. Initialiser le mode d'affichage par défaut
+window.onload = function init() {
+    // 1. Initialiser le mode d'affichage par défaut (sombre par CSS)
     document.body.classList.add('dark-mode');
-    if ($('toggle-mode-btn')) {
-        $('toggle-mode-btn').innerHTML = '<i class="fas fa-sun"></i> Mode Jour';
-        $('toggle-mode-btn').onclick = toggleDarkMode;
-    }
+    
+    // 2. Initialiser les variables d'UI modifiables
+    safeSet('current-mass', dataOrDefault(currentMass, 1, ' kg'));
+    safeSet('current-cd', dataOrDefault(currentCd, 2));
+    safeSet('current-area', dataOrDefault(currentArea, 2, ' m²'));
 
-    // 2. Initialiser le filtre et la position par défaut (Paris)
+    // 3. Initialiser le filtre et la position par défaut (Paris)
     const lat0 = currentPosition.lat;
     const lon0 = currentPosition.lon;
     const alt0 = currentPosition.alt;
     FilterEngine.initFromGnss(lat0, lon0, alt0);
 
-    // 3. Initialiser la carte et les graphiques
+    // 4. Initialiser la carte et les graphiques
     initMap(lat0, lon0);
     initCharts();
 
-    // 4. Configurer les écouteurs d'événements
+    // 5. Configurer les écouteurs d'événements
+    if ($('toggle-mode-btn')) {
+        $('toggle-mode-btn').innerHTML = '<i class="fas fa-sun"></i> Mode Jour';
+        $('toggle-mode-btn').onclick = toggleDarkMode;
+    }
     if ($('emergency-stop-btn')) {
         $('emergency-stop-btn').onclick = toggleDashboardLoop;
     }
     
-    // 5. Démarrer la boucle de rafraîchissement
+    // 6. Démarrer la boucle de rafraîchissement
+    // C'est l'appel qui démarre tout ! Il est crucial que 'orchestrator' soit déjà défini.
     orchestrator.runRefresh();
 
-    console.log('Dashboard Scientifique initialisé (5 blocs chargés).');
-})();
+    console.log('Dashboard Scientifique initialisé (fusion des 5 blocs).');
+};
