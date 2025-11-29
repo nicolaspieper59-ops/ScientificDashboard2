@@ -275,7 +275,7 @@
                 <div class="data-point"><span>Précision GPS (Acc)</span><span id="acc-val">N/A</span></div>
                 <div id="map-container">
                     <div id="globe-view" style="display:none; width: 100%; height: 350px; background: #000; border-radius: 8px;"></div>
-       <div id="map"></div>
+                    <div id="map"></div>
                     <button id="xray-button" aria-label="Toggle X-Ray View">🔭</button>
                 </div>
                 <hr>
@@ -348,66 +348,7 @@
     <script src="suncalc.js"></script>
     <script src="turf.min.js"></script>
     
-    <script>
-    // ... code JavaScript pour TheoreticalQuantities/TQ ...
-    
-    // Structure TQ.q: { id: { name: "Nom", value: Valeur, unit: "Unité", critical: false/true } }
-    const TQ = new TheoreticalQuantities();
-    TQ.add('c', 'Vitesse de la lumière', 299792458, 'm/s', true);
-    TQ.add('G', 'Constante Gravitationnelle (G)', 6.67430e-11, 'm³/kg/s²', false);
-    TQ.add('planck-h', 'Constante de Planck (h)', 6.62607015e-34, 'J·s', false);
-    TQ.add('boltzmann-kB', 'Constante de Boltzmann (kB)', 1.380649e-23, 'J/K', false);
-    TQ.add('gas-constant-R', 'Constante des Gaz Parfaits (R)', 8.314462618, 'J/mol/K', false);
-    TQ.add('stefan-boltzmann', 'Constante de Stefan-Boltzmann', 5.670374419e-8, 'W/m²/K⁴', false);
-    TQ.add('avogadro-NA', "Nombre d'Avogadro (NA)", 6.02214076e23, 'mol⁻¹', false);
-    // Ajoutez d'autres constantes ou valeurs théoriques si nécessaire
-
-    document.addEventListener('DOMContentLoaded', () => {
-        // Créer un panneau pour les grandeurs théoriques
-        const container = document.createElement('section');
-        container.className = 'panel';
-        const header = document.createElement('h2');
-        header.innerHTML = '<i class="fas fa-flask"></i> Grandeurs Mesurables & Théoriques (Register JS)';
-        container.appendChild(header);
-        const list = document.createElement('div');
-        list.className = 'theoretical-list';
-
-        for (const k in TQ.q){
-            // only create DOM if element id not present in document
-            if (!document.getElementById(k)) {
-                const dp = document.createElement('div');
-                dp.className = 'data-point';
-                const left = document.createElement('span');
-                left.textContent = TQ.q[k].name;
-                const right = document.createElement('span');
-                right.id = k;
-                right.textContent = TQ.q[k].value + (TQ.q[k].unit ? (' ' + TQ.q[k].unit) : '');
-                if (TQ.q[k].critical) right.classList.add('theoretical-crit');
-                dp.appendChild(left);
-                dp.appendChild(right);
-                list.appendChild(dp);
-            }
-        }
-        container.appendChild(list);
-        // insert container before scripts
-        const main = document.querySelector('main');
-        if (main) main.appendChild(container);
-
-        // also populate preexisting elements
-        TQ.populateDOM();
-    });
-
-    // Exports pour usage externe (lib scientifique)
-    window.TheoreticalQuantities = TheoreticalQuantities;
-    window.TQ = TQ;
-    </script>
-
-    <script src="math.min.js"></script>
-    <script src="leaflet.js"></script>
-    <script src="suncalc.js"></script>
-    <script src="turf.min.js"></script>
-
     <script src="gnss-dashboard-full.js"></script>
 
-</body>
+    </body>
 </html>
