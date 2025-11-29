@@ -23,10 +23,6 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     }
     return val.toExponential(decimals) + suffix;
 };
-
-// =================================================================
-// Fin BLOC 1/5
-// =================================================================
 // =================================================================
 // BLOC 2/5 : Démarrage, Constantes TQ et État Global (Début de l'IIFE)
 // Correction : Le script commence ici l'encapsulation IIFE pour garantir la portée des variables.
@@ -135,11 +131,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let trackPolyline = null;
     let trackPoints = [];
     let isMapInitialized = false;
-
-// =================================================================
-// Fin BLOC 2/5
-// =================================================================
- // =================================================================
+    // =================================================================
 // BLOC 3/5 : Fonctions de Physique et UKF
 // =================================================================
 
@@ -229,11 +221,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     const updateUKF = (currentPosition, currentVelocity, currentIMU) => {
         // Logique de mise à jour UKF (omise pour la concision)
     };
-
-// =================================================================
-// Fin BLOC 3/5
-// =================================================================
-// =================================================================
+    // =================================================================
 // BLOC 4/5 : Capteurs, Géolocalisation & Carte (Leaflet)
 // =================================================================
 
@@ -357,11 +345,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             $('ambient-light-max').textContent = dataOrDefault(lux, 2, ' Lux');
         }
     };
-
-// =================================================================
-// Fin BLOC 4/5
-// =================================================================
- // =================================================================
+    // =================================================================
 // BLOC 5/5 : Boucles, Affichage DOM & Événements (Fin de l'IIFE)
 // =================================================================
 
