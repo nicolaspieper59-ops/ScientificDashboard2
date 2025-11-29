@@ -698,6 +698,9 @@ $('moon-azimuth').textContent = `$
 $('moon-times').textContent =
 (moonTimes.rise&&moonTimes.set)? `${moonTimes.rise.toLocaleTimeString()}/$
 {moonTimes.set.toLocaleTimeString()}`:'...';
+// Exemple de ce qui pourrait manquer ou être mal nommé
+if ($('moonrise-times')) $('moonrise-times').textContent = times.moonrise.toLocaleTimeString('fr-FR');
+if ($('moonset-times')) $('moonset-times').textContent = times.moonset.toLocaleTimeString('fr-FR');    
 // Minecraft clock visuals
 const clockDiv = $('minecraft-clock');
 if (clockDiv) {
