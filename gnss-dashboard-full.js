@@ -630,29 +630,42 @@ function gpsErrorCallback(err) {
     if (err.code===1) stopGPS();
 }
 
-// IMU/Sensor handlers
-function startIMUListeners() {
-    if (emergencyStopActive || domFastID) return;
+// Nouvelle fonction de gestion des événements de mouvement (à placer dans les fonctions globales)
+let lastMotionTimestamp = 0;
 
-    try {
-        if ($('imu-status')) $('imu-status').textContent = "Activation...";
+function handleDeviceMotion(event) {
+    // S'assurer que le tableau de bord est actif et que l'arrêt d'urgence n'est pas actif
+    if (emergencyStopActive || !domFastID) return; 
 
-        // Vérification des API de capteurs
-        if (typeof Accelerometer==='undefined' || typeof Gyroscope==='undefined') {
-            throw new Error("API Capteurs non supportée.");
-        }
+    // Lecture des données d'accélération (accélération totale)
+    const acc = event.accelerationIncludingGravity;
 
-        // Accéléromètre (50Hz)
-        const accSensor = new Accelerometer({frequency:50});
-        accSensor.addEventListener('reading', ()=>{ accel.x=accSensor.x; accel.y=accSensor.y; accel.z=accSensor.z; });
-        accSensor.addEventListener('error', e=> console.error("Accéléromètre:", e.error));
-        accSensor.start();
+    // Mise à jour de l'état global 'accel' (utilisé par l'UKF)
+    accel.x = acc.x;
+    accel.y = acc.y;
+    accel.z = acc.z;
 
-        // Gyroscope (50Hz)
-        const gyroSensor = new Gyroscope({frequency:50});
-        gyroSensor.addEventListener('reading', ()=>{ gyro.x=gyroSensor.x; gyro.y=gyroSensor.y; gyro.z=gyroSensor.z; });
-        gyroSensor.addEventListener('error', e=> console.error("Gyroscope:", e.error));
-        gyroSensor.start();
+    // Lecture des données de rotation (si disponibles)
+    if (event.rotationRate) {
+        const rot = event.rotationRate;
+        // Mise à jour de l'état global 'gyro' (utilisé par l'UKF)
+        gyro.x = rot.alpha;
+        gyro.y = rot.beta;
+        gyro.z = rot.gamma;
+    }
+    
+    // Mise à jour du statut dans le DOM
+    if ($('imu-status')) {
+        $('imu-status').textContent = "Actif (DeviceMotion)";
+    }
+
+    // Démarre la boucle rapide la première fois
+    if (!domFastID) {
+        startFastLoop();
+    }
+    
+    lastMotionTimestamp = performance.now();
+}
         
         // Capteurs Environnementaux (si supportés)
         if (typeof AmbientLightSensor !== 'undefined') {
@@ -700,7 +713,7 @@ function stopGPS(resetBtn=true) {
 }
 
 // Démarrer les services GPS
-function startGPS(mode = 'HIGH_FREQ') {
+function startGPS(freq) {
     if (wID !== null) stopGPS(false); // Arrête l'ancienne surveillance
     if (emergencyStopActive) {
         alert("Arrêt d'urgence actif. Réinitialisez le système.");
@@ -717,11 +730,12 @@ function startGPS(mode = 'HIGH_FREQ') {
     if ($('gps-mode-display')) $('gps-mode-display').textContent = currentGPSMode;
 
     // Démarre l'écoute IMU/UKF
-    startIMUListeners(); 
-
-    // Initialise les boucles lente et rapide
-    startFastLoop();
-    startSlowLoop();
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', handleDeviceMotion, true);
+        if ($('imu-status')) $('imu-status').textContent = "En attente de données...";
+    } else {
+        if ($('imu-status')) $('imu-status').textContent = "Désactivé : DeviceMotion non supporté.";
+        startFastLoop(); // 
 }
 
 // Fonction pour basculer entre les modes de fréquence GPS
