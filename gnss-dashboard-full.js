@@ -480,6 +480,29 @@
 
         // Démarrer la boucle lente
         startSlowLoop();
+
+    const startBtn = $('start-btn'); // ID du bouton MARCHE GPS
+
+    // 🚩 CORRECTION CRITIQUE : Logique de bascule (toggle)
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            // Si wID existe, cela signifie que le GPS est ACTIF.
+            if (wID !== null) {
+                // L'utilisateur veut PAUSE
+                stopGPS(true); 
+            } else {
+                // L'utilisateur veut MARCHE
+                startGPS('HIGH_FREQ'); 
+            }
+        });
+    }
+
+    // Assurez-vous que l'arrêt fonctionne également
+    if ($('stop-btn')) {
+        $('stop-btn').addEventListener('click', () => stopGPS(true));
+    }
+    
+    // ... (autres écouteurs d'événements : Réinit. Dist., Réinit. V-Max, etc.) ...
         
         // --- ÉVÉNEMENTS DES BOUTONS (Rend tous les contrôles fonctionnels) ---
         
