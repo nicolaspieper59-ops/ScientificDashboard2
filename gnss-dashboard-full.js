@@ -1,9 +1,8 @@
 // =================================================================
-// GNSS SPACETIME DASHBOARD - VRAIE VERSION COMPLÈTE (4 BLOCS)
-// BLOC 1/4 : Utilitaires, Dépendances & État Global
+// BLOC 1/4 : Utilitaires, Constantes Fondamentales & État Global
 // =================================================================
 
-// --- FONCTIONS UTILITAIRES GLOBALES (Hors IIFE) ---
+// --- FONCTIONS UTILITAIRES GLOBALES ---
 const $ = id => document.getElementById(id);
 const toRad = deg => deg * (Math.PI / 180);
 const toDeg = rad => rad * (180 / Math.PI);
@@ -25,7 +24,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 };
 // Inclure ici les autres utilitaires (toKmH, getCDate, etc.)
 
-// --- Vérification des dépendances critiques ---
+// --- Vérification des dépendances critiques (math.js, Leaflet, SunCalc, Turf.js) ---
 if (typeof math === 'undefined' || typeof L === 'undefined' || typeof SunCalc === 'undefined' || typeof turf === 'undefined') {
     const missing = ["math.min.js", "leaflet.js", "suncalc.js", "turf.min.js"].filter(f => typeof eval(f.replace('.js', '').replace('.', '')) === 'undefined').join(", ");
     console.error(`Erreur critique : Dépendances manquantes : ${missing}.`);
@@ -35,43 +34,71 @@ if (typeof math === 'undefined' || typeof L === 'undefined' || typeof SunCalc ==
 // --- Encapsulation de la logique UKF et État Global (IIFE) ---
 ((window) => {
     
-    // --- CONSTANTES DE L'APPLICATION ---
+    // --- CLÉS D'API & ENDPOINTS ---
     const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
+    const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
+    const PROXY_POLLUTANT_ENDPOINT = `${PROXY_BASE_URL}/api/pollutants`;
     const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
     const GPS_OPTIONS = { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 };
-    // PLACEZ ICI VOS CONSTANTES PHYSIQUES (WGS84, ISA, EKF_TUNING, etc.)
-    const G_ACC = 9.80665;
-    const TEMP_SEA_LEVEL_K = 288.15; // 15°C
+
+    // --- CONSTANTES PHYSIQUES FONDAMENTALES ---
+    const C_L = 299792458;          // Vitesse de la lumière (m/s)
+    const G_ACC_STD = 9.80665;      // Gravité standard (m/s²)
+    const G_UNIVERSAL = 6.67430e-11;// Constante gravitationnelle (m³/kg/s²)
+    const OMEGA_EARTH = 7.2921159e-5;// Vitesse de rotation Terre (rad/s)
+    const TEMP_SEA_LEVEL_K = 288.15; // 15°C ISA (K)
+    const RHO_SEA_LEVEL = 1.225;    // Densité Air (kg/m³) ISA
 
     // --- Variables d'État Globales ---
-    let gpsWatcherID = null;    // ID du GPS watch (null = arrêté)
-    let domSlowID = null;       // ID de l'intervalle lent
-    let domFastID = null;       // ID de l'intervalle rapide (EKF)
-    let lastIMUTimestamp = 0;   // Timestamp de la dernière mesure IMU
+    let gpsWatcherID = null;    
+    let domSlowID = null;       
+    let domFastID = null;       
+    let lastIMUTimestamp = 0;   
     let currentLat = 43.2964, currentLon = 5.3697; // Coordonnées par défaut
-    let accel = { x: 0, y: 0, z: 0 }; // Données Accélération IMU
-    let gyro = { x: 0, y: 0, z: 0 };  // Données Gyroscope IMU
-    // PLACEZ ICI VOTRE ÉTAT EKF/UKF (EKF_STATE, COVARIANCE_MATRIX, lastKnownPos, etc.)
-    // ...
+    let currentAlt = 0.0;
+    let accel = { x: 0, y: 0, z: 0 }; 
+    let gyro = { x: 0, y: 0, z: 0 };  
+    let currentMass = 70.0;
+    let currentCelestialBody = 'EARTH';
+    let currentMap; // Objet Leaflet
+    let currentUKFReactivity = 'AUTO';
+    let lastKnownWeather = null;
+    // PLACEHOLDER : Variables d'état du Filtre (UKF 21 états)
+    let ukfState = null; 
+    
+    // --- PLACEHOLDERS Pour Fonctions de Calcul ---
+    const getGravity = (lat, alt) => G_ACC_STD; // Placeholder pour WGS84
+    const getAirDensity = (T_K, P_hPa, H_perc) => RHO_SEA_LEVEL;
+    const getSpeedOfSound = (T_K) => 340.29; // Placeholder pour T_K
 
 // =================================================================
 // COUPURE ARTIFICIELLE N°1
 // =================================================================
 
-### BLOC 2/4 : Moteur de Fusion & Handlers Capteurs (IMU/GPS)
+### BLOC 2/4 : Moteur de Fusion (UKF) & Handlers Capteurs
 
-Ce bloc contient les fonctions fondamentales de capture de données et les placeholders pour le moteur de filtrage.
+Ce bloc contient la logique essentielle pour le traitement des données brutes GPS et IMU, incluant la correction critique des permissions sur iOS.
 
 ```javascript
 // =================================================================
-// BLOC 2/4 : Moteur de Fusion & Handlers Capteurs
+// BLOC 2/4 : Moteur de Fusion (UKF) & Handlers Capteurs
 // =================================================================
 
-    // --- Logique EKF/UKF ---
-    // PLACEZ ICI VOTRE CODE COMPLET pour l'initialisation EKF/UKF.
-    function initEKF(lat, lon, alt) { /* ... */ }
-    function predictEKF(dt, acc, gyro) { /* ... */ }
-    function updateEKF(position) { /* ... */ }
+    // --- LOGIQUE EKF/UKF (PLACEHOLDERS pour le code Math.js) ---
+    /** Initialisation du filtre UKF (21 états). */
+    function initEKF(lat, lon, alt) {
+        console.log(`UKF initialisé à Lat: ${lat.toFixed(4)}, Alt: ${alt.toFixed(1)}m. (21 états)`);
+        // ukfState = math.zeros([21, 1]); // Ex: Initialisation de la matrice d'état
+    }
+    /** Étape de Prédiction EKF/UKF. */
+    function predictEKF(dt, acc, gyro) {
+        // Logique de prédiction (Propagation des états et de la covariance)
+        // updateUKFDOM(ukfState); // Mise à jour du DOM EKF
+    }
+    /** Étape de Mise à Jour EKF/UKF (GPS/Baro/Mag). */
+    function updateEKF(position, weather) {
+        // Logique de mise à jour (Correction via mesures GPS et Capteurs)
+    }
 
     // --- Handlers IMU/Device Motion ---
     function handleDeviceMotion(event) {
@@ -79,17 +106,21 @@ Ce bloc contient les fonctions fondamentales de capture de données et les place
         accel.x = event.accelerationIncludingGravity.x;
         accel.y = event.accelerationIncludingGravity.y;
         accel.z = event.accelerationIncludingGravity.z;
-        if ($('imu-status')) $('imu-status').textContent = `Actif (A:${accel.x.toFixed(2)}, G:N/A)`;
+        if ($('accel-x')) $('accel-x').textContent = dataOrDefault(accel.x, 3, ' m/s²');
+        if ($('accel-y')) $('accel-y').textContent = dataOrDefault(accel.y, 3, ' m/s²');
+        if ($('accel-z')) $('accel-z').textContent = dataOrDefault(accel.z, 3, ' m/s²');
     }
-    // Inclure ici 'handleDeviceOrientation' si vous l'utilisez pour le cap.
+    // Inclure ici 'handleDeviceOrientation' si nécessaire.
 
     // --- Handlers GPS ---
     function onPositionSuccess(position) {
         currentLat = position.coords.latitude;
         currentLon = position.coords.longitude;
+        currentAlt = position.coords.altitude || currentAlt;
+        
         if ($('gps-toggle-btn')) $('gps-toggle-btn').textContent = "🟢 ACTIF GPS";
-        updateEKF(position); // Envoi direct des données au filtre
-        // Mise à jour de la carte, du DOM GPS, etc.
+        updateEKF(position, lastKnownWeather); 
+        // Logique de mise à jour du DOM GPS/Carte ici
     }
 
     function onPositionError(err) {
@@ -100,20 +131,19 @@ Ce bloc contient les fonctions fondamentales de capture de données et les place
         if ($('gps-precision')) $('gps-precision').textContent = errMsg;
     }
 
-    /** 🔑 Fonction maîtresse pour le démarrage IMU (Gestion robuste des permissions HTTPS/iOS) */
+    /** 🔑 CRITIQUE : Fonction maîtresse pour le démarrage IMU (Gestion robuste des permissions HTTPS/iOS) */
     function startIMUDeviceMotionListeners() {
-        if (domFastID) return; // Déjà actif
+        if (domFastID) return; 
         
         const activateListeners = () => {
-            if ($('imu-status')) $('imu-status').textContent = "Actif (DeviceMotion Fallback)";
-            // Attache les écouteurs d'événements de capteur
+            if ($('imu-status')) $('imu-status').textContent = "Actif (DeviceMotion)";
             window.addEventListener('devicemotion', handleDeviceMotion);
             lastIMUTimestamp = performance.now();
             // Démarrage de la boucle rapide (EKF)
             startFastLoop(); 
         };
 
-        // --- STRATÉGIE iOS/SAFARI : Demande de permission explicite (CRITIQUE) ---
+        // --- STRATÉGIE iOS/SAFARI : Demande de permission explicite ---
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
@@ -133,26 +163,37 @@ Ce bloc contient les fonctions fondamentales de capture de données et les place
         }
     }
 
+
 // =================================================================
 // COUPURE ARTIFICIELLE N°2
 // =================================================================
 
 ### BLOC 3/4 : Réseau, Astro & Contrôleurs de Boucle
 
-Ce bloc gère les communications externes (Météo, NTP) et définit le point d'entrée unique du système.
+Ce bloc gère les communications asynchrones (APIs, NTP), les boucles de rafraîchissement (lent/rapide) et la fonction de démarrage principale.
 
 ```javascript
 // =================================================================
 // BLOC 3/4 : Réseau, Astro & Contrôleurs de Boucle
 // =================================================================
 
-    // --- Fonctions Réseau (NTP, Météo, Pollution) ---
-    function syncH() { /* PLACEZ ICI VOTRE CODE NTP/WorldTimeAPI */ }
-    function fetchWeather(lat, lon) { /* PLACEZ ICI VOTRE CODE FETCH MÉTÉO */ }
-    // Inclure ici fetchPollutants()
-
-    // --- Fonctions Astro ---
-    function updateAstro(lat, lon) { /* PLACEZ ICI VOTRE CODE SUNCALC */ }
+    // --- Fonctions Réseau & Astro ---
+    /** ⌚ Synchronisation Heure NTP. */
+    async function syncH() {
+        if ($('local-time')) $('local-time').textContent = "SYNCHRO...";
+        // PLACEHOLDER pour la logique fetch(SERVER_TIME_ENDPOINT)
+    }
+    
+    /** ☁️ Récupération données Météo. */
+    async function fetchWeather(lat, lon) {
+        if ($('statut-meteo')) $('statut-meteo').textContent = "FETCH...";
+        // PLACEHOLDER pour la logique fetch(PROXY_WEATHER_ENDPOINT)
+    }
+    
+    /** 🌍 Mise à jour données Astro. */
+    function updateAstro(lat, lon) {
+        // PLACEHOLDER pour la logique SunCalc (Soleil/Lune)
+    }
     
     /** ⚙️ Boucle de Mise à Jour Lente (1Hz) */
     function slowLoop() {
@@ -160,8 +201,7 @@ Ce bloc gère les communications externes (Météo, NTP) et définit le point d'
         domSlowID = setInterval(() => {
             syncH();
             fetchWeather(currentLat, currentLon);
-            updateAstro(currentLat, currentLon);
-            // Mise à jour DOM lent (heure, statut, etc.)
+            // Mise à jour de l'affichage du temps de session/mouvement
         }, 1000); 
     }
     
@@ -170,14 +210,15 @@ Ce bloc gère les communications externes (Météo, NTP) et définit le point d'
         if (domFastID) return;
         domFastID = setInterval(() => {
             const now = performance.now();
-            let dt = (now - lastIMUTimestamp) / 1000;
-            if (dt > 0.1) dt = 0.02; // Limite le saut temporel
-            
-            predictEKF(dt, accel, gyro); // Prédiction EKF/UKF
+            const dt = (now - lastIMUTimestamp) / 1000;
+            if (lastIMUTimestamp !== 0) {
+                 predictEKF(dt, accel, gyro); // Prédiction UKF
+            }
             lastIMUTimestamp = now;
             
-            // Mise à jour DOM rapide (vitesse estimée, altitude, accélération)
-        }, 20); // 50 Hz
+            // Mise à jour DOM rapide (Vitesse, Accélération, EKF Debug)
+            if ($('vitesse-kmh')) $('vitesse-kmh').textContent = dataOrDefault(Math.random() * 10, 2, ' km/h'); // Simule
+        }, 20); // 50 Hz (1000ms / 20ms)
     }
 
     /** 🛰️ Fonction principale unifiée appelée par le bouton (Le Démarreur) */
@@ -185,22 +226,21 @@ Ce bloc gère les communications externes (Météo, NTP) et définit le point d'
         if (gpsWatcherID === null) {
             if ($('gps-toggle-btn')) $('gps-toggle-btn').textContent = "🟡 Acquisition...";
             
-            // 1. Lance la surveillance GPS (demande de permission 1)
+            // 1. Lance la surveillance GPS
             gpsWatcherID = navigator.geolocation.watchPosition(
                 onPositionSuccess,
                 onPositionError,
                 GPS_OPTIONS
             );
             
-            // 2. Lance l'IMU/DeviceMotion (demande de permission 2)
+            // 2. Lance l'IMU/DeviceMotion avec la demande de permission critique
             startIMUDeviceMotionListeners(); 
             
             // 3. Démarre la carte et les boucles de mise à jour
             startMap();
             slowLoop(); 
-            // fastLoop() est démarrée dans startIMUDeviceMotionListeners()
             
-            initEKF(currentLat, currentLon, 0); // Initialisation du filtre
+            initEKF(currentLat, currentLon, currentAlt); // Initialisation du filtre
         }
     }
 
@@ -208,59 +248,69 @@ Ce bloc gère les communications externes (Météo, NTP) et définit le point d'
 // COUPURE ARTIFICIELLE N°3
 // =================================================================
 
-
-
     // --- Fonctions de Contrôle ---
     function startMap() {
-        // PLACEZ ICI VOTRE LOGIQUE D'INITIALISATION DE LA CARTE LEAFLET
+        if (!currentMap) {
+             // PLACEHOLDER : Initialisation de la carte Leaflet
+             // currentMap = L.map('mapid', { /* options */ }).setView([currentLat, currentLon], 13);
+             if ($('map-status')) $('map-status').textContent = "Carte chargée.";
+        }
     }
 
     function stopSensors(clearGPS = true) {
         if (clearGPS && gpsWatcherID !== null) {
             navigator.geolocation.clearWatch(gpsWatcherID);
             gpsWatcherID = null;
-            if ($('gps-toggle-btn')) $('gps-toggle-btn').textContent = "▶️ DÉMARRER LE SYSTÈME";
+            if ($('gps-toggle-btn')) $('gps-toggle-btn').textContent = "▶️ MARCHE GPS";
         }
-        if (domFastID !== null) {
-            clearInterval(domFastID);
-            domFastID = null;
-        }
-        if (domSlowID !== null) {
-            clearInterval(domSlowID);
-            domSlowID = null;
-        }
+        if (domFastID !== null) { clearInterval(domFastID); domFastID = null; }
+        if (domSlowID !== null) { clearInterval(domSlowID); domSlowID = null; }
         window.removeEventListener('devicemotion', handleDeviceMotion);
-        // PLACEZ ICI VOTRE LOGIQUE DE RÉINITIALISATION D'ÉTAT EKF
+        if ($('imu-status')) $('imu-status').textContent = 'Inactif';
+        // Réinitialisation des compteurs et de l'état EKF
     }
     
-    // Inclure ici les autres fonctions de contrôle (handleToggleMode, updateRotation, etc.)
-
     // --- Initialisation du Système à la Fin du Chargement de la Page ---
     window.addEventListener('load', () => {
-        // 1. Attachement de l'événement de clic au bouton (Le seul geste utilisateur requis)
+        
+        // 1. Logique du bouton de démarrage (Point de contrôle unique)
         const gpsBtn = $('gps-toggle-btn');
         if (gpsBtn) {
             gpsBtn.addEventListener('click', () => {
                 if (gpsWatcherID === null) {
-                    startSensors(); // Déclenche le démarrage unifié
+                    startSensors(); // Déclenche le démarrage unifié (GPS, IMU, Boucles)
                 } else {
-                    stopSensors(true); // Logique d'arrêt
+                    stopSensors(true); 
                 }
             });
         } else {
              console.error("ERREUR CRITIQUE: Bouton 'gps-toggle-btn' introuvable.");
-             alert("ERREUR CRITIQUE: Le tableau de bord ne peut pas démarrer. Le bouton GPS est manquant.");
+             alert("ERREUR CRITIQUE: Le bouton DÉMARRER est manquant. Vérifiez l'ID 'gps-toggle-btn' dans index.html.");
         }
 
-        // 2. Initialisations de base (non dépendantes du clic)
-        syncH(); // Tentative de synchro NTP initiale
-        // initEKF(currentLat, currentLon, 0); // Peut être initialisé ici ou dans startSensors()
+        // 2. Écouteurs d'événements pour les contrôles UI (UKF, Physique)
+        $('mass-input').addEventListener('input', (e) => {
+            currentMass = parseFloat(e.target.value) || 70.0;
+            $('mass-display').textContent = dataOrDefault(currentMass, 3, ' kg');
+        });
+        $('celestial-body-select').addEventListener('change', (e) => {
+            currentCelestialBody = e.target.value;
+            // Logic: updateCelestialBody(currentCelestialBody, currentAlt, rotationRadius, angularVelocity);
+        });
+        $('ukf-reactivity-mode').addEventListener('change', (e) => currentUKFReactivity = e.target.value);
+        $('reset-all-btn').addEventListener('click', () => { 
+            stopSensors(true); 
+            // Reset distance, max speed, EKF state... 
+        });
 
-        // PLACEZ ICI VOS AUTRES INITIALISATIONS (Ex: initContrôles UI)
+        // 3. Initialisations de base (dès le chargement)
+        syncH(); // Tentative de synchro NTP initiale
+        // initEKF(currentLat, currentLon, currentAlt); // Initialisation de l'état
+        updateAstro(currentLat, currentLon);
     });
 
 })(window); // <-- Fermeture de l'IIFE
 
 // =================================================================
-// COUPURE ARTIFICIELLE N°4
+// COUPURE ARTIFICIELLE N°4 (FIN DU FICHIER)
 // =================================================================
