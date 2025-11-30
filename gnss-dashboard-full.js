@@ -183,8 +183,11 @@ function calculateCoriolisForce(mass, speed, lat) {
     return 2 * mass * W_EARTH * speed * Math.sin(lat * D2R);
         }
 // =================================================================
-// BLOC 3/5 : LOGIQUE GPS & CAPTEURS (IMU/Motion)
+// BLOC 3/5 : LOGIQUE DE CONTRÔLE GPS & IMU (startGPS/stopGPS & Capteurs)
+// CORRECTION: Ajout de la gestion des permissions IMU (DeviceMotionEvent.requestPermission)
 // =================================================================
+
+// --- GESTION DES CAPTEURS ---
 
 function gpsSuccess(position) { 
     const coords = position.coords;
@@ -192,25 +195,31 @@ function gpsSuccess(position) {
     // 1. Mise à jour des variables globales de position
     currentLat = coords.latitude;
     currentLon = coords.longitude;
-    
-    // 2. Mise à jour du filtre UKF
+
+    // 2. Mise à jour du filtre UKF (Vitesse et Altitude estimées)
     ukf.update(position, {}); 
     kSpd = ukf.speed; 
     kAlt = ukf.altitude;
     kUncert = ukf.uncertainty;
     kAltUncert = ukf.altUncert;
     kVertSpd = ukf.vertSpd;
-
+    
     // Mise à jour de la précision affichée
     if ($('precision-gps')) $('precision-gps').textContent = dataOrDefault(coords.accuracy, 3, ' m', 'N/A');
 }
 
 function gpsError(error) { 
-    console.error("Erreur GPS:", error.code, error.message);
-    if ($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = `ERREUR (${error.code})`;
+    let message = `ERREUR (${error.code})`;
+    if (error.code === 1) message = "Permission GPS Refusée";
+    else if (error.code === 2) message = "Position Indisponible";
+    else if (error.code === 3) message = "Timeout GPS";
+    else if (error.code === 99) message = error.message; // Pour les erreurs de support
+
+    console.error("Erreur GPS:", message, error.message);
+    if ($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = message;
 }
 
-/** Handler pour l'événement DeviceMotion (Force G et Niveau à bulle) */
+/** Handler pour l'événement DeviceMotion (pour la Force G et le niveau à bulle) */
 function handleDeviceMotion(event) {
     const acc = event.accelerationIncludingGravity || { x: 0, y: 0, z: G_ACCEL };
     const rot = event.rotationRate || { alpha: 0, beta: 0, gamma: 0 };
@@ -223,19 +232,40 @@ function handleDeviceMotion(event) {
     if ($('accel-long')) $('accel-long').textContent = dataOrDefault(acc.x, 2, ' m/s²');
     if ($('accel-vert')) $('accel-vert').textContent = dataOrDefault(acc.y, 2, ' m/s²');
     if ($('force-g-long')) $('force-g-long').textContent = dataOrDefault(forceG, 3, ' G');
-    if ($('vitesse-angulaire-gyro')) $('vitesse-angulaire-gyro').textContent = dataOrDefault(rot.alpha, 2, ' rad/s');
     
-    // Niveau à bulle
+    // Vitesse Angulaire et Niveau à Bulle
+    if ($('vitesse-angulaire-gyro')) $('vitesse-angulaire-gyro').textContent = dataOrDefault(rot.alpha, 2, ' rad/s');
     if ($('inclinaison-pitch')) $('inclinaison-pitch').textContent = dataOrDefault(rot.beta, 1, '°');
     if ($('roulis-roll')) $('roulis-roll').textContent = dataOrDefault(rot.gamma, 1, '°');
 }
 
+/** 🛡️ Démarre les écouteurs IMU avec gestion de la permission explicite (iOS 13+). */
 function startIMUListeners() { 
-    if (window.DeviceMotionEvent) {
+    const imuStatus = $('imu-status');
+    imuStatus.textContent = 'Initialisation...';
+
+    // 1. Vérification de la permission explicite (nécessaire pour iOS 13+ et certains navigateurs)
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    window.addEventListener('devicemotion', handleDeviceMotion, true);
+                    imuStatus.textContent = "Actif (Autorisé/DeviceMotion)";
+                } else {
+                    imuStatus.textContent = "Refusé (Permission IMU)";
+                }
+            })
+            .catch(e => {
+                console.error("Erreur de requête de permission DeviceMotion:", e);
+                imuStatus.textContent = "Erreur de Permission IMU";
+            });
+    } else if (window.DeviceMotionEvent) {
+        // 2. Anciens navigateurs ou Android (où la permission est gérée par l'OS)
         window.addEventListener('devicemotion', handleDeviceMotion, true);
-        if ($('imu-status')) $('imu-status').textContent = "Actif (DeviceMotion)";
+        imuStatus.textContent = "Actif (DeviceMotion)";
     } else {
-        if ($('imu-status')) $('imu-status').textContent = "Non Supporté";
+        // 3. Fonction non supportée
+        imuStatus.textContent = "Non Supporté";
     }
 }
 
@@ -248,24 +278,43 @@ function stopIMUListeners() {
 
 
 // --- GESTION DU GPS (START/STOP) ---
+
+/** 🛡️ Démarre l'acquisition GPS et les capteurs IMU (avec gestion des permissions). */
 function startGPS(mode = 'HIGH_FREQ') {
     if (wID !== null || emergencyStopActive) return; 
-    wID = navigator.geolocation.watchPosition(gpsSuccess, gpsError, GPS_OPTS[mode]);
+    
+    // 1. Démarrer les capteurs IMU (gestion des permissions)
     startIMUListeners(); 
+
+    // 2. Démarrer la géolocalisation (Vérification de support)
+    if (!navigator.geolocation) {
+        gpsError({ code: 99, message: "La Géolocalisation n'est pas supportée par ce navigateur." });
+        return;
+    }
+
+    // Le watchPosition gère la demande de permission Geolocation
+    wID = navigator.geolocation.watchPosition(gpsSuccess, gpsError, GPS_OPTS[mode]);
+    
+    // 3. Mettre à jour l'affichage
     if ($('start-btn')) $('start-btn').innerHTML = '⏸️ PAUSE GPS'; 
     if ($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = `Actif (Mode ${mode})`;
+    
+    // 4. Assurer que la boucle d'affichage rapide est lancée
     if (domFastID === null) startFastLoop();
 }
 
+/** Arrête l'acquisition GPS et les capteurs IMU. */
 function stopGPS(isManualReset = false) {
     if (wID !== null) { 
         navigator.geolocation.clearWatch(wID); 
         wID = null; 
     }
+    
     stopIMUListeners();
-    // Ne pas arrêter la boucle rapide pour maintenir l'affichage, sauf sur Reset Total
+    
     if ($('start-btn')) $('start-btn').innerHTML = '▶️ MARCHE GPS';
     if ($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = isManualReset ? "INACTIF (Manuel)" : "INACTIF";
+}
 }
 // =================================================================
 // BLOC 4/5 : BOUCLES DE RAFRAÎCHISSEMENT (FAST & SLOW)
