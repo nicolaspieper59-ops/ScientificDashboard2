@@ -362,86 +362,124 @@
 // =================================================================
 
 // =================================================================
-// BLOC 4 : INITIALISATION DES CONTRÔLES (init / initControls)
+// BLOC 4 : INITIALISATION DES CONTRÔLES SYSTÈME (initControls)
 // =================================================================
 
+/**
+ * Configure tous les écouteurs d'événements pour les boutons et les inputs du tableau de bord.
+ */
 function initControls() {
+    // --- CONTRÔLES PRINCIPAUX : GPS & STATUT ---
     
-    // 🚩 CORRECTION CRITIQUE : GESTION DU BOUTON MARCHE/PAUSE (Toggle)
-    const startBtn = $('start-btn');
+    // 🚩 CORRECTION CRITIQUE : Logique de bascule (toggle) pour le bouton MARCHE/PAUSE GPS
+    const startBtn = $('start-btn'); // ID du bouton ▶️ MARCHE GPS
     if (startBtn) {
         startBtn.addEventListener('click', () => {
-            // wID est l'identifiant du watchPosition.
-            // S'il n'est pas null, le GPS est actif -> on le met en pause.
+            // wID est l'identifiant de la session watchPosition.
+            // Si wID existe, le GPS est ACTIF -> Mettre en pause.
             if (wID !== null) {
-                stopGPS(true); // Arrêter et marquer comme manuel
+                stopGPS(true); // true = Arrêt manuel
             } else {
-                // S'il est null, le GPS est inactif -> on le démarre.
+                // Sinon, le GPS est inactif -> Démarrer en mode Haute Fréquence.
                 startGPS('HIGH_FREQ'); 
             }
         });
     }
 
-    // Contrôle : Arrêt GPS (Bouton non affiché, mais logique essentielle)
-    if ($('stop-btn')) {
-        $('stop-btn').addEventListener('click', () => stopGPS(true));
-    }
-    
+    // Contrôle : Arrêt d'Urgence
+    if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', () => {
+        // Supposons une fonction qui bascule l'état et met à jour l'affichage
+        toggleEmergencyStop(); 
+    });
+
+    // --- CONTRÔLES DE RÉINITIALISATION ET CONFIGURATION ---
+
     // Contrôle : Réinitialiser Distance
     if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => {
-        // Remplacez 'distM' et 'timeMoving' par vos variables exactes si elles diffèrent (e.g., distM_3D, timeMovingS)
-        if (!emergencyStopActive) { distM = 0.0; timeMoving = 0; }
+        if (emergencyStopActive) return;
+        distM = 0; 
+        timeMoving = 0; 
+        // Mise à jour de l'affichage (ex: $('#distance-total-km').textContent = '0.000 km | 0.00 m';)
     });
     
     // Contrôle : Réinitialiser Vitesse Max
     if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => {
-        if (!emergencyStopActive) { maxSpd = 0.0; }
+        if (emergencyStopActive) return;
+        maxSpd = 0.0;
+        // Mise à jour de l'affichage (ex: $('#speed-max').textContent = '0.00000 km/h';)
     });
     
-    // Contrôle : Capturer données (logique à implémenter)
-    if ($('capture-data-btn')) $('capture-data-btn').addEventListener('click', () => {
-        alert("Capture de données déclenchée. Logique de sauvegarde à implémenter.");
-    });
-
     // Contrôle : TOUT RÉINITIALISER
     if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => { 
         if (confirm("Êtes-vous sûr de vouloir TOUT réinitialiser (EKF, Distance, Max, Historique) ?")) {
-            stopGPS(true); // Arrête le GPS et les capteurs
-            // Réinitialisation des variables de session
-            distM = 0.0; maxSpd = 0.0; timeMoving = 0.0; timeTotal = 0.0;
-            // Réinitialisation de l'UKF à la position par défaut (si la classe ProfessionalUKF est globale)
-            // ukf = new ProfessionalUKF(DEFAULT_LAT, DEFAULT_LON, RHO_SEA_LEVEL); 
-            window.location.reload(); // Recharger est souvent le moyen le plus sûr de tout réinitialiser
+            stopGPS(true); // Arrête le GPS
+            // Option 1: Réinitialisation des variables clés et rechargement de la page
+            localStorage.clear();
+            window.location.reload(); 
+            
+            // Option 2 (si rechargement non souhaité) :
+            // distM = 0.0; maxSpd = 0.0; timeMoving = 0.0; timeTotal = 0.0;
+            // ukf = new ProfessionalUKF(DEFAULT_LAT, DEFAULT_LON, RHO_SEA_LEVEL); // Réinit EKF
         }
     });
 
-    // Écouteur pour forcer la précision GPS (m) [0=Auto]
+    // Contrôle : Forcer Précision GPS
     if ($('force-gps-precision-input')) $('force-gps-precision-input').addEventListener('input', (e) => {
         gpsAccuracyOverride = parseFloat(e.target.value) || 0.0;
     });
 
-    // ... Ajoutez ici les autres écouteurs d'événements (Masse, Corps Céleste, etc.) ...
+    // --- CONTRÔLES PHYSIQUE & ENVIRONNEMENT ---
+
+    // Contrôle : Masse de l'objet (kg)
+    if ($('mass-input')) $('mass-input').addEventListener('input', (e) => {
+        currentMass = parseFloat(e.target.value) || 70.0;
+        $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+    });
+    
+    // Contrôle : Sélection Corps Céleste
+    if ($('celestial-body-select')) $('celestial-body-select').addEventListener('change', (e) => {
+        currentCelestialBody = e.target.value;
+        const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+        $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+    });
+
+    // Contrôle : Rayon/Vitesse Angulaire de Rotation (pour Corps Céleste 'Station')
+    const updateRotation = () => {
+        rotationRadius = parseFloat($('rotation-radius').value) || 100;
+        angularVelocity = parseFloat($('angular-velocity').value.replace(',', '.')) || 0.0;
+        if (currentCelestialBody === 'ROTATING') {
+            const { G_ACC_NEW } = updateCelestialBody('ROTATING', kAlt, rotationRadius, angularVelocity);
+            $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+        }
+    };
+    if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
+    if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
+
+    // Contrôle : Mode Nether (1:8 ou 1:1)
+    if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => {
+        netherMode = !netherMode;
+        $('mode-nether').textContent = `Mode Nether: ${netherMode ? 'ACTIVÉ (1:8)' : 'DÉSACTIVÉ (1:1)'}`;
+    });
 }
 
-
-/** Fonction d'initialisation principale */
+/** * Fonction d'initialisation principale appelée au chargement du DOM. 
+ */
 function init() {
-    // 1. Initialiser l'UKF/EKF avec des valeurs par défaut pour les calculs hors ligne
+    // 1. Initialisation des fonctions critiques (UKF, Carte, Synchro)
     // initEKF(currentPosition.lat, currentPosition.lon, currentAirDensity); 
+    // initMap(); 
+    // syncH(); // Tente la synchro NTP
     
-    // 2. Démarrer les boucles d'affichage (fastLoop et slowLoop)
+    // 2. Démarrage des boucles de mise à jour DOM (fastLoop pour les données critiques, slowLoop pour Astro/Météo)
     // startFastLoop();
     // startSlowLoop();
     
-    // 3. Initialiser la gestion des événements des boutons (le bloc corrigé)
+    // 3. Initialisation des gestionnaires d'événements des boutons/inputs (Le bloc corrigé)
     initControls(); 
     
-    // 4. Tenter la synchro NTP
-    // syncH();
-    
-    // 5. Initialiser la carte Leaflet
-    // initMap(); 
+    // 4. Initialisation des capteurs IMU (sans les démarrer, juste pour la demande de permission)
+    // initializeIMUSensors(); 
 }
 
-// Assurez-vous que l'initialisation est appelée au chargement complet du DOM
-document.addEventListener('DOMContentLoaded', init);        
+// Assurez-vous que le script démarre après le chargement de toute la structure HTML
+document.addEventListener('DOMContentLoaded', init);
