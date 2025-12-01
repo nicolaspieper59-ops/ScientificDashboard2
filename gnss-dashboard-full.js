@@ -1191,10 +1191,14 @@ function updateSpiritLevel(x, y, z) {
             if($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
             if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].MULT.toFixed(1)})`;
             if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '▶️ MARCHE GPS'; // Assurer l'état initial
-                $('statut-capteur').textContent = `Actif (Multi-Capteurs)`; // Ou '❌ SIMULÉ' en cas d'erreur
-}
+            
+            // 💡 CORRECTION : Ajout de la protection critique (if ($('statut-capteur')))
+            if ($('statut-capteur')) {
+                $('statut-capteur').textContent = `Inactif`; 
+            }
+            
 
-        } catch (error) {
+        } catch (error) { ...
             console.error("ERREUR CRITIQUE D'INITIALISATION:", error);
             // Afficher l'erreur dans l'interface utilisateur pour le débogage
             const statusElement = $('statut-gps-acquisition') || document.body;
