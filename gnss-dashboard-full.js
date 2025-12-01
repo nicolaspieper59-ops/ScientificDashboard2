@@ -1046,6 +1046,28 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             lastKnownWeather = JSON.parse(localStorage.getItem('lastKnownWeather'));
             lastKnownPollutants = JSON.parse(localStorage.getItem('lastKnownPollutants'));
             lastKnownAstro = JSON.parse(localStorage.getItem('lastKnownAstro'));
+            // BLOC 4/4: Initialisation (à la fin de document.addEventListener('DOMContentLoaded', ...))
+// ... (Après la section de chargement des données hors ligne)
+
+    // --- Mettre à jour les affichages Météo/Polluants avec les valeurs par défaut si pas de cache ---
+    if (!lastKnownWeather) {
+        // Utiliser les valeurs ASI
+        updateWeatherDOM({ 
+            tempC: TEMP_SEA_LEVEL_K - KELVIN_OFFSET, pressure_hPa: BARO_ALT_REF_HPA,
+            humidity_perc: 0.0, air_density: RHO_SEA_LEVEL, dew_point: NaN
+        }, true, ' (ASI Défaut)');
+        // Afficher INACTIF pour le statut (car pas de fetch réussi)
+        if ($('statut-meteo')) $('statut-meteo').textContent = 'INACTIF (ASI)';
+    }
+
+    if (!lastKnownPollutants) {
+        // Afficher des valeurs par défaut pour les polluants
+        if ($('no2-val')) $('no2-val').textContent = '0.00 µg/m³ (Défaut)';
+        if ($('pm25-val')) $('pm25-val').textContent = '0.00 µg/m³ (Défaut)';
+        if ($('pm10-val')) $('pm10-val').textContent = '0.00 µg/m³ (Défaut)';
+        if ($('o3-val')) $('o3-val').textContent = '0.00 µg/m³ (Défaut)';
+    }
+// ...
 
             // --- Écouteurs d'événements pour tous les contrôles ---
             if($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
@@ -1072,8 +1094,10 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             if($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
             if($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => {
                 distM = 0; maxSpd = 0; kSpd = 0; kUncert = UKF_R_MAX; kAlt = 0; kAltUncert = 10; timeMoving = 0; timeTotal = 0; sTime = Date.now();
+                maxSpd = 0; // 👈 CORRECTION : Assurez-vous que cette ligne est présente
+                kSpd = 0; kUncert = UKF_R_MAX; kAlt = 0; kAltUncert = 10; timeMoving = 0; timeTotal = 0; sTime = Date.now();
                 lat = 43.2964; lon = 5.3697; lastGPSPos = null; // Réinitialiser à la position par défaut
-                if (ukf) ukf = new ProfessionalUKF(); 
+                if (ukf) ukf = new ProfessionalUKF();; 
                 if ($('speed-stable')) $('speed-stable').textContent = '--.- km/h';
                 if ($('speed-status-text')) $('speed-status-text').textContent = 'Système réinitialisé.';
             });
