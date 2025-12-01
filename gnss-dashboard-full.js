@@ -662,19 +662,16 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     
     // ...
     function updateSpiritLevel(x, y, z) {
-        // x: Accélération tangentielle ou de roulis
-        // y: Accélération latérale ou de tangage
-        // z: Accélération verticale (+ Gravité)
-        
-        // Calcul du module d'accélération totale pour le contrôle
-        const totalAccel = Math.sqrt(x * x + y * y + z * z);
-        
-        // Si le capteur ne bouge pas (faible bruit), les angles sont 0.
-        if (totalAccel < 0.1) { 
-            if($('inclinaison-pitch')) $('inclinaison-pitch').textContent = `0.0° (Repos)`;
-            if($('roulis-roll')) $('roulis-roll').textContent = `0.0° (Repos)`;
-            return;
-        }
+    // ... (calculs du pitch et du roll)
+    
+    // VÉRIFICATION CRITIQUE : Assurez-vous que l'élément existe avant de le modifier
+    if($('inclinaison-pitch')) {
+        $('inclinaison-pitch').textContent = `${pitch.toFixed(1)}°`;
+    }
+    if($('roulis-roll')) {
+        $('roulis-roll').textContent = `${roll.toFixed(1)}°`;
+    }
+}
 
         // Calcul du Pitch (Tangage autour de l'axe Y)
         // atan2(Y_accel, sqrt(X_accel^2 + Z_accel^2))
