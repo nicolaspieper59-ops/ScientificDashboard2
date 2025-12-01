@@ -1091,8 +1091,6 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             if($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
             if($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => {
                 distM = 0; maxSpd = 0; kSpd = 0; kUncert = UKF_R_MAX; kAlt = 0; kAltUncert = 10; timeMoving = 0; timeTotal = 0; sTime = Date.now();
-                maxSpd = 0; // 👈 CORRECTION : Assurez-vous que cette ligne est présente
-                kSpd = 0; kUncert = UKF_R_MAX; kAlt = 0; kAltUncert = 10; timeMoving = 0; timeTotal = 0; sTime = Date.now();
                 lat = 43.2964; lon = 5.3697; lastGPSPos = null; // Réinitialiser à la position par défaut
                 if (ukf) ukf = new ProfessionalUKF();; 
                 if ($('speed-stable')) $('speed-stable').textContent = '--.- km/h';
@@ -1183,7 +1181,8 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             if($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
             if ($('env-factor')) $('env-factor').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].MULT.toFixed(1)})`;
             if ($('toggle-gps-btn')) $('toggle-gps-btn').textContent = '▶️ MARCHE GPS'; // Assurer l'état initial
-            if ($('statut-capteur')) $('statut-capteur').textContent = 'Inactif';
+                $('statut-capteur').textContent = `Actif (Multi-Capteurs)`; // Ou '❌ SIMULÉ' en cas d'erreur
+}
 
         } catch (error) {
             console.error("ERREUR CRITIQUE D'INITIALISATION:", error);
