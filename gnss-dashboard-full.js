@@ -986,8 +986,7 @@ function updateSpiritLevel(x, y, z) {
 
             // 3. Mise à jour Heure NTP
             if (now) {
-                if ($('local-time') && !$('local-time').textContent.includes('Synchronisation...')) {
-                    const timeString = now.toLocaleTimeString('fr-FR');
+                if ($('heure-locale')) $('heure-locale').textContent = new Date().toLocaleTimeString('fr-FR');
                     $('local-time').textContent = timeString + (lServH ? ' (Synchro OK)' : ' (Hors ligne)');
                 }
                 if ($('date-display')) $('date-display').textContent = now.toUTCString();
