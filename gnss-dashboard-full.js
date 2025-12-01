@@ -1,8 +1,16 @@
 // =================================================================
 // BLOC 1/5 : CONSTANTES, ÉTAT GLOBAL ÉTENDU & UTILITAIRES CRITIQUES
+// CORRECTION : SÉCURISATION DE LA FONCTION DE SÉLECTION DU DOM ($)
 // =================================================================
 
-const $ = id => document.getElementById(id);
+/** SÉCURISATION : Récupère un élément par ID. Affiche un avertissement si manquant. */
+const $ = id => {
+    const el = document.getElementById(id);
+    if (!el) {
+        console.warn(`DOM Element not found: #${id}. Check your HTML structure.`);
+    }
+    return el;
+};
 
 // --- CONSTANTES PHYSIQUES ET MATHÉMATIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
@@ -15,13 +23,13 @@ const OMEGA_EARTH = 7.2921159e-5; // Vitesse de rotation de la Terre (rad/s)
 const RHO_SEA_LEVEL = 1.225; // Densité de l'air ISA (kg/m³)
 const TEMP_SEA_LEVEL_K = 288.15; // 15°C en Kelvin
 const BARO_ALT_REF_HPA = 1013.25; 
-const NETHER_RATIO = 1 / 8; // Ratio Minecraft
+const NETHER_RATIO = 1 / 8; 
 const R_AIR = 287.058;      // Constante spécifique de l'air sec (J/kg·K)
 
 // --- UKF PARAMETERS / ENV FACTORS ---
-const Q_NOISE = 0.1;        // Bruit de processus (UKF)
-const R_MIN = 0.01;         // Bruit de mesure minimum (UKF)
-const R_MAX = 500.0;        // Bruit de mesure maximum (UKF)
+const Q_NOISE = 0.1;        
+const R_MIN = 0.01;         
+const R_MAX = 500.0;        
 const ENVIRONMENT_FACTORS = {
     NORMAL: { DISPLAY: "Normal", MULT: 1.0, R_FACTOR: 1.0 },
     FAIBLE: { DISPLAY: "Faible", MULT: 0.5, R_FACTOR: 0.5 },
@@ -38,9 +46,9 @@ const DOM_SLOW_UPDATE_MS = 1000;
 const WEATHER_UPDATE_MS = 30000; 
 
 // --- VARIABLES D'ÉTAT CRITIQUES ---
-let wID = null;             // ID de watchPosition
-let domFastID = null;       // ID pour la boucle rapide
-let domSlowID = null;       // ID pour la boucle lente
+let wID = null;             
+let domFastID = null;       
+let domSlowID = null;       
 let sessionStartTime = Date.now();
 let emergencyStopActive = false;
 let currentMass = 70.0;
@@ -59,6 +67,12 @@ let lastP_hPa = BARO_ALT_REF_HPA;
 let lastH_perc = 0.75;
 let lastKnownWeather = null;
 let lastKnownPollutants = null;
+
+// Données de session
+let distM = 0.0;            // Distance totale parcourue (m)
+let maxSpd = 0.0;           // Vitesse max (m/s)
+let timeMoving = 0.0;       // Temps de mouvement (s)
+let maxGForce = 0.0;        // Force G max enregistrée
 
 // Données UKF (estimées)
 let kSpd = 0.0;             
@@ -111,7 +125,6 @@ let ukf = new ProfessionalUKF(currentLat, currentLon, RHO_SEA_LEVEL);
 
 // --- FONCTIONS MÉTÉO & ASTRO (STUBS DÉTAILLÉS) ---
 
-/** ⌚ Récupération de l'heure NTP */
 async function syncH() { 
     try {
         const response = await fetch(SERVER_TIME_ENDPOINT);
@@ -123,21 +136,18 @@ async function syncH() {
     }
 }
 
-/** 🌦️ Simulation d'une récupération Météo */
 async function fetchWeather(lat, lon) {
-    // Simule une réponse API réaliste
     lastKnownWeather = {
         tempC: lastT_K - 273.15,
         pressure_hPa: lastP_hPa,
         humidity_perc: lastH_perc * 100,
         air_density: currentAirDensity,
-        dew_point: (lastT_K - 273.15) - ((100 - lastH_perc * 100) / 5), // Simplifié
+        dew_point: (lastT_K - 273.15) - ((100 - lastH_perc * 100) / 5), 
         timestamp: Date.now()
     };
     return lastKnownWeather;
 }
 
-/** 🚨 Simulation d'une récupération Polluants */
 async function fetchPollutants(lat, lon) {
     lastKnownPollutants = {
         NO2: 25.5, PM25: 12.2, PM10: 18.0, O3: 50.0
@@ -145,12 +155,10 @@ async function fetchPollutants(lat, lon) {
     return lastKnownPollutants;
 }
 
-/** 🔭 Mise à jour complète de la section Astro (Placeholder) */
 function updateAstro(lat, lon, date) {
-    // Dans la version complète, ceci mettrait à jour tous les N/A Astro/Solar/Lunar
+    // Placeholder pour SunCalc/AstroJS
 }
 
-/** ⏱️ Calcul de l'Heure Minecraft (Placeholder) */
 function getMinecraftTime(date) {
     const msSinceMidnight = date.getHours() * 3600000 + date.getMinutes() * 60000;
     const mcTicks = Math.floor((msSinceMidnight / 86400000) * 24000);
@@ -159,41 +167,34 @@ function getMinecraftTime(date) {
     return `${String(mcHour).padStart(2, '0')}:${String(mcMinute).padStart(2, '0')}`;
 }
 
-/** 🌍 Fonction de mise à jour du corps céleste (Gravité) */
 function updateCelestialBody(body, alt, radius, angular) { 
     let newG = G_ACCEL;
     if (body === 'Lune') newG = G_ACCEL * 0.165;
-    if (body === 'ROTATING') newG += (angular * angular * radius); // Force centrifuge simple
+    if (body === 'ROTATING') newG += (angular * angular * radius); 
     return { G_ACC_NEW: newG };
 }
 
-/** 📏 Calcul du ratio de distance (Alt/Surface) */
 function calculateDistanceRatio(altMeters) {
     return 1.0 + (altMeters / R_E_BASE);
 }
 
-/** 🔊 Fonction pour calculer la vitesse du son (m/s) à partir de la température (K) */
 function getSpeedOfSound(tempK) { 
     return 20.045 * Math.sqrt(tempK); 
 }
 
-/** 𝜌 Calcul de la densité de l'air */
 function calculateAirDensity(p_hPa, t_K, h_perc = 0.75) {
     const P_Pa = p_hPa * 100; 
     return (P_Pa / (R_AIR * t_K)); 
 }
 
-/** 🌌 Calcul du Rayon de Schwarzschild (Rs) */
 function calculateSchwarzschildRadius(mass) {
     return (2 * G_CONST * mass) / (C_L * C_L);
 }
 
-/** 🧭 Calcul de la Force de Coriolis */
 function calculateCoriolisForce(mass, speed, lat) {
     return 2 * mass * OMEGA_EARTH * speed * Math.sin(lat * D2R);
 }
 
-/** ☁️ Mise à jour du DOM Météo */
 function updateWeatherDOM(weatherData, isDefault = false) {
     const statusText = isDefault ? "INACTIF (Défaut)" : "ACTIF (API)";
     if ($('statut-meteo')) $('statut-meteo').textContent = statusText;
@@ -204,13 +205,12 @@ function updateWeatherDOM(weatherData, isDefault = false) {
     if ($('point-de-rosee')) $('point-de-rosee').textContent = dataOrDefault(weatherData.dew_point, 1, ' °C');
 }
 
-/** 🏭 Mise à jour du DOM Polluants */
 function updatePollutantsDOM(pollutants) {
     if ($('no2')) $('no2').textContent = dataOrDefault(pollutants.NO2, 1, ' µg/m³');
     if ($('pm25')) $('pm25').textContent = dataOrDefault(pollutants.PM25, 1, ' µg/m³');
     if ($('pm10')) $('pm10').textContent = dataOrDefault(pollutants.PM10, 1, ' µg/m³');
     if ($('o3')) $('o3').textContent = dataOrDefault(pollutants.O3, 1, ' µg/m³');
-            }
+}
 // =================================================================
 // BLOC 3/5 : LOGIQUE GPS & CAPTEURS (startGPS/stopGPS & Permissions)
 // =================================================================
@@ -263,27 +263,27 @@ function handleDeviceMotion(event) {
 /** 🛡️ Démarre les écouteurs IMU avec gestion de la permission explicite (pour iOS 13+). */
 function startIMUListeners() { 
     const imuStatus = $('imu-status');
-    imuStatus.textContent = 'Initialisation...';
+    if (imuStatus) imuStatus.textContent = 'Initialisation...';
 
     if (typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
                     window.addEventListener('devicemotion', handleDeviceMotion, true);
-                    imuStatus.textContent = "Actif (Autorisé/DeviceMotion)";
+                    if (imuStatus) imuStatus.textContent = "Actif (Autorisé/DeviceMotion)";
                 } else {
-                    imuStatus.textContent = "Refusé (Permission IMU)";
+                    if (imuStatus) imuStatus.textContent = "Refusé (Permission IMU)";
                 }
             })
             .catch(e => {
-                imuStatus.textContent = "Erreur de Permission IMU";
+                console.error("Erreur de requête de permission DeviceMotion:", e);
+                if (imuStatus) imuStatus.textContent = "Erreur de Permission IMU";
             });
     } else if (window.DeviceMotionEvent) {
-        // Navigateurs où la permission est implicite
         window.addEventListener('devicemotion', handleDeviceMotion, true);
-        imuStatus.textContent = "Actif (DeviceMotion)";
+        if (imuStatus) imuStatus.textContent = "Actif (DeviceMotion)";
     } else {
-        imuStatus.textContent = "Non Supporté";
+        if (imuStatus) imuStatus.textContent = "Non Supporté";
     }
 }
 
@@ -323,7 +323,7 @@ function stopGPS(isManualReset = false) {
     
     if ($('start-btn')) $('start-btn').innerHTML = '▶️ MARCHE GPS';
     if ($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = isManualReset ? "INACTIF (Manuel)" : "INACTIF";
-                                                                       }
+        }
 // =================================================================
 // BLOC 4/5 : BOUCLES DE RAFRAÎCHISSEMENT (FAST & SLOW)
 // =================================================================
@@ -353,7 +353,6 @@ function startFastLoop() {
 
         // --- MISE À JOUR DU DOM ---
         
-        // Vitesse / Dynamique
         if ($('speed-instant')) $('speed-instant').textContent = dataOrDefault(currentSpeedKmH, 2, ' km/h');
         if ($('vitesse-stable-ms')) $('vitesse-stable-ms').textContent = dataOrDefault(kSpd, 2, ' m/s');
         if ($('vitesse-max')) $('vitesse-max').textContent = dataOrDefault(maxSpd * KMH_MS, 5, ' km/h');
@@ -362,14 +361,12 @@ function startFastLoop() {
         if ($('pression-dynamique')) $('pression-dynamique').textContent = dataOrDefault(dynamicPressure, 2, ' Pa');
         if ($('force-coriolis')) $('force-coriolis').textContent = dataOrDefault(coriolisForce, 2, ' N');
 
-        // Relativité
         if ($('vitesse-lumiere-perc')) $('vitesse-lumiere-perc').textContent = dataOrDefaultExp(v_sur_c * 100, 2, ' %');
         if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentzFactor, 4);
         if ($('energie-cinetique')) $('energie-cinetique').textContent = dataOrDefaultExp(kineticEnergy, 2, ' J');
         if ($('energie-masse-repos')) $('energie-masse-repos').textContent = dataOrDefaultExp(restEnergy, 2, ' J');
         if ($('rayon-schwarzschild')) $('rayon-schwarzschild').textContent = dataOrDefaultExp(schwarzschildRadius, 2, ' m');
         
-        // Environnement & UKF
         if ($('env-factor-display')) $('env-factor-display').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].MULT.toFixed(1)})`;
         if ($('rapport-distance-alt-nether')) $('rapport-distance-alt-nether').textContent = dataOrDefault(totalDistanceRatio, 3);
         
@@ -399,7 +396,6 @@ function startSlowLoop() {
              const pollutants = await fetchPollutants(currentLat, currentLon);
              
              if (weather) {
-                // Mise à jour des variables globales pour l'UKF/Physique
                 lastP_hPa = weather.pressure_hPa;
                 lastT_K = weather.tempC + 273.15;
                 lastH_perc = weather.humidity_perc / 100.0;
@@ -408,7 +404,6 @@ function startSlowLoop() {
 
                 updateWeatherDOM(weather, false);
              } else {
-                 // Si échec de l'API, revenir aux valeurs par défaut
                  updateWeatherDOM({tempC: lastT_K - 273.15, pressure_hPa: lastP_hPa, humidity_perc: lastH_perc * 100, air_density: currentAirDensity, dew_point: 'N/A'}, true);
              }
 
@@ -427,12 +422,12 @@ function startSlowLoop() {
 
     domSlowID = setInterval(slowLoop, DOM_SLOW_UPDATE_MS);
     slowLoop(); 
-                          }
+        }
 // =================================================================
 // BLOC 5/5 : INITIALISATION & CONTRÔLES SYSTÈME (INIT)
+// CORRECTION : AJOUT DE LA GESTION D'ERREUR GLOBALE (TRY/CATCH)
 // =================================================================
 
-/** Réinitialise les variables d'affichage (distance, max speed) */
 function resetDisp(fullReset = false) {
     distM = 0; 
     maxSpd = 0; 
@@ -445,7 +440,6 @@ function resetDisp(fullReset = false) {
     }
 }
 
-/** Fonction d'initialisation des écouteurs d'événements. */
 function initControls() {
     
     // --- CONTRÔLES PRIMAIRES (MARCHE/PAUSE) ---
@@ -503,7 +497,7 @@ function initControls() {
     if ($('distance-ratio-toggle-btn')) $('distance-ratio-toggle-btn').addEventListener('click', () => {
         distanceRatioMode = !distanceRatioMode;
         const ratio = distanceRatioMode ? calculateDistanceRatio(kAlt || 0) : 1.0;
-        $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
+        if ($('distance-ratio-toggle-btn')) $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
     });
     
     if ($('environment-select')) $('environment-select').addEventListener('change', (e) => {
@@ -515,29 +509,45 @@ function initControls() {
 
 }
 
-/** Fonction d'initialisation principale */
+/** Fonction d'initialisation principale (avec gestion d'erreur) */
 function init() {
-    // 1. Initialiser les valeurs par défaut (Mode Offline-First)
-    currentAirDensity = calculateAirDensity(BARO_ALT_REF_HPA, TEMP_SEA_LEVEL_K);
-    currentSpeedOfSound = getSpeedOfSound(TEMP_SEA_LEVEL_K); 
+    console.log("--- Démarrage du GNSS Dashboard ---");
     
-    if($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${currentSpeedOfSound.toFixed(2)} m/s`;
-    if($('densite-air')) $('densite-air').textContent = `${currentAirDensity.toFixed(3)} kg/m³`;
-    if($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
-    if ($('gravite-base')) $('gravite-base').textContent = `${G_ACCEL.toFixed(4)} m/s²`;
-    if ($('env-factor-display')) $('env-factor-display').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].MULT.toFixed(1)})`;
-    
-    // 2. Démarrage de la synchro NTP
-    syncH(); 
-    
-    // 3. Démarrage des boucles lentes (Météo/Astro/1Hz)
-    startSlowLoop(); 
-    
-    // 4. Démarrage de la boucle d'affichage rapide
-    startFastLoop(); 
-    
-    // 5. Initialisation des gestionnaires d'événements
-    initControls(); 
+    try {
+        // 1. Initialiser les valeurs par défaut
+        currentAirDensity = calculateAirDensity(BARO_ALT_REF_HPA, TEMP_SEA_LEVEL_K);
+        currentSpeedOfSound = getSpeedOfSound(TEMP_SEA_LEVEL_K); 
+        
+        // Mise à jour des affichages par défaut (s'ils existent)
+        if($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${currentSpeedOfSound.toFixed(2)} m/s`;
+        if($('densite-air')) $('densite-air').textContent = `${currentAirDensity.toFixed(3)} kg/m³`;
+        if($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+        if ($('gravite-base')) $('gravite-base').textContent = `${G_ACCEL.toFixed(4)} m/s²`;
+        if ($('env-factor-display')) $('env-factor-display').textContent = `${ENVIRONMENT_FACTORS[selectedEnvironment].DISPLAY} (x${ENVIRONMENT_FACTORS[selectedEnvironment].MULT.toFixed(1)})`;
+        
+        // 2. Démarrage de la synchro NTP
+        syncH(); 
+        
+        // 3. Démarrage des boucles
+        startSlowLoop(); 
+        startFastLoop(); 
+        
+        // 4. Initialisation des gestionnaires d'événements
+        initControls(); 
+        
+        console.log("GNSS Dashboard initialisé avec succès.");
+
+    } catch (error) {
+        console.error("ERREUR CRITIQUE PENDANT L'INITIALISATION:", error);
+        
+        // Tentative d'afficher l'erreur dans l'interface utilisateur
+        const statusElement = $('statut-systeme') || $('statut-gps-acquisition');
+        if (statusElement) {
+            statusElement.textContent = `CRASH: ${error.name}: ${error.message}`;
+            statusElement.style.color = 'red';
+            statusElement.style.fontWeight = 'bold';
+        }
+    }
 }
 
 // Lancement du système au chargement complet de la page
