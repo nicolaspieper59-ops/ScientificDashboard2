@@ -660,15 +660,33 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         }
     }
     
-    // --- NIVEAU À BULLE ---
+    // ...
     function updateSpiritLevel(x, y, z) {
-        // Calcule le pitch et le roll à partir des données de l'accéléromètre
+        // x: Accélération tangentielle ou de roulis
+        // y: Accélération latérale ou de tangage
+        // z: Accélération verticale (+ Gravité)
+        
+        // Calcul du module d'accélération totale pour le contrôle
+        const totalAccel = Math.sqrt(x * x + y * y + z * z);
+        
+        // Si le capteur ne bouge pas (faible bruit), les angles sont 0.
+        if (totalAccel < 0.1) { 
+            if($('inclinaison-pitch')) $('inclinaison-pitch').textContent = `0.0° (Repos)`;
+            if($('roulis-roll')) $('roulis-roll').textContent = `0.0° (Repos)`;
+            return;
+        }
+
+        // Calcul du Pitch (Tangage autour de l'axe Y)
+        // atan2(Y_accel, sqrt(X_accel^2 + Z_accel^2))
         const pitch = Math.atan2(y, Math.sqrt(x * x + z * z)) * R2D;
-        const roll = Math.atan2(-x, z) * R2D;
+        
+        // Calcul du Roll (Roulis autour de l'axe X)
+        // atan2(-X_accel, Z_accel) - (Conforme à la convention Android/iOS standard)
+        const roll = Math.atan2(-x, z) * R2D; 
         
         if($('inclinaison-pitch')) $('inclinaison-pitch').textContent = `${pitch.toFixed(1)}°`;
         if($('roulis-roll')) $('roulis-roll').textContent = `${roll.toFixed(1)}°`;
-            }
+    }
     // =================================================================
 // BLOC 3/4 : BOUCLES PRINCIPALES & MISE À JOUR DU DOM (COMPLET)
 // =================================================================
