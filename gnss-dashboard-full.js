@@ -660,16 +660,27 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         }
     }
     
-    // ...
-    function updateSpiritLevel(x, y, z) {
+    // Dans gnss-dashboard-full.js (BLOC 2/4 ou similaire)
+
+function updateSpiritLevel(x, y, z) {
     // ... (calculs du pitch et du roll)
+
+    const pitch = Math.atan2(y, Math.sqrt(x * x + z * z)) * R2D;
+    const roll = Math.atan2(-x, z) * R2D; 
+
+    // ⚠️ PROTECTION CRITIQUE DU DOM (à vérifier absolument)
+    if($('inclinaison-pitch')) $('inclinaison-pitch').textContent = `${pitch.toFixed(1)}°`;
+    if($('roulis-roll')) $('roulis-roll').textContent = `${roll.toFixed(1)}°`;
     
-    // VÉRIFICATION CRITIQUE : Assurez-vous que l'élément existe avant de le modifier
-    if($('inclinaison-pitch')) {
-        $('inclinaison-pitch').textContent = `${pitch.toFixed(1)}°`;
-    }
-    if($('roulis-roll')) {
-        $('roulis-roll').textContent = `${roll.toFixed(1)}°`;
+    // CORRECTION SPÉCIFIQUE DE LA BULLE
+    const bubbleElement = $('bubble');
+    if (bubbleElement) { // S'assurer que l'ID "bubble" existe
+        // NOTE: Adapter les coefficients (0.5 et 0.5) pour la sensibilité de votre interface.
+        const maxOffset = 30; // 30px max de déplacement
+        const translateX = Math.max(-maxOffset, Math.min(maxOffset, roll * 0.5)); 
+        const translateY = Math.max(-maxOffset, Math.min(maxOffset, -pitch * 0.5)); 
+
+        bubbleElement.style.transform = `translate(${translateX}px, ${translateY}px)`;
     }
 }
 
