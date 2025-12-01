@@ -532,7 +532,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     function stopSensorListeners() {
         if (domFastID) clearInterval(domFastID); // Arrête la boucle rapide
         domFastID = null;
-        if ($('statut-capteur')) $('statut-capteur').textContent = "Inactif";
+        if ($('statut-capteur')) $('statut-capteur').textContent = "Actif (Multi-Capteurs)";
         accel = { x: 0, y: 0, z: 0 };
         gyro = { x: 0, y: 0, z: 0 };
         // (Arrêter les capteurs ici)
