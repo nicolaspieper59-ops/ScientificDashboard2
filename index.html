@@ -134,10 +134,10 @@
         <div class="column-1">
             <section class="panel" aria-labelledby="controls-heading">
                 <h2 id="controls-heading"><i class="fas fa-cog"></i> Contrôles & Système</h2>
-                <div class="data-point"><span>Heure Locale (NTP)</span><span id="local-time">N/A</span></div>
-                <div class="data-point"><span>Date & Heure (UTC/GMT)</span><span id="date-display">N/A</span></div>
-                <div class="data-point"><span>Temps écoulé (Session)</span><span id="elapsed-time">0.00 s</span></div>
-                <div class="data-point"><span>Temps de Mouvement</span><span id="time-moving">0.00 s</span></div>
+                <div class="data-point"><span>Heure Locale (NTP)</span><span id="heure-locale">N/A</span></div>
+                <div class="data-point"><span>Date & Heure (UTC/GMT)</span><span id="date-heure-utc">N/A</span></div>
+                <div class="data-point"><span>Temps écoulé (Session)</span><span id="elapsed-session-time">0.00 s</span></div>
+                <div class="data-point"><span>Temps de Mouvement</span><span id="elapsed-motion-time">0.00 s</span></div>
                 <div class="data-point"><span>Heure Minecraft</span><span id="time-minecraft">00:00</span></div>
                 <hr>
                 <div class="controls-grid" role="group">
@@ -203,10 +203,10 @@
 
             <section class="panel" aria-labelledby="imu-heading">
                 <h2 id="imu-heading"><i class="fas fa-microchip"></i> IMU (Accéléromètre/Gyroscope)</h2>
-                <div class="data-point"><span>Statut Capteur</span><span id="imu-status">Inactif</span></div>
-                <div class="data-point"><span>Accélération X</span><span id="accel-x">N/A</span></div>
-                <div class="data-point"><span>Accélération Y</span><span id="accel-y">N/A</span></div>
-                <div class="data-point"><span>Accélération Z</span><span id="accel-z">N/A</span></div>
+                <div class="data-point"><span>Statut Capteur</span><span id="statut-capteur">Inactif</span></div>
+                <div class="data-point"><span>Accélération X</span><span id="acceleration-x">N/A</span></div>
+                <div class="data-point"><span>Accélération Y</span><span id="acceleration-y">N/A</span></div>
+                <div class="data-point"><span>Accélération Z</span><span id="acceleration-z">N/A</span></div>
                 <div class="data-point"><span>Champ Magnétique X</span><span id="mag-x">N/A</span></div>
                 <div class="data-point"><span>Champ Magnétique Y</span><span id="mag-y">N/A</span></div>
                 <div class="data-point"><span>Champ Magnétique Z</span><span id="mag-z">N/A</span></div>
@@ -233,7 +233,7 @@
                 <div class="data-point"><span>Vitesse 3D (Instantanée)</span><span id="speed-3d-inst">-- km/h</span></div>
                 <div class="data-point"><span>Vitesse Brute (m/s)</span><span id="speed-raw-ms">-- m/s</span></div>
                 <hr>
-                <div class="data-point"><span>Vitesse Max (Session)</span><span id="speed-max">0.0 km/h</span></div>
+                <div class="data-point"><span>Vitesse Max (Session)</span><span id="vitesse-max-session">0.0 km/h</span></div>
                 <div class="data-point"><span>Vitesse Moyenne (Mvt)</span><span id="speed-avg-moving">0.0 km/h</span></div>
                 <div class="data-point"><span>Vitesse Moyenne (Totale)</span><span id="speed-avg-total">0.0 km/h</span></div>
                 <hr>
@@ -241,20 +241,20 @@
                 <div class="data-point"><span>Vitesse du Son Locale (Cor.)</span><span id="speed-of-sound-calc">N/A</span></div>
                 <div class="data-point"><span>% Vitesse du Son</span><span id="perc-speed-sound">0.00 %</span></div>
                 <div class="data-point"><span>Nombre de Mach</span><span id="mach-number">0.0000</span></div>
-                <div class="data-point"><span>% Vitesse Lumière (c)</span><span id="perc-speed-c">0.00e+0 %</span></div>
+                <div class="data-point"><span>% Vitesse Lumière (c)</span><span id="percent-speed-light">0.00e+0 %</span></div>
                 <div class="data-point"><span>Facteur de Lorentz (γ)</span><span id="lorentz-factor">1.0000</span></div>
-                <div class="data-point"><span>Temps Dilation (Vitesse)</span><span id="time-dilation-v">0.00 ns/j</span></div>
-                <div class="data-point"><span>Temps Dilation (Gravité)</span><span id="time-dilation-g">0.00 ns/j</span></div>
-                <div class="data-point"><span>Énergie Relativiste (E)</span><span id="energy-relativistic">N/A</span></div>
-                <div class="data-point"><span>Énergie de Masse au Repos (E₀)</span><span id="energy-rest-mass">N/A</span></div>
+                <div class="data-point"><span>Temps Dilation (Vitesse)</span><span id="time-dilation-vitesse">0.00 ns/j</span></div>
+                <div class="data-point"><span>Temps Dilation (Gravité)</span><span id="time-dilation-gravite">0.00 ns/j</span></div>
+                <div class="data-point"><span>Énergie Relativiste (E)</span><span id="relativistic-energy">N/A</span></div>
+                <div class="data-point"><span>Énergie de Masse au Repos (E₀)</span><span id="rest-mass-energy">N/A</span></div>
                 <div class="data-point"><span>Quantité de Mouvement (p)</span><span id="momentum">N/A</span></div>
-                <div class="data-point"><span>Rayon de Schwarzschild (Rs)</span><span id="Rs-object">N/A</span></div>
+                <div class="data-point"><span>Rayon de Schwarzschild (Rs)</span><span id="schwarzschild-radius">N/A</span></div>
                 <div class="data-point"><span>Vitesse de la lumière (c)</span><span id="const-c">299792458 m/s</span></div>
                 <div class="data-point"><span>Gravitation Universelle (G)</span><span id="const-G">6.67430e-11 m³/kg/s²</span></div>
                 
                 <hr>
                 <h3>Distance (3D)</h3>
-                <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-total-km">0.000 km | 0.00 m</span></div>
+                <div class="data-point"><span>Distance Totale (3D)</span><span id="distance-totale">0.000 km | 0.00 m</span></div>
                 <div class="data-point"><span>Rapport de Distance (Alt/Nether)</span><span id="distance-ratio">1.000</span></div>
                 <span id="nether-mode-status" style="display:none;">1.000</span>
                 
@@ -270,7 +270,7 @@
 
             <section class="panel" aria-labelledby="map-heading">
                 <h2 id="map-heading"><i class="fas fa-map-marked-alt"></i> Carte GNSS / Globe Interactif</h2>
-                <div class="data-point"><span>Précision GPS (Acc)</span><span id="gps-precision">N/A</span></div>
+                <div class="data-point"><span>Précision GPS (Acc)</span><span id="acc-gps">N/A</span></div>
                 <div id="map-container">
                     <div id="globe-container" style="display:none; width: 100%; height: 350px; background: #000; border-radius: 8px;"></div>
                     <div id="map" role="img" aria-label="Carte interactive affichant la position GPS en temps réel.">Chargement de la carte...</div>
@@ -283,10 +283,10 @@
         <div class="column-3">
             <section class="panel" aria-labelledby="weather-heading">
                 <h2 id="weather-heading"><i class="fas fa-cloud-sun"></i> Météo & BioSVT</h2>
-                <div class="data-point"><span>Statut Météo</span><span id="weather-status">INACTIF</span></div>
-                <div class="data-point"><span>Température Air</span><span id="temp-air-2">N/A</span></div>
-                <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure-2">N/A</span></div>
-                <div class="data-point"><span>Humidité Relative</span><span id="humidity-2">N/A</span></div>
+                <div class="data-point"><span>Statut Météo</span><span id="statut-meteo">INACTIF</span></div>
+                <div class="data-point"><span>Température Air</span><span id="air-temp-c">N/A</span></div>
+                <div class="data-point"><span>Pression Atmosphérique</span><span id="pressure-hpa">N/A</span></div>
+                <div class="data-point"><span>Humidité Relative</span><span id="humidity-perc">N/A</span></div>
                 <div class="data-point"><span>Densité de l'air (ρ)</span><span id="air-density">N/A</span></div>
                 <div class="data-point"><span>Point de Rosée</span><span id="dew-point">N/A</span></div>
                 <hr>
@@ -308,12 +308,12 @@
 
             <section class="panel" aria-labelledby="dynamics-heading">
                 <h2 id="dynamics-heading"><i class="fas fa-balance-scale-right"></i> Dynamique & Forces</h2>
-                <div class="data-point"><span>Gravité Locale (g)</span><span id="gravity-local">N/A</span></div>
-                <div class="data-point"><span>Accélération Long.</span><span id="accel-long">N/A</span></div>
+                <div class="data-point"><span>Gravité Locale (g)</span><span id="gravite-wgs84">N/A</span></div>
+                <div class="data-point"><span>Accélération Long.</span><span id="acceleration-x">N/A</span></div>
                 <div class="data-point"><span>Force G (Long.)</span><span id="force-g-long">N/A</span></div>
                 <div class="data-point"><span>Vitesse Verticale (EKF)</span><span id="vertical-speed">N/A</span></div>
-                <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="accel-vertical-imu">N/A</span></div>
-                <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vertical">N/A</span></div>
+                <div class="data-point"><span>Accel. Verticale (IMU)</span><span id="acceleration-z">N/A</span></div>
+                <div class="data-point"><span>Force G (Verticale)</span><span id="force-g-vert">N/A</span></div>
                 <div class="data-point"><span>Vitesse Angulaire (Gyro)</span><span id="angular-speed">N/A</span></div>
                 <hr>
                 <h3>Mécanique des Fluides</h3>
@@ -340,12 +340,12 @@
                         <option value="STABLE">Microscopique (x2.5)</option>
                     </select>
                 </div>
-                <div class="data-point"><span>Statut GPS (Acquisition)</span><span id="gps-status-dr">N/A</span></div>
-                <div class="data-point"><span>Statut EKF (Fusion)</span><span id="gps-status-ekf">N/A</span></div>
-                <div class="data-point"><span>Incertitude Vitesse (P)</span><span id="kalman-uncert">N/A</span></div>
-                <div class="data-point"><span>Incertitude Alt. (σ)</span><span id="alt-uncertainty">N/A</span></div>
-                <div class="data-point"><span>Bruit Mesure Vitesse (R)</span><span id="speed-error-perc">N/A</span></div>
-                <div class="data-point"><span>Bande Passante (Nyquist)</span><span id="nyquist-frequency">N/A</span></div>
+                <div class="data-point"><span>Statut GPS (Acquisition)</span><span id="statut-gps-acquisition">N/A</span></div>
+                <div class="data-point"><span>Statut EKF (Fusion)</span><span id="statut-ekf-fusion">N/A</span></div>
+                <div class="data-point"><span>Incertitude Vitesse (P)</span><span id="ukf-v-uncert">N/A</span></div>
+                <div class="data-point"><span>Incertitude Alt. (σ)</span><span id="ukf-alt-sigma">N/A</span></div>
+                <div class="data-point"><span>Bruit Mesure Vitesse (R)</span><span id="ukf-r-noise">N/A</span></div>
+                <div class="data-point"><span>Bande Passante (Nyquist)</span><span id="bande-passante">N/A</span></div>
                 <div class="data-point"><span>Forcer Précision GPS</span><span id="gps-accuracy-display">0.000000 m</span></div>
             </section>
 
@@ -378,9 +378,9 @@
                 </div>
                 <hr>
                 <h3>Positionnement EKF</h3>
-                <div class="data-point"><span>Latitude (EKF)</span><span id="lat-display">N/A</span></div>
-                <div class="data-point"><span>Longitude (EKF)</span><span id="lon-display">N/A</span></div>
-                <div class="data-point"><span>Altitude (EKF)</span><span id="alt-display">N/A</span></div>
+                <div class="data-point"><span>Latitude (EKF)</span><span id="lat-ekf">N/A</span></div>
+                <div class="data-point"><span>Longitude (EKF)</span><span id="lon-ekf">N/A</span></div>
+                <div class="data-point"><span>Altitude (EKF)</span><span id="alt-ekf">N/A</span></div>
                 <div class="data-point"><span>Altitude Géopotentielle</span><span id="geopotential-alt">N/A</span></div>
                 <div class="data-point"><span>Altitude Corrigée (Baro)</span><span id="alt-corrected-baro">N/A</span></div>
                 <div class="data-point"><span>Cap (Direction)</span><span id="heading-display">N/A</span></div>
@@ -420,3 +420,4 @@
     
 </body>
 </html>
+                        
