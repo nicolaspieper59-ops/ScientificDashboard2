@@ -985,9 +985,13 @@ function updateSpiritLevel(x, y, z) {
             $('alt-corrected-baro').textContent = dataOrDefault(baroAlt, 2, ' m');
 
             // 3. Mise à jour Heure NTP
-            if (now) {
-                if ($('heure-locale')) $('heure-locale').textContent = new Date().toLocaleTimeString('fr-FR');
-                    $('local-time').textContent = timeString + (lServH ? ' (Synchro OK)' : ' (Hors ligne)');
+            // Dans la fonction updateTime (appelée dans startFastLoop) :
+
+const heureLocaleElement = $('heure-locale');
+if (heureLocaleElement) {
+    heureLocaleElement.textContent = currentTime.toLocaleTimeString('fr-FR');
+}
+// Répétez pour 'date-heure-utc' et 'heure-minecraft'
                 }
                 if ($('date-display')) $('date-display').textContent = now.toUTCString();
                 if ($('time-minecraft')) $('time-minecraft').textContent = getMinecraftTime(now);
@@ -1091,11 +1095,25 @@ function updateSpiritLevel(x, y, z) {
 
             if($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
             
-            if($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
-                document.body.classList.toggle('dark-mode');
-                $('toggle-mode-btn').innerHTML = document.body.classList.contains('dark-mode') ? '☀️ Mode Jour' : '🌗 Mode Nuit';
-                if(map) map.invalidateSize();
-            });
+            // Localisation : Suite immédiate du bloc que vous avez montré (dans l'initialisation)
+
+// BLOC ORIGINAL PROBLÉMATIQUE (Hypothèse non protégée)
+// if (document.body.classList.contains('dark-mode')) {
+//      $('toggle-mode-btn').innerHTML = '<i class="fas fa-sun"></i> Mode Jour'; // ❌ CRASH ICI
+// } else {
+//      $('toggle-mode-btn').innerHTML = '<i class="fas fa-moon"></i> Mode Nuit'; // ❌ OU CRASH ICI
+// }
+
+// 💡 CORRECTION : Remplacer l'ensemble du bloc par la version protégée :
+const toggleBtn = $('toggle-mode-btn');
+
+if (toggleBtn) { // Vérification d'existence du bouton
+    if (document.body.classList.contains('dark-mode')) {
+        toggleBtn.innerHTML = '<i class="fas fa-sun"></i> Mode Jour';
+    } else {
+        toggleBtn.innerHTML = '<i class="fas fa-moon"></i> Mode Nuit';
+    }
+}
             
             if($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; });
             if($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
