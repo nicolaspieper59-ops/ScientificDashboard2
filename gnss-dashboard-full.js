@@ -1,7 +1,7 @@
 /**
  * GNSS SpaceTime Dashboard • UKF 21 États Fusion (COMPLET/PROFESSIONNEL)
  * Intégration Finale: UKF 21 États (Structure), Relativité V/G, Hydrodynamique, Coriolis,
- * Astrométrie Complète (TST, MST, EOT), Correction Météorologique (ISA/API),
+ *  Complète (TST, MST, EOT), Correction Météorologique (ISA/API),
  * Gestion Anti-veille et Modes GPS Dynamiques (ZUPT/Standby).
  * Dépendances Requises: math.min.js, leaflet.js, suncalc.js, turf.min.js, lib/astro.js, lib/ephem/*.js.
  */
@@ -22,8 +22,30 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 };
 
 ((window) => {
-    // Vérification des dépendances critiques (omise pour concision)
     
+    // 💡 VÉRIFICATION DES DÉPENDANCES CRITIQUES (Complète)
+    if (typeof math === 'undefined' || typeof L === 'undefined' || 
+        typeof SunCalc === 'undefined' || typeof turf === 'undefined') {
+        
+        const missing = [
+            (typeof math === 'undefined' ? "math.min.js" : ""), 
+            (typeof L === 'undefined' ? "leaflet.js" : ""),
+            (typeof SunCalc === 'undefined' ? "suncalc.js" : ""), 
+            (typeof turf === 'undefined' ? "turf.min.js" : "")
+        ].filter(Boolean).join(", ");
+        
+        alert(`Erreur: Dépendances critiques manquantes : ${missing}. L'application ne peut pas démarrer. Vérifiez votre index.html.`);
+        
+        // Afficher l'erreur dans l'interface utilisateur pour le débogage
+        const statusElement = $('statut-gps-acquisition') || document.body;
+        statusElement.innerHTML = `<h2 style="color:red;">ERREUR DÉPENDANCE</h2><p>Fichiers manquants: ${missing}</p>`;
+
+        return;
+    }
+
+    // --- CONSTANTES PHYSIQUES ET UNITÉS ---
+    // ... (Le reste du BLOC 1/4 continue ici) ...
+
     // --- CONSTANTES GLOBALES ---
     const C = 299792458; // Vitesse de la lumière (m/s)
     const G_UNIV = 6.67430e-11; // Constante gravitationnelle (m³/kg/s²)
@@ -55,7 +77,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let physics = {}; // Contient les derniers résultats de calcul physique
     let lastT_K = TEMP_SEA_LEVEL_K;
     let lastP_hPa = BARO_ALT_REF_HPA;
-
+Un
     // --- CLASSE PROFESSIONALUKF (UKF 21 ÉTATS) - STRUCTURE COMPLÈTE ---
     class ProfessionalUKF {
         // X: [p_n, p_e, p_d, v_n, v_e, v_d, q_w, q_x, q_y, q_z, b_gx, b_gy, b_gz, b_ax, b_ay, b_az, ... (Erreurs et états additionnels)]
@@ -221,11 +243,40 @@ function stopImuSensors() {
 // --- GESTION API MÉTÉO & POLLUANTS ---
 
 async function fetchWeather(lat, lon) {
-    // 💡 LOGIQUE REQUISE: Utilisation d'une clé API (omise) et d'un service (ex: OpenWeatherMap)
-    // Simuler des données
-    const data = { pressure_hPa: 1010.5, tempC: 22.1, air_density: 1.18, humidity_perc: 65, dew_point: 15.1 };
-    updateWeatherDOM(data, false);
-    return data;
+// --- GESTION API MÉTÉO & POLLUANTS (Suite) ---
+
+function updateWeatherDOM(data, isCached) {
+    
+    // 1. Détermination des valeurs (API ou défaut ISA)
+    const P_hPa = data ? data.pressure_hPa : BARO_ALT_REF_HPA;
+    const T_C = data ? data.tempC : TEMP_SEA_LEVEL_K - KELVIN_OFFSET;
+    const H_perc = data ? data.humidity_perc : NaN;
+    const D_point = data ? data.dew_point : NaN;
+    
+    // 2. Mise à jour des variables globales pour la Physique
+    window.lastP_hPa = P_hPa;
+    window.lastT_K = T_C + KELVIN_OFFSET;
+    // La densité est critique pour l'hydrodynamique
+    window.currentAirDensity = data ? data.air_density : RHO_SEA_LEVEL;
+    
+    // 3. Mise à jour des affichages DOM
+    const sourceLabel = data ? (isCached ? ' (Cache)' : ' (API)') : ' (Modèle ISA)';
+    
+    if ($('statut-meteo')) $('statut-meteo').textContent = data ? 'ACTIF' + sourceLabel : 'INACTIF (Modèle ISA)';
+    if ($('temp-air')) $('temp-air').textContent = dataOrDefault(T_C, 1, ' °C') + (data ? sourceLabel : '');
+    if ($('pression-atm')) $('pression-atm').textContent = dataOrDefault(P_hPa, 2, ' hPa') + (data ? sourceLabel : '');
+    if ($('densite-air')) $('densite-air').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³') + (data ? sourceLabel : '');
+    if ($('humidite-relative')) $('humidite-relative').textContent = dataOrDefault(H_perc, 1, ' %');
+    if ($('point-de-rosee')) $('point-de-rosee').textContent = dataOrDefault(D_point, 1, ' °C');
+    
+    // BioSVT (Simulation basée sur les données météo disponibles)
+    if ($('humidite-absolue-sim')) $('humidite-absolue-sim').textContent = dataOrDefault(data ? currentAirDensity * (H_perc / 100) : NaN, 3, ' g/m³');
+    
+    // Taux de Saturation O₂ (Approximation basée sur la densité relative ISA)
+    if ($('saturation-o2-sim')) $('saturation-o2-sim').textContent = dataOrDefault(data ? 20.95 * (currentAirDensity / RHO_SEA_LEVEL) : NaN, 2, ' %');
+    
+    // Les champs CAPE et Temp. Bulbe Humide nécessitent des formules thermodynamiques complexes, 
+    // ils restent à 'N/A' si non calculés ou simulés de manière simple.
 }
 
 function updateWeatherDOM(data, isCached) {
