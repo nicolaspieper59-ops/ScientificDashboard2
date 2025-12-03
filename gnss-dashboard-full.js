@@ -932,6 +932,8 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         }, IMU_UPDATE_RATE_MS);
     }
 
+// ... (Code de startFastLoop juste avant)
+
     /**
      * BOUCLE LENTE (Astro/Météo) - 1Hz
      */
@@ -943,15 +945,20 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             const currentLonForAstro = lon || (lastKnownAstro?.lon) || 5.37;
             const now = getCDate(); // Heure synchronisée (NTP)
 
-            // 1. Mise à jour Astro (SunCalc & TST)
+            // 1. Mise à jour Astro (SunCalc pour les bases, et algorithmes avancés TST/TSLV/ELP/VSOP)
+            // On s'assure que SunCalc est toujours disponible pour les fonctions de base (times, position)
             if (typeof SunCalc !== 'undefined') {
                 try {
+                    // Utilisation de SunCalc pour la position/lumière (rapide et suffisant pour l'affichage visuel)
                     const sunPos = SunCalc.getPosition(now, currentLatForAstro, currentLonForAstro);
                     const moonIllum = SunCalc.getMoonIllumination(now);
                     const moonPos = SunCalc.getMoonPosition(now, currentLatForAstro, currentLonForAstro);
                     const sunTimes = SunCalc.getTimes(now, currentLatForAstro, currentLonForAstro);
                     const moonTimes = SunCalc.getMoonTimes(now, currentLatForAstro, currentLonForAstro, true);
-                    const solarTimes = getSolarTime(now, currentLonForAstro);
+                    
+                    // Utilisation des fonctions avancées (désormais dans lib/astro.js) pour la précision TST/EOT/TSLV
+                    const solarTimes = getSolarTime(now, currentLonForAstro); // Utilise les calculs avancés EOT/TST/MST
+                    
                     sunAltitudeRad = sunPos.altitude; 
                     
                     lastKnownAstro = { lat: currentLatForAstro, lon: currentLonForAstro, sunPos, moonIllum, moonPos, sunTimes, moonTimes, solarTimes };
@@ -1017,6 +1024,9 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         domSlowID = setInterval(updateSlowData, DOM_SLOW_UPDATE_MS);
         updateSlowData(); 
     }
+// ... (Fin du fichier)
+                    
+    
     // =================================================================
 // BLOC 4/4 : INITIALISATION DOM & ÉCOUTEURS D'ÉVÉNEMENTS
 // =================================================================
