@@ -78,16 +78,27 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let lastT_K = TEMP_SEA_LEVEL_K;
     let lastP_hPa = BARO_ALT_REF_HPA;
 Un
-    // --- CLASSE PROFESSIONALUKF (UKF 21 ÉTATS) - STRUCTURE COMPLÈTE ---
-    class ProfessionalUKF {
-        // X: [p_n, p_e, p_d, v_n, v_e, v_d, q_w, q_x, q_y, q_z, b_gx, b_gy, b_gz, b_ax, b_ay, b_az, ... (Erreurs et états additionnels)]
-        constructor() { 
-            const N_states = 21;
-            this.X = math.zeros(N_states, 1);
-            this.P = math.diag(math.ones(N_states), 1e-4); 
-            this.Q = math.diag(math.ones(N_states), 1e-6); // Bruit de processus par défaut (doit être calibré)
-            this.N_states = N_states;
-        }
+// --- CLASSE PROFESSIONALUKF (UKF 21 ÉTATS) - STRUCTURE COMPLÈTE ---
+class ProfessionalUKF {
+    // X: [p_n, p_e, p_d, v_n, v_e, v_d, q_w, q_x, q_y, q_z, b_gx, b_gy, b_gz, b_ax, b_ay, b_az, ... (Erreurs et états additionnels)]
+    constructor() { 
+        const N_states = 21;
+        
+        // Initialisation de l'état (vecteur colonne de 21 zéros)
+        this.X = math.zeros(N_states, 1);
+        
+        // 💡 CORRECTION CRITIQUE P: Crée la matrice identité et la multiplie par 1e-4.
+        this.P = math.multiply(math.identity(N_states), 1e-4); 
+        
+        // 💡 CORRECTION CRITIQUE Q: Crée la matrice identité et la multiplie par 1e-6.
+        this.Q = math.multiply(math.identity(N_states), 1e-6); 
+        
+        this.N_states = N_states;
+    }
+    
+    // ... (Reste des fonctions de la classe : generateSigmaPoints, predict, update) ...
+}
+        
         
         /**
          * 1. Génère les 2*N+1 Sigma Points (UKF)
@@ -566,6 +577,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // --- MISE À JOUR DES AFFICHAGES PAR DÉFAUT/INITIALISATION ---
         $('gravite-base').textContent = dataOrDefault(local_g, 4, ' m/s²');
+        if ($('gravite-wgs84')) $('gravite-wgs84').textContent = dataOrDefault(local_g, 4, ' m/s²');
+    
+    // Correction de l'affichage de la vitesse du son
+    if ($('speed-of-sound-calc')) $('speed-of-sound-calc').textContent = dataOrDefault(currentSpeedOfSound, 2, ' m/s') + ' (Modèle ISA)'; 
         $('mass-display').textContent = dataOrDefault(currentMass, 3, ' kg');
         $('env-factor').textContent = `Normal (x${1.0.toFixed(1)})`;
         $('toggle-gps-btn').textContent = '▶️ MARCHE GPS'; 
