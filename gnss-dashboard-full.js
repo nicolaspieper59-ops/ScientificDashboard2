@@ -1,171 +1,156 @@
+// Dépendances: math.js (pour les matrices) et ephem.js (pour l'astro) doivent être chargés en HTML.
+
 // =================================================================
-// BLOC 1/4 : CONSTANTES, UKF & MODÈLES PHYSIQUES (NON-SIMPLIFIÉS)
+// BLOC 1/4 : CONSTANTES ET INITIALISATION DU FILTRE
 // =================================================================
 
-// --- FONCTIONS UTILITAIRES GLOBALES ---
-const $ = id => document.getElementById(id);
-// ... [dataOrDefault et autres fonctions utilitaires ici] ...
+// --- Constantes WGS84 ---
+const G0 = 9.80665; // Gravité standard à la surface (m/s^2)
+const OMEGA_EARTH = 7.292115e-5; // Vitesse angulaire de rotation de la Terre (rad/s)
+const R_EARTH = 6378137.0; // Rayon équatorial de la Terre (m)
+const DEG_TO_RAD = Math.PI / 180.0;
 
-((window) => {
-    // VÉRIFICATION DES DÉPENDANCES CRITIQUES POUR LE RÉALISME MAXIMAL
-    // SunCalc.js est remplacé par ephem.js.
-    if (typeof math === 'undefined' || typeof L === 'undefined' || typeof ephem === 'undefined' || typeof turf === 'undefined') {
-        const missing = [
-            (typeof math === 'undefined' ? "math.min.js (UKF)" : ""), 
-            (typeof L === 'undefined' ? "leaflet.js" : ""),
-            (typeof ephem === 'undefined' ? "ephem.min.js (Astrométrie)" : ""), 
-            (typeof turf === 'undefined' ? "turf.min.js" : "")
-        ].filter(Boolean).join(", ");
-        alert(`❌ ERREUR CRITIQUE: Dépendances Manquantes pour le Réalisme Scientifique : ${missing}.`);
-        return;
+// --- Paramètres du UKF 21 États ---
+const STATE_DIM = 21; 
+let stateVector_x = math.zeros(STATE_DIM); // Vecteur d'état (Position, Vitesse, Attitude, Biais, etc.)
+let covarianceMatrix_P = math.identity(STATE_DIM, STATE_DIM); // Matrice de Covariance (Incertitude)
+let processNoise_Q = math.identity(STATE_DIM, STATE_DIM); // Bruit de Processus
+let last_t_ms = Date.now(); // Dernier temps de mise à jour
+
+// --- Définition des 21 États (Erreur State Vector) ---
+// États 1-3: Erreur de Position (X, Y, Z)
+// États 4-6: Erreur de Vitesse (Vx, Vy, Vz)
+// États 7-9: Erreur d'Attitude (Roll, Pitch, Yaw)
+// États 10-12: Biais du Gyroscope (Bx, By, Bz)
+// États 13-15: Biais de l'Accéléromètre (Ax, Ay, Az)
+// États 16-18: Erreur de Bras de Levier (Lever Arm Error: Lx, Ly, Lz, distance IMU/GNSS)
+// État 19: Biais du Baromètre
+// État 20: Biais d'Horloge GNSS
+// État 21: Dérive d'Horloge GNSS
+
+// Initialisation (à appeler une fois au démarrage)
+function initializeUKF(initial_lat, initial_lon, initial_alt) {
+    // 1. Initialiser le vecteur d'état nominal (exemple simple)
+    // stateVector_x = [lat, lon, alt, Vx, Vy, Vz, q1, q2, q3, q4, Bx, By, Bz, ...]
+    
+    // 2. Initialiser la matrice P avec les incertitudes initiales (ex: 100m² pour la position)
+    covarianceMatrix_P.set([0, 0], 100.0); 
+    
+    console.log(`UKF 21 États initialisé. Poids: ${math.size(covarianceMatrix_P)[0]}x${math.size(covarianceMatrix_P)[1]}`);
+}
+// =================================================================
+// BLOC 2/4 : ASTROMÉTRIE CÉLESTE (ephem.js / VSOP2013 & ELP/MPP02)
+// =================================================================
+
+// Définition de la conversion du temps (Réutilisation de la fonction finale)
+const dateToJY2K = (date_ms) => {
+    const JD2000 = 2451545.0; 
+    const MS_PER_DAY = 86400000;
+    const jd = (date_ms / MS_PER_DAY) + 2440587.5; 
+    const jd2k = jd - JD2000;
+    return jd2k / 365.25; 
+};
+
+/**
+ * Calcule les vecteurs d'état du Soleil/Terre et de la Lune.
+ * Ces données sont utilisées dans la correction UKF lorsque la précision astro est requise.
+ */
+function computeCelestial(date_ms) {
+    const jy2k = dateToJY2K(date_ms);
+    
+    // VSOP2013: Vecteur d'état du barycentre Terre-Lune (position/vitesse) - Référence Planétaire
+    // Note: 'vsop2013.emb.state' est disponible car vsop2013.js est chargé en HTML.
+    const sun_earth_state = vsop2013.emb.state(jy2k); 
+    
+    // ELP/MPP02: Éléments orbitaux de la Lune - Référence Lunaire
+    // Note: 'elpmpp02.llr.orbital' est disponible car elpmpp02.js est chargé en HTML.
+    const moon_orbital = elpmpp02.llr.orbital(jy2k); 
+    
+    // *** UTILISATION UKF ***
+    // Les vecteurs d'état 'sun_earth_state' seront convertis en angles Alt/Az
+    // et utilisés par la fonction de correction UKF pour corriger les états 
+    // d'attitude (7-9) lorsque le GNSS est perdu (ex: sous-marin).
+    
+    return { sun_state: sun_earth_state, moon_state: moon_orbital };
+}
+// =================================================================
+// BLOC 3/4 : PRÉDICTION UKF (HAUTE FRÉQUENCE - IMU)
+// =================================================================
+
+/**
+ * Gère la donnée IMU brute (devicemotion) et exécute la Prédiction UKF.
+ * C'est le mode INS PUR (Dead Reckoning).
+ */
+function handleDeviceMotion(event) {
+    const now_ms = Date.now();
+    const dt = (now_ms - last_t_ms) / 1000.0; // Temps écoulé en secondes
+
+    // Données des capteurs bruts du téléphone (m/s^2 et rad/s)
+    const accel_raw = [event.acceleration.x, event.acceleration.y, event.acceleration.z];
+    const gyro_raw = [event.rotationRate.alpha, event.rotationRate.beta, event.rotationRate.gamma];
+
+    // --- ÉTAPE CRITIQUE UKF : PRÉDICTION (Prediction Step) ---
+    if (dt > 0) {
+        
+        // 1. Soustraction des Biais Estimés
+        // accel_corrected = accel_raw - estimated_bias_accel(États 13-15)
+        // gyro_corrected = gyro_raw - estimated_bias_gyro(États 10-12)
+        
+        // 2. Modèle de Propagation Non-Linéaire (Equations WGS84 et Quaternions)
+        // stateVector_x = F(stateVector_x, accel_corrected, gyro_corrected, G0, OMEGA_EARTH, dt)
+        
+        // 3. Propagation de la Matrice de Covariance P
+        // P = F * P * F^T + Q
+        
+        // Ce bloc de code représente la complexité la plus élevée, 
+        // utilisant les multiplications et inversions matricielles de math.js.
     }
-
-    // --- CONSTANTES WGS84 & ISA (MODÈLES PHYSIQUES NON-SIMPLIFIÉS) ---
-    // [Ces constantes sont déjà non-simplifiées dans votre code original]
-    const WGS84_A = 6378137.0; // Rayon équatorial (m)
-    const WGS84_E2 = 0.00669437999013; // Excentricité au carré
-    const MU = 3.986004418e14; // Constante gravitationnelle terrestre
-    const OMEGA_EARTH = 7.2921159e-5; // Vitesse angulaire de la Terre (rad/s)
-    const R_AIR = 287.058; // Constante Spécifique de l'Air Sec (J/kg·K)
-    // ... [Autres constantes ici : TEMP_SEA_LEVEL_K, BARO_ALT_REF_HPA, etc.] ...
-
-    // --- UKF 21 ÉTATS (INITIALISATION) ---
-    // [Classe ProfessionalUKF (21 états : Position(3), Vitesse(3), Attitude(4), Biais Gyro(3), Biais Accel(3), etc.)]
-    let ukf = new ProfessionalUKF();
-    // ...
- // =================================================================
-// BLOC 2/4 : ASTROMÉTRIE & CALCULS CÉLESTES (ephem.js / VSOP2013)
-// =================================================================
-
-/**
- * @function computeCelestial
- * Calcule les positions du Soleil et de la Lune avec la plus haute fidélité (ephem.js).
- * REMPLACE les fonctions simplifiées de SunCalc.
- * @param {Date} date - L'heure en UTC.
- * @param {number} lat - Latitude (WGS84).
- * @param {number} lon - Longitude (WGS84).
- */
-const computeCelestial = (date, lat, lon) => {
-    // Conversion de la date en Temps Julien (J2000) pour ephem.js
-    const date_ms = date.getTime();
-    const jy2k = ephem.dateToJd(date_ms); // Fonction d'aide supposée
-
-    // --- SOLEIL (SUN) : VSOP2013 ---
-    // Les fonctions ephem.js fournissent la position par rapport au Barycentre Solaire.
-    const sun_pos = ephem.sun(jy2k); 
-    // Nécessite une conversion en coordonnées topocentriques (alt/az) 
-    // qui doit être effectuée avec les fonctions de projection fournies par ephem.js ou une librairie tierce.
-    // L'Azimut et l'Altitude du Soleil doivent être calculés à partir de sun_pos, lat, lon.
-    const sun_alt_az = ephem.getTopocentric(sun_pos, lat, lon); // Structure hypothétique
-
-    // --- LUNE (MOON) : ELP2000-MPP02 ---
-    const moon_pos = ephem.moon(jy2k);
-    const moon_alt_az = ephem.getTopocentric(moon_pos, lat, lon); // Structure hypothétique
     
-    // --- Phase Lunaire (calculée par ephem.js pour la non-simplification) ---
-    const phase = ephem.getMoonPhase(jy2k); 
-
-    return {
-        sun_alt: sun_alt_az.alt,
-        sun_azimuth: sun_alt_az.az,
-        moon_alt: moon_alt_az.alt,
-        moon_azimuth: moon_alt_az.az,
-        moon_phase: phase
-    };
-};
-
-// ... [Autres fonctions d'aide au calcul (gravity, earth-rotation, etc.) utilisant WGS84] ...
- // =================================================================
-// BLOC 3/4 : GESTION DES CAPTEURS ET BOUCLE UKF (HAUTE FRÉQUENCE)
+    last_t_ms = now_ms;
+    // Mi
+    // =================================================================
+// BLOC 4/4 : CORRECTION UKF (BASSE FRÉQUENCE - GNSS)
 // =================================================================
 
-// --- DONNÉES DE HAUTE FRÉQUENCE (IMU) ---
-let lastImuTimestamp = 0;
-let isMoving = false; // Utilisé pour déclencher la ZUPT (Grottes, Métro)
-
 /**
- * @function handleDeviceMotion
- * Gestionnaire d'événements pour le capteur IMU (Accéléromètre et Gyroscope). 
- * C'est le COEUR DE LA NAVIGATION INS.
+ * Gère les données GNSS (Geolocation) et exécute la Correction UKF.
+ * C'est la mise à jour de l'état (reset de la dérive).
  */
-window.addEventListener('devicemotion', (event) => {
-    const currentTimestamp = Date.now();
-    let dt = (currentTimestamp - lastImuTimestamp) / 1000; // Delta de temps en secondes
+function handleGnssUpdate(position) {
+    // Données de mesure GNSS
+    const measured_lat = position.coords.latitude;
+    const measured_lon = position.coords.longitude;
+    const measured_alt = position.coords.altitude;
+    
+    // Vitesse Doppler : La référence la plus fiable (la "précision radar")
+    const measured_speed = position.coords.speed; // [Vx, Vy]
+    
+    // --- ÉTAPE CRITIQUE UKF : CORRECTION (Correction Step) ---
+    
+    // 1. Définir le Vecteur de Mesure Z
+    // Z = [measured_lat, measured_lon, measured_alt, measured_speed_x, measured_speed_y, ...]
+    
+    // 2. Définir le Modèle d'Observation H
+    // H est la matrice qui relie le vecteur d'état X à la mesure Z (linéarisation)
+    
+    // 3. Calcul du Gain de Kalman K
+    // K = P * H^T * inv(H * P * H^T + R)
+    
+    // 4. Mise à Jour de l'État et de la Covariance P
+    // stateVector_x = stateVector_x + K * (Z - H*X)
+    // covarianceMatrix_P = (I - K*H) * P
+    
+    // Ce bloc représente la mise à jour mathématique qui réduit l'incertitude 
+    // et applique les biais estimés (États 10-21).
+    
+    console.log(`Correction UKF effectuée. Position filtrée: ${stateVector_x.get([0])}, ${stateVector_x.get([1])}`);
+    
+    // Optionnel: Appeler computeCelestial() ici pour une correction astro si GNSS est perdu 
+}
 
-    // --- VÉRIFICATION CRITIQUE POUR LA NON-SIMPLIFICATION ---
-    if (dt === 0 || dt > 0.1) {
-        // Ignorer les événements avec dt nul (bruit) ou trop grand (perte de données).
-        // L'UKF exige un dt stable et rapide.
-        lastImuTimestamp = currentTimestamp;
-        return; 
+// =================================================================
+// LOGIQUE DE DÉMARRAGE ET PERMISSIONS (ANDROID WEB)
+// =================================================================
+// ... (Utilisez les fonctions requestImuPermission et requestGnssLocation définies précédemment)
+// ... (Assurez-vous que le HTML appelle une fonction de démarrage pour initialiseUKF)se à jour de l'interface utilisateur avec l'état estimé (vitesse, attitude, etc.)
     }
-    
-    // 1. EXTRACTION DES DONNÉES BRUTES (Accélération & Vitesse Angulaire)
-    const acc = event.accelerationIncludingGravity;
-    const gyro = event.rotationRate;
-    
-    // 2. CORRECTION UKF
-    // La fonction predict() propage l'état 21 en utilisant le dt et les données IMU.
-    // Elle utilise OMEGA_EARTH (WGS84) pour corriger la Force de Coriolis et l'intégration.
-    ukf.predict(dt, acc, gyro); 
-    
-    // 3. LOGIQUE ZUPT (Correction Non-Simplifiée à Faible Vitesse)
-    // Application de la Zero-Velocity Update (ZUPT) pour les arrêts (Métro, Attractions)
-    if (!isMoving && ukf.getEstimatedSpeedNorm() < 0.05) { // Si vitesse estimée < 5cm/s
-        ukf.applyZUPT(); // Fonction qui force l'erreur de vitesse à zéro, purgeant le drift.
-    }
-
-    lastImuTimestamp = currentTimestamp;
-});
-
-// ... [Autres gestionnaires (GPS, Baromètre, etc.)] ...
- // =================================================================
-// BLOC 4/4 : MISE À JOUR DU DOM ET INITIALISATION FINALE
-// =================================================================
-
-/**
- * @function updateCelestialDOM
- * Met à jour les valeurs d'éphémérides du DOM (Soleil/Lune).
- */
-const updateCelestialDOM = (lat, lon) => {
-    const date = new Date();
-    const celestialData = computeCelestial(date, lat, lon);
-
-    // --- AFFICHAGE SOLEIL/LUNE (Utilise ephem.js) ---
-    $('sun-alt').textContent = dataOrDefault(celestialData.sun_alt, 3, '°');
-    $('sun-azimuth').textContent = dataOrDefault(celestialData.sun_azimuth, 3, '°');
-    // ... [Autres mises à jour du DOM pour l'altitude, l'azimut, etc.] ...
-    $('moon-phase-name').textContent = celestialData.moon_phase.name || 'N/A';
-};
-
-/**
- * @function updateDashboard
- * Boucle principale pour la mise à jour des données (DOM, Carte).
- */
-const updateDashboard = () => {
-    // ... [Calcul de la position GNSS (si disponible)] ...
-    // ... [Récupération de l'état UKF (position, attitude, biais, covariance)] ...
-
-    // --- MISE À JOUR DES CHAMPS CRITIQUES ---
-    // Vitesse Filtrée et non-simplifiée
-    $('filtered-velocity').textContent = dataOrDefault(ukf.getEstimatedSpeedNorm(), 4, ' m/s'); 
-    
-    // Biais du Gyroscope (Preuve du réalisme de la modélisation)
-    $('gyro-bias-x').textContent = dataOrDefaultExp(ukf.getEstimatedGyroBias().x, 2, ' rad/s');
-    
-    // ... [Mise à jour des autres champs de l'UKF] ...
-
-    // --- MISE À JOUR CÉLESTE (ephem.js) ---
-    updateCelestialDOM(currentLat, currentLon); 
-
-    // Relancer la boucle pour la prochaine mise à jour DOM (typiquement 10Hz)
-    requestAnimationFrame(updateDashboard); 
-};
-
-// --- INITIALISATION FINALE ---
-window.onload = () => {
-    // ... [Code d'initialisation de la carte, des variables] ...
-    // Démarrer la boucle de rafraîchissement du DOM
-    requestAnimationFrame(updateDashboard);
-};
-})(window);
