@@ -416,7 +416,8 @@ function handleToggleGps() {
         stopSystem();
         if (btn) btn.textContent = '▶️ MARCHE GPS';
         gpsIsActive = false;
-        if ($('ukf-correction-status')) $('ukf-correction-status').textContent = `PAUSE`;
+        if ($('statut-ekf-fusion')) $('statut-ekf-fusion').textContent = `INACTIF`;
+        console.log("Système GNSS/UKF arrêté.");
     } else {
         // Le clic utilisateur est la condition nécessaire pour les permissions GPS/IMU
         startIMUSensors(); 
@@ -426,7 +427,8 @@ function handleToggleGps() {
         // Initialisation de l'UKF et de la boucle rapide
         if (ukf === null) ukf = new ProfessionalUKF();
         if (!window.fastLoopRunning) startFastLoop();
-        if ($('ukf-correction-status')) $('ukf-correction-status').textContent = `INIT...`;
+        if ($('statut-ekf-fusion')) $('statut-ekf-fusion').textContent = `INITIALISATION EKF...`;
+        console.log("Système GNSS/UKF démarré. En attente de position...");
     }
 }
 
@@ -583,20 +585,21 @@ window.onload = () => {
     }
     
     // 2. Initialisation des composants statiques/lents
-    initMap();
+    initMap(); // Assurez-vous que la div map a l'ID 'map'
     startSlowLoop(); 
-    updateCelestialBody(currentCelestialBody, kAlt); // Affichage de la gravité par défaut
-    if ($('gravity-base')) $('gravity-base').textContent = `${dataOrDefault(G_ACC, 4)} m/s²`;
-    if ($('mass-display')) $('mass-display').textContent = `${dataOrDefault(70, 3)} kg`;
-
+    updateCelestialBody(currentCelestialBody, kAlt); 
+    
     // 3. Initialisation et événements des contrôles (CORRECTION CRITIQUE DU BOUTON)
     const toggleBtn = $('toggle-gps-btn');
     if (toggleBtn) {
-        // Attachement du gestionnaire au bouton
+        // CORRECTION: L'événement est attaché ici, après que le DOM soit chargé.
         toggleBtn.addEventListener('click', handleToggleGps);
     } else {
         console.error("ERREUR D'INITIALISATION: L'élément avec l'ID 'toggle-gps-btn' est introuvable. Le bouton Démarrer ne fonctionnera pas. Veuillez vérifier votre HTML.");
+        const statusEl = $('statut-gps-acquisition') || document.body;
+        statusEl.textContent = '❌ Erreur: Bouton MARCHE GPS non trouvé (ID: toggle-gps-btn)';
     }
+    
 
     if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => { document.body.classList.toggle('dark-mode'); });
     if ($('mass-input')) $('mass-input').addEventListener('input', (e) => {
