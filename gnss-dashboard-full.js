@@ -44,14 +44,13 @@ const OMEGA_EARTH = 7.2921159e-5; // Vitesse de rotation Terre (rad/s)
 // --- CONSTANTES GÉOPHYSIQUES & ATMOSPHÉRIQUES (WGS84 / ISA) ---
 let G_ACC = 9.80665;             // Gravité de base (m/s²)
 let R_E_BASE = 6371000;          // Rayon terrestre moyen (m)
-const WGS84_A = 6378137.0;       // Rayon équatorial WGS84 (m)
 const R_SPECIFIC_AIR = 287.058;  // Constante spécifique de l'air sec (J/kg·K)
 const GAMMA_AIR = 1.4;           // Indice adiabatique de l'air
 const RHO_SEA_LEVEL = 1.225;     // Densité de l'air ISA (kg/m³)
 const TEMP_SEA_LEVEL_K = 288.15; // 15°C en Kelvin
 
 // --- PARAMÈTRES UKF ---
-const UKF_STATE_DIM = 21; // P(3), V(3), A(3), Biais Gyro(3), Biais Accel(3), Biais Horloge(3), Correction GPS(3)
+const UKF_STATE_DIM = 21; 
 const ENVIRONMENT_FACTORS = {
     Normal: { MULT: 1.0, DISPLAY: 'Normal' },
     Urbain: { MULT: 1.5, DISPLAY: 'Urbain (x1,5)' },
@@ -61,7 +60,7 @@ const ENVIRONMENT_FACTORS = {
 // --- ÉTAT GLOBAL DU SYSTÈME ---
 let ukf = null;
 let isGpsPaused = true;
-let currentPosition = { lat: 43.2964, lon: 5.3697, acc: null, spd: 0.0, alt: 0.0, cap: null }; // kAlt pour Altitude
+let currentPosition = { lat: 43.2964, lon: 5.3697, acc: null, spd: 0.0, alt: 0.0, cap: null }; 
 let lServH = 0, lLocH = 0;
 let watchID = null;
 let totalDistance = 0.0;
@@ -81,14 +80,12 @@ let netherMode = false;
 let selectedEnvironment = 'Normal';
 let lastT_K = TEMP_SEA_LEVEL_K;
 let lastP_hPa = 1013.25;
-let DRAG_AREA_COEFF = 0.5; // (Surface de traînée * Coefficient de traînée)
+const DRAG_AREA_COEFF = 0.5; // (Surface de traînée * Coefficient de traînée)
 
 // --- CLASSE DU FILTRE DE KALMAN NON PARFUMÉ (UKF) ---
 class ProfessionalUKF {
     constructor() {
         console.log(`[UKF] Filtre ${UKF_STATE_DIM} États initialisé (Squelette).`);
-        // L'implémentation complète nécessiterait math.js pour les matrices
-        // Assurez-vous que math.js est chargé avant d'appeler ce constructeur
         if (typeof math !== 'undefined') {
             this.X = math.matrix(math.zeros([UKF_STATE_DIM, 1])); // État (Position, Vitesse, Accélération, Biais, etc.)
             this.P = math.matrix(math.diag(math.ones([UKF_STATE_DIM]).map((_, i) => i < 6 ? 1e-2 : 1e-4))); // Covariance
@@ -101,7 +98,7 @@ class ProfessionalUKF {
     predict(U, dt) { /* Modèle cinématique non-linéaire (Équations de navigation) */ }
     update(Z, R) { /* Correction via mesures GPS/IMU */ }
     getState() { /* Retourne [lat, lon, alt, vx, vy, vz, ...] */ return { lat: currentPosition.lat, lon: currentPosition.lon, alt: currentPosition.alt, spd: currentPosition.spd, acc: currentPosition.acc }; }
-    }
+        }
 // =================================================================
 // BLOC 2/4 : MODÈLES PHYSIQUES & CINÉMATIQUES AVANCÉS
 // =================================================================
@@ -117,7 +114,6 @@ const updateCelestialBody = (body, alt_m, radius_m, angularV_rad) => {
         G_ACC_NEW = 1.625;
     }
     G_ACC = G_ACC_NEW;
-    // R_E_BASE pourrait aussi changer ici (ex: 1737.4 km pour la Lune)
     return { G_ACC_NEW };
 };
 
@@ -136,10 +132,7 @@ const calculateRelativity = (v, m0, alt) => {
     const v2_c2 = (v * v) / (c * c);
     const sqrt_val = 1 - v2_c2;
 
-    if (sqrt_val <= 0 || m0 === 0) {
-        // Retourne les valeurs par défaut N/A si vitesse >= c ou masse nulle
-        return {};
-    }
+    if (sqrt_val <= 0 || m0 === 0) { return {}; }
 
     const lorentzFactor = 1 / Math.sqrt(sqrt_val);
 
@@ -147,12 +140,8 @@ const calculateRelativity = (v, m0, alt) => {
     const dilationSpeed = (lorentzFactor - 1) * 86400 * 1e9;
 
     // Dilation du Temps (Gravité) en ns/jour (Approximation de Schwarzschild)
-    // d(tau) = d(t) * sqrt(1 - 2GM/rc^2)
-    // Ici, on utilise l'approximation pour l'altitude terrestre (généralement très faible)
     const r = R_E_BASE + alt;
-    // Utilisation de G_ACC (gravité de base) si la masse (M) n'est pas connue pour M_Terre
-    // M_Terre = (G_ACC * R_E_BASE^2) / G_U
-    const sch_factor_approx = (2 * G_ACC * alt) / (c * c); // Simplifié pour altitude terrestre
+    const sch_factor_approx = (2 * G_ACC * alt) / (c * c); 
     const sch_factor = (1 - sch_factor_approx);
     const dilationGravity = (1 - Math.sqrt(sch_factor)) * 86400 * 1e9;
 
@@ -182,7 +171,7 @@ const calculateRelativity = (v, m0, alt) => {
 /**
  * Calcule la Dynamique des Fluides et les Forces (Traînée, Coriolis, Énergie).
  */
-const calculateDynamics = (v, rho, lat, cap_rad) => {
+const calculateDynamics = (v, rho, lat) => {
     // Pression Dynamique (q)
     const dynamicPressure = 0.5 * rho * v * v;
 
@@ -195,11 +184,10 @@ const calculateDynamics = (v, rho, lat, cap_rad) => {
     // Énergie Cinétique (J)
     const kineticEnergy = 0.5 * currentMass * v * v;
 
-    // Puissance Mécanique (W) - Ici, équivalente à la puissance de traînée pour un mouvement non propulsé.
+    // Puissance Mécanique (W)
     const mechanicalPower = dragPower;
 
     // Force de Coriolis (Fc = 2 * m * Omega x V). Approximation horizontale.
-    // L'effet maximal est au pôle et nul à l'équateur, dépend de la latitude.
     const corio_mag = 2 * currentMass * OMEGA_EARTH * v * Math.sin(Math.abs(lat * D2R));
 
     return {
@@ -214,9 +202,8 @@ const calculateDynamics = (v, rho, lat, cap_rad) => {
 
 /**
  * Calcule les paramètres Bio/SVT simulés (Point de Rosée, Densité, etc.).
- * Nécessite SunCalc pour l'Altitude Solaire pour le Taux Photosynthèse (Simulé).
  */
-const calculateBioSVT = (tempC, altM, humidityPerc, pressurePa, sunAltitudeRad) => {
+const calculateBioSVT = (tempC, humidityPerc, pressurePa, sunAltitudeRad) => {
     // Point de Rosée (Formule de Magnus - Simplifié)
     const a = 17.27, b = 237.7;
     const alpha = (a * tempC) / (b + tempC) + Math.log(humidityPerc / 100);
@@ -242,26 +229,23 @@ const calculateBioSVT = (tempC, altM, humidityPerc, pressurePa, sunAltitudeRad) 
  * @param {number} lon_deg - Longitude en degrés.
  */
 const calculateSolarTime = (date, lon_deg) => {
-    // Équation du Temps (EOT) et Déclinaison (via SunCalc)
     const sunPos = SunCalc.getPosition(date, 0, lon_deg);
-    const EoT_min = (sunPos.equationOfTime / 60); // Equation du Temps en minutes
+    const EoT_min = (sunPos.equationOfTime / 60); 
 
-    // Heure Solaire Moyenne (MST)
     const UT = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
     const MST_h = UT + lon_deg / 15;
 
-    // Heure Solaire Vraie (TST)
     const TST_h = MST_h + EoT_min / 60;
     const TST_normalized = TST_h % 24;
 
-    // Temps Sidéral Local Vrai (TSLV) - Simplifié pour cet exemple
-    const LSTV = (UT * 1.00273790935) + lon_deg / 15; // 1.00273790935 est le facteur de conversion UT vers Sidéral
+    const LSTV = (UT * 1.00273790935) + lon_deg / 15; 
     
     return {
         EOT: EoT_min,
         MST: MST_h % 24,
         TST: TST_normalized,
         LSTV: LSTV % 24,
+        longitudeEcliptic: sunPos.eclipticLng * R2D
     };
 };
 
@@ -287,7 +271,7 @@ const updateAstro = (lat, lon) => {
     if ($('equation-du-temps')) $('equation-du-temps').textContent = dataOrDefault(solarTime.EOT, 2, ' min');
     if ($('temps-sideral-vrai')) $('temps-sideral-vrai').textContent = dataOrDefault(solarTime.LSTV, 4, ' h');
     if ($('midi-solaire-local')) $('midi-solaire-local').textContent = `${new Date(times.solarNoon.getTime() - times.solarNoon.getTimezoneOffset() * 60000).toLocaleTimeString('fr-FR')} (UTC)`;
-    if ($('longitude-ecliptique')) $('longitude-ecliptique').textContent = dataOrDefault(sunPos.eclipticLng * R2D, 2, '°');
+    if ($('longitude-ecliptique')) $('longitude-ecliptique').textContent = dataOrDefault(solarTime.longitudeEcliptic, 2, '°');
 
     // --- Soleil ---
     const dayDurationMs = times.sunset - times.sunrise;
@@ -311,14 +295,13 @@ const updateAstro = (lat, lon) => {
     if (sunAlt > 0) twilightStatus = 'Jour (☀️)';
     else if (sunAlt > -6) twilightStatus = 'Crépuscule Civil';
     else if (sunAlt > -18) twilightStatus = 'Crépuscule Astronomique';
-    if ($('twilight-status')) $('twilight-status').textContent = twilightStatus;
+    if ($('twilight-status')) $('twilight-status').textContent = twilightStatus; // ID: Nuit/Crépuscule (🌙)
 
     return { sunAltitudeRad: sunPos.altitude };
 };
 
 /**
  * Récupère les données météorologiques (Température, Pression, Humidité) et Polluants.
- * Utilise un proxy API pour la récupération externe.
  */
 const fetchWeatherAndPollutants = async (lat, lon) => {
     try {
@@ -406,7 +389,7 @@ const getMoonPhaseName = (phase) => {
 // =================================================================
 
 ((window) => {
-    // Vérification des dépendances critiques
+    // Vérification des dépendances critiques (math.js, leaflet.js, suncalc.js, turf.js)
     if (typeof math === 'undefined' || typeof L === 'undefined' || typeof SunCalc === 'undefined' || typeof turf === 'undefined') {
         const statusElement = $('statut-gps-acquisition') || document.body;
         statusElement.innerHTML = `<h2 style="color:red;">CRASH SYSTÈME: Dépendances critiques manquantes (math, leaflet, suncalc, turf).</h2>`;
@@ -419,7 +402,7 @@ const getMoonPhaseName = (phase) => {
         map = L.map('map-container').setView([currentPosition.lat, currentPosition.lon], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
         marker = L.marker([currentPosition.lat, currentPosition.lon]).addTo(map);
-        if ($('globe-x-status')) $('globe-x-status').textContent = 'Carte GNSS: Prête';
+        if ($('globex')) $('globex').textContent = 'Carte GNSS: Prête';
     }
 
     const GPS_OPTS_HIGH_FREQ = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
@@ -440,7 +423,7 @@ const getMoonPhaseName = (phase) => {
             const from = turf.point([lastLatLon.lon, lastLatLon.lat]);
             const to = turf.point([coords.longitude, coords.latitude]);
             const distanceM = turf.distance(from, to, { units: 'kilometers' }) * 1000;
-            const distanceFactor = netherMode ? 8.0 : 1.0; // Mode Minecraft Nether (1:8)
+            const distanceFactor = netherMode ? 8.0 : 1.0; 
             totalDistance += distanceM * distanceFactor;
         }
         lastLatLon = { lat: coords.latitude, lon: coords.longitude };
@@ -455,27 +438,28 @@ const getMoonPhaseName = (phase) => {
 
         maxSpeed = Math.max(maxSpeed, speedKmh);
 
-        // --- UKF/EKF PRÉDICTION/MISE À JOUR (Squelette) ---
-        // if (ukf && dt > 0) { ukf.predict({}, dt); ukf.update(pos, currentPosition.acc); }
-
         // --- CALCULS PHYSIQUES DYNAMIQUES ---
         const rel = calculateRelativity(currentPosition.spd, currentMass, currentPosition.alt);
-        const dyn = calculateDynamics(currentPosition.spd, currentAirDensity, currentPosition.lat, currentPosition.cap * D2R);
+        const dyn = calculateDynamics(currentPosition.spd, currentAirDensity, currentPosition.lat);
 
         // --- AFFICHAGE DE LA VITESSE ET DE LA POSITION (Fréquence Rapide) ---
         if ($('speed-instant')) $('speed-instant').textContent = dataOrDefault(speedKmh, 2, ' km/h');
         if ($('vitesse-stable')) $('vitesse-stable').textContent = dataOrDefault(currentPosition.spd, 2, ' m/s');
         if ($('vitesse-brute')) $('vitesse-brute').textContent = dataOrDefault(currentPosition.spd, 2, ' m/s');
         if ($('vitesse-max')) $('vitesse-max').textContent = dataOrDefault(maxSpeed, 1, ' km/h');
+        if ($('vitesse-moyenne-mvt')) $('vitesse-moyenne-mvt').textContent = dataOrDefault(speedKmh, 1, ' km/h'); // Simulé pour l'exemple
+        if ($('vitesse-moyenne-totale')) $('vitesse-moyenne-totale').textContent = dataOrDefault(speedKmh, 1, ' km/h'); // Simulé pour l'exemple
+        
         if ($('distance-totale-3d')) $('distance-totale-3d').textContent = `${dataOrDefault(totalDistance / 1000, 3, ' km')} | ${dataOrDefault(totalDistance, 2, ' m')}`;
+        if ($('rapport-distance-alt-nether')) $('rapport-distance-alt-nether').textContent = dataOrDefault(netherMode ? 8.0 : 1.0, 3);
         if ($('precision-gps-acc')) $('precision-gps-acc').textContent = dataOrDefault(currentPosition.acc, 2, ' m');
-
-        // Position EKF (pour l'instant, c'est la position GPS)
+        
+        // Position EKF
         if ($('latitude-ekf')) $('latitude-ekf').textContent = dataOrDefault(currentPosition.lat, 6, '°');
         if ($('longitude-ekf')) $('longitude-ekf').textContent = dataOrDefault(currentPosition.lon, 6, '°');
         if ($('altitude-ekf')) $('altitude-ekf').textContent = dataOrDefault(currentPosition.alt, 2, ' m');
         if ($('cap-direction')) $('cap-direction').textContent = dataOrDefault(currentPosition.cap, 1, '°');
-
+        if ($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = `Signal OK (Acc: ${dataOrDefault(currentPosition.acc, 1)} m)`;
 
         // --- AFFICHAGE PHYSIQUE & RELATIVITÉ ---
         const mach = currentPosition.spd / currentSpeedOfSound;
@@ -498,6 +482,7 @@ const getMoonPhaseName = (phase) => {
         if ($('puissance-mecanique')) $('puissance-mecanique').textContent = dataOrDefault(dyn.mechanicalPower, 2, ' W');
         if ($('force-coriolis')) $('force-coriolis').textContent = dataOrDefault(dyn.corio_mag, 2, ' N');
         if ($('gravite-locale')) $('gravite-locale').textContent = dataOrDefault(G_ACC, 4, ' m/s²');
+        if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${dataOrDefault(currentSpeedOfSound, 4)} m/s (Cor.)`;
 
         // --- CARTE ---
         if (map && marker) {
@@ -548,7 +533,7 @@ const getMoonPhaseName = (phase) => {
             if (now && Math.floor(now.getTime() / 1000) % 300 === 0) {
                  syncH();
             }
-
+            
             // 3. Mise à jour Météo et Polluants
             if (!isGpsPaused) {
                 const weatherData = await fetchWeatherAndPollutants(currentLat, currentLon);
@@ -558,7 +543,7 @@ const getMoonPhaseName = (phase) => {
                     lastT_K = weatherData.tempK;
                     lastP_hPa = weatherData.pressure_hPa;
 
-                    const bioSim = calculateBioSVT(weatherData.tempC, currentPosition.alt, weatherData.humidity_perc, weatherData.pressure_hPa * 100, astroData.sunAltitudeRad);
+                    const bioSim = calculateBioSVT(weatherData.tempC, weatherData.humidity_perc, weatherData.pressure_hPa * 100, astroData.sunAltitudeRad);
 
                     // Mise à jour Météo
                     if ($('statut-meteo')) $('statut-meteo').textContent = `ACTIF`;
@@ -567,11 +552,10 @@ const getMoonPhaseName = (phase) => {
                     if ($('humidite-relative')) $('humidite-relative').textContent = `${dataOrDefault(weatherData.humidity_perc, 0)} %`;
                     if ($('densite-air')) $('densite-air').textContent = `${dataOrDefault(weatherData.air_density, 3)} kg/m³`;
                     if ($('point-rosee')) $('point-rosee').textContent = `${dataOrDefault(weatherData.dewPoint, 1)} °C`;
-                    if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${dataOrDefault(currentSpeedOfSound, 4)} m/s (Cor.)`;
 
                     // Mise à jour Bio/SVT
                     if ($('humidite-absolue-sim')) $('humidite-absolue-sim').textContent = dataOrDefault(bioSim.absoluteHumidity * 1000, 2, ' g/m³');
-                    if ($('taux-photosynthese-sim')) $('taux-photosynthèse-sim').textContent = dataOrDefault(bioSim.photosynthesisRate, 2, ' µmol/m²/s');
+                    if ($('taux-photosynthese-sim')) $('taux-photosynthese-sim').textContent = dataOrDefault(bioSim.photosynthesisRate, 2, ' µmol/m²/s');
 
                     // Mise à jour Polluants
                     if ($('no2')) $('no2').textContent = dataOrDefault(weatherData.pollutants.NO2, 1, ' µg/m³');
@@ -581,14 +565,13 @@ const getMoonPhaseName = (phase) => {
 
                 } else {
                     if ($('statut-meteo')) $('statut-meteo').textContent = `INACTIF (Échec API)`;
-                    if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${dataOrDefault(currentSpeedOfSound, 4)} m/s (Défaut)`;
                 }
             }
 
             // 4. Mise à jour Horloge & Temps écoulé
             if (now) {
                 const elapsedTime = (Date.now() - window.appStartTime) / 1000;
-                if ($('temps-ecoule')) $('temps-ecoule').textContent = `${dataOrDefault(elapsedTime, 2, ' s')}`;
+                if ($('temps-ecoule-session')) $('temps-ecoule-session').textContent = `${dataOrDefault(elapsedTime, 2, ' s')}`;
             }
 
         }, DOM_SLOW_UPDATE_MS);
@@ -598,7 +581,7 @@ const getMoonPhaseName = (phase) => {
     document.addEventListener('DOMContentLoaded', () => {
 
         // Initialisation des valeurs fixes (constantes)
-        if ($('vitesse-lumiere')) $('vitesse-lumiere').textContent = `${C_L} m/s`;
+        if ($('vitesse-lumiere')) $('vitesse-lumiere').textContent = `${dataOrDefault(C_L, 0)} m/s`;
         if ($('gravitation-universelle')) $('gravitation-universelle').textContent = dataOrDefaultExp(G_U, 5, ' m³/kg/s²');
         if ($('gravite-base')) $('gravite-base').textContent = `${dataOrDefault(G_ACC, 4)} m/s²`;
         if ($('masse-display')) $('masse-display').textContent = `${dataOrDefault(currentMass, 3)} kg`;
@@ -628,7 +611,7 @@ const getMoonPhaseName = (phase) => {
                 window.appStartTime = Date.now();
                 if ($('distance-totale-3d')) $('distance-totale-3d').textContent = `0,000 km | 0,00 m`;
                 if ($('vitesse-max')) $('vitesse-max').textContent = `0,0 km/h`;
-                if ($('temps-ecoule')) $('temps-ecoule').textContent = `0,00 s`;
+                if ($('temps-ecoule-session')) $('temps-ecoule-session').textContent = `0,00 s`;
             });
         }
 
@@ -642,7 +625,6 @@ const getMoonPhaseName = (phase) => {
         if ($('env-facteur-select')) {
             $('env-facteur-select').addEventListener('change', (e) => {
                 selectedEnvironment = e.target.value;
-                const factor = ENVIRONMENT_FACTORS[selectedEnvironment].MULT;
                 // Le facteur d'environnement peut être utilisé pour pondérer le bruit de l'UKF (R)
             });
         }
@@ -669,7 +651,7 @@ const getMoonPhaseName = (phase) => {
             $('mode-nether-toggle').addEventListener('click', () => {
                 netherMode = !netherMode;
                 $('mode-nether-toggle').textContent = `Mode Nether: ${netherMode ? 'ACTIVÉ (1:8)' : 'DÉSACTIVÉ (1:1)'}`;
-                if ($('rapport-distance')) $('rapport-distance').textContent = `Rapport Distance: SURFACE (${netherMode ? '8,000' : '1,000'})`;
+                if ($('rapport-distance-surface')) $('rapport-distance-surface').textContent = `Rapport Distance: SURFACE (${netherMode ? '8,000' : '1,000'})`;
             });
         }
 
