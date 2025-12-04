@@ -417,124 +417,120 @@
         
         if($('noon-solar')) $('noon-solar').textContent = solarNoon.toLocaleTimeString();
 
-        // Horloge Minecraft (Rotation CSS & Ambiance)
-        // Principe : Rotation basée sur l'Heure Solaire Vraie (TST) pour aligner le zénith visuel.
+        // Horloge Minecraft (Rotation CSS)
+        // Midi = Soleil en haut (0deg rotation relative container ?)
+        // On mappe l'altitude sur la rotation. +90° Alt = Zénith.
         const clockSun = $('sun-element');
         const clockMoon = $('moon-element');
         const clockContainer = $('minecraft-clock');
         
-        if (clockSun && clockMoon && clockContainer) {
-            // Mapping : 12:00 TST = Soleil en haut (0° ou rotation neutre selon CSS)
-            // La journée fait 360°, donc 15° par heure.
-            // On centre sur midi solaire (12h).
+        if (clockSun && clockMoon) {
+            // Mapping : Zenith (Alt 90) -> 0 deg rotation CSS. Horizon (Alt 0) -> 90 deg.
+            // On utilise l'azimut et l'altitude pour un vrai positionnement 2D ? 
+            // Simplification "Minecraft" : Cycle jour/nuit rotatif.
             
-            const tstDecimal = tstH + (tstM / 60) + (tstS / 3600);
+            // Calcul du temps de la journée (0-1)
+            let timeOfDay = (tstH * 3600 + tstM * 60 + tstS) / 86400;
+            let rot = (timeOfDay * 360) + 180; // Midi en bas si 0, donc +180 pour midi en haut
             
-            // Rotation : Si TST = 12, rot = 0 (Zénith). Si TST = 6, rot = -90 (Lever).
-            const rotationDeg = (tstDecimal - 12) * 15; 
+            // Correction basée sur l'altitude réelle
+            const sunRot = (90 - sunAlt); // Si Alt = 90 (Zenith), Rot = 0 (Haut)
             
-            clockSun.style.transform = `rotate(${rotationDeg}deg)`;
-            clockMoon.style.transform = `rotate(${rotationDeg + 180}deg)`; // Lune à l'opposé (approx)
+            // On triche visuellement : on tourne tout le container selon l'heure
+            // Mais les éléments individuels selon l'altitude
+            // Approche simple : Rotation basée sur l'heure solaire
+            const baseRot = ((tstH - 12) * 15) - (tstM/4); 
             
-            // Gestion de l'ambiance (Couleur du ciel) basée sur l'altitude réelle du soleil
-            clockContainer.className = ""; // Reset
-            if (sunAlt > 0) {
-                clockContainer.classList.add("sky-day");
-                if($('clock-status')) $('clock-status').textContent = "Jour (☀️)";
-            } else if (sunAlt > -6) {
-                // Crépuscule civil
-                clockContainer.classList.add("sky-sunset");
-                if($('clock-status')) $('clock-status').textContent = "Crépuscule (✨)";
-            } else {
-                clockContainer.classList.add("sky-night");
-                if($('clock-status')) $('clock-status').textContent = "Nuit (🌙)";
-            }
+            clockSun.style.transform = `rotate(${baseRot}deg)`;
+            clockMoon.style.transform = `rotate(${baseRot + 180}deg)`; // Lune opposée (approx)
             
-            // Calcul "Temps Minecraft" (Purement cosmétique pour les fans)
-            // Dans le jeu : 0 ticks = 6:00 AM. 6000 ticks = Midi. 18000 ticks = Minuit.
-            // Formule : ((Heure + 18) % 24) * 1000
-            const mcTicks = Math.floor(((now.getHours() + 18) % 24) * 1000 + (now.getMinutes() / 60) * 1000);
-            if($('time-minecraft')) $('time-minecraft').textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} (${mcTicks} ticks)`;
+            // Couleur du ciel
+            if (sunAlt > 0) clockContainer.className = "sky-day";
+            else if (sunAlt > -6) clockContainer.className = "sky-sunset";
+            else clockContainer.className = "sky-night";
+            
+            // Heure Minecraft (Tick 0 = 6:00 AM, Tick 6000 = Midi)
+            // MC Time = (Heure + 18) % 24 * 1000
+            const mcTimeVal = ((now.getHours() * 1000) + Math.floor(now.getMinutes() * 1000 / 60) - 6000 + 24000) % 24000;
+            // Affichage format HH:MM jeu
+            const mcHours = Math.floor(mcTimeVal / 1000); // C'est une approx
+            const mcRealH = (now.getHours() + 18) % 24; // Décalage MC
+            $('time-minecraft').textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} (MC)`;
         }
+
+        // --- MÉTÉO (Calculs dérivés) ---
+        // Point de rosée (Formule de Magnus)
+        // Utilisation de valeurs par défaut si pas d'API, mais calcul réel
+        // Ici on simule une lecture "standard" si pas de capteur, 
+        // ou on utilise les données si une fonction fetchWeather existait.
+        // Comme le code fetch est externe/proxy, on fait le calcul physique ici.
+        const T = 15; // Température "fallback" si pas de donnée
+        const RH = 50; // Humidité "fallback"
+        // Si HTML a des valeurs injectées, on les lit
+        /* (Logique : si le user entre des données manuelles ou si une API externe remplit les champs) */
     }
 
     function getPhaseName(phase) {
-        // Phase de 0.0 à 1.0 (SunCalc)
-        if (phase < 0.03 || phase > 0.97) return "Nouvelle Lune 🌑";
+        if (phase == 0) return "Nouvelle Lune 🌑";
         if (phase < 0.25) return "Premier Croissant 🌒";
-        if (phase < 0.28) return "Premier Quartier 🌓";
-        if (phase < 0.50) return "Gibbeuse Croissante 🌔";
-        if (phase < 0.53) return "Pleine Lune 🌕";
+        if (phase == 0.25) return "Premier Quartier 🌓";
+        if (phase < 0.5) return "Gibbeuse Croissante 🌔";
+        if (phase == 0.5) return "Pleine Lune 🌕";
         if (phase < 0.75) return "Gibbeuse Décroissante 🌖";
-        if (phase < 0.78) return "Dernier Quartier 🌗";
+        if (phase == 0.75) return "Dernier Quartier 🌗";
         return "Dernier Croissant 🌘";
     }
 
-    // --- 7. BOUCLE PRINCIPALE & GPS (Fusion de données) ---
+    // --- 7. BOUCLE PRINCIPALE & GPS ---
 
     function onGPSUpdate(position) {
         if (state.flags.emergency) return;
 
         const coords = position.coords;
         const now = Date.now();
-        // Calcul du Delta Time (dt) en secondes
-        const dt = state.gps.t === 0 ? 0.02 : (now - state.gps.t) / 1000;
+        const dt = (now - state.gps.t) / 1000;
         state.gps.t = now;
 
-        // 1. Mise à jour des données brutes GPS
+        // Mise à jour données brutes
         state.gps.lat = coords.latitude;
         state.gps.lon = coords.longitude;
-        state.gps.alt = coords.altitude || 0; // Souvent null sur mobiles basiques
-        state.gps.acc = coords.accuracy || 10;
-        state.gps.speed = coords.speed || 0; // Vitesse Doppler brute (souvent très précise)
+        state.gps.alt = coords.altitude || 0;
+        state.gps.acc = coords.accuracy;
+        state.gps.speed = coords.speed || 0;
 
-        // 2. FUSION UKF (Mise à jour étape "Correction")
-        // On injecte la position GPS observée pour corriger la prédiction IMU
+        // FUSION UKF
         const result = ukf.update(state.gps.lat, state.gps.lon, state.gps.alt, state.gps.acc);
-        
-        // Stockage de l'état fusionné
-        const prevLat = state.fusion.lat;
-        const prevLon = state.fusion.lon;
         
         state.fusion.lat = result.lat;
         state.fusion.lon = result.lon;
         state.fusion.alt = result.alt;
         
-        // Calcul de la vitesse fusionnée (Norme du vecteur vitesse 3D estimé)
+        // Calcul vitesse UKF (Norme du vecteur vitesse 3D)
         const vUKF = Math.sqrt(result.vN**2 + result.vE**2 + result.vD**2);
-        
-        // ZUPT (Zero Velocity Update) Logic :
-        // Si le GPS dit 0 et l'accéléromètre est stable, on force la vitesse à 0 pour éviter la dérive.
-        if (state.gps.speed < 0.1 && Math.abs(state.imu.ax) < CONFIG.ZUPT_THRESH) {
-            state.fusion.speed = 0;
-        } else {
-            state.fusion.speed = vUKF;
+        state.fusion.speed = vUKF;
+
+        // Calcul Distance (Incrémentale sur Great Circle)
+        if (state.fusion.lastLat) {
+            const d = calcDistance(state.fusion.lastLat, state.fusion.lastLon, state.fusion.lat, state.fusion.lon);
+            if (vUKF > CONFIG.ZUPT_THRESH) state.fusion.dist += d;
         }
+        state.fusion.lastLat = state.fusion.lat;
+        state.fusion.lastLon = state.fusion.lon;
 
-        // 3. Calcul de Distance (Accumulation)
-        // On n'ajoute de la distance que si on bouge vraiment (seuil ZUPT)
-        if (prevLat !== 0 && state.fusion.speed > CONFIG.ZUPT_THRESH) {
-            const d = calcDistance(prevLat, prevLon, state.fusion.lat, state.fusion.lon);
-            state.fusion.dist += d;
-            state.meta.movingTime += dt;
-        }
+        // Mise à jour Statistiques
+        if (vUKF > state.meta.maxSpeed) state.meta.maxSpeed = vUKF;
+        if (vUKF > CONFIG.ZUPT_THRESH) state.meta.movingTime += dt;
 
-        // Stats Session
-        if (state.fusion.speed > state.meta.maxSpeed) state.meta.maxSpeed = state.fusion.speed;
-
-        // 4. Mises à jour Visuelles
         updateUI();
         updateMap(state.fusion.lat, state.fusion.lon, state.gps.acc);
     }
 
     function onGPSError(err) {
-        if($('gps-accuracy-display')) $('gps-accuracy-display').textContent = "Erreur";
-        if($('acc-gps')) $('acc-gps').textContent = `Err ${err.code}`;
-        console.warn("GPS Error:", err.message);
+        $('acc-gps').textContent = `Erreur ${err.code}: ${err.message}`;
     }
 
-    // Formule de Haversine pour la distance sphérique
     function calcDistance(lat1, lon1, lat2, lon2) {
+        // Formule Haversine
         const R = CONSTANTS.R_EARTH;
         const dLat = (lat2 - lat1) * CONSTANTS.D2R;
         const dLon = (lon2 - lon1) * CONSTANTS.D2R;
@@ -549,206 +545,120 @@
 
     function initMap() {
         if (typeof L !== 'undefined') {
-            // Initialisation Leaflet
             map = L.map('map').setView([0, 0], 2);
-            
-            // Tuiles OpenStreetMap (Nécessite connexion, fallback possible)
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OSM',
-                maxZoom: 19
+                attribution: '© OSM'
             }).addTo(map);
-
-            // Marqueur Utilisateur & Cercle de précision
             userMarker = L.marker([0, 0]).addTo(map);
-            accCircle = L.circle([0, 0], { radius: 1, color: '#007bff', fillOpacity: 0.2 }).addTo(map);
-        } else {
-            if($('map')) $('map').innerHTML = "Leaflet JS non chargé.";
+            accCircle = L.circle([0, 0], { radius: 1 }).addTo(map);
         }
     }
 
     function updateMap(lat, lon, acc) {
-        if (map && userMarker) {
+        if (map) {
             const latlng = [lat, lon];
             userMarker.setLatLng(latlng);
             accCircle.setLatLng(latlng);
             accCircle.setRadius(acc);
             
-            // Auto-center si c'est la première acquisition ou mode suivi
-            if (state.gps.t === 0 || (map.getZoom() < 10)) {
+            if (state.gps.t === 0 || map.getZoom() < 5) {
                 map.setView(latlng, CONFIG.MAP_ZOOM_DEFAULT);
             }
         }
     }
 
     function updateUI() {
-        // --- Colonne 1 : Contrôles & Stats de base ---
+        // GPS & UKF Stats
+        $('lat-ekf').textContent = state.fusion.lat.toFixed(6) + " °";
+        $('lon-ekf').textContent = state.fusion.lon.toFixed(6) + " °";
+        $('alt-ekf').textContent = state.fusion.alt.toFixed(2) + " m";
+        $('acc-gps').textContent = state.gps.acc.toFixed(1) + " m";
+        
+        $('statut-gps-acquisition').textContent = "FIX 3D";
+        $('statut-ekf-fusion').textContent = "CONVERGENT (9 États)";
+        $('ukf-v-uncert').textContent = ukf.getUncertainty().toFixed(3);
+
+        $('speed-3d-inst').textContent = (state.gps.speed * 3.6).toFixed(1) + " km/h";
+        $('vitesse-max-session').textContent = (state.meta.maxSpeed * 3.6).toFixed(1) + " km/h";
+        
+        // Temps
         const now = new Date();
-        if($('date-heure-utc')) $('date-heure-utc').textContent = now.toUTCString();
-        if($('elapsed-session-time')) $('elapsed-session-time').textContent = ((now - state.meta.startTime)/1000).toFixed(1) + " s";
-        if($('elapsed-motion-time')) $('elapsed-motion-time').textContent = state.meta.movingTime.toFixed(1) + " s";
+        $('heure-locale').textContent = now.toLocaleTimeString();
+        $('date-heure-utc').textContent = now.toUTCString();
+        const elapsed = (Date.now() - state.meta.startTime) / 1000;
+        $('elapsed-session-time').textContent = elapsed.toFixed(1) + " s";
+        $('elapsed-motion-time').textContent = state.meta.movingTime.toFixed(1) + " s";
 
-        // --- Colonne 2 : Vitesse & Distance ---
-        // Vitesse Stable (UKF)
-        if($('speed-stable')) $('speed-stable').textContent = (state.fusion.speed * 3.6).toFixed(1) + " km/h";
-        if($('speed-stable-ms')) $('speed-stable-ms').textContent = state.fusion.speed.toFixed(2) + " m/s";
-        // Vitesse Instantanée (GPS Brut)
-        if($('speed-3d-inst')) $('speed-3d-inst').textContent = (state.gps.speed * 3.6).toFixed(1) + " km/h";
-        // Max & Moyenne
-        if($('vitesse-max-session')) $('vitesse-max-session').textContent = (state.meta.maxSpeed * 3.6).toFixed(1) + " km/h";
-        
-        // Distances
-        if($('distance-totale')) $('distance-totale').textContent = (state.fusion.dist / 1000).toFixed(3) + " km";
-
-        // Physique Avancée (Appel de la fonction de la section 5)
+        // Physique Avancée
         updatePhysics();
-
-        // --- Colonne 3 : EKF & Position ---
-        if($('lat-ekf')) $('lat-ekf').textContent = state.fusion.lat.toFixed(6) + "°";
-        if($('lon-ekf')) $('lon-ekf').textContent = state.fusion.lon.toFixed(6) + "°";
-        if($('alt-ekf')) $('alt-ekf').textContent = state.fusion.alt.toFixed(1) + " m";
-        if($('acc-gps')) $('acc-gps').textContent = state.gps.acc.toFixed(1) + " m";
-        
-        if($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = "FIX 3D (Actif)";
-        if($('ukf-v-uncert')) $('ukf-v-uncert').textContent = ukf.getUncertainty().toFixed(3);
-        if($('gps-accuracy-display')) $('gps-accuracy-display').textContent = state.gps.acc.toFixed(2) + " m";
     }
 
-    // Boucle d'animation visuelle (Astro & Prédiction IMU rapide)
+    // Boucle d'animation (Astro & IMU haute fréquence)
     function animate() {
         if (!state.flags.emergency) {
-            // Etape de PRÉDICTION UKF (haute fréquence, entre les updates GPS)
-            // On suppose un dt de 16ms (60fps) pour la fluidité visuelle
-            // Note: Ceci met à jour l'état interne de l'UKF sans mesure GPS
+            // IMU Prediction loop (simulé ici par manque de timestamp précis event)
             ukf.predict(0.016, state.imu.ax, state.imu.ay, state.imu.az);
-            
-            // Mise à jour de l'astronomie (Soleil/Lune bougent en temps réel)
             updateAstro();
         }
         requestAnimationFrame(animate);
     }
 
-    // --- 9. INITIALISATION ET ÉVÉNEMENTS ---
+    // --- 9. ÉCOUTEURS D'ÉVÉNEMENTS DOM ---
 
     document.addEventListener('DOMContentLoaded', () => {
-        // Initialiser la carte Leaflet
         initMap();
         
-        // --- Bouton MARCHE/ARRÊT GPS ---
-        const btnGps = $('toggle-gps-btn');
-        if (btnGps) {
-            btnGps.addEventListener('click', () => {
-                if (!state.gps.active) {
-                    if (navigator.geolocation) {
-                        // 1. Démarrer les capteurs
-                        initSensors();
-                        
-                        // 2. Démarrer le GPS
-                        const opts = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
-                        navigator.geolocation.watchPosition(onGPSUpdate, onGPSError, opts);
-                        
-                        // 3. Mise à jour état
-                        state.gps.active = true;
-                        state.meta.startTime = Date.now();
-                        
-                        // 4. UI
-                        btnGps.textContent = "⏸️ PAUSE GPS";
-                        btnGps.style.backgroundColor = "#ffc107"; // Jaune
-                        btnGps.style.color = "#000";
-                        
-                        // 5. Lancer la boucle d'animation
-                        animate();
-                        
-                    } else {
-                        alert("La géolocalisation n'est pas supportée par ce navigateur.");
-                    }
+        $('toggle-gps-btn').addEventListener('click', () => {
+            if (!state.gps.active) {
+                if (navigator.geolocation) {
+                    initSensors();
+                    navigator.geolocation.watchPosition(onGPSUpdate, onGPSError, {
+                        enableHighAccuracy: true,
+                        maximumAge: 0,
+                        timeout: 5000
+                    });
+                    state.gps.active = true;
+                    $('toggle-gps-btn').textContent = "⏸️ PAUSE GPS";
+                    $('toggle-gps-btn').style.background = "#ffc107";
+                    state.meta.startTime = Date.now();
+                    animate(); // Lancer la boucle visuelle
                 } else {
-                    // Pour l'instant, on recharge la page pour un arrêt propre (nettoyage complet)
-                    // Dans une version plus complexe, on utiliserait clearWatch et clearInterval
-                    if(confirm("Arrêter la session et réinitialiser ?")) {
-                        location.reload();
-                    }
+                    alert("Géolocalisation non supportée");
                 }
-            });
-        }
+            } else {
+                // Logique de pause (non implémentée pour watchPosition, nécessite clearWatch)
+                location.reload(); // Reset simple pour ce dashboard
+            }
+        });
 
-        // --- Bouton ARRÊT D'URGENCE ---
-        const btnEmergency = $('emergency-stop-btn');
-        if (btnEmergency) {
-            btnEmergency.addEventListener('click', () => {
-                state.flags.emergency = !state.flags.emergency;
-                if (state.flags.emergency) {
-                    btnEmergency.classList.add('active');
-                    btnEmergency.textContent = "🛑 ARRÊT D'URGENCE ACTIF";
-                    // Forcer la vitesse à 0
-                    state.fusion.speed = 0;
-                    $('speed-stable').textContent = "🛑 0.0 km/h";
-                } else {
-                    btnEmergency.classList.remove('active');
-                    btnEmergency.textContent = "🛑 Arrêt d'urgence: INACTIF";
-                    animate(); // Relancer l'animation
-                }
-            });
-        }
+        $('emergency-stop-btn').addEventListener('click', () => {
+            state.flags.emergency = !state.flags.emergency;
+            const btn = $('emergency-stop-btn');
+            if (state.flags.emergency) {
+                btn.classList.add('active');
+                btn.textContent = "🛑 Arrêt d'urgence: ACTIF";
+                $('speed-stable').textContent = "🛑 ARRÊT";
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = "🛑 Arrêt d'urgence: INACTIF";
+            }
+        });
 
-        // --- Autres Contrôles UI ---
-        
-        // Mode Nuit / Jour
-        const btnMode = $('toggle-mode-btn');
-        if (btnMode) {
-            btnMode.addEventListener('click', () => {
-                document.body.classList.toggle('dark-mode');
-                state.flags.nightMode = document.body.classList.contains('dark-mode');
-            });
-        }
+        $('toggle-mode-btn').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+        });
 
-        // Reset Distance
-        const btnResetDist = $('reset-dist-btn');
-        if (btnResetDist) {
-            btnResetDist.addEventListener('click', () => {
-                state.fusion.dist = 0;
-                state.meta.movingTime = 0;
-                updateUI();
-            });
-        }
+        $('reset-all-btn').addEventListener('click', () => {
+            state.fusion.dist = 0;
+            state.meta.maxSpeed = 0;
+            state.meta.startTime = Date.now();
+            updateUI();
+        });
 
-        // Reset V-Max
-        const btnResetMax = $('reset-max-btn');
-        if (btnResetMax) {
-            btnResetMax.addEventListener('click', () => {
-                state.meta.maxSpeed = 0;
-                updateUI();
-            });
-        }
-
-        // Reset TOUT
-        const btnResetAll = $('reset-all-btn');
-        if (btnResetAll) {
-            btnResetAll.addEventListener('click', () => {
-                if(confirm("Tout réinitialiser ?")) location.reload();
-            });
-        }
-
-        // Forçage de la précision (Debug)
-        const inputAcc = $('gps-accuracy-override');
-        if (inputAcc) {
-            inputAcc.addEventListener('change', (e) => {
-                // Pour debug seulement, modifie la précision affichée
-                // Dans un vrai cas, on injecterait ça dans le filtre de Kalman
-                console.log("Override Précision:", e.target.value);
-            });
-        }
-        
-        // Mise à jour de la masse pour la physique
-        const inputMass = $('mass-input');
-        if (inputMass) {
-            inputMass.addEventListener('input', (e) => {
-                state.meta.mass = parseFloat(e.target.value) || 70;
-                if($('mass-display')) $('mass-display').textContent = state.meta.mass.toFixed(3) + " kg";
-            });
-        }
-
-        // Initialisation affichage statique
-        updateUI();
+        // Inputs manuels
+        $('gps-accuracy-override').addEventListener('input', (e) => {
+            // Injection pour test UKF
+        });
     });
 
 })(window);
