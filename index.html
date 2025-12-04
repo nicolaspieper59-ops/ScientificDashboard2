@@ -141,7 +141,7 @@
                 <div class="data-point"><span>Heure Minecraft</span><span id="time-minecraft">00:00</span></div>
                 <hr>
                 <div class="controls-grid" role="group">
-                    <button id="toggle-gps-btn" aria-label="Démarrer ou mettre en pause le GPS">▶️ MARCHE GPS</button>
+                    <button id="toggle-gps-btn" class="control-btn accent">▶️ MARCHE GPS</button>
                     <select id="freq-select" aria-label="Fréquence GPS">
                         <option value="HIGH_FREQ">Haute Fréquence</option>
                         <option value="LOW_FREQ">Basse Fréquence</option>
@@ -414,11 +414,12 @@
     </main>
     
 <script src="math.min.js"></script> 
-    <script src="turf.min.js"></script>
+    
     
     <script src="leaflet.js"></script>
 
-    <script src="suncalc.js"></script>  
+    <script src="suncalc.js"></script>
+    <script src="turf.min.js"></script>
     <script src="lib/ephem/vsop2013.js"></script> 
     <script src="lib/astro.js"></script>
     
