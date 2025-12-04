@@ -467,4 +467,45 @@ const getCDate = (servH, locH) => {
 
         // Gestionnaire de la rotation (Rayon et Vitesse Angulaire)
         const updateRotation = () => {
+            rotationRadius = parseFloat($('rayon-rotation').value) || 100.0;
+            angularVelocity = parseFloat($('vitesse-angulaire').value) || 0.0;
+            if (currentCelestialBody === 'Rotation') {
+                const { G_ACC_NEW } = updateCelestialBody('Rotation', currentPosition.alt, rotationRadius, angularVelocity);
+                if ($('gravite-base')) $('gravite-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+            }
+        };
+        if ($('rayon-rotation')) $('rayon-rotation').addEventListener('input', updateRotation);
+        if ($('vitesse-angulaire')) $('vitesse-angulaire').addEventListener('input', updateRotation);
+
+        // Mise à jour du corps céleste
+        if ($('celestial-body-select')) {
+            $('celestial-body-select').addEventListener('change', (e) => {
+                currentCelestialBody = e.target.value;
+                const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, currentPosition.alt, rotationRadius, angularVelocity);
+                if ($('gravite-base')) $('gravite-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+            });
+        }
+
+        // Mise à jour de la masse
+        if ($('masse-objet')) {
+            $('masse-objet').addEventListener('input', (e) => {
+                currentMass = parseFloat(e.target.value) || 70.0;
+                if ($('masse-display')) $('masse-display').textContent = `${currentMass.toFixed(3)} kg`;
+            });
+        }
+
+        // --- DÉMARRAGE DU SYSTÈME ---
+        // Initialisation de l'affichage par défaut
+        if ($('vitesse-lumiere')) $('vitesse-lumiere').textContent = `${C_L} m/s`;
+        if ($('gravitation-universelle')) $('gravitation-universelle').textContent = dataOrDefaultExp(G_U, 5, ' m³/kg/s²');
+        if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${currentSpeedOfSound.toFixed(2)} m/s (ISA)`;
+        if ($('gravite-base')) $('gravite-base').textContent = `${G_ACC.toFixed(4)} m/s²`;
+
+        syncH().finally(() => {
+            startGPS();
+            startSlowLoop();
+        });
+
+    }); // Fin de DOMContentLoaded
+})(window);
                           
