@@ -131,13 +131,28 @@ let lastMapUpdate = 0;
                 lat: 43.296, lon: 5.37, alt: 0, speed: 0, vD: 0, 
                 kUncert: UKF_R_MAX, kAltUncert: 10 
             };
-            // On simule P si math.js est chargé, sinon objet simple
-            this.P = (typeof math !== 'undefined') ? math.identity(21).map(x => math.multiply(x, UKF_R_MAX)) : {}; 
-        }
+            this.P = {}; // Par défaut un objet simple (Matrice de Covariance)
+            
+            // CORRECTION CRITIQUE (ROBUSTE) : Initialisation de la matrice P,
+            // évitant les problèmes de version/type d'objet (ex: Matrix vs Array) de math.js.
+            if (typeof math !== 'undefined' && typeof math.identity === 'function') {
+                try {
+                    // Utilise math.multiply pour l'initialisation de la matrice (plus fiable)
+                    let P_init = math.identity(21);
+                    this.P = math.multiply(P_init, UKF_R_MAX);
+                } catch (e) {
+                    // Message d'avertissement en cas d'échec de la librairie math.js
+                    console.warn("Échec de l'initialisation de la matrice P. Le filtre EKF/UKF ne fonctionnera pas correctement.", e);
+                    this.P = {}; // Assure que le script ne plante pas
+                }
+            }
+        } // <-- ACCCOLADE DE FERMETURE DU CONSTRUCTOR (Doit être ici)
+        
         predict(imuReadings, dt) {
             if (dt > 0) this.state.speed += imuReadings.accel[0] * dt;
             this.state.speed = Math.max(0, this.state.speed);
         }
+        
         update(gpsCoords, R_dyn) {
             this.state.lat = gpsCoords.latitude;
             this.state.lon = gpsCoords.longitude;
@@ -145,8 +160,9 @@ let lastMapUpdate = 0;
             this.state.speed = gpsCoords.speed || this.state.speed;
             this.state.kUncert = Math.max(1, this.state.kUncert - R_dyn * 0.1); 
         }
+        
         getState() { return this.state; }
-    }
+    } // <-- ACCCOLADE DE FERMETURE DE LA CLASSE ProfessionalUKF
 
     // --- PHYSIQUE ---
     const getWGS84Gravity = (latDeg, altM) => {
