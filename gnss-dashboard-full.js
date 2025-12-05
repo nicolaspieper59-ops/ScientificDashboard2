@@ -1,7 +1,8 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// CORRIGÉ POUR L'EXÉCUTION : Fichier unique avec stubs pour les fonctions externes.
-// Dépendances : math.min.js, leaflet.js, suncalc.js, turf.min.js DOIVENT être chargées AVANT ce script.
+// CODE FINAL, NETTOYÉ ET BASÉ SUR LES LIBRAIRIES EXTERNES
+// Dépendances critiques (DOIVENT être chargées dans l'HTML AVANT ce script) : 
+// math.min.js, leaflet.js, suncalc.js, turf.min.js, lib/astro.js
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -32,17 +33,12 @@ const getMinecraftTime = (date) => {
     return `${mcH.toString().padStart(2, '0')}:${mcM.toString().padStart(2, '0')}`;
 };
 
-// --- FONCTIONS EXTERNES STUBS (pour éviter les crashs si lib/astro.js est absent) ---
-const getSolarTime = (date, lon) => ({ MST: 'N/A', TST: 'N/A', EOT: '0.00', DateMST: null, DateTST: null, ECL_LONG: 'N/A' });
-const getTSLV = (date, lon) => 'N/A';
-const getMoonPhaseName = (phase) => phase < 0.1 || phase > 0.9 ? 'Nouvelle' : (phase < 0.5 ? 'Croissant' : 'Décroissant');
-
 // --- CONSTANTES CRITIQUES ---
 const C_L = 299792458; // Vitesse de la lumière (m/s)
 const G_U = 6.67430e-11; // Constante gravitationnelle universelle
-const R2D = 180 / Math.PI; // Radians to Degrees
-const D2R = Math.PI / 180; // Degrees to Radians
-const KMH_MS = 3.6; // m/s to km/h
+const R2D = 180 / Math.PI; 
+const D2R = Math.PI / 180; 
+const KMH_MS = 3.6; 
 const MIN_SPD = 0.5; 
 const MAX_ACC = 50; 
 const IMU_UPDATE_RATE_MS = 20; 
@@ -53,20 +49,14 @@ const MIN_DT = 0.005;
 const TEMP_SEA_LEVEL_K = 288.15; 
 const RHO_SEA_LEVEL = 1.225; 
 const BARO_ALT_REF_HPA = 1013.25; 
-let currentAirDensity = RHO_SEA_LEVEL;
-let currentSpeedOfSound = 340.29; 
-let lastT_K = TEMP_SEA_LEVEL_K;
-let lastP_hPa = BARO_ALT_REF_HPA;
 const UKF_R_MAX = 1000.0; 
 const R_ALT_MIN = 1.0; 
 const ZUPT_RAW_THRESHOLD = 0.3; 
 const ZUPT_ACCEL_THRESHOLD = 0.1; 
-
 const GPS_OPTS = {
     HIGH_FREQ: { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 },
     LOW_FREQ: { enableHighAccuracy: false, maximumAge: 30000, timeout: 60000 }
 };
-
 const ENVIRONMENT_FACTORS = {
     NORMAL: { R_MULT: 1.0, DISPLAY: 'Normal' },
     CITY: { R_MULT: 3.0, DISPLAY: 'Urbain Droit' },
@@ -75,7 +65,11 @@ const ENVIRONMENT_FACTORS = {
     GROTTO: { R_MULT: 100.0, DISPLAY: 'Grotte/No-GPS' }, 
 };
 
-// --- ÉTAT GLOBAL ET VARIABLES D'INSTANCE ---
+// --- ÉTAT GLOBAL ET VARIABLES D'INSTANCE (accessibles dans l'IIFE) ---
+let currentAirDensity = RHO_SEA_LEVEL;
+let currentSpeedOfSound = 340.29; 
+let lastT_K = TEMP_SEA_LEVEL_K;
+let lastP_hPa = BARO_ALT_REF_HPA;
 let currentUKFReactivity = 'AUTOMATIC'; 
 let G_ACC = 9.80665; 
 let R_ALT_CENTER_REF = 6378137.0; 
@@ -103,7 +97,6 @@ let emergencyStopActive = false;
 let distanceRatioMode = false; 
 let R_FACTOR_RATIO = 1.0; 
 let currentMass = 70.0; 
-let sunAltitudeRad = 0; 
 
 let accel = { x: 0, y: 0, z: 0 };
 let gyro = { x: 0, y: 0, z: 0 };
@@ -120,12 +113,19 @@ let lastMapUpdate = 0;
 // DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
 // =================================================================
 ((window) => {
+    console.log("Démarrage du GNSS SpaceTime Dashboard.");
 
     // Vérification des dépendances critiques
     if (typeof math === 'undefined' || typeof L === 'undefined' || typeof SunCalc === 'undefined' || typeof turf === 'undefined') {
-        // Cette erreur s'affiche si les scripts .js ne sont pas chargés AVANT ce fichier
-        console.error("Dépendances manquantes. Veuillez vérifier le chargement de math.js, leaflet.js, suncalc.js et turf.js.");
-        document.body.innerHTML = "<h1>Erreur: Dépendances manquantes.</h1><p>Le tableau de bord ne peut pas s'exécuter. Vérifiez la console pour plus de détails.</p>";
+        const missing = [];
+        if (typeof math === 'undefined') missing.push('math.min.js');
+        if (typeof L === 'undefined') missing.push('leaflet.js');
+        if (typeof SunCalc === 'undefined') missing.push('suncalc.js');
+        if (typeof turf === 'undefined') missing.push('turf.min.js');
+        
+        const errorMessage = `ERREUR CRITIQUE: Dépendances manquantes : ${missing.join(', ')}. Vérifiez l'ordre et les chemins dans votre HTML.`;
+        console.error(errorMessage);
+        document.body.innerHTML = `<h1>${errorMessage}</h1><p>Le tableau de bord ne peut pas s'exécuter.</p>`;
         return;
     }
     
@@ -139,12 +139,10 @@ let lastMapUpdate = 0;
             this.P = math.identity(21).map(x => math.multiply(x, UKF_R_MAX)); 
         }
         predict(imuReadings, dt) {
-            // Logique de PREDICTION UKF (Propagation du modèle IMU)
             if (dt > 0) this.state.speed += imuReadings.accel[0] * dt;
             this.state.speed = Math.max(0, this.state.speed);
         }
         update(gpsCoords, R_dyn) {
-            // Logique de CORRECTION UKF (Fusion des mesures GPS)
             this.state.lat = gpsCoords.latitude;
             this.state.lon = gpsCoords.longitude;
             this.state.alt = gpsCoords.altitude || this.state.alt;
@@ -299,8 +297,7 @@ let lastMapUpdate = 0;
         if ($('imu-status') && $('imu-status').textContent !== 'Actif (Motion)') {
             $('imu-status').textContent = 'Actif (Orientation)';
         }
-        // Mise à jour de la boussole
-        if (event.alpha !== null) {
+        if (event.alpha !== null && $('compass-needle')) {
             $('compass-heading').textContent = dataOrDefault(event.alpha, 1) + ' °';
             $('compass-needle').style.transform = `rotate(${-event.alpha}deg)`;
         }
@@ -309,7 +306,6 @@ let lastMapUpdate = 0;
     const startIMU = () => {
         if (window.DeviceMotionEvent) window.addEventListener('devicemotion', handleDeviceMotion);
         if (window.DeviceOrientationEvent) window.addEventListener('deviceorientation', handleDeviceOrientation);
-        // Logique de demande de permission (iOS 13+):
         if (typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission().then(permissionState => {
                 if (permissionState !== 'granted') $('imu-status').textContent = 'Inactif (Permission)';
@@ -339,7 +335,7 @@ let lastMapUpdate = 0;
     // --- GESTION MÉTÉO (Simulation d'API) ---
     const fetchWeather = async (lat, lon) => {
         try {
-            // Simuler un appel API réussi
+            // Simulation d'un appel API réussi (pour la physique)
             const data = { tempC: 15.0, pressure_hPa: 1013.25, humidity_perc: 60.0,
                 polluants: { NO2: 50, PM25: 15, PM10: 25, O3: 80 }
             };
@@ -473,8 +469,6 @@ let lastMapUpdate = 0;
             if (sTime) { timeTotal = (Date.now() - sTime) / 1000; }
             if (spd3D_raw_gps * KMH_MS > maxSpd) maxSpd = spd3D_raw_gps * KMH_MS; 
             
-            // ... suite du code (dans la fonction startFastLoop)
-
             // GESTION DE L'ÉNERGIE GPS AUTOMATIQUE
             if (kSpd < MIN_SPD * 2 && currentGPSMode === 'HIGH_FREQ' && !emergencyStopActive) {
                 if (gpsStandbyTimeoutID === null) gpsStandbyTimeoutID = setTimeout(() => startGPS('LOW_FREQ'), STANDBY_TIMEOUT_MS);
@@ -487,100 +481,101 @@ let lastMapUpdate = 0;
             // --- 4. MISE À JOUR DU DOM (Rapide) ---
             
             // Temps
-            $('elapsed-time').textContent = dataOrDefault(timeTotal, 2, ' s');
-            $('time-moving').textContent = dataOrDefault(timeMoving, 2, ' s');
+            if ($('elapsed-time')) $('elapsed-time').textContent = dataOrDefault(timeTotal, 2, ' s');
+            if ($('time-moving')) $('time-moving').textContent = dataOrDefault(timeMoving, 2, ' s');
             
             // Vitesse
-            $('speed-stable').textContent = dataOrDefault(sSpdFE * KMH_MS, 2);
-            $('speed-stable-ms').textContent = dataOrDefault(sSpdFE, 3, ' m/s');
-            $('speed-stable-kms').textContent = dataOrDefaultExp(sSpdFE / 1000, 3, ' km/s');
-            $('speed-3d-inst').textContent = dataOrDefault(spd3D_raw_gps * KMH_MS, 2, ' km/h');
-            $('speed-raw-ms').textContent = dataOrDefault(spd3D_raw_gps, 3, ' m/s');
-            $('speed-max').textContent = dataOrDefault(maxSpd, 2, ' km/h');
-            $('speed-avg-moving').textContent = timeMoving > 1 ? dataOrDefault((distM / timeMoving) * KMH_MS, 2, ' km/h') : '0.00 km/h';
-            $('speed-avg-total').textContent = timeTotal > 1 ? dataOrDefault((distM / timeTotal) * KMH_MS, 2, ' km/h') : '0.00 km/h';
+            if ($('speed-stable')) $('speed-stable').textContent = dataOrDefault(sSpdFE * KMH_MS, 2);
+            if ($('speed-stable-ms')) $('speed-stable-ms').textContent = dataOrDefault(sSpdFE, 3, ' m/s');
+            if ($('speed-stable-kms')) $('speed-stable-kms').textContent = dataOrDefaultExp(sSpdFE / 1000, 3, ' km/s');
+            if ($('speed-3d-inst')) $('speed-3d-inst').textContent = dataOrDefault(spd3D_raw_gps * KMH_MS, 2, ' km/h');
+            if ($('speed-raw-ms')) $('speed-raw-ms').textContent = dataOrDefault(spd3D_raw_gps, 3, ' m/s');
+            if ($('speed-max')) $('speed-max').textContent = dataOrDefault(maxSpd, 2, ' km/h');
+            if ($('speed-avg-moving')) $('speed-avg-moving').textContent = timeMoving > 1 ? dataOrDefault((distM / timeMoving) * KMH_MS, 2, ' km/h') : '0.00 km/h';
+            if ($('speed-avg-total')) $('speed-avg-total').textContent = timeTotal > 1 ? dataOrDefault((distM / timeTotal) * KMH_MS, 2, ' km/h') : '0.00 km/h';
 
             // Physique & Relativité
-            $('speed-of-sound-calc').textContent = dataOrDefault(advancedPhysics.speedOfSoundLocal, 2, ' m/s');
-            $('perc-speed-sound').textContent = dataOrDefault(advancedPhysics.machNumber * 100, 2, ' %');
-            $('mach-number').textContent = dataOrDefault(advancedPhysics.machNumber, 4);
-            $('perc-speed-c').textContent = dataOrDefaultExp(sSpdFE / C_L * 100, 2, ' %');
-            $('lorentz-factor').textContent = dataOrDefault(advancedPhysics.lorentzFactor, 8);
-            $('time-dilation-v').textContent = dataOrDefault(advancedPhysics.timeDilationSpeed, 3, ' ns/j');
-            $('time-dilation-g').textContent = dataOrDefault(advancedPhysics.gravitationalDilation, 3, ' ns/j');
-            $('energy-relativistic').textContent = dataOrDefaultExp(advancedPhysics.energyRelativistic, 3, ' J');
-            $('energy-rest-mass').textContent = dataOrDefaultExp(advancedPhysics.E0, 3, ' J');
-            $('momentum').textContent = dataOrDefault(advancedPhysics.momentum, 2, ' kg·m/s');
-            $('Rs-object').textContent = dataOrDefaultExp(advancedPhysics.Rs_object, 3, ' m');
+            if ($('speed-of-sound-calc')) $('speed-of-sound-calc').textContent = dataOrDefault(advancedPhysics.speedOfSoundLocal, 2, ' m/s');
+            if ($('perc-speed-sound')) $('perc-speed-sound').textContent = dataOrDefault(advancedPhysics.machNumber * 100, 2, ' %');
+            if ($('mach-number')) $('mach-number').textContent = dataOrDefault(advancedPhysics.machNumber, 4);
+            if ($('perc-speed-c')) $('perc-speed-c').textContent = dataOrDefaultExp(sSpdFE / C_L * 100, 2, ' %');
+            if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(advancedPhysics.lorentzFactor, 8);
+            if ($('time-dilation-v')) $('time-dilation-v').textContent = dataOrDefault(advancedPhysics.timeDilationSpeed, 3, ' ns/j');
+            if ($('time-dilation-g')) $('time-dilation-g').textContent = dataOrDefault(advancedPhysics.gravitationalDilation, 3, ' ns/j');
+            if ($('energy-relativistic')) $('energy-relativistic').textContent = dataOrDefaultExp(advancedPhysics.energyRelativistic, 3, ' J');
+            if ($('energy-rest-mass')) $('energy-rest-mass').textContent = dataOrDefaultExp(advancedPhysics.E0, 3, ' J');
+            if ($('momentum')) $('momentum').textContent = dataOrDefault(advancedPhysics.momentum, 2, ' kg·m/s');
+            if ($('Rs-object')) $('Rs-object').textContent = dataOrDefaultExp(advancedPhysics.Rs_object, 3, ' m');
 
             // Distance
-            $('distance-total-km').textContent = `${dataOrDefault(distM / 1000, 3)} km | ${dataOrDefault(distM, 2)} m`;
-            $('distance-ratio').textContent = dataOrDefault(R_FACTOR_RATIO, 3);
+            if ($('distance-total-km')) $('distance-total-km').textContent = `${dataOrDefault(distM / 1000, 3)} km | ${dataOrDefault(distM, 2)} m`;
+            if ($('distance-ratio')) $('distance-ratio').textContent = dataOrDefault(R_FACTOR_RATIO, 3);
             const dist_light_s = distM / C_L;
-            $('distance-light-s').textContent = dataOrDefaultExp(dist_light_s, 2, ' s');
-            $('distance-light-min').textContent = dataOrDefaultExp(dist_light_s / 60, 2, ' min');
-            $('distance-light-h').textContent = dataOrDefaultExp(dist_light_s / 3600, 2, ' h');
-            $('distance-light-day').textContent = dataOrDefaultExp(dist_light_s / 86400, 2, ' j');
-            $('distance-light-week').textContent = dataOrDefaultExp(dist_light_s / (86400 * 7), 2, ' sem');
-            $('distance-light-month').textContent = dataOrDefaultExp(dist_light_s / (86400 * 30.44), 2, ' mois');
-            $('distance-cosmic').textContent = `${dataOrDefaultExp(distM / 149597870700, 2)} UA | ${dataOrDefaultExp(distM / 9460730472580800, 2)} al`; // Utilisation des constantes numériques
-            $('distance-horizon').textContent = dataOrDefault(calculateMaxVisibleDistance(kAlt || 0) / 1000, 1, ' km');
+            if ($('distance-light-s')) $('distance-light-s').textContent = dataOrDefaultExp(dist_light_s, 2, ' s');
+            if ($('distance-light-min')) $('distance-light-min').textContent = dataOrDefaultExp(dist_light_s / 60, 2, ' min');
+            if ($('distance-light-h')) $('distance-light-h').textContent = dataOrDefaultExp(dist_light_s / 3600, 2, ' h');
+            if ($('distance-light-day')) $('distance-light-day').textContent = dataOrDefaultExp(dist_light_s / 86400, 2, ' j');
+            if ($('distance-light-week')) $('distance-light-week').textContent = dataOrDefaultExp(dist_light_s / (86400 * 7), 2, ' sem');
+            if ($('distance-light-month')) $('distance-light-month').textContent = dataOrDefaultExp(dist_light_s / (86400 * 30.44), 2, ' mois');
+            if ($('distance-cosmic')) $('distance-cosmic').textContent = `${dataOrDefaultExp(distM / 149597870700, 2)} UA | ${dataOrDefaultExp(distM / 9460730472580800, 2)} al`; 
+            if ($('distance-horizon')) $('distance-horizon').textContent = dataOrDefault(calculateMaxVisibleDistance(kAlt || 0) / 1000, 1, ' km');
 
             // Dynamique
-            $('gravity-local').textContent = dataOrDefault(local_g, 4, ' m/s²');
-            $('accel-long').textContent = dataOrDefault(accel_long, 3, ' m/s²');
-            $('force-g-long').textContent = dataOrDefault(advancedPhysics.force_g_long, 2, ' G');
-            $('vertical-speed').textContent = dataOrDefault(estimatedState.vD * -1, 2, ' m/s'); 
-            $('accel-vertical-imu').textContent = dataOrDefault(accel.z, 2, ' m/s²');
-            $('force-g-vertical').textContent = dataOrDefault(accel.z / local_g, 2, ' G');
-            $('angular-speed').textContent = dataOrDefault(Math.sqrt(gyro.x**2 + gyro.y**2 + gyro.z**2) * R2D, 2, ' °/s');
+            if ($('gravity-local')) $('gravity-local').textContent = dataOrDefault(local_g, 4, ' m/s²');
+            if ($('accel-long')) $('accel-long').textContent = dataOrDefault(accel_long, 3, ' m/s²');
+            if ($('force-g-long')) $('force-g-long').textContent = dataOrDefault(advancedPhysics.force_g_long, 2, ' G');
+            if ($('vertical-speed')) $('vertical-speed').textContent = dataOrDefault(estimatedState.vD * -1, 2, ' m/s'); 
+            if ($('accel-vertical-imu')) $('accel-vertical-imu').textContent = dataOrDefault(accel.z, 2, ' m/s²');
+            if ($('force-g-vertical')) $('force-g-vertical').textContent = dataOrDefault(accel.z / local_g, 2, ' G');
+            if ($('angular-speed')) $('angular-speed').textContent = dataOrDefault(Math.sqrt(gyro.x**2 + gyro.y**2 + gyro.z**2) * R2D, 2, ' °/s');
             
             // Mécanique des Fluides
-            $('dynamic-pressure').textContent = dataOrDefault(advancedPhysics.dynamicPressure, 2, ' Pa');
-            $('drag-force').textContent = dataOrDefault(advancedPhysics.dragForce, 2, ' N');
-            $('drag-power-kw').textContent = dataOrDefault(advancedPhysics.dragPower_kW, 2, ' kW');
-            $('reynolds-number').textContent = advancedPhysics.reynoldsNumber;
+            if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(advancedPhysics.dynamicPressure, 2, ' Pa');
+            if ($('drag-force')) $('drag-force').textContent = dataOrDefault(advancedPhysics.dragForce, 2, ' N');
+            if ($('drag-power-kw')) $('drag-power-kw').textContent = dataOrDefault(advancedPhysics.dragPower_kW, 2, ' kW');
+            if ($('reynolds-number')) $('reynolds-number').textContent = advancedPhysics.reynoldsNumber;
             
             // Champs & Forces
-            $('kinetic-energy').textContent = dataOrDefault(0.5 * currentMass * sSpdFE**2, 2, ' J');
-            $('mechanical-power').textContent = dataOrDefault(advancedPhysics.accel_long * currentMass * sSpdFE, 2, ' W');
-            $('radiation-pressure').textContent = dataOrDefaultExp(advancedPhysics.radiationPressure, 2, ' Pa');
-            $('coriolis-force').textContent = dataOrDefaultExp(advancedPhysics.coriolisForce, 2, ' N');
+            if ($('kinetic-energy')) $('kinetic-energy').textContent = dataOrDefault(0.5 * currentMass * sSpdFE**2, 2, ' J');
+            if ($('mechanical-power')) $('mechanical-power').textContent = dataOrDefault(advancedPhysics.accel_long * currentMass * sSpdFE, 2, ' W');
+            if ($('radiation-pressure')) $('radiation-pressure').textContent = dataOrDefaultExp(advancedPhysics.radiationPressure, 2, ' Pa');
+            if ($('coriolis-force')) $('coriolis-force').textContent = dataOrDefaultExp(advancedPhysics.coriolisForce, 2, ' N');
 
             // EKF/Debug
-            $('kalman-uncert').textContent = dataOrDefault(kUncert, 3, ' m²/s² (P)');
-            $('alt-uncertainty').textContent = dataOrDefault(advancedPhysics.altSigma, 3, ' m (σ)');
+            if ($('kalman-uncert')) $('kalman-uncert').textContent = dataOrDefault(kUncert, 3, ' m²/s² (P)');
+            if ($('alt-uncertainty')) $('alt-uncertainty').textContent = dataOrDefault(advancedPhysics.altSigma, 3, ' m (σ)');
             const R_dyn_display = getKalmanR(gpsAccuracyOverride || (lastGPSPos ? lastGPSPos.coords.accuracy : 100), kAlt || 0, kUncert, selectedEnvironment, currentUKFReactivity);
-            $('noise-r-dyn').textContent = dataOrDefault(R_dyn_display, 3, ' m² (R dyn)');
-            $('band-nyquist').textContent = dataOrDefault(advancedPhysics.nyquistFrequency, 2, ' Hz');
-            $('gps-accuracy-display').textContent = dataOrDefault(gpsAccuracyOverride, 6, ' m');
-            $('ekf-status').textContent = ukf ? 'Actif (Fusion)' : 'Inactif';
+            if ($('noise-r-dyn')) $('noise-r-dyn').textContent = dataOrDefault(R_dyn_display, 3, ' m² (R dyn)');
+            if ($('band-nyquist')) $('band-nyquist').textContent = dataOrDefault(advancedPhysics.nyquistFrequency, 2, ' Hz');
+            if ($('gps-accuracy-display')) $('gps-accuracy-display').textContent = dataOrDefault(gpsAccuracyOverride, 6, ' m');
+            if ($('ekf-status')) $('ekf-status').textContent = ukf ? 'Actif (Fusion)' : 'Inactif';
 
             // IMU
-            $('accel-x').textContent = dataOrDefault(accel.x, 2, ' m/s²');
-            $('accel-y').textContent = dataOrDefault(accel.y, 2, ' m/s²');
-            $('accel-z').textContent = dataOrDefault(accel.z, 2, ' m/s²');
-            $('mag-x').textContent = dataOrDefault(mag.x, 2, ' µT');
-            $('mag-y').textContent = dataOrDefault(mag.y, 2, ' µT');
-            $('mag-z').textContent = dataOrDefault(mag.z, 2, ' µT');
+            if ($('accel-x')) $('accel-x').textContent = dataOrDefault(accel.x, 2, ' m/s²');
+            if ($('accel-y')) $('accel-y').textContent = dataOrDefault(accel.y, 2, ' m/s²');
+            if ($('accel-z')) $('accel-z').textContent = dataOrDefault(accel.z, 2, ' m/s²');
+            if ($('mag-x')) $('mag-x').textContent = dataOrDefault(mag.x, 2, ' µT');
+            if ($('mag-y')) $('mag-y').textContent = dataOrDefault(mag.y, 2, ' µT');
+            if ($('mag-z')) $('mag-z').textContent = dataOrDefault(mag.z, 2, ' µT');
             
             // Position
-            $('lat-display').textContent = dataOrDefault(lat, 6, ' °');
-            $('lon-display').textContent = dataOrDefault(lon, 6, ' °');
-            $('alt-display').textContent = dataOrDefault(kAlt, 2, ' m');
-            $('geopotential-alt').textContent = dataOrDefault(advancedPhysics.geopotentialAltitude, 2, ' m');
-            $('alt-corrected-baro').textContent = 'N/A'; 
-            $('cap-direction').textContent = dataOrDefault(lastGPSPos ? lastGPSPos.coords.heading : null, 1, ' °');
+            if ($('lat-display')) $('lat-display').textContent = dataOrDefault(lat, 6, ' °');
+            if ($('lon-display')) $('lon-display').textContent = dataOrDefault(lon, 6, ' °');
+            if ($('alt-display')) $('alt-display').textContent = dataOrDefault(kAlt, 2, ' m');
+            if ($('geopotential-alt')) $('geopotential-alt').textContent = dataOrDefault(advancedPhysics.geopotentialAltitude, 2, ' m');
+            if ($('alt-corrected-baro')) $('alt-corrected-baro').textContent = 'N/A'; 
+            if ($('cap-direction')) $('cap-direction').textContent = dataOrDefault(lastGPSPos ? lastGPSPos.coords.heading : null, 1, ' °');
             
             // Carte et Niveau à bulle
             updateMap(lat || 43.296, lon || 5.37, (lastGPSPos ? gpsAccuracyOverride || lastGPSPos.coords.accuracy : 100));
-            $('roll-pitch').textContent = `Roul: ${dataOrDefault(gyro.y * R2D, 1)}° / Tang: ${dataOrDefault(gyro.x * R2D, 1)}°`;
+            if ($('roll-pitch')) $('roll-pitch').textContent = `Roul: ${dataOrDefault(gyro.y * R2D, 1)}° / Tang: ${dataOrDefault(gyro.x * R2D, 1)}°`;
 
         }, IMU_UPDATE_RATE_MS);
     };
 
     /**
      * BOUCLE LENTE (Astro/Météo) - 1Hz
+     * DÉPEND DE : SunCalc, getSolarTime, getTSLV, getMoonPhaseName (fournis par lib/astro.js)
      */
     const startSlowLoop = () => {
         if (domSlowID) return;
@@ -591,75 +586,81 @@ let lastMapUpdate = 0;
             const now = getCDate();
 
             // 1. Mise à jour Astro
-            if (typeof SunCalc !== 'undefined') {
+            // Vérification des dépendances SunCalc ET des fonctions de lib/astro.js
+            if (typeof SunCalc !== 'undefined' && typeof getSolarTime !== 'undefined' && typeof getTSLV !== 'undefined' && typeof getMoonPhaseName !== 'undefined') {
                 try {
+                    const solarTimes = getSolarTime(now, currentLon);
+                    const tslv = getTSLV(now, currentLon);
+                    const moonIllumData = SunCalc.getMoonIllumination(now);
+                    const moonPhaseName = getMoonPhaseName(moonIllumData.phase);
+                    
                     const sunPos = SunCalc.getPosition(now, currentLat, currentLon);
-                    const moonIllum = SunCalc.getMoonIllumination(now);
                     const sunTimes = SunCalc.getTimes(now, currentLat, currentLon);
                     const moonPos = SunCalc.getMoonPosition(now, currentLat, currentLon);
-                    const solarTimes = getSolarTime(now, currentLon);
                     
                     // MAJ DOM ASTRO
-                    $('date-display-astro').textContent = now.toLocaleDateString();
-                    $('date-solar-mean').textContent = solarTimes.DateMST ? solarTimes.DateMST.toLocaleDateString() : 'N/A';
-                    $('date-solar-true').textContent = solarTimes.DateTST ? solarTimes.DateTST.toLocaleDateString() : 'N/A';
-                    $('mst').textContent = solarTimes.MST;
-                    $('tst').textContent = solarTimes.TST;
-                    $('noon-solar').textContent = sunTimes.solarNoon ? sunTimes.solarNoon.toLocaleTimeString('fr-FR', { timeZone: 'UTC' }) : 'N/A';
-                    $('eot').textContent = `${solarTimes.EOT} min`;
-                    $('tslv').textContent = getTSLV(now, currentLon);
-                    $('ecl-long').textContent = `${solarTimes.ECL_LONG}°`;
+                    if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString();
+                    if ($('date-solar-mean')) $('date-solar-mean').textContent = solarTimes.DateMST ? solarTimes.DateMST.toLocaleDateString() : 'N/A';
+                    if ($('date-solar-true')) $('date-solar-true').textContent = solarTimes.DateTST ? solarTimes.DateTST.toLocaleDateString() : 'N/A';
+                    if ($('mst')) $('mst').textContent = solarTimes.MST;
+                    if ($('tst')) $('tst').textContent = solarTimes.TST;
+                    if ($('noon-solar') && sunTimes.solarNoon) $('noon-solar').textContent = sunTimes.solarNoon.toLocaleTimeString('fr-FR', { timeZone: 'UTC' });
+                    if ($('eot')) $('eot').textContent = `${solarTimes.EOT} min`;
+                    if ($('tslv')) $('tslv').textContent = tslv;
+                    if ($('ecl-long')) $('ecl-long').textContent = `${solarTimes.ECL_LONG}°`;
                     
-                    $('sun-alt').textContent = `${(sunPos.altitude * R2D).toFixed(2)}°`;
-                    $('sun-azimuth').textContent = `${(sunPos.azimuth * R2D).toFixed(2)}°`;
+                    if ($('sun-alt')) $('sun-alt').textContent = `${(sunPos.altitude * R2D).toFixed(2)}°`;
+                    if ($('sun-azimuth')) $('sun-azimuth').textContent = `${(sunPos.azimuth * R2D).toFixed(2)}°`;
                     
                     if (sunTimes.sunset && sunTimes.sunrise) {
                         const durationMs = sunTimes.sunset.getTime() - sunTimes.sunrise.getTime();
-                        $('day-duration').textContent = `${Math.floor(durationMs / 3600000)}h ${Math.floor((durationMs % 3600000) / 60000)}m`;
-                        $('sunrise-times').textContent = sunTimes.sunrise.toLocaleTimeString('fr-FR');
-                        $('sunset-times').textContent = sunTimes.sunset.toLocaleTimeString('fr-FR');
+                        if ($('day-duration')) $('day-duration').textContent = `${Math.floor(durationMs / 3600000)}h ${Math.floor((durationMs % 3600000) / 60000)}m`;
+                        if ($('sunrise-times')) $('sunrise-times').textContent = sunTimes.sunrise.toLocaleTimeString('fr-FR');
+                        if ($('sunset-times')) $('sunset-times').textContent = sunTimes.sunset.toLocaleTimeString('fr-FR');
                     }
                     
-                    $('moon-phase-name').textContent = getMoonPhaseName(moonIllum.phase);
-                    $('moon-illuminated').textContent = `${(moonIllum.fraction * 100).toFixed(1)}%`;
-                    $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
-                    $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
+                    if ($('moon-phase-name')) $('moon-phase-name').textContent = moonPhaseName;
+                    if ($('moon-illuminated')) $('moon-illuminated').textContent = `${(moonIllumData.fraction * 100).toFixed(1)}%`;
+                    if ($('moon-alt')) $('moon-alt').textContent = `${(moonPos.altitude * R2D).toFixed(2)}°`;
+                    if ($('moon-azimuth')) $('moon-azimuth').textContent = `${(moonPos.azimuth * R2D).toFixed(2)}°`;
                     
                     // Horloge Minecraft (Visuelle et Affichage)
                     const clockDiv = $('minecraft-clock');
                     if (clockDiv) {
-                        const sunRotation = (-sunPos.azimuth * R2D) + 90; // Utiliser l'azimut pour la rotation
-                        $('sun-element').style.transform = `rotate(${sunRotation}deg)`;
+                        const sunRotation = (-sunPos.azimuth * R2D) + 90; 
+                        if ($('sun-element')) $('sun-element').style.transform = `rotate(${sunRotation}deg)`;
                         if (sunPos.altitude > 0) { clockDiv.className = 'sky-day'; }
                         else if (sunPos.altitude > -10 * D2R) { clockDiv.className = 'sky-sunset'; }
                         else { clockDiv.className = 'sky-night'; }
                     }
-                    $('time-minecraft').textContent = getMinecraftTime(now);
+                    if ($('time-minecraft')) $('time-minecraft').textContent = getMinecraftTime(now);
+                    if ($('weather-status')) $('weather-status').textContent = `ACTIF (Astro/Météo Simulé)`;
 
-                } catch (e) { console.error("Erreur dans updateAstro:", e); }
+                } catch (e) { 
+                    console.error("Erreur critique dans updateAstro. Assurez-vous que toutes les fonctions de lib/astro.js sont définies globalement et que vsop2013.js est chargé en premier.", e); 
+                    if ($('weather-status')) $('weather-status').textContent = `❌ ASTRO HORS LIGNE (Erreur d'exécution)`;
+                }
+            } else {
+                 if ($('weather-status')) $('weather-status').textContent = `❌ ASTRO HORS LIGNE (Dépendances manquantes)`;
             }
 
             // 2. Mise à jour Météo & Polluants
             const weatherData = await fetchWeather(currentLat, currentLon); 
             
             if (weatherData) {
-                $('weather-status').textContent = `ACTIF (Simulé)`;
-                $('temp-air-2').textContent = `${(lastT_K - 273.15).toFixed(1)} °C`;
-                $('pressure-2').textContent = `${lastP_hPa.toFixed(0)} hPa`;
-                $('air-density').textContent = `${currentAirDensity.toFixed(3)} kg/m³`;
-                $('humidity-2').textContent = `${weatherData.humidity_perc.toFixed(0)} %`; 
+                if ($('temp-air-2')) $('temp-air-2').textContent = `${(lastT_K - 273.15).toFixed(1)} °C`;
+                if ($('pressure-2')) $('pressure-2').textContent = `${lastP_hPa.toFixed(0)} hPa`;
+                if ($('air-density')) $('air-density').textContent = `${currentAirDensity.toFixed(3)} kg/m³`;
+                if ($('humidity-2')) $('humidity-2').textContent = `${weatherData.humidity_perc.toFixed(0)} %`; 
                 
-                // Polluants
-                $('no2-data').textContent = dataOrDefault(weatherData.polluants.NO2, 0); 
-                $('pm25-data').textContent = dataOrDefault(weatherData.polluants.PM25, 0);
-                $('pm10-data').textContent = dataOrDefault(weatherData.polluants.PM10, 0);
-                $('o3-data').textContent = dataOrDefault(weatherData.polluants.O3, 0);
-            } else {
-                $('weather-status').textContent = `❌ HORS LIGNE (Défauts)`;
+                if ($('no2-data')) $('no2-data').textContent = dataOrDefault(weatherData.polluants.NO2, 0); 
+                if ($('pm25-data')) $('pm25-data').textContent = dataOrDefault(weatherData.polluants.PM25, 0);
+                if ($('pm10-data')) $('pm10-data').textContent = dataOrDefault(weatherData.polluants.PM10, 0);
+                if ($('o3-data')) $('o3-data').textContent = dataOrDefault(weatherData.polluants.O3, 0);
             }
             
             // 3. Mise à jour Heure
-            if (lastNTPDate) {
+            if (lastNTPDate && $('local-time')) {
                 $('local-time').textContent = lastNTPDate.toLocaleTimeString('fr-FR');
             }
         };
@@ -671,13 +672,15 @@ let lastMapUpdate = 0;
     const toggleEmergencyStop = () => {
         emergencyStopActive = !emergencyStopActive;
         const btn = $('emergency-stop-btn');
-        if (emergencyStopActive) {
-            btn.textContent = '🛑 Arrêt d\'urgence: ACTIF 🔴';
-            btn.classList.add('active');
-            if (wID !== null) toggleGPS(); 
-        } else {
-            btn.textContent = '🛑 Arrêt d\'urgence: INACTIF 🟢';
-            btn.classList.remove('active');
+        if (btn) {
+            if (emergencyStopActive) {
+                btn.textContent = '🛑 Arrêt d\'urgence: ACTIF 🔴';
+                btn.classList.add('active');
+                if (wID !== null) toggleGPS(); 
+            } else {
+                btn.textContent = '🛑 Arrêt d\'urgence: INACTIF 🟢';
+                btn.classList.remove('active');
+            }
         }
     };
 
@@ -691,8 +694,9 @@ let lastMapUpdate = 0;
         
         // --- Écouteurs d'événements ---
         
-        $('toggle-gps-btn').addEventListener('click', () => {
+        if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', () => {
             if (!ukf) { 
+                // Initialisation du système au premier clic
                 ukf = new ProfessionalUKF(); 
                 sTime = Date.now();
                 startGPS(); 
@@ -702,56 +706,56 @@ let lastMapUpdate = 0;
             }
         });
 
-        $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
+        if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
         
-        $('toggle-mode-btn').addEventListener('click', () => {
+        if ($('toggle-mode-btn')) $('toggle-mode-btn').addEventListener('click', () => {
             document.body.classList.toggle('dark-mode');
             $('toggle-mode-btn').innerHTML = document.body.classList.contains('dark-mode') ? '<i class="fas fa-sun"></i> Mode Jour' : '<i class="fas fa-moon"></i> Mode Nuit';
         });
         
-        $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; });
-        $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
-        $('reset-all-btn').addEventListener('click', () => {
+        if ($('reset-dist-btn')) $('reset-dist-btn').addEventListener('click', () => { distM = 0; timeMoving = 0; });
+        if ($('reset-max-btn')) $('reset-max-btn').addEventListener('click', () => { maxSpd = 0; });
+        if ($('reset-all-btn')) $('reset-all-btn').addEventListener('click', () => {
             if (wID !== null) toggleGPS(); 
             distM = 0; maxSpd = 0; timeMoving = 0; timeTotal = 0; sTime = null;
             kSpd = 0; kUncert = UKF_R_MAX; kAlt = null; kAltUncert = 10; 
             ukf = null; 
-            $('toggle-gps-btn').innerHTML = '▶️ DÉMARRER GPS';
+            if ($('toggle-gps-btn')) $('toggle-gps-btn').innerHTML = '▶️ DÉMARRER GPS';
         });
         
-        $('capture-data-btn').addEventListener('click', () => {
+        if ($('capture-data-btn')) $('capture-data-btn').addEventListener('click', () => {
             alert("Données loguées dans la console. Ouvrez F12.");
             console.log("--- DONNÉES CAPTURÉES ---", { etatUKF: ukf ? ukf.getState() : 'Inactif' });
         });
         
-        $('xray-button').addEventListener('click', () => {
+        if ($('xray-button') && $('minecraft-clock')) $('xray-button').addEventListener('click', () => {
             $('minecraft-clock').classList.toggle('x-ray'); 
             $('xray-button').textContent = $('minecraft-clock').classList.contains('x-ray') ? 'X-Ray ON' : 'X-Ray OFF';
         });
         
         // Inputs et Selects
-        $('freq-select').addEventListener('change', (e) => startGPS(e.target.value));
+        if ($('freq-select')) $('freq-select').addEventListener('change', (e) => startGPS(e.target.value));
         
-        $('gps-accuracy-override').addEventListener('input', (e) => {
+        if ($('gps-accuracy-override')) $('gps-accuracy-override').addEventListener('input', (e) => {
             gpsAccuracyOverride = parseFloat(e.target.value) || 0.0;
             if ($('gps-accuracy-override-display')) $('gps-accuracy-override-display').textContent = dataOrDefault(gpsAccuracyOverride, 1) + ' m';
         });
         
-        $('environment-select').addEventListener('change', (e) => {
+        if ($('environment-select')) $('environment-select').addEventListener('change', (e) => {
             selectedEnvironment = e.target.value;
             const factor = ENVIRONMENT_FACTORS[selectedEnvironment];
-            $('env-factor').textContent = `${factor.DISPLAY} (x${factor.R_MULT.toFixed(1)})`;
+            if ($('env-factor')) $('env-factor').textContent = `${factor.DISPLAY} (x${factor.R_MULT.toFixed(1)})`;
         });
         
-        $('mass-input').addEventListener('input', (e) => {
+        if ($('mass-input')) $('mass-input').addEventListener('input', (e) => {
             currentMass = parseFloat(e.target.value) || 70.0;
-            $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+            if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
         });
 
-        $('celestial-body-select').addEventListener('change', (e) => {
+        if ($('celestial-body-select')) $('celestial-body-select').addEventListener('change', (e) => {
             currentCelestialBody = e.target.value;
             const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
-            $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+            if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
         });
         
         const updateRotation = () => {
@@ -762,29 +766,29 @@ let lastMapUpdate = 0;
 
             if (currentCelestialBody === 'ROTATING') {
                 const { G_ACC_NEW } = updateCelestialBody('ROTATING', kAlt, rotationRadius, angularVelocity);
-                $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+                if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
             }
         };
-        $('rotation-radius').addEventListener('input', updateRotation);
-        $('angular-velocity').addEventListener('input', updateRotation);
-        updateRotation(); 
-        
-        $('distance-ratio-toggle-btn').addEventListener('click', () => {
+        if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
+        if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
+        updateRotation();
+
+        if ($('distance-ratio-toggle-btn')) $('distance-ratio-toggle-btn').addEventListener('click', () => {
             distanceRatioMode = !distanceRatioMode;
             const ratio = distanceRatioMode ? calculateDistanceRatio(kAlt || 0) : 1.0;
             $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
         });
         
-        $('ukf-reactivity-mode').addEventListener('change', (e) => currentUKFReactivity = e.target.value);
+        if ($('ukf-reactivity-mode')) $('ukf-reactivity-mode').addEventListener('change', (e) => currentUKFReactivity = e.target.value);
         
         // Initialisation des valeurs DOM
-        $('gravity-base').textContent = `${G_ACC.toFixed(4)} m/s²`;
-        $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
-        $('env-factor').textContent = `Normal (x1.0)`;
-        $('alt-ref-radius').textContent = `${(R_ALT_CENTER_REF / 1000).toFixed(2)} km`;
-        $('gps-accuracy-override-display').textContent = dataOrDefault(gpsAccuracyOverride, 1) + ' m';
-        $('noise-r-dyn').textContent = dataOrDefault(getKalmanR(100, 0, UKF_R_MAX, 'NORMAL', 'AUTOMATIC'), 3, ' m² (R dyn)');
+        if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC.toFixed(4)} m/s²`;
+        if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+        if ($('env-factor')) $('env-factor').textContent = `Normal (x1.0)`;
+        if ($('alt-ref-radius')) $('alt-ref-radius').textContent = `${(R_ALT_CENTER_REF / 1000).toFixed(2)} km`;
+        if ($('gps-accuracy-override-display')) $('gps-accuracy-override-display').textContent = dataOrDefault(gpsAccuracyOverride, 1) + ' m';
+        if ($('noise-r-dyn')) $('noise-r-dyn').textContent = dataOrDefault(getKalmanR(100, 0, UKF_R_MAX, 'NORMAL', 'AUTOMATIC'), 3, ' m² (R dyn)');
         
-    }); // Fin de DOMContentLoaded
+    }); // Fin de DOMContentLoaded  
 
 })(window);
