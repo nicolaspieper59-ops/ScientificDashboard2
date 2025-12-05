@@ -131,19 +131,17 @@ let lastMapUpdate = 0;
                 lat: 43.296, lon: 5.37, alt: 0, speed: 0, vD: 0, 
                 kUncert: UKF_R_MAX, kAltUncert: 10 
             };
-            this.P = {}; // Par défaut un objet simple (Matrice de Covariance)
+            this.P = {}; // Matrice de Covariance
             
-            // CORRECTION CRITIQUE (ROBUSTE) : Initialisation de la matrice P,
-            // évitant les problèmes de version/type d'objet (ex: Matrix vs Array) de math.js.
+            // CORRECTION CRITIQUE (ROBUSTE) : Initialisation de la matrice P.
+            // Utilisez math.identity et math.multiply (correct pour mathjs 12.4.2).
             if (typeof math !== 'undefined' && typeof math.identity === 'function') {
                 try {
-                    // Utilise math.multiply pour l'initialisation de la matrice (plus fiable)
                     let P_init = math.identity(21);
                     this.P = math.multiply(P_init, UKF_R_MAX);
                 } catch (e) {
-                    // Message d'avertissement en cas d'échec de la librairie math.js
                     console.warn("Échec de l'initialisation de la matrice P. Le filtre EKF/UKF ne fonctionnera pas correctement.", e);
-                    this.P = {}; // Assure que le script ne plante pas
+                    this.P = {}; 
                 }
             }
         } // <-- ACCCOLADE DE FERMETURE DU CONSTRUCTOR (Doit être ici)
