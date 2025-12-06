@@ -453,26 +453,68 @@ const WGS84_E2 = 2 * WGS84_F - WGS84_F * WGS84_F;
         
         // --- ASTRO (APPEL AUX LIBRAIRIES HAUTE PRÉCISION) ---
         
-        // 1. UTILISATION DES FONCTIONS TST/TSLV FOURNIES PAR lib/astro.js
-        if (typeof getSolarTime === 'function' && typeof getTSLV === 'function') {
+        // 1. UTILISATION DES FONCTIONS ASTRO (Regroupe TST/MST/TSLV et Alt/Az)
+        if (typeof calculateAstroDataHighPrec === 'function') {
             try {
-                // Appelle les fonctions de l'utilisateur (fournies dans lib/astro.js)
-                const solarTimeData = getSolarTime(now, currentLon);
-                const tslv = getTSLV(now, currentLon);
+                // Calcule toutes les données astro en une seule fois
+                const fullAstroData = calculateAstroDataHighPrec(now, currentLat, currentLon); 
+
+                // Mise à jour des IDs DOM pour le Temps Solaire & Sidéral
+                if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
                 
-                // Met à jour les NOUVEAUX IDs DOM (que l'utilisateur doit ajouter)
-                if ($('tst-value')) $('tst-value').textContent = solarTimeData.TST || 'N/A';
-                if ($('eot-value')) $('eot-value').textContent = dataOrDefault(parseFloat(solarTimeData.EOT), 2, ' min');
-                if ($('tslv-value')) $('tslv-value').textContent = tslv || 'N/A';
-                if ($('sun-ecl-long')) $('sun-ecl-long').textContent = dataOrDefault(parseFloat(solarTimeData.ECL_LONG), 4, '°');
+                // Champs de Temps Solaire Vrai (TST) et Équation du Temps (EOT)
+                if ($('tst')) $('tst').textContent = fullAstroData.TST_HRS || 'N/A';
+                if ($('eot')) $('eot').textContent = dataOrDefault(parseFloat(fullAstroData.EOT_MIN), 2, ' min');
+                if ($('tslv')) $('tslv').textContent = getTSLV(now, currentLon) || 'N/A'; 
+                if ($('ecl-long')) $('ecl-long').textContent = dataOrDefault(parseFloat(fullAstroData.ECL_LONG), 4, '°');
                 
+                // Nouveaux Champs complétés : MST et Midi Solaire Vrai
+                if ($('mst')) $('mst').textContent = fullAstroData.MST_HRS || 'N/A';
+                if ($('noon-solar')) $('noon-solar').textContent = fullAstroData.NOON_SOLAR_UTC.toTimeString().split(' ')[0] + ' UTC';
+                
+                // La "Date Solaire Vraie/Moyenne" correspond à la date du Midi Solaire
+                if ($('date-solar-true')) $('date-solar-true').textContent = fullAstroData.NOON_SOLAR_UTC.toLocaleDateString('fr-FR');
+                if ($('date-solar-mean')) $('date-solar-mean').textContent = fullAstroData.NOON_SOLAR_UTC.toLocaleDateString('fr-FR');
+
+
+                // --- Position du SOLEIL (Altitude / Azimut) ---
+                const R2D = 180 / Math.PI;
+                if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(fullAstroData.sun.altitude * R2D, 2, '°');
+                if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(fullAstroData.sun.azimuth * R2D, 2, '°');
+                
+                // Heures de Lever/Coucher (Approximation)
+                if ($('sunrise-times')) $('sunrise-times').textContent = fullAstroData.sun.sunrise.toLocaleTimeString('fr-FR');
+                if ($('sunset-times')) $('sunset-times').textContent = fullAstroData.sun.sunset.toLocaleTimeString('fr-FR');
+                if ($('day-duration')) $('day-duration').textContent = dataOrDefault((fullAstroData.sun.sunset.getTime() - fullAstroData.sun.sunrise.getTime()) / 3600000, 2, ' h');
+                
+                // --- Position de la LUNE (Simplifiée) ---
+                if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(fullAstroData.moon.illumination.phase); 
+                if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(fullAstroData.moon.illumination.fraction * 100, 1, ' %');
+                if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(fullAstroData.moon.position.altitude * R2D, 2, '°');
+                if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(fullAstroData.moon.position.azimuth * R2D, 2, '°');
+                if ($('moon-distance')) $('moon-distance').textContent = dataOrDefault(fullAstroData.moon.position.distance / 1000, 0, ' km'); 
+
+                let moonTimesText = 'N/A';
+                if (fullAstroData.moon.times.alwaysUp) {
+                    moonTimesText = 'Toujours visible';
+                } else if (fullAstroData.moon.times.alwaysDown) {
+                    moonTimesText = 'Jamais visible';
+                } else {
+                    const rise = fullAstroData.moon.times.rise ? fullAstroData.moon.times.rise.toLocaleTimeString('fr-FR') : '--:--';
+                    const set = fullAstroData.moon.times.set ? fullAstroData.moon.times.set.toLocaleTimeString('fr-FR') : '--:--';
+                    moonTimesText = `${rise} / ${set}`;
+                }
+                if ($('moon-times')) $('moon-times').textContent = moonTimesText; 
+
             } catch (e) {
-                console.error("🔴 ERREUR: L'appel à getSolarTime/getTSLV a échoué. Vérifiez lib/astro.js.", e);
-                if ($('tst-value')) $('tst-value').textContent = 'N/A (Erreur TST)';
+                console.error("🔴 ERREUR: L'appel à calculateAstroDataHighPrec a échoué.", e);
+                if ($('tst')) $('tst').textContent = 'N/A (Erreur)';
+                if ($('sun-alt')) $('sun-alt').textContent = 'N/A (Erreur)';
             }
         } else {
-            if ($('tst-value')) $('tst-value').textContent = 'N/A (Fonction TST manquante)';
-        }
+            if ($('tst')) $('tst').textContent = 'N/A (Fonction Astro manquante)';
+            if ($('sun-alt')) $('sun-alt').textContent = 'N/A (Fonction Astro manquante)';
+            }
 
         // 2. APPEL STANDARDISÉ POUR LES DONNÉES DE POSITION (Alt/Az/Lever/Coucher)
         // L'utilisateur doit implémenter cette fonction dans lib/astro.js ou lib/ephem.js
