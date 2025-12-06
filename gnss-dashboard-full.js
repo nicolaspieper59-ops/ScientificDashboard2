@@ -452,13 +452,78 @@ const WGS84_E2 = 2 * WGS84_F - WGS84_F * WGS84_F;
         if ($('rayon-schwarzschild')) $('rayon-schwarzschild').textContent = dataOrDefaultExp(Rs, 3, ' m');
         
         // --- ASTRO (APPEL AUX LIBRAIRIES HAUTE PRÉCISION) ---
+        // --- ASTRO (APPEL AUX LIBRAIRIES HAUTE PRÉCISION) ---
+        
+        // Les fonctions Astro dépendent de 'now' (Date) et d'une position (Lat/Lon).
+        const now = getCDate(lServH, lLocH); 
+        const lat = currentPosition ? currentPosition.lat : 0.0;
+        const lon = currentPosition ? currentPosition.lon : 0.0;
         
         // 1. UTILISATION DES FONCTIONS ASTRO (Regroupe TST/MST/TSLV et Alt/Az)
-        if (typeof calculateAstroDataHighPrec === 'function') {
+        // La fonction calculateAstroDataHighPrec doit exister ET la date doit être valide.
+        if (typeof calculateAstroDataHighPrec === 'function' && now instanceof Date && !isNaN(now.getTime())) {
             try {
                 // Calcule toutes les données astro en une seule fois
-                const fullAstroData = calculateAstroDataHighPrec(now, currentLat, currentLon); 
+                const fullAstroData = calculateAstroDataHighPrec(now, lat, lon); 
 
+                // Mise à jour des IDs DOM pour le Temps Solaire & Sidéral
+                if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
+                
+                // Champs Temps Solaire & Sidéral
+                if ($('tst')) $('tst').textContent = fullAstroData.TST_HRS || 'N/A';
+                if ($('mst')) $('mst').textContent = fullAstroData.MST_HRS || 'N/A';
+                if ($('noon-solar')) $('noon-solar').textContent = fullAstroData.NOON_SOLAR_UTC.toTimeString().split(' ')[0] + ' UTC';
+                if ($('eot')) $('eot').textContent = dataOrDefault(parseFloat(fullAstroData.EOT_MIN), 2, ' min');
+                if ($('tslv')) $('tslv').textContent = getTSLV(now, lon) || 'N/A'; // TSLV doit être appelée séparément
+                if ($('ecl-long')) $('ecl-long').textContent = dataOrDefault(parseFloat(fullAstroData.ECL_LONG), 4, '°');
+                
+                // Dates Solaires
+                if ($('date-solar-true')) $('date-solar-true').textContent = fullAstroData.NOON_SOLAR_UTC.toLocaleDateString('fr-FR');
+                if ($('date-solar-mean')) $('date-solar-mean').textContent = fullAstroData.NOON_SOLAR_UTC.toLocaleDateString('fr-FR');
+
+
+                // --- Position du SOLEIL (Altitude / Azimut) ---
+                const R2D = 180 / Math.PI;
+                if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(fullAstroData.sun.altitude * R2D, 2, '°');
+                if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(fullAstroData.sun.azimuth * R2D, 2, '°');
+                
+                // Heures de Lever/Coucher (Approximation)
+                if ($('sunrise-times')) $('sunrise-times').textContent = fullAstroData.sun.sunrise.toLocaleTimeString('fr-FR');
+                if ($('sunset-times')) $('sunset-times').textContent = fullAstroData.sun.sunset.toLocaleTimeString('fr-FR');
+                if ($('day-duration')) $('day-duration').textContent = dataOrDefault((fullAstroData.sun.sunset.getTime() - fullAstroData.sun.sunrise.getTime()) / 3600000, 2, ' h');
+                
+                // --- Position de la LUNE (Simplifiée) ---
+                if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(fullAstroData.moon.illumination.phase); 
+                if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(fullAstroData.moon.illumination.fraction * 100, 1, ' %');
+                if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(fullAstroData.moon.position.altitude * R2D, 2, '°');
+                if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(fullAstroData.moon.position.azimuth * R2D, 2, '°');
+                if ($('moon-distance')) $('moon-distance').textContent = dataOrDefault(fullAstroData.moon.position.distance / 1000, 0, ' km'); 
+
+                // Lever/Coucher Lune (affichage simple)
+                let moonTimesText = 'N/A';
+                if (fullAstroData.moon.times.alwaysUp) {
+                    moonTimesText = 'Toujours visible';
+                } else if (fullAstroData.moon.times.alwaysDown) {
+                    moonTimesText = 'Jamais visible';
+                } else {
+                    // Les valeurs de lever/coucher sont souvent nulles dans cette implémentation simplifiée
+                    moonTimesText = 'Calcul indisponible';
+                }
+                if ($('moon-times')) $('moon-times').textContent = moonTimesText; 
+
+            } catch (e) {
+                console.error("🔴 ERREUR: L'appel à calculateAstroDataHighPrec a échoué. Cause: ", e);
+                // Affichage des erreurs pour le débug
+                if ($('tst')) $('tst').textContent = 'N/A (Erreur JS)';
+                if ($('sun-alt')) $('sun-alt').textContent = 'N/A (Erreur JS)';
+            }
+        } else {
+            // Affichage de secours si la date ou la fonction sont manquantes
+            if ($('tst')) $('tst').textContent = 'N/A (Date ou Fonction Astro manquante)';
+            if ($('sun-alt')) $('sun-alt').textContent = 'N/A (Date ou Fonction Astro manquante)';
+        }
+
+        // ... (le reste du code updateDOMSlow) ...
                 // Mise à jour des IDs DOM pour le Temps Solaire & Sidéral
                 if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
                 
