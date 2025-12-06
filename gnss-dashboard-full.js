@@ -1,7 +1,6 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// BLOC 1/5 : Constantes, Utilitaires, et État Global
-// VERSION FINALE - FUSION DE L'UKF AVEC LA STRUCTURE INITIALE
+// VERSION FINALE DÉFENSIVE : CORRIGE TOUS LES ID ET AFFICHAGES BRUTS.
 // =================================================================
 
 const D2R = Math.PI / 180; 
@@ -23,32 +22,24 @@ let currentPosition = {
     lon: 5.3697,    
     alt: 0,
     acc: 10.0,      
-    spd: 0.0        
+    spd: 0.0,
+    heading: 0.0
 };
 let rawIMU = { ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 0 };
 let ukf = null;     
 
 let sysState = {
-    // État UKF
-    est: { vn: 0, ve: 0, vd: 0, speed: 0, P_trace: 0, g_wgs84: 9.80665 },
-    // Métriques
-    totalDist: 0.0,
-    maxSpeed: 0.0,
-    timeMoving: 0.0,
-    startTime: Date.now(),
-    lastTick: performance.now(),
-    
-    // Physique/Environnement
-    mass: 70.0,
-    cda: 0.5,
+    est: { vn: 0, ve: 0, vd: 0, speed: 0, P_trace: 0, g_wgs84: 9.8067 },
+    totalDist: 0.0, maxSpeed: 0.0, timeMoving: 0.0,
+    startTime: Date.now(), lastTick: performance.now(),
+    mass: 70.0, cda: 0.5,
     env: { rho: 1.225, soundSpd: 340.3, tempK: 288.15 },
-    ukfRNoise: 5.0, 
-    loopFreq: 50
+    ukfRNoise: 5.0, loopFreq: 50
 };
 
 let map = null, marker = null, polyline = null;
 let lastLatLon = null;
-let lastNTPDate = null;
+let lastNTPDate = null; // Simulé si non connecté à un vrai serveur NTP
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
 const $ = id => document.getElementById(id);
@@ -61,22 +52,21 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     return val.toExponential(decimals).replace('.', ',') + suffix;
 };
 const getCDate = () => lastNTPDate || new Date();
-const calculateMaxVisibleDistance = (altM) => altM > 0 ? Math.sqrt(altM * (2 * R_EARTH + altM)) : 0; 
+const formatTime = (seconds) => {
+    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+}
 const getMinecraftTime = (date) => {
     const hours = date.getUTCHours();
     const minutes = date.getUTCMinutes();
-    const mcTime = ((hours * 1000 + (minutes * (1000/60)) + 6000) % 24000) / 1000; // Conversion basique
+    const mcTime = ((hours * 1000 + (minutes * (1000/60)) + 6000) % 24000) / 1000;
     return `${Math.floor(mcTime)}:${Math.floor((mcTime - Math.floor(mcTime)) * 60).toString().padStart(2, '0')}`;
 };
-const formatTime = (seconds) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-}
 
 // =================================================================
-// BLOC 2/5 : MOTEUR UKF ET PHYSIQUE (Le Panneau Scientifique)
+// BLOC 2/5 : MOTEUR UKF ET PHYSIQUE
 // =================================================================
 
 const UKF_DIM = 21; 
@@ -85,22 +75,16 @@ const UKF_MEAS = 6;
 class RealUKF {
     constructor() {
         if (typeof math === 'undefined') throw new Error("Math.js manquant");
+        this.nx = UKF_DIM; this.nz = UKF_MEAS;
         
-        this.nx = UKF_DIM; 
-        this.nz = UKF_MEAS;
-        
-        // Initialisation État (X)
         this.x = math.zeros(this.nx);
         this.x.set([0], currentPosition.lat * D2R);
         this.x.set([1], currentPosition.lon * D2R);
         this.x.set([2], currentPosition.alt);
         
-        // Initialisation Covariance (P)
         let P_diag = [];
         for(let i=0; i<this.nx; i++) {
-            if(i<3) P_diag.push(currentPosition.acc**2); 
-            else if(i<6) P_diag.push(2**2);  
-            else if(i<9) P_diag.push(0.1);   
+            if(i<3) P_diag.push(10**2);      
             else P_diag.push(0.01);          
         }
         this.P = math.diag(P_diag);
@@ -111,10 +95,7 @@ class RealUKF {
     predict(dt, imu) {
         if(dt <= 0) return;
         
-        // --- PROPAGATION ÉTAT X (Cinomatique) ---
-        let psi = this.x.get([8]); // Yaw/Cap
-        
-        // Accelérations corrigées des biais (simplification)
+        let psi = this.x.get([8]); 
         const ax = imu.ax - this.x.get([9]);
         const ay = imu.ay - this.x.get([10]);
         const az = imu.az - this.x.get([11]);
@@ -127,28 +108,22 @@ class RealUKF {
         let lon = this.x.get([1]) + (ve / (R_EARTH * Math.cos(lat))) * dt;
         let alt = this.x.get([2]) - vd * dt; 
 
-        // Mise à jour État X
         this.x.set([0], lat); this.x.set([1], lon); this.x.set([2], alt);
         this.x.set([3], vn);  this.x.set([4], ve);  this.x.set([5], vd);
-        // L'attitude (6, 7, 8) et les biais (9-20) sont propagés implicitement par Q
         
-        // --- PROPAGATION COVARIANCE P ---
         this.P = math.add(this.P, math.multiply(this.Q, dt));
         sysState.est.P_trace = math.trace(this.P);
-        
         this.status = "PRÉDICTION (IMU)";
     }
 
     update(gpsMeas) {
-        // Mise à jour R adaptatif
         const r_pos = gpsMeas.acc**2;
         const R_new = math.diag([r_pos, r_pos, r_pos*4, 0.5**2, 0.5**2, 0.5**2]);
         
-        // Mesure Z (Lat, Lon, Alt, Vn, Ve, Vd)
         const z = math.matrix([
             gpsMeas.lat * D2R, gpsMeas.lon * D2R, gpsMeas.alt,
-            gpsMeas.spd * Math.cos(gpsMeas.head * D2R),
-            gpsMeas.spd * Math.sin(gpsMeas.head * D2R),
+            gpsMeas.spd * Math.cos(gpsMeas.heading * D2R),
+            gpsMeas.spd * Math.sin(gpsMeas.heading * D2R),
             0 
         ]);
 
@@ -161,7 +136,6 @@ class RealUKF {
         try {
             const S_inv = math.inv(S);
             const K_top = math.multiply(P_sub, S_inv); 
-            
             const correction = math.multiply(K_top, y);
             
             for(let i=0; i<6; i++) {
@@ -203,7 +177,7 @@ const calculatePhysics = (v, alt) => {
 };
 
 // =================================================================
-// BLOC 3/5 : ACQUISITION DE DONNÉES (IMU / GPS / NTP)
+// BLOC 3/5 : ACQUISITION DE DONNÉES ET LIENS DOM (IMU/GPS)
 // =================================================================
 
 function handleMotion(e) {
@@ -212,7 +186,18 @@ function handleMotion(e) {
     if(a) { rawIMU.ax = a.x||0; rawIMU.ay = a.y||0; rawIMU.az = a.z||0; }
     if(r) { rawIMU.gx = (r.alpha||0)*D2R; rawIMU.gy = (r.beta||0)*D2R; rawIMU.gz = (r.gamma||0)*D2R; }
     
-    // Niveau à Bulle
+    // MISE À JOUR RAW IMU (CORRECTION DES N/A DANS LE TABLEAU IMU)
+    $('acceleration-x').textContent = dataOrDefault(rawIMU.ax, 2, ' m/s²');
+    $('acceleration-y').textContent = dataOrDefault(rawIMU.ay, 2, ' m/s²');
+    $('acceleration-z').textContent = dataOrDefault(rawIMU.az, 2, ' m/s²');
+    // Accel. Verticale
+    $('accel-vertical').textContent = dataOrDefault(rawIMU.az - sysState.est.g_wgs84, 2, ' m/s²');
+    // Force G (Verticale)
+    $('force-g-vert').textContent = dataOrDefault(rawIMU.az / 9.80665, 2, ' G');
+    // Vitesse Angulaire
+    $('angular-speed').textContent = dataOrDefault(Math.sqrt(rawIMU.gx**2 + rawIMU.gy**2 + rawIMU.gz**2) * R2D, 2, ' °/s');
+    
+    // Niveau à Bulle (Pitch/Roll)
     const pitchDeg = Math.atan2(rawIMU.ax, Math.sqrt(rawIMU.ay**2 + rawIMU.az**2)) * R2D;
     const rollDeg = Math.atan2(rawIMU.ay, Math.sqrt(rawIMU.ax**2 + rawIMU.az**2)) * R2D;
     $('inclinaison-pitch').textContent = dataOrDefault(pitchDeg, 1, '°');
@@ -226,7 +211,6 @@ function handleMotion(e) {
 }
 
 function startSensors() {
-    // Demande de permission pour iOS/Webkit
     if (typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission().then(resp => {
             if (resp === 'granted') window.addEventListener('devicemotion', handleMotion);
@@ -251,8 +235,8 @@ function startGPS() {
         if(ukf) ukf.update(currentPosition);
         
         $('statut-gps-acquisition').textContent = `FIX 3D (${currentPosition.acc.toFixed(1)}m)`;
+        $('gps-accuracy-display').textContent = `${currentPosition.acc.toFixed(1)} m`; // Précision GPS (Acc)
         
-        // Calcul Distance (Turf)
         if(lastLatLon) {
             const d = turf.distance(
                 [lastLatLon.lon, lastLatLon.lat], 
@@ -269,7 +253,7 @@ function startGPS() {
 }
 
 async function fetchEnv() {
-    // Simulation ISA (Atmosphère Standard Internationale) - Peut être remplacé par un appel API
+    // Simulation ISA (Atmosphère Standard Internationale)
     const T_K = 288.15 - (0.0065 * currentPosition.alt);
     const P_Pa = 101325 * (1 - 0.0065 * currentPosition.alt / 288.15)**5.256;
     
@@ -277,10 +261,10 @@ async function fetchEnv() {
     sysState.env.rho = P_Pa / (287.058 * T_K);
     sysState.env.soundSpd = Math.sqrt(1.4 * 287.058 * T_K);
     
-    // Mise à jour DOM Météo
-    $('temp-air-2').textContent = dataOrDefault(T_K - 273.15, 1, ' °C'); // Température Air
-    $('pressure-2').textContent = dataOrDefault(P_Pa / 100, 1, ' hPa'); // Pression Atmosphérique
-    $('air-density').textContent = dataOrDefault(sysState.env.rho, 3, ' kg/m³'); // Densité de l'air
+    // Mise à jour DOM Météo (IDs vérifiés)
+    $('temp-air-2').textContent = dataOrDefault(T_K - 273.15, 1, ' °C'); 
+    $('pressure-2').textContent = dataOrDefault(P_Pa / 100, 1, ' hPa'); 
+    $('air-density').textContent = dataOrDefault(sysState.env.rho, 3, ' kg/m³'); 
     $('statut-meteo').textContent = 'ISA Model';
 }
 
@@ -295,30 +279,27 @@ function updateAstro(date, lat, lon) {
     const moonPos = suncalc.getMoonPosition(date, lat, lon);
     const moonIllum = suncalc.getMoonIllumination(date);
 
-    // --- HEURE & TEMPS SOLAIRE ---
-    // Les calculs TST/MST et Equation du temps sont complexes et sont généralement dans lib/astro.js.
-    // Ici on utilise le temps de base.
-    const dateStr = date.toLocaleDateString('fr-FR');
-    const timeStr = date.toLocaleTimeString('fr-FR', {hour12: false});
-    
-    $('heure-locale-ntp').textContent = timeStr;
+    // TEMPS
+    $('heure-locale-ntp').textContent = date.toLocaleTimeString('fr-FR', {hour12: false});
     $('date-utc').textContent = date.toUTCString();
     $('heure-minecraft').textContent = getMinecraftTime(date);
-    $('date-astro').textContent = dateStr;
+    $('date-astro').textContent = date.toLocaleDateString('fr-FR');
     
-    // --- SOLEIL ---
+    // SOLEIL
     $('sun-altitude').textContent = dataOrDefault(sunPos.altitude * R2D, 2, '°');
     $('sun-azimuth').textContent = dataOrDefault(sunPos.azimuth * R2D, 2, '°');
     $('day-duration').textContent = formatTime((times.sunset.getTime() - times.sunrise.getTime()) / 1000);
     $('sunrise-times').textContent = times.sunrise.toLocaleTimeString('fr-FR', {hour12: false});
     $('sunset-times').textContent = times.sunset.toLocaleTimeString('fr-FR', {hour12: false});
 
-    // --- LUNE ---
+    // LUNE
     const phaseName = moonIllum.phase < 0.05 ? 'Nouvelle' : moonIllum.phase > 0.95 ? 'Pleine' : moonIllum.phase < 0.5 ? 'Croissant' : 'Gibbeuse';
     $('moon-phase-name').textContent = phaseName;
     $('moon-illuminated').textContent = dataOrDefault(moonIllum.fraction * 100, 1, ' %');
     $('moon-alt').textContent = dataOrDefault(moonPos.altitude * R2D, 2, '°');
     $('moon-azimuth').textContent = dataOrDefault(moonPos.azimuth * R2D, 2, '°');
+    // Le tableau HTML utilise moon-times pour Lever/Coucher Lune
+    $('moon-times').textContent = `${times.moonrise ? times.moonrise.toLocaleTimeString('fr-FR', {hour12: false}) : 'N/A'} / ${times.moonset ? times.moonset.toLocaleTimeString('fr-FR', {hour12: false}) : 'N/A'}`;
 }
 
 // =================================================================
@@ -346,7 +327,6 @@ function updateDashboard(dt) {
     sysState.maxSpeed = Math.max(sysState.maxSpeed, speed);
     if(speed > 0.1) sysState.timeMoving += dt;
     
-    // Mise à jour Gravité et Physique
     sysState.est.g_wgs84 = calculateWGS84Gravity(latRad, alt);
     const phys = calculatePhysics(speed, alt);
 
@@ -357,21 +337,28 @@ function updateDashboard(dt) {
     $('elapsed-motion-time').textContent = formatTime(sysState.timeMoving);
     $('vitesse-max-session').textContent = dataOrDefault(sysState.maxSpeed * 3.6, 2, ' km/h');
     $('distance-totale').textContent = `${dataOrDefault(sysState.totalDist / 1000, 3, ' km')} | ${dataOrDefault(sysState.totalDist, 2, ' m')}`;
-    $('speed-stable').textContent = dataOrDefault(speedKmh, 2, ' km/h');
+    
+    // Vitesse (IDs vérifiés)
+    $('speed-status-text').textContent = speedKmh > 1 ? `Vitesse (${dataOrDefault(currentPosition.acc, 1)}m Acc)` : 'À l\'arrêt (ZUPT)';
+    $('speed-stable').textContent = dataOrDefault(speedKmh, 2, ' km/h'); // km/h (Vitesse 3D Inst.)
+    $('vitesse-stable-ms').textContent = dataOrDefault(speed, 2, ' m/s'); // m/s
+    $('vitesse-stable-kms').textContent = dataOrDefault(speed / 1000, 4, ' km/s'); // km/s
     
     // DYNAMIQUE & FORCES
     $('gravite-wgs84').textContent = dataOrDefault(sysState.est.g_wgs84, 4, ' m/s²');
     $('vertical-speed').textContent = dataOrDefault(-vd, 2, ' m/s'); 
+    $('dynamic-pressure').textContent = dataOrDefault(phys.q, 2, ' Pa');
     $('drag-force').textContent = dataOrDefault(phys.drag, 2, ' N');
-    $('drag-power-kw').textContent = dataOrDefault(phys.power_drag, 2, ' kW'); // Ajout
+    $('drag-power-kw').textContent = dataOrDefault(phys.power_drag, 2, ' kW'); 
     $('kinetic-energy').textContent = dataOrDefault(phys.Ek, 1, ' J');
     $('coriolis-force').textContent = dataOrDefault(phys.f_cor, 4, ' N');
 
-    // EKF/UKF & DEBUG (FIX ID)
+    // EKF/UKF & DEBUG 
     $('statut-ekf-fusion').textContent = ukf.status; 
     $('ukf-v-uncert').textContent = dataOrDefault(Math.sqrt(ukf.P.get([3,3])), 3, ' m/s');
     $('ukf-alt-sigma').textContent = dataOrDefault(Math.sqrt(ukf.P.get([2,2])), 3, ' m'); 
     $('ukf-r-noise').textContent = dataOrDefault(sysState.ukfRNoise, 2, ' m'); 
+    $('bande-passante').textContent = dataOrDefault(sysState.loopFreq / 2, 1, ' Hz'); 
     
     // POSITION & ASTRO
     $('lat-ekf').textContent = dataOrDefault(currentPosition.lat, 7, '°');
@@ -380,6 +367,9 @@ function updateDashboard(dt) {
     updateAstro(getCDate(), currentPosition.lat, currentPosition.lon);
 
     // PHYSIQUE & RELATIVITÉ
+    $('speed-of-sound-calc').textContent = dataOrDefault(sysState.env.soundSpd, 2, ' m/s');
+    $('perc-speed-sound').textContent = dataOrDefault(speed / sysState.env.soundSpd * 100, 2, ' %');
+    $('mach-number').textContent = dataOrDefault(speed / sysState.env.soundSpd, 4);
     $('percent-speed-light').textContent = dataOrDefaultExp(speed / C_L * 100, 2, ' %');
     $('lorentz-factor').textContent = dataOrDefault(phys.gamma, 10);
     $('time-dilation-vitesse').textContent = dataOrDefaultExp((phys.gamma - 1)*86400*1e9, 2, ' ns/j');
@@ -388,8 +378,6 @@ function updateDashboard(dt) {
     $('rest-mass-energy').textContent = dataOrDefaultExp(sysState.mass * C_L**2, 4, ' J');
     $('relativistic-energy').textContent = dataOrDefaultExp(sysState.mass * C_L**2 * phys.gamma, 4, ' J');
     $('momentum').textContent = dataOrDefaultExp(phys.gamma * sysState.mass * speed, 4, ' kg·m/s');
-    $('speed-of-sound-calc').textContent = dataOrDefault(sysState.env.soundSpd, 2, ' m/s');
-    $('mach-number').textContent = dataOrDefault(speed / sysState.env.soundSpd, 4);
     
     // CARTE
     if(map) {
@@ -419,24 +407,24 @@ function startLoop() {
 
 // --- INIT ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Vérif Dépendances
+    // Vérif Dépendances (Si cela échoue, la carte et le reste ne se lanceront pas)
     if(typeof math === 'undefined' || typeof L === 'undefined' || typeof suncalc === 'undefined' || typeof turf === 'undefined') {
-        $('statut-ekf-fusion').textContent = "ERREUR DE LIBRAIRIE CRITIQUE";
+        $('statut-ekf-fusion').textContent = "ERREUR LIBRAIRIE";
         alert("Dépendances manquantes: math.js, leaflet.js, suncalc.js ou turf.min.js !");
         return;
     }
 
-    // Carte
-    map = L.map('map').setView([currentPosition.lat, currentPosition.lon], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-    // Initialisation UKF
+    // Initialisation
     ukf = new RealUKF();
     sysState.est.g_wgs84 = calculateWGS84Gravity(currentPosition.lat * D2R, currentPosition.alt);
     $('gravity-base').textContent = dataOrDefault(sysState.est.g_wgs84, 4, ' m/s²');
     
-    // Démarrer les capteurs
+    // Démarrer les capteurs (pour que le niveau à bulle soit actif avant le GPS)
     startSensors(); 
+    
+    // Carte
+    map = L.map('map').setView([currentPosition.lat, currentPosition.lon], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     
     // Bouton Marche
     const btn = $('toggle-gps-btn');
@@ -449,7 +437,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 startGPS();     
                 startLoop();    
 
-                // Météo et Astro (Lent)
+                // Météo (Lent)
+                fetchEnv();
                 setInterval(() => fetchEnv(), 5000);
                 
             } else {
@@ -459,8 +448,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Initialisation affichages par défaut
-    fetchEnv(); // Première exécution pour les valeurs par défaut
+    // Mise à jour de l'affichage initial
+    fetchEnv(); 
     updateAstro(getCDate(), currentPosition.lat, currentPosition.lon); 
     $('statut-ekf-fusion').textContent = ukf.status;
 });
