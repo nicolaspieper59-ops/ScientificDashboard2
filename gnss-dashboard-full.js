@@ -176,13 +176,13 @@ const updateDOMSlow = () => {
 
 window.onload = () => {
     
-    // 1. Initialisation Conditionnelle de l'UKF
+    // 1. Initialisation Conditionnelle de l'UKF (Non-bloquant)
     if (typeof math === 'undefined') {
         console.error("🔴 ERREUR : math.min.js est manquant. Le filtre UKF ne peut pas démarrer.");
         if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR (math.js manquant) 🔴';
         
     } else if (typeof ProfessionalUKF !== 'undefined') { 
-        // math.js est chargé, on tente d'initialiser l'UKF
+        // Si math.js est là ET la classe UKF est définie, on l'initialise
         try {
             window.ukf = new ProfessionalUKF(); 
             console.log("UKF 21 États Initialisé. 🟢");
@@ -192,19 +192,23 @@ window.onload = () => {
             if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR CONSTRUCTEUR 🔴';
         }
     } else {
-        console.error("🔴 ÉCHEC CRITIQUE : La classe ProfessionalUKF n'est pas définie. Chargez ukf-lib.js.");
+        // math.js est là, mais ukf-lib.js n'a pas défini la classe ProfessionalUKF
+        console.error("🔴 ÉCHEC CRITIQUE : La classe ProfessionalUKF n'est pas définie. Chargez lib/ukf-lib.js.");
         if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR (Classe manquante) 🔴';
     }
     
-
     // 2. Initialisation des capteurs (GPS et IMU)
+    // CES FONCTIONS S'EXÉCUTENT MAINTENANT MÊME SI L'UKF EST EN PANNE.
     initGPS(); 
-    // ... (Logique d'écoute d'événements IMU)
+    if (document.getElementById('activate-sensors-btn')) {
+        // L'appel à cette fonction doit exister dans gnss-dashboard-full.js
+        document.getElementById('activate-sensors-btn').addEventListener('click', activateDeviceMotion); 
+    } 
     
     // 3. Démarrage de la synchronisation NTP (réseau)
     syncH(); 
 
-    // 4. Démarrage des boucles de rafraîchissement (CRITIQUE pour l'affichage)
+    // 4. Démarrage des boucles de rafraîchissement
     updateDOMFast();
     updateDOMSlow();
 };
