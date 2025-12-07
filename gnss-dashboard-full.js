@@ -117,6 +117,7 @@ const initGPS = () => {
 // --- BLOC 5 : MISES À JOUR PÉRIODIQUES DU DOM ---
 
 const updateDOMFast = () => {
+    try {
     // --- TEMPS ÉCOULÉ (Devrait s'incrémenter même sans GPS) ---
     timeTotalSeconds += 0.1;
     if ($('time-total')) $('time-total').textContent = `${timeTotalSeconds.toFixed(2)} s`;
@@ -135,10 +136,17 @@ const updateDOMFast = () => {
     const gamma = 1 / Math.sqrt(1 - Math.pow(currentPosition.spd / C_L, 2));
     if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(gamma, 4);
 
+} catch (e) {
+        console.error("🔴 ERREUR CRITIQUE dans updateDOMFast (Boucle rapide):", e.message);
+        // Si ça crash, au moins on le log
+}        
+
     setTimeout(updateDOMFast, 100);
 };
 
 const updateDOMSlow = () => {
+
+    try {
 
     // --- HORLOGE ET DATE (Doit être affiché immédiatement) ---
     const now = getCDate(); 
@@ -168,6 +176,12 @@ const updateDOMSlow = () => {
     // --- MÉTÉO (Requiert API et fetchWeather) ---
     if ($('meteo-status')) $('meteo-status').textContent = 'INACTIF (API requise)';
     
+} catch (e) {
+        console.error("🔴 ERREUR CRITIQUE dans updateDOMSlow (Boucle lente):", e.message);
+        // Si ça crash, au moins on le log
+    }
+
+    // Le setTimeout s'exécute QUOI QU'IL ARRIVE
     setTimeout(updateDOMSlow, DOM_SLOW_UPDATE_MS);
 };
 
