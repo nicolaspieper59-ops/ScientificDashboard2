@@ -20,6 +20,8 @@ const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 // Formatage des données (Anti-NaN/Null/Inf)
 const dataOrDefault = (val, decimals, suffix = '') => {
     if (val === undefined || val === null || isNaN(val) || val === Infinity || val === -Infinity || Math.abs(val) < 1e-9) { 
+        // Note: L'ID 'tst' est utilisé dans le HTML pour "Heure Solaire Vraie (TST)"
+        if (id === 'tst' || id === 'mst') return 'N/A';
         return (decimals === 0 ? '--' : '--.--') + suffix; 
     }
     return val.toFixed(decimals) + suffix;
@@ -157,7 +159,6 @@ const updateDOMFast = () => {
         console.error("🔴 ERREUR NON GÉRÉE dans updateDOMFast (La boucle continue)", e.message);
     }
     
-    // 🚨 Le setTimeout garantit la récurrence, MÊME en cas d'erreur.
     setTimeout(updateDOMFast, 100);
 };
 
@@ -179,6 +180,7 @@ const updateDOMSlow = () => {
         const lat = currentPosition.lat;
         const lon = currentPosition.lon;
         
+        // VÉRIFIE que la fonction ASTRO est disponible et que la position par défaut a changé
         if (typeof calculateAstroDataHighPrec === 'function' && lat !== 43.2964) { 
             try { 
                 const astroData = calculateAstroDataHighPrec(now, lat, lon);
@@ -232,10 +234,12 @@ const updateDOMSlow = () => {
                 
             } catch (astroError) {
                 console.error("🔴 ERREUR DANS LA LOGIQUE ASTRO : ", astroError.message);
+                // Si l'astro échoue, on affiche un statut d'erreur.
                 if ($('tst')) $('tst').textContent = `ASTRO ERREUR: ${astroError.message.substring(0, 20)}...`;
             }
 
         } else if (typeof calculateAstroDataHighPrec !== 'function') {
+            // Afficher l'état si Astro custom n'est pas détecté
             if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
         }
 
