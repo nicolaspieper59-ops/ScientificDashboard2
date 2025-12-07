@@ -1,6 +1,6 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// VERSION FINALE - ROBUSTESSE ET HAUTE PRÉCISION
+// VERSION FINALE ET ROBUSTE
 // =================================================================
 
 // --- BLOC 1 : CONSTANTES ET UTILITAIRES DE BASE ---
@@ -9,22 +9,13 @@ const $ = id => document.getElementById(id);
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const KMH_MS = 3.6;         
-const C_L = 299792458;      // Vitesse de la lumière (m/s)
-const DOM_SLOW_UPDATE_MS = 2000; // Fréquence de rafraîchissement lent (ms)
+const C_L = 299792458;      
+const DOM_SLOW_UPDATE_MS = 2000; 
 
-// Constantes Météo (pour fallback)
-const RHO_SEA_LEVEL = 1.225; // Densité de l'air niveau mer (kg/m³)
-const TEMP_SEA_LEVEL_K = 288.15; // 15°C en Kelvin
-const BARO_ALT_REF_HPA = 1013.25;
-
-// API Endpoints (Nécessite HTTPS et/ou CORS)
-const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 
-
-// --- FORMATAGE DES DONNÉES (VERSION ROBUSTE ANTI-BRUIT DE MACHINE) ---
+// --- FORMATAGE DES DONNÉES (ROBUSTESSE ANTI-BRUIT DE MACHINE) ---
 const dataOrDefault = (val, decimals, suffix = '') => {
-    // Affiche '--.--' si NaN, null, Infinity, ou si la valeur est négligeable (bruit de machine < 1e-9)
     if (val === undefined || val === null || isNaN(val) || val === Infinity || val === -Infinity || Math.abs(val) < 1e-9) { 
         return (decimals === 0 ? '--' : '--.--') + suffix; 
     }
@@ -45,29 +36,28 @@ let isGpsRunning = false;
 let isMoving = false;
 let timeTotalSeconds = 0;
 let timeMovingSeconds = 0;
-let lastNTPDate = null; // Date fournie par le serveur NTP
-let lastLocalTime = null; // Date locale au moment de la réception NTP
+let lastNTPDate = null; 
+let lastLocalTime = null; 
+let currentMass = 70.0; 
 
-// Position UKF/GPS (Initialisation CRITIQUE avec des valeurs par défaut)
+// Position UKF/GPS (Initialisation CRITIQUE : Marseille)
 let currentPosition = { 
-    lat: 43.2964,   // Latitude par défaut (Marseille, pour débloquer Astro/Météo)
-    lon: 5.3697,    // Longitude par défaut
+    lat: 43.2964,   
+    lon: 5.3697,    
     alt: 0.0,
     acc: 10.0,      
     spd: 0.0        
 };
 
-// Variables EKF/UKF (Initialisées à 0, l'UKF les mettra à jour)
 let ukf = null;
-let kAlt = 0.0;     // Altitude estimée (m)
-let kSpd = 0.0;     // Vitesse stable estimée (m/s)
-let kVVert = 0.0;   // Vitesse verticale estimée (m/s)
+let kAlt = 0.0;     
+let kSpd = 0.0;     
+let kVVert = 0.0;   
 
 // Variables IMU/Capteurs
-let lastPitch = 0.0, lastRoll = 0.0;
 let lastAccZ = 0.0, lastAccLong = 0.0;
 let sensorStatus = "Inactif";
-let currentMass = 70.0; // Poids par défaut pour les calculs de force
+let lastPitch = 0.0, lastRoll = 0.0;
 
 
 // --- BLOC 3 : FONCTIONS DE TEMPS (ROBUSTESSE GARANTIE) ---
@@ -81,19 +71,12 @@ const syncH = async () => {
         lastNTPDate = new Date(data.utc_datetime); 
         lastLocalTime = Date.now(); 
         
-        // Affichage des temps initiaux
-        if ($('date-gmt')) $('date-gmt').textContent = lastNTPDate.toTimeString().split(' ')[0] + ' UTC';
-        
     } catch (e) {
-        console.warn("🔴 Échec de la synchronisation NTP. Utilisation de l'horloge locale.", e.message);
-        if ($('date-gmt')) $('date-gmt').textContent = 'SYNCHRO ÉCHOUÉE';
-        // Le fallback dans getCDate gère le reste.
+        console.warn("🔴 Échec de la synchronisation NTP. Utilisation de l'horloge locale.");
+        // Le fallback dans getCDate gère l'affichage d'erreur.
     }
 };
 
-/**
- * Retourne un objet Date corrigé ou l'heure locale comme fallback (INASSABLE).
- */
 const getCDate = () => {
     if (!lastNTPDate || !lastLocalTime) {
         return new Date(); // FALLBACK CRITIQUE
@@ -103,80 +86,60 @@ const getCDate = () => {
 };
 
 
-// --- BLOC 4 : GESTION DES CAPTEURS ET GPS (IMU et Geolocation) ---
+// --- BLOC 4 : GESTION DES CAPTEURS ET GPS ---
 
 const handleDeviceMotion = (event) => {
-    // Si l'UKF est initialisé, on peut l'utiliser pour la fusion
-    // if (ukf) { ukf.updateIMU(event.accelerationIncludingGravity, event.rotationRate); }
-
+    // Les mises à jour de l'UKF doivent être faites ici
     const acc = event.accelerationIncludingGravity;
     lastAccLong = acc.x; 
-    lastAccZ = acc.z; // Accélération verticale brute (avec gravité)
+    lastAccZ = acc.z; 
     sensorStatus = "Actif";
 
-    // Mettez ici à jour lastPitch et lastRoll (nécessite DeviceOrientationEvent pour être précis)
-    // Pour cet exemple, nous utilisons les valeurs brutes de l'accélération
-    
-    // Mise à jour de l'affichage
     if ($('acc-x')) $('acc-x').textContent = dataOrDefault(acc.x, 2, ' m/s²');
     if ($('acc-y')) $('acc-y').textContent = dataOrDefault(acc.y, 2, ' m/s²');
     if ($('acc-z')) $('acc-z').textContent = dataOrDefault(acc.z, 2, ' m/s²');
     if ($('imu-status')) $('imu-status').textContent = 'Actif 🟢';
 };
 
-
-/**
- * Active les capteurs de mouvement (IMU) avec gestion des permissions mobiles.
- */
 function activateDeviceMotion() {
-    // La fonction doit être appelée suite à une interaction utilisateur
     if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
                     window.addEventListener('devicemotion', handleDeviceMotion, true);
-                    console.log("Capteurs IMU activés (Permission accordée).");
                 } else {
-                    console.warn("Permission capteurs IMU refusée.");
                     sensorStatus = "Refusé 🔴";
                 }
             })
-            .catch(error => {
-                console.error("Erreur à l'activation des capteurs:", error);
-                sensorStatus = "Erreur 🔴";
-            });
+            .catch(error => { sensorStatus = "Erreur 🔴"; });
     } else if (window.DeviceMotionEvent) {
-        // Tente d'activer sans demande explicite (pour les ordinateurs de bureau)
         window.addEventListener('devicemotion', handleDeviceMotion, true);
-        console.log("Capteurs IMU activés (Méthode standard).");
     } else {
         sensorStatus = "Non supporté 🟡";
     }
     if ($('imu-status')) $('imu-status').textContent = sensorStatus;
+    // Cache le bouton (si existant, comme dans votre HTML)
     if ($('activate-sensors-btn')) $('activate-sensors-btn').style.display = 'none';
 }
 
 
 const handleGeolocation = (pos) => {
     const { latitude, longitude, altitude, accuracy, speed } = pos.coords;
-    const timestamp = pos.timestamp;
-
-    // Mise à jour de l'état global
+    
     currentPosition = { 
         lat: latitude, 
         lon: longitude, 
         alt: altitude, 
         acc: accuracy, 
         spd: speed || 0.0,
-        time: timestamp 
+        time: pos.timestamp 
     };
     
-    // Mettre à jour l'UKF
+    // Si l'UKF est initialisé, mettez à jour la position
     // if (ukf) { ukf.updateGPS(currentPosition); }
 
     isMoving = (currentPosition.spd * KMH_MS) > 0.5;
 
-    // Mise à jour du DOM rapide
     if ($('vitesse-brute-ms')) $('vitesse-brute-ms').textContent = dataOrDefault(currentPosition.spd, 2, ' m/s');
     if ($('precision-gps')) $('precision-gps').textContent = dataOrDefault(currentPosition.acc, 2, ' m');
     if ($('gps-status')) $('gps-status').textContent = 'Actif 🟢';
@@ -193,34 +156,24 @@ const initGPS = () => {
             if ($('gps-status')) $('gps-status').textContent = 'Erreur/Refus 🔴';
         }, GPS_OPTS);
     } else {
-        console.warn("GPS non supporté par ce navigateur.");
-        isGpsRunning = false;
         if ($('gps-status')) $('gps-status').textContent = 'Non supporté 🟡';
     }
+    // Assure que l'ID existe, basé sur votre sortie
+    if ($('gps-status')) $('gps-status').textContent = 'Acquisition en cours...';
 };
 
 
 // --- BLOC 5 : MISES À JOUR PÉRIODIQUES DU DOM ---
 
 const updateDOMFast = () => {
-    // --- UKF/EKF FUSION LOGIC (Simplified placeholders) ---
-    // Les valeurs kSpd, kAlt, kVVert sont mises à jour ici par la logique de l'UKF
+    // Logique UKF/EKF : Mettez à jour kSpd, kAlt, kVVert ici
     
-    // Si l'UKF est actif, on peut mettre à jour l'état
-    if (ukf) {
-        // const state = ukf.getState(); 
-        // kSpd = state.speed; 
-        // kAlt = state.altitude; 
-        // kVVert = state.verticalSpeed; 
-    }
-
-    // Mise à jour du temps écoulé (même en cas de "N/A" initial)
     timeTotalSeconds += 0.1;
     if (isMoving) timeMovingSeconds += 0.1;
     if ($('time-total')) $('time-total').textContent = `${timeTotalSeconds.toFixed(2)} s`;
     if ($('time-moving')) $('time-moving').textContent = `${timeMovingSeconds.toFixed(2)} s`;
     
-    // Mise à jour des valeurs EKF/UKF
+    // Affichage des valeurs UKF/EKF
     if ($('vitesse-stable-kmh')) $('vitesse-stable-kmh').textContent = dataOrDefault(kSpd * KMH_MS, 2, ' km/h');
     if ($('vitesse-stable-ms')) $('vitesse-stable-ms').textContent = dataOrDefault(kSpd, 2, ' m/s');
     if ($('vitesse-verticale-ekf')) $('vitesse-verticale-ekf').textContent = dataOrDefault(kVVert, 2, ' m/s');
@@ -230,20 +183,19 @@ const updateDOMFast = () => {
     if ($('accel-verticale-imu')) $('accel-verticale-imu').textContent = dataOrDefault(lastAccZ, 2, ' m/s²');
     if ($('force-g-verticale')) $('force-g-verticale').textContent = dataOrDefault(gForceVertical, 2, ' G');
     
-    // Position EKF (basé sur la fusion de l'UKF)
+    // Position EKF (utilise currentPosition si UKF non actif)
     if ($('latitude-ekf')) $('latitude-ekf').textContent = dataOrDefault(currentPosition.lat, 4, '°');
     if ($('longitude-ekf')) $('longitude-ekf').textContent = dataOrDefault(currentPosition.lon, 4, '°');
     if ($('altitude-ekf')) $('altitude-ekf').textContent = dataOrDefault(kAlt, 1, ' m');
-
 
     setTimeout(updateDOMFast, 100);
 };
 
 const updateDOMSlow = () => {
 
-    // --- MISE À JOUR HORLOGE LOCALE (NTP/FALLBACK) ---
     const now = getCDate(); // Date VALIDE garantie
     
+    // Mise à jour de l'heure
     if (now) {
         const timeStr = now.toLocaleTimeString('fr-FR');
         const dateStr = now.toLocaleDateString('fr-FR');
@@ -254,83 +206,77 @@ const updateDOMSlow = () => {
     }
 
 
-    // --- MISE À JOUR ASTRO (High-Precision - Dépend de lib/astro.js) ---
+    // --- MISE À JOUR ASTRO (Requiert lib/astro.js et lib/ephem.js) ---
     const lat = currentPosition.lat;
     const lon = currentPosition.lon;
     
-    // Vérification des dépendances CRITIQUES lib/astro.js
+    // Vérification critique des dépendances Astro.
     if (typeof calculateAstroDataHighPrec === 'function' && typeof getTSLV === 'function' && typeof getMoonPhaseName === 'function') {
         try {
             const fullAstroData = calculateAstroDataHighPrec(now, lat, lon); 
             const R2D = 180 / Math.PI;
 
-            // ... MISE À JOUR DU DOM ASTRO (TST, MST, etc.) ...
+            // Temps Solaire & Sidéral
             if ($('tst')) $('tst').textContent = fullAstroData.TST_HRS || 'N/A';
             if ($('mst')) $('mst').textContent = fullAstroData.MST_HRS || 'N/A';
-            if ($('noon-solar-local')) $('noon-solar-local').textContent = fullAstroData.NOON_SOLAR_UTC.toTimeString().split(' ')[0] + ' UTC';
+            if ($('eot')) $('eot').textContent = dataOrDefault(parseFloat(fullAstroData.EOT_MIN), 2, ' min');
+            if ($('tslv')) $('tslv').textContent = getTSLV(now, lon) || 'N/A'; 
+            if ($('longitude-ecliptique')) $('longitude-ecliptique').textContent = dataOrDefault(parseFloat(fullAstroData.ECL_LONG), 4, '°');
+
+            // Soleil
             if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(fullAstroData.sun.altitude * R2D, 2, '°');
             if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(fullAstroData.sun.azimuth * R2D, 2, '°');
+            if ($('day-duration')) $('day-duration').textContent = dataOrDefault((fullAstroData.sun.sunset.getTime() - fullAstroData.sun.sunrise.getTime()) / 3600000, 2, ' h');
+
+            // Lune
             if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(fullAstroData.moon.illumination.phase); 
             if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(fullAstroData.moon.illumination.fraction * 100, 1, ' %');
-            // ... Mettre à jour tous les autres champs Astro de la même manière ...
-
+            
         } catch (e) {
-            console.error("🔴 ERREUR CRITIQUE ASTRO : L'appel à calculateAstroDataHighPrec a échoué. Coordonnées ou librairie Astro ?", e);
+            console.error("🔴 ERREUR ASTRO : Le calcul a échoué (Astro.js/ephem.js?).", e);
             if ($('tst')) $('tst').textContent = 'N/A (Erreur JS)';
         }
     } else {
-        // L'affichage 'N/A' ici est normal si vous n'avez pas chargé lib/astro.js et lib/ephem.js
-        if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
+        if ($('tst')) $('tst').textContent = 'N/A (Dépendance Astro manquante)';
     }
 
-    // --- MISES À JOUR MÉTÉO/API (Requiert fetchWeather et des coordonnées) ---
-    // if (isGpsRunning && typeof fetchWeather === 'function') {
-    //    fetchWeather(lat, lon); 
-    // }
-    
+    // --- MÉTÉO / API ---
+    // Les appels API (météo, polluants) doivent être implémentés ici ou dans une fonction appelée ici.
+    // fetchWeather(lat, lon); 
+
     setTimeout(updateDOMSlow, DOM_SLOW_UPDATE_MS);
 };
 
 
-// --- BLOC 6 : INITIALISATION DU SYSTÈME (window.onload) ---
+// --- BLOC 6 : INITIALISATION DU SYSTÈME ---
 
 window.onload = () => {
     
-    // 1. VÉRIFICATION DES DÉPENDANCES ET INITIALISATION DE L'UKF (IMMEDIATE)
+    // 1. Initialisation de l'UKF (vérification de math.js)
     if (typeof math !== 'undefined' && typeof ProfessionalUKF !== 'undefined') {
-        window.ukf = new ProfessionalUKF(); // Initialisation IMMÉDIATE
+        window.ukf = new ProfessionalUKF(); 
         console.log("UKF 21 États Initialisé. 🟢");
     } else {
-        console.error("🔴 math.js ou ProfessionalUKF manquant. Le filtre UKF est désactivé.");
-        // Si math.js n'est pas là, le script s'arrête ici.
+        console.error("🔴 math.js ou ProfessionalUKF manquant. UKF désactivé.");
         return; 
     }
 
-    // 2. Initialisation des capteurs (GPS et IMU)
+    // 2. Initialisation des capteurs
     initGPS(); 
-    
-    // 3. Gestion de l'activation des capteurs IMU (Pour mobiles)
     const sensorBtn = $('activate-sensors-btn');
     if (sensorBtn) {
         sensorBtn.addEventListener('click', activateDeviceMotion);
     } else {
-        // Pour les navigateurs de bureau qui ne nécessitent pas de clic
+        // Tente de démarrer sur desktop sans bouton
         activateDeviceMotion(); 
     }
     
-    // 4. Démarrage de la synchronisation NTP (réseau)
+    // 3. Démarrage de la synchronisation NTP
     syncH(); 
 
-    // 5. Démarrage des boucles de rafraîchissement
+    // 4. Démarrage des boucles de rafraîchissement
     updateDOMFast();
     updateDOMSlow();
-
-    // 6. Autres initialisations (carte, événements)
-    // if (typeof L !== 'undefined' && $('map-container')) { initMap(); }
     
-    // ... Initialisation des écouteurs de contrôle (Réinitialisation, etc.)
+    // ... Autres initialisations (carte, écouteurs d'événements) ...
 };
-
-// =================================================================
-// FIN DU FICHIER GNSS-DASHBOARD-FULL.JS
-// =================================================================
