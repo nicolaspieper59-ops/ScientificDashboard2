@@ -1,6 +1,6 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// VERSION ROBUSTE ANTI-CRASH
+// VERSION FINALE ROBUSTE ANTI-CRASH
 // =================================================================
 
 // --- BLOC 1 : CONSTANTES ET UTILITAIRES DE BASE ---
@@ -83,6 +83,13 @@ const getCDate = () => {
 
 // --- BLOC 4 : GESTION DES CAPTEURS ET GPS ---
 
+// ⚠️ PLACEHOLDER IMU (Empêche ReferenceError si le bouton est cliqué)
+// Normalement, cette fonction serait dans un fichier utilitaire IMU.
+const activateDeviceMotion = () => {
+    console.warn("🟡 Le code pour 'activateDeviceMotion' n'est pas implémenté ou chargé.");
+    if ($('statut-capteur')) $('statut-capteur').textContent = 'IMU Non implémenté';
+};
+
 const handleGeolocation = (pos) => {
     const { latitude, longitude, altitude, accuracy, speed } = pos.coords;
     
@@ -94,6 +101,12 @@ const handleGeolocation = (pos) => {
         spd: speed || 0.0,
         time: pos.timestamp 
     };
+    
+    // Si l'UKF est initialisé, on lui passe la mesure GPS
+    if (window.ukf && typeof window.ukf.update === 'function') {
+        window.ukf.update(currentPosition); 
+        // L'UKF met à jour les variables kAlt, kSpd, kVVert dans une implémentation complète
+    }
     
     isGpsRunning = true;
     if ($('gps-status')) $('gps-status').textContent = 'Actif 🟢';
@@ -117,71 +130,75 @@ const initGPS = () => {
 // --- BLOC 5 : MISES À JOUR PÉRIODIQUES DU DOM ---
 
 const updateDOMFast = () => {
-    try {
-    // --- TEMPS ÉCOULÉ (Devrait s'incrémenter même sans GPS) ---
-    timeTotalSeconds += 0.1;
-    if ($('time-total')) $('time-total').textContent = `${timeTotalSeconds.toFixed(2)} s`;
-    if ($('time-moving')) $('time-moving').textContent = `${timeMovingSeconds.toFixed(2)} s`;
-    
-    // --- VITESSE BRUTE & EKF (Mise à jour pour affichage) ---
-    const instVitesseKmH = currentPosition.spd * KMH_MS;
-    if ($('vitesse-inst-kmh')) $('vitesse-inst-kmh').textContent = dataOrDefault(instVitesseKmH, 1, ' km/h');
-    
-    // --- PHYSIQUE STATIQUE ---
-    if ($('vitesse-lumiere')) $('vitesse-lumiere').textContent = `${C_L.toFixed(0)} m/s`;
-    if ($('gravitation-universelle')) $('gravitation-universelle').textContent = dataOrDefaultExp(G_U, 5, ' m³/kg/s²');
-    if ($('gravity-base')) $('gravity-base').textContent = `${G_STD.toFixed(4)} m/s²`;
-    
-    // --- RELATIVITÉ (Se met à jour avec la vitesse actuelle) ---
-    const gamma = 1 / Math.sqrt(1 - Math.pow(currentPosition.spd / C_L, 2));
-    if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(gamma, 4);
+    try { // ⬅️ PROTECTION ANTI-CRASH
+        
+        // --- TEMPS ÉCOULÉ (Devrait s'incrémenter même sans GPS) ---
+        timeTotalSeconds += 0.1;
+        if ($('time-total')) $('time-total').textContent = `${timeTotalSeconds.toFixed(2)} s`;
+        if ($('time-moving')) $('time-moving').textContent = `${timeMovingSeconds.toFixed(2)} s`;
+        
+        // --- VITESSE BRUTE & EKF (Mise à jour pour affichage) ---
+        const instVitesseKmH = currentPosition.spd * KMH_MS;
+        if ($('vitesse-inst-kmh')) $('vitesse-inst-kmh').textContent = dataOrDefault(instVitesseKmH, 1, ' km/h');
+        
+        // --- PHYSIQUE STATIQUE ---
+        if ($('vitesse-lumiere')) $('vitesse-lumiere').textContent = `${C_L.toFixed(0)} m/s`;
+        if ($('gravitation-universelle')) $('gravitation-universelle').textContent = dataOrDefaultExp(G_U, 5, ' m³/kg/s²');
+        if ($('gravity-base')) $('gravity-base').textContent = `${G_STD.toFixed(4)} m/s²`;
+        
+        // --- RELATIVITÉ (Se met à jour avec la vitesse actuelle) ---
+        const gamma = 1 / Math.sqrt(1 - Math.pow(currentPosition.spd / C_L, 2));
+        if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(gamma, 4);
 
-} catch (e) {
-        console.error("🔴 ERREUR CRITIQUE dans updateDOMFast (Boucle rapide):", e.message);
-        // Si ça crash, au moins on le log
-}        
-
+    } catch (e) {
+        console.error("🔴 ERREUR DANS updateDOMFast (La boucle continue)", e.message);
+    }
+    
+    // 🚨 Le setTimeout garantit la récurrence, même en cas d'erreur.
     setTimeout(updateDOMFast, 100);
 };
 
 const updateDOMSlow = () => {
+    try { // ⬅️ PROTECTION ANTI-CRASH
 
-    try {
-
-    // --- HORLOGE ET DATE (Doit être affiché immédiatement) ---
-    const now = getCDate(); 
-    if (now) {
-        if ($('local-time') && $('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
-            // Ne pas écraser l'erreur de synchro par l'heure locale
-        } else if ($('local-time')) {
-            $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+        // --- HORLOGE ET DATE (Doit être affiché immédiatement) ---
+        const now = getCDate(); 
+        if (now) {
+            if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
+                $('local-time').textContent = now.toLocaleTimeString('fr-FR');
+            }
+            if ($('date-display-utc')) $('date-display-utc').textContent = now.toUTCString().split(' ')[4] + ' UTC';
+            if ($('date-astro')) $('date-astro').textContent = now.toLocaleDateString('fr-FR');
         }
-        if ($('date-display-utc')) $('date-display-utc').textContent = now.toUTCString().split(' ')[4] + ' UTC';
-        if ($('date-astro')) $('date-astro').textContent = now.toLocaleDateString('fr-FR');
-    }
 
-    // --- ASTRO (Requiert lat/lon et les dépendances lib/astro.js) ---
-    const lat = currentPosition.lat;
-    const lon = currentPosition.lon;
+        // --- ASTRO (Requiert lat/lon et les dépendances lib/astro.js) ---
+        const lat = currentPosition.lat;
+        const lon = currentPosition.lon;
+        
+        if (typeof calculateAstroDataHighPrec === 'function' && lat !== 'N/A') {
+            try { 
+                // ⚠️ ICI SE TROUVERAIT L'APPEL AUX FONCTIONS ASTRO
+                // Ex: const astroData = calculateAstroDataHighPrec(lat, lon, now);
+                // Ex: $('sun-alt').textContent = dataOrDefault(astroData.sun.alt, 2, '°');
+                
+            } catch (astroError) {
+                console.error("🔴 ERREUR DANS LA LOGIQUE ASTRO : ", astroError.message);
+                if ($('tst')) $('tst').textContent = `ERREUR: ${astroError.message.substring(0, 10)}...`;
+            }
+
+        } else if (typeof calculateAstroDataHighPrec !== 'function') {
+            // Mise à jour de l'état si les librairies Astro manquent
+            if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
+        }
+
+        // --- MÉTÉO (Requiert API et fetchWeather) ---
+        if ($('meteo-status')) $('meteo-status').textContent = 'INACTIF (API requise)';
+
+    } catch (e) {
+        console.error("🔴 ERREUR DANS updateDOMSlow (La boucle continue)", e.message);
+    }
     
-    if (typeof calculateAstroDataHighPrec === 'function' && lat !== 'N/A') {
-        // La logique Astro s'exécute ici si les librairies sont chargées.
-        // Si ces champs restent N/A, c'est que lib/astro.js est manquant.
-        // ... (Logique Astro complète) ...
-    } else if (typeof calculateAstroDataHighPrec !== 'function') {
-        // Afficher l'état des librairies Astro pour le debug
-        if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
-    }
-
-    // --- MÉTÉO (Requiert API et fetchWeather) ---
-    if ($('meteo-status')) $('meteo-status').textContent = 'INACTIF (API requise)';
-    
-} catch (e) {
-        console.error("🔴 ERREUR CRITIQUE dans updateDOMSlow (Boucle lente):", e.message);
-        // Si ça crash, au moins on le log
-    }
-
-    // Le setTimeout s'exécute QUOI QU'IL ARRIVE
+    // Le setTimeout garantit la récurrence, même en cas d'erreur.
     setTimeout(updateDOMSlow, DOM_SLOW_UPDATE_MS);
 };
 
@@ -211,10 +228,6 @@ window.onload = () => {
         if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR (Classe manquante) 🔴';
     }
     
-    
-// --- BLOC 6 : INITIALISATION DU SYSTÈME (window.onload) ---
-// ... (Initialisation UKF non-bloquante ici)
-
     // 2. Initialisation des capteurs (GPS et IMU)
     initGPS(); 
     
@@ -231,7 +244,7 @@ window.onload = () => {
     // 3. Démarrage de la synchronisation NTP (réseau)
     syncH(); 
 
-    // 4. Démarrage des boucles de rafraîchissement
+    // 4. Démarrage des boucles de rafraîchissement (DOIT DÉMARRER QUOI QU'IL ARRIVE)
     updateDOMFast();
     updateDOMSlow();
-};    
+};
