@@ -206,12 +206,11 @@ window.onload = () => {
     
     const activateButton = document.getElementById('activate-sensors-btn');
     if (activateButton) {
-        // Vérifie si la fonction existe avant d'essayer d'y faire référence
+        // 🚨 NOUVELLE VÉRIFICATION DÉFENSIVE : Empêche le crash du script si la fonction n'est pas là.
         if (typeof activateDeviceMotion === 'function') {
             activateButton.addEventListener('click', activateDeviceMotion); 
         } else {
-             // Si la fonction manque, on log l'erreur mais on ne crash pas.
-             console.warn("🟡 AVERTISSEMENT : La fonction 'activateDeviceMotion' est manquante. Le bouton IMU est désactivé.");
+             console.warn("🟡 AVERTISSEMENT : La fonction 'activateDeviceMotion' est manquante ou non définie. Le bouton IMU est inactif.");
         }
     } 
     
@@ -221,4 +220,4 @@ window.onload = () => {
     // 4. Démarrage des boucles de rafraîchissement
     updateDOMFast();
     updateDOMSlow();
-};
+};    
