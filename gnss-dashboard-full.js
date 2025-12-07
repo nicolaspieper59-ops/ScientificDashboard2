@@ -1,8 +1,10 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// VERSION 3.0 : ROBUSTESSE MAXIMALE & INTÉGRATION ASTRO.JS
-// Dépendances : math.min.js, lib/ukf-lib.js, lib/astro.js, lib/ephem.js
+// VERSION 3.1 : DÉBOGAGE CRITIQUE DE L'INITIALISATION
 // =================================================================
+
+// 🚨 DEBUG CRITIQUE 1 : Le script est-il au moins chargé ?
+console.log("DEBUG: Script gnss-dashboard-full.js CHARGÉ. En attente de window.onload.");
 
 // --- BLOC 1 : CONSTANTES ET UTILITAIRES DE BASE ---
 
@@ -11,17 +13,14 @@ const $ = id => document.getElementById(id);
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const KMH_MS = 3.6;         
 const C_L = 299792458;      
-const G_U = 6.67430e-11;    // Constante gravitationnelle universelle
-const G_STD = 9.8067;       // Gravité de Base
+const G_U = 6.67430e-11;    
+const G_STD = 9.8067;       
 const DOM_SLOW_UPDATE_MS = 2000; 
 
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 
-// Formatage des données (Anti-NaN/Null/Inf)
 const dataOrDefault = (val, decimals, suffix = '') => {
     if (val === undefined || val === null || isNaN(val) || val === Infinity || val === -Infinity || Math.abs(val) < 1e-9) { 
-        // Note: L'ID 'tst' est utilisé dans le HTML pour "Heure Solaire Vraie (TST)"
-        if (id === 'tst' || id === 'mst') return 'N/A';
         return (decimals === 0 ? '--' : '--.--') + suffix; 
     }
     return val.toFixed(decimals) + suffix;
@@ -94,6 +93,7 @@ const activateDeviceMotion = () => {
 };
 
 const handleGeolocation = (pos) => {
+    // ... (Logic GPS) ...
     const { latitude, longitude, altitude, accuracy, speed } = pos.coords;
     
     currentPosition = { 
@@ -137,19 +137,19 @@ const initGPS = () => {
 
 const updateDOMFast = () => {
     try { 
-        // --- TEMPS ÉCOULÉ (DOIT S'INCRÉMENTER) ---
+        // 🚨 DEBUG CRITIQUE 3 : Confirme que la boucle Fast s'exécute.
+        // Si cette ligne ne s'incrémente pas, la boucle n'a jamais démarré.
         timeTotalSeconds += 0.1;
         if ($('time-total')) $('time-total').textContent = `${timeTotalSeconds.toFixed(2)} s`;
         if ($('time-moving')) $('time-moving').textContent = `${timeMovingSeconds.toFixed(2)} s`;
         
-        // --- VITESSE & RELATIVITÉ ---
+        // ... (Autres mises à jour DOM Fast) ...
         const instVitesseKmH = currentPosition.spd * KMH_MS;
         if ($('vitesse-inst-kmh')) $('vitesse-inst-kmh').textContent = dataOrDefault(instVitesseKmH, 1, ' km/h');
         
         const gamma = 1 / Math.sqrt(1 - Math.pow(currentPosition.spd / C_L, 2));
         if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(gamma, 4);
         
-        // --- PHYSIQUE STATIQUE ---
         if ($('vitesse-lumiere')) $('vitesse-lumiere').textContent = `${C_L.toFixed(0)} m/s`;
         if ($('gravitation-universelle')) $('gravitation-universelle').textContent = dataOrDefaultExp(G_U, 5, ' m³/kg/s²');
         if ($('gravity-base')) $('gravity-base').textContent = `${G_STD.toFixed(4)} m/s²`;
@@ -164,7 +164,7 @@ const updateDOMFast = () => {
 
 
 const updateDOMSlow = () => {
-    try { // ⬅️ PROTECTION ANTI-CRASH
+    try { 
 
         // --- HORLOGE ET DATE ---
         const now = getCDate(); 
@@ -180,13 +180,12 @@ const updateDOMSlow = () => {
         const lat = currentPosition.lat;
         const lon = currentPosition.lon;
         
-        // VÉRIFIE que la fonction ASTRO est disponible et que la position par défaut a changé
         if (typeof calculateAstroDataHighPrec === 'function' && lat !== 43.2964) { 
             try { 
                 const astroData = calculateAstroDataHighPrec(now, lat, lon);
                 
                 // ----------------------------------------------------
-                // ASTRONOMIE - TEMPS SOLAIRE ET SIDÉRAL
+                // MAPPING ASTRONOMIE
                 // ----------------------------------------------------
                 if ($('tst')) $('tst').textContent = astroData.TST_HRS;
                 if ($('mst')) $('mst').textContent = astroData.MST_HRS;
@@ -194,18 +193,14 @@ const updateDOMSlow = () => {
                 if ($('longitude-ecliptique')) $('longitude-ecliptique').textContent = astroData.ECL_LONG + '°';
                 if ($('noon-solar-utc')) $('noon-solar-utc').textContent = astroData.NOON_SOLAR_UTC.toTimeString().split(' ')[0] + ' UTC';
                 
-                // Temps Sidéral Local Vrai
                 if (typeof getTSLV === 'function' && $('tslv')) {
                     $('tslv').textContent = getTSLV(now, lon);
                 }
 
-                // ----------------------------------------------------
                 // SOLEIL
-                // ----------------------------------------------------
                 if ($('sun-altitude')) $('sun-altitude').textContent = dataOrDefault(astroData.sun.altitude * R2D, 2, '°'); 
                 if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(astroData.sun.azimuth * R2D, 2, '°'); 
                 
-                // Calcul de la durée du jour
                 if (astroData.sun.sunrise && astroData.sun.sunset && $('day-duration')) {
                      const diffMs = astroData.sun.sunset.getTime() - astroData.sun.sunrise.getTime();
                      const diffH = Math.floor(diffMs / (1000 * 60 * 60));
@@ -216,34 +211,25 @@ const updateDOMSlow = () => {
                 if ($('sunrise-times')) $('sunrise-times').textContent = astroData.sun.sunrise ? astroData.sun.sunrise.toLocaleTimeString('fr-FR') : 'N/A';
                 if ($('sunset-times')) $('sunset-times').textContent = astroData.sun.sunset ? astroData.sun.sunset.toLocaleTimeString('fr-FR') : 'N/A';
                 
-                // ----------------------------------------------------
                 // LUNE
-                // ----------------------------------------------------
                 if ($('moon-phase-name') && typeof getMoonPhaseName === 'function') {
                     $('moon-phase-name').textContent = getMoonPhaseName(astroData.moon.illumination.phase);
                 }
                 if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moon.illumination.fraction * 100, 1, ' %');
                 if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(astroData.moon.position.altitude * R2D, 2, '°');
                 if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(astroData.moon.position.azimuth * R2D, 2, '°');
-                
-                // Distance (convertie en km, car l'astro.js retourne des mètres)
                 if ($('moon-distance')) $('moon-distance').textContent = dataOrDefault(astroData.moon.position.distance / 1000, 0, ' km');
-
-                // Lever/Coucher Lune (Placeholder de l'astro.js)
                 if ($('moon-times')) $('moon-times').textContent = 'N/A (Calcul complexe)';
                 
             } catch (astroError) {
                 console.error("🔴 ERREUR DANS LA LOGIQUE ASTRO : ", astroError.message);
-                // Si l'astro échoue, on affiche un statut d'erreur.
                 if ($('tst')) $('tst').textContent = `ASTRO ERREUR: ${astroError.message.substring(0, 20)}...`;
             }
 
         } else if (typeof calculateAstroDataHighPrec !== 'function') {
-            // Afficher l'état si Astro custom n'est pas détecté
             if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
         }
 
-        // --- MÉTÉO (Requiert API et fetchWeather) ---
         if ($('meteo-status')) $('meteo-status').textContent = 'INACTIF (API requise)';
 
     } catch (e) {
@@ -258,6 +244,9 @@ const updateDOMSlow = () => {
 
 window.onload = () => {
     
+    // 🚨 DEBUG CRITIQUE 2 : Confirme que window.onload a été atteint.
+    console.log("DEBUG: window.onload event triggered. Starting initialization.");
+
     // 1. Initialisation Conditionnelle de l'UKF (Non-bloquant)
     if (typeof math === 'undefined') {
         console.error("🔴 ERREUR : math.min.js est manquant. Le filtre UKF ne peut pas démarrer.");
@@ -292,7 +281,8 @@ window.onload = () => {
     // 3. Démarrage de la synchronisation NTP (réseau)
     syncH(); 
 
-    // 4. Démarrage des boucles de rafraîchissement (DOIT DÉMARRER QUOI QU'IL ARRIVE)
+    // 4. Démarrage des boucles de rafraîchissement (CRITICAL STEP)
     updateDOMFast();
     updateDOMSlow();
+    console.log("DEBUG: Initialization complete. Loops started.");
 };
