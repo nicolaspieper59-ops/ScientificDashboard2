@@ -452,29 +452,28 @@ const WGS84_E2 = 2 * WGS84_F - WGS84_F * WGS84_F;
         if ($('rayon-schwarzschild')) $('rayon-schwarzschild').textContent = dataOrDefaultExp(Rs, 3, ' m');
         
         // --- ASTRO (APPEL AUX LIBRAIRIES HAUTE PRÉCISION) ---
-        // --- ASTRO (APPEL AUX LIBRAIRIES HAUTE PRÉCISION) ---
         
-        // Les fonctions Astro dépendent de 'now' (Date) et d'une position (Lat/Lon).
+        // 1. DÉFINITION ROBUSTE DES VARIABLES DE BASE
+        // S'assure que 'now' est une Date valide et utilise des coordonnées par défaut si le GPS est inactif.
         const now = getCDate(lServH, lLocH); 
-        const lat = currentPosition ? currentPosition.lat : 0.0;
-        const lon = currentPosition ? currentPosition.lon : 0.0;
+        const lat = (currentPosition && currentPosition.lat !== undefined) ? currentPosition.lat : 0.0;
+        const lon = (currentPosition && currentPosition.lon !== undefined) ? currentPosition.lon : 0.0;
         
-        // 1. UTILISATION DES FONCTIONS ASTRO (Regroupe TST/MST/TSLV et Alt/Az)
-        // La fonction calculateAstroDataHighPrec doit exister ET la date doit être valide.
+        // 2. VÉRIFICATION CRITIQUE AVANT L'APPEL
+        // N'appelle calculateAstroDataHighPrec que si la fonction existe ET que la date est valide.
         if (typeof calculateAstroDataHighPrec === 'function' && now instanceof Date && !isNaN(now.getTime())) {
             try {
                 // Calcule toutes les données astro en une seule fois
                 const fullAstroData = calculateAstroDataHighPrec(now, lat, lon); 
 
-                // Mise à jour des IDs DOM pour le Temps Solaire & Sidéral
+                // --- MISE À JOUR DOM : TEMPS SOLAIRE & SIDÉRAL ---
                 if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
-                
-                // Champs Temps Solaire & Sidéral
                 if ($('tst')) $('tst').textContent = fullAstroData.TST_HRS || 'N/A';
                 if ($('mst')) $('mst').textContent = fullAstroData.MST_HRS || 'N/A';
                 if ($('noon-solar')) $('noon-solar').textContent = fullAstroData.NOON_SOLAR_UTC.toTimeString().split(' ')[0] + ' UTC';
                 if ($('eot')) $('eot').textContent = dataOrDefault(parseFloat(fullAstroData.EOT_MIN), 2, ' min');
-                if ($('tslv')) $('tslv').textContent = getTSLV(now, lon) || 'N/A'; // TSLV doit être appelée séparément
+                // TSLV doit être appelée séparément car non stockée dans fullAstroData (pour optimiser)
+                if ($('tslv')) $('tslv').textContent = getTSLV(now, lon) || 'N/A'; 
                 if ($('ecl-long')) $('ecl-long').textContent = dataOrDefault(parseFloat(fullAstroData.ECL_LONG), 4, '°');
                 
                 // Dates Solaires
@@ -482,17 +481,17 @@ const WGS84_E2 = 2 * WGS84_F - WGS84_F * WGS84_F;
                 if ($('date-solar-mean')) $('date-solar-mean').textContent = fullAstroData.NOON_SOLAR_UTC.toLocaleDateString('fr-FR');
 
 
-                // --- Position du SOLEIL (Altitude / Azimut) ---
+                // --- MISE À JOUR DOM : SOLEIL ---
                 const R2D = 180 / Math.PI;
                 if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(fullAstroData.sun.altitude * R2D, 2, '°');
                 if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(fullAstroData.sun.azimuth * R2D, 2, '°');
                 
-                // Heures de Lever/Coucher (Approximation)
+                // Durée du Jour et Lever/Coucher (Approximation dans lib/astro.js)
                 if ($('sunrise-times')) $('sunrise-times').textContent = fullAstroData.sun.sunrise.toLocaleTimeString('fr-FR');
                 if ($('sunset-times')) $('sunset-times').textContent = fullAstroData.sun.sunset.toLocaleTimeString('fr-FR');
                 if ($('day-duration')) $('day-duration').textContent = dataOrDefault((fullAstroData.sun.sunset.getTime() - fullAstroData.sun.sunrise.getTime()) / 3600000, 2, ' h');
                 
-                // --- Position de la LUNE (Simplifiée) ---
+                // --- MISE À JOUR DOM : LUNE ---
                 if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(fullAstroData.moon.illumination.phase); 
                 if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(fullAstroData.moon.illumination.fraction * 100, 1, ' %');
                 if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(fullAstroData.moon.position.altitude * R2D, 2, '°');
@@ -506,22 +505,22 @@ const WGS84_E2 = 2 * WGS84_F - WGS84_F * WGS84_F;
                 } else if (fullAstroData.moon.times.alwaysDown) {
                     moonTimesText = 'Jamais visible';
                 } else {
-                    // Les valeurs de lever/coucher sont souvent nulles dans cette implémentation simplifiée
-                    moonTimesText = 'Calcul indisponible';
+                    moonTimesText = 'Calcul indisponible'; // Simplifié
                 }
                 if ($('moon-times')) $('moon-times').textContent = moonTimesText; 
 
             } catch (e) {
                 console.error("🔴 ERREUR: L'appel à calculateAstroDataHighPrec a échoué. Cause: ", e);
-                // Affichage des erreurs pour le débug
+                // Affichage d'erreur pour le débug
                 if ($('tst')) $('tst').textContent = 'N/A (Erreur JS)';
                 if ($('sun-alt')) $('sun-alt').textContent = 'N/A (Erreur JS)';
             }
         } else {
-            // Affichage de secours si la date ou la fonction sont manquantes
+            // Affichage de secours en cas de dépendance manquante
             if ($('tst')) $('tst').textContent = 'N/A (Date ou Fonction Astro manquante)';
             if ($('sun-alt')) $('sun-alt').textContent = 'N/A (Date ou Fonction Astro manquante)';
-        }
+                                                                             }
+                
 
         // ... (le reste du code updateDOMSlow) ...
                 // Mise à jour des IDs DOM pour le Temps Solaire & Sidéral
