@@ -135,12 +135,12 @@ const initGPS = () => {
 
 const updateDOMFast = () => {
     try { 
-        // --- TEMPS ÉCOULÉ ---
+        // --- TEMPS ÉCOULÉ (DOIT S'INCRÉMENTER) ---
         timeTotalSeconds += 0.1;
         if ($('time-total')) $('time-total').textContent = `${timeTotalSeconds.toFixed(2)} s`;
         if ($('time-moving')) $('time-moving').textContent = `${timeMovingSeconds.toFixed(2)} s`;
         
-        // --- VITESSE & RELATIVITÉ (basé sur la vitesse brute currentPosition.spd) ---
+        // --- VITESSE & RELATIVITÉ ---
         const instVitesseKmH = currentPosition.spd * KMH_MS;
         if ($('vitesse-inst-kmh')) $('vitesse-inst-kmh').textContent = dataOrDefault(instVitesseKmH, 1, ' km/h');
         
@@ -157,6 +157,7 @@ const updateDOMFast = () => {
         console.error("🔴 ERREUR NON GÉRÉE dans updateDOMFast (La boucle continue)", e.message);
     }
     
+    // 🚨 Le setTimeout garantit la récurrence, MÊME en cas d'erreur.
     setTimeout(updateDOMFast, 100);
 };
 
@@ -170,7 +171,6 @@ const updateDOMSlow = () => {
             if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
                 $('local-time').textContent = now.toLocaleTimeString('fr-FR');
             }
-            // ID 'date-gmt' ou 'date-display-utc' selon le HTML
             if ($('date-gmt')) $('date-gmt').textContent = now.toUTCString().split(' ')[4] + ' UTC';
             if ($('date-astro')) $('date-astro').textContent = now.toLocaleDateString('fr-FR');
         }
@@ -179,7 +179,6 @@ const updateDOMSlow = () => {
         const lat = currentPosition.lat;
         const lon = currentPosition.lon;
         
-        // Vérification des dépendances et des données
         if (typeof calculateAstroDataHighPrec === 'function' && lat !== 43.2964) { 
             try { 
                 const astroData = calculateAstroDataHighPrec(now, lat, lon);
@@ -204,6 +203,14 @@ const updateDOMSlow = () => {
                 if ($('sun-altitude')) $('sun-altitude').textContent = dataOrDefault(astroData.sun.altitude * R2D, 2, '°'); 
                 if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(astroData.sun.azimuth * R2D, 2, '°'); 
                 
+                // Calcul de la durée du jour
+                if (astroData.sun.sunrise && astroData.sun.sunset && $('day-duration')) {
+                     const diffMs = astroData.sun.sunset.getTime() - astroData.sun.sunrise.getTime();
+                     const diffH = Math.floor(diffMs / (1000 * 60 * 60));
+                     const diffM = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                     $('day-duration').textContent = `${diffH}h ${diffM}m`;
+                }
+
                 if ($('sunrise-times')) $('sunrise-times').textContent = astroData.sun.sunrise ? astroData.sun.sunrise.toLocaleTimeString('fr-FR') : 'N/A';
                 if ($('sunset-times')) $('sunset-times').textContent = astroData.sun.sunset ? astroData.sun.sunset.toLocaleTimeString('fr-FR') : 'N/A';
                 
@@ -219,6 +226,9 @@ const updateDOMSlow = () => {
                 
                 // Distance (convertie en km, car l'astro.js retourne des mètres)
                 if ($('moon-distance')) $('moon-distance').textContent = dataOrDefault(astroData.moon.position.distance / 1000, 0, ' km');
+
+                // Lever/Coucher Lune (Placeholder de l'astro.js)
+                if ($('moon-times')) $('moon-times').textContent = 'N/A (Calcul complexe)';
                 
             } catch (astroError) {
                 console.error("🔴 ERREUR DANS LA LOGIQUE ASTRO : ", astroError.message);
@@ -226,7 +236,6 @@ const updateDOMSlow = () => {
             }
 
         } else if (typeof calculateAstroDataHighPrec !== 'function') {
-            // Afficher l'état si Astro custom n'est pas détecté
             if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
         }
 
@@ -237,7 +246,6 @@ const updateDOMSlow = () => {
         console.error("🔴 ERREUR NON GÉRÉE dans updateDOMSlow (La boucle continue)", e.message);
     }
     
-    // Le setTimeout garantit la récurrence, même en cas d'erreur.
     setTimeout(updateDOMSlow, DOM_SLOW_UPDATE_MS);
 };
 
