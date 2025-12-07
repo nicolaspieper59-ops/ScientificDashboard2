@@ -1,10 +1,7 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// VERSION 3.2 : CORRECTION DÉFINITIVE DES ID HTML
+// VERSION 3.3 : CORRECTION D'ID & DÉMARRAGE FORCÉ (DOMContentLoaded)
 // =================================================================
-
-// 🚨 DEBUG CRITIQUE 1 : Le script est-il au moins chargé ?
-console.log("DEBUG: Script gnss-dashboard-full.js CHARGÉ. En attente de window.onload.");
 
 // --- BLOC 1 : CONSTANTES ET UTILITAIRES DE BASE ---
 
@@ -15,6 +12,8 @@ const KMH_MS = 3.6;
 const C_L = 299792458;      
 const G_U = 6.67430e-11;    
 const G_STD = 9.8067;       
+// La mise à jour rapide doit rester à 100ms (0.1s)
+const DOM_FAST_UPDATE_MS = 100;
 const DOM_SLOW_UPDATE_MS = 2000; 
 
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
@@ -59,7 +58,6 @@ let kVVert = 0.0;
 // --- BLOC 3 : FONCTIONS DE TEMPS ---
 
 const syncH = async () => {
-    // ID corrigé: 'heure-locale'
     if ($('heure-locale')) $('heure-locale').textContent = 'SYNCHRO...';
     try {
         const response = await fetch(SERVER_TIME_ENDPOINT);
@@ -68,7 +66,6 @@ const syncH = async () => {
         
         lastNTPDate = new Date(data.utc_datetime); 
         lastLocalTime = Date.now(); 
-        // ID corrigé: 'date-heure-utc'
         if ($('date-heure-utc')) $('date-heure-utc').textContent = lastNTPDate.toTimeString().split(' ')[0] + ' UTC';
         
     } catch (e) {
@@ -115,11 +112,8 @@ const handleGeolocation = (pos) => {
     }
     
     isGpsRunning = true;
-    // ID corrigé: 'statut-gps-acquisition'
     if ($('statut-gps-acquisition')) $('statut-gps-acquisition').textContent = 'Actif 🟢';
-    // ID corrigé: 'speed-raw-ms'
     if ($('speed-raw-ms')) $('speed-raw-ms').textContent = dataOrDefault(currentPosition.spd, 2, ' m/s');
-    // ID corrigé: 'acc-gps'
     if ($('acc-gps')) $('acc-gps').textContent = dataOrDefault(currentPosition.acc, 2, ' m');
 };
 
@@ -142,27 +136,20 @@ const initGPS = () => {
 const updateDOMFast = () => {
     try { 
         // --- TEMPS ÉCOULÉ (DOIT S'INCRÉMENTER) ---
-        timeTotalSeconds += 0.1;
-        // ID corrigé: 'elapsed-session-time'
+        timeTotalSeconds += (DOM_FAST_UPDATE_MS / 1000); // Utiliser la vraie durée
         if ($('elapsed-session-time')) $('elapsed-session-time').textContent = `${timeTotalSeconds.toFixed(2)} s`;
-        // ID corrigé: 'elapsed-motion-time'
         if ($('elapsed-motion-time')) $('elapsed-motion-time').textContent = `${timeMovingSeconds.toFixed(2)} s`;
         
         // --- VITESSE & RELATIVITÉ ---
         const instVitesseKmH = currentPosition.spd * KMH_MS;
-        // ID corrigé: 'speed-3d-inst'
         if ($('speed-3d-inst')) $('speed-3d-inst').textContent = dataOrDefault(instVitesseKmH, 1, ' km/h');
         
-        // ID corrigé: 'lorentz-factor'
         const gamma = 1 / Math.sqrt(1 - Math.pow(currentPosition.spd / C_L, 2));
         if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(gamma, 4);
         
         // --- PHYSIQUE STATIQUE ---
-        // ID corrigé: 'const-c'
         if ($('const-c')) $('const-c').textContent = `${C_L.toFixed(0)} m/s`;
-        // ID corrigé: 'const-G'
         if ($('const-G')) $('const-G').textContent = dataOrDefaultExp(G_U, 5, ' m³/kg/s²');
-        // ID corrigé: 'gravity-base'
         if ($('gravity-base')) $('gravity-base').textContent = `${G_STD.toFixed(4)} m/s²`;
         
 
@@ -170,7 +157,8 @@ const updateDOMFast = () => {
         console.error("🔴 ERREUR NON GÉRÉE dans updateDOMFast (La boucle continue)", e.message);
     }
     
-    setTimeout(updateDOMFast, 100);
+    // Le DOM_FAST_UPDATE_MS assure une récurrence correcte de 0.1s
+    setTimeout(updateDOMFast, DOM_FAST_UPDATE_MS); 
 };
 
 
@@ -180,49 +168,36 @@ const updateDOMSlow = () => {
         // --- HORLOGE ET DATE ---
         const now = getCDate(); 
         if (now) {
-            // ID corrigé: 'heure-locale'
             if ($('heure-locale') && !$('heure-locale').textContent.includes('SYNCHRO ÉCHOUÉE')) {
                 $('heure-locale').textContent = now.toLocaleTimeString('fr-FR');
             }
-            // ID corrigé: 'date-heure-utc'
             if ($('date-heure-utc')) $('date-heure-utc').textContent = now.toUTCString().split(' ')[4] + ' UTC';
-            // ID corrigé: 'date-display-astro'
             if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
         }
 
-        // --- ASTRO (Utilisation de lib/astro.js) ---
+        // --- ASTRO (Mise à jour lente) ---
         const lat = currentPosition.lat;
         const lon = currentPosition.lon;
         
-        // VÉRIFIE que la fonction ASTRO est disponible et que la position par défaut a changé
         if (typeof calculateAstroDataHighPrec === 'function' && lat !== 43.2964) { 
             try { 
                 const astroData = calculateAstroDataHighPrec(now, lat, lon);
                 
-                // ----------------------------------------------------
-                // ASTRONOMIE - TEMPS SOLAIRE ET SIDÉRAL
-                // ----------------------------------------------------
+                // MAPPING ASTRONOMIE
                 if ($('tst')) $('tst').textContent = astroData.TST_HRS;
                 if ($('mst')) $('mst').textContent = astroData.MST_HRS;
                 if ($('eot')) $('eot').textContent = astroData.EOT_MIN + ' min';
-                // ID corrigé: 'ecl-long'
                 if ($('ecl-long')) $('ecl-long').textContent = astroData.ECL_LONG + '°';
-                // ID corrigé: 'noon-solar'
                 if ($('noon-solar')) $('noon-solar').textContent = astroData.NOON_SOLAR_UTC.toTimeString().split(' ')[0] + ' UTC';
                 
-                // Temps Sidéral Local Vrai
                 if (typeof getTSLV === 'function' && $('tslv')) {
                     $('tslv').textContent = getTSLV(now, lon);
                 }
 
-                // ----------------------------------------------------
                 // SOLEIL
-                // ----------------------------------------------------
-                // ID corrigé: 'sun-alt'
                 if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(astroData.sun.altitude * R2D, 2, '°'); 
                 if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(astroData.sun.azimuth * R2D, 2, '°'); 
                 
-                // Calcul de la durée du jour
                 if (astroData.sun.sunrise && astroData.sun.sunset && $('day-duration')) {
                      const diffMs = astroData.sun.sunset.getTime() - astroData.sun.sunrise.getTime();
                      const diffH = Math.floor(diffMs / (1000 * 60 * 60));
@@ -233,19 +208,14 @@ const updateDOMSlow = () => {
                 if ($('sunrise-times')) $('sunrise-times').textContent = astroData.sun.sunrise ? astroData.sun.sunrise.toLocaleTimeString('fr-FR') : 'N/A';
                 if ($('sunset-times')) $('sunset-times').textContent = astroData.sun.sunset ? astroData.sun.sunset.toLocaleTimeString('fr-FR') : 'N/A';
                 
-                // ----------------------------------------------------
                 // LUNE
-                // ----------------------------------------------------
                 if ($('moon-phase-name') && typeof getMoonPhaseName === 'function') {
                     $('moon-phase-name').textContent = getMoonPhaseName(astroData.moon.illumination.phase);
                 }
                 if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moon.illumination.fraction * 100, 1, ' %');
                 if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(astroData.moon.position.altitude * R2D, 2, '°');
                 if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(astroData.moon.position.azimuth * R2D, 2, '°');
-                
-                // ID corrigé: 'moon-distance'
                 if ($('moon-distance')) $('moon-distance').textContent = dataOrDefault(astroData.moon.position.distance / 1000, 0, ' km');
-
                 if ($('moon-times')) $('moon-times').textContent = 'N/A (Calcul complexe)';
                 
             } catch (astroError) {
@@ -257,7 +227,6 @@ const updateDOMSlow = () => {
             if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
         }
 
-        // ID corrigé: 'statut-meteo'
         if ($('statut-meteo')) $('statut-meteo').textContent = 'INACTIF (API requise)';
 
     } catch (e) {
@@ -268,16 +237,14 @@ const updateDOMSlow = () => {
 };
 
 
-// --- BLOC 6 : INITIALISATION DU SYSTÈME (window.onload) ---
-
-window.onload = () => {
+// --- BLOC 6 : INITIALISATION DU SYSTÈME (Fonction) ---
+const initializeDashboard = () => {
     
-    console.log("DEBUG: window.onload event triggered. Starting initialization.");
+    console.log("DEBUG: Initialization function called. Starting checks.");
 
-    // 1. Initialisation Conditionnelle de l'UKF (Non-bloquant)
+    // 1. Initialisation Conditionnelle de l'UKF
     if (typeof math === 'undefined') {
         console.error("🔴 ERREUR : math.min.js est manquant. Le filtre UKF ne peut pas démarrer.");
-        // ID corrigé: 'statut-ekf-fusion'
         if ($('statut-ekf-fusion')) $('statut-ekf-fusion').textContent = 'ERREUR (math.js manquant) 🔴';
         
     } else if (typeof ProfessionalUKF !== 'undefined') { 
@@ -297,13 +264,12 @@ window.onload = () => {
     // 2. Initialisation des capteurs (GPS et IMU)
     initGPS(); 
     
-    // L'ID du bouton a été vérifié et correspond à 'activate-sensors-btn'
     const activateButton = document.getElementById('activate-sensors-btn');
     if (activateButton) {
         if (typeof activateDeviceMotion === 'function') {
             activateButton.addEventListener('click', activateDeviceMotion); 
         } else {
-             console.warn("🟡 AVERTISSEMENT : La fonction 'activateDeviceMotion' n'est pas définie. Le bouton IMU est inactif.");
+             console.warn("🟡 AVERTISSEMENT : La fonction 'activateDeviceMotion' est manquante ou non définie. Le bouton IMU est inactif.");
         }
     } 
     
@@ -315,3 +281,16 @@ window.onload = () => {
     updateDOMSlow();
     console.log("DEBUG: Initialization complete. Loops started.");
 };
+
+
+// --- BLOC 7 : POINT D'ENTRÉE DU SCRIPT (Le plus robuste) ---
+console.log("DEBUG: Script gnss-dashboard-full.js CHARGÉ.");
+
+// Utiliser DOMContentLoaded pour s'assurer que le HTML est prêt, mais sans attendre les ressources externes.
+document.addEventListener('DOMContentLoaded', initializeDashboard);
+
+// Fallback : Si l'événement est déjà passé (car le script est chargé très tardivement)
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    // Si le code n'a pas encore été initialisé, appelez-le immédiatement.
+    setTimeout(initializeDashboard, 10); 
+}
