@@ -109,6 +109,7 @@ const handleGeolocation = (pos) => {
     };
     
     try {
+        // VÉRIFIE si ProfessionalUKF a été défini par ukf-lib.js
         if (window.ukf && typeof window.ukf.update === 'function') {
             window.ukf.update(currentPosition); 
         }
@@ -192,7 +193,7 @@ const updateDOMSlow = () => {
             if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
         }
         
-        // ... (Logique Astro et Météo : OMITTED FOR BREVITY, assuming no change from last working version)
+        // ... (Logique Astro et Météo) ...
 
     } catch (e) {
         console.error("🔴 ERREUR NON GÉRÉE dans updateDOMSlow (La boucle continue)", e.message);
@@ -211,22 +212,23 @@ const initializeDashboard = () => {
     // 1. Initialisation Conditionnelle de l'UKF
     if (typeof math === 'undefined') {
         console.error("🔴 ERREUR : math.min.js est manquant. Le filtre UKF ne peut pas démarrer.");
-        // ID vérifié: 'statut-ekf-fusion'
+        // Remplacez 'statut-ekf-fusion' par l'ID utilisé pour le statut UKF dans votre HTML
         if ($('statut-ekf-fusion')) $('statut-ekf-fusion').textContent = 'ERREUR (math.js manquant) 🔴';
         
     } else if (typeof ProfessionalUKF !== 'undefined') { 
         try {
+            // C'est la ligne CRITIQUE qui appelle votre code dans ukf-lib.js
             window.ukf = new ProfessionalUKF(); 
             console.log("UKF 21 États Initialisé. 🟢");
             if ($('statut-ekf-fusion')) $('statut-ekf-fusion').textContent = 'Initialisé 🟢';
         } catch (e) {
-            // Cette erreur peut se produire si le constructeur de l'UKF échoue (ex: erreur interne math.js)
+            // Cette erreur se produit si une erreur est dans le constructeur de ProfessionalUKF
             console.error("🔴 ÉCHEC D'INITIALISATION UKF DANS LE CONSTRUCTEUR: " + e.message);
             if ($('statut-ekf-fusion')) $('statut-ekf-fusion').textContent = 'ERREUR CONSTRUCTEUR 🔴';
         }
     } else {
-        // Cela se produit si ukf-lib.js est chargé, mais n'a pas exposé ProfessionalUKF.
-        console.error("🔴 ÉCHEC CRITIQUE : La classe ProfessionalUKF n'est pas définie. Chargez lib/ukf-lib.js.");
+        // Cela se produit si ukf-lib.js est chargé, mais la classe n'est pas définie
+        console.error("🔴 ÉCHEC CRITIQUE : La classe ProfessionalUKF n'est pas définie. Vérifiez lib/ukf-lib.js.");
         if ($('statut-ekf-fusion')) $('statut-ekf-fusion').textContent = 'ERREUR (Classe manquante) 🔴';
     }
     
@@ -242,7 +244,7 @@ const initializeDashboard = () => {
     syncH(); 
 
     // 4. Démarrage des boucles de rafraîchissement (CRITICAL STEP)
-    updateDOMFast();
+    updateDOMFast(); // Le compteur de temps s'incrémente ici
     updateDOMSlow();
     
     // 🚨 DEBUG CRITIQUE 3 : Confirme que les boucles de rafraîchissement ont été appelées.
@@ -252,11 +254,10 @@ const initializeDashboard = () => {
 
 // --- BLOC 7 : POINT D'ENTRÉE DU SCRIPT (Le plus robuste) ---
 
-// S'assure que le script se lance dès que le HTML est prêt, sans attendre les images/cartes.
+// S'assure que le script se lance dès que le HTML est prêt.
 document.addEventListener('DOMContentLoaded', initializeDashboard);
 
 // Fallback: Si le script est chargé après l'événement DOMContentLoaded.
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    // Utiliser setTimeout pour éviter tout conflit de timing
     setTimeout(initializeDashboard, 10); 
     }
