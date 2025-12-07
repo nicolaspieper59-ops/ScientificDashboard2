@@ -1,6 +1,6 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET (UKF 21 ÉTATS)
-// VERSION FINALE ROBUSTE ANTI-CRASH
+// VERSION 2.0 : SÉCURITÉ MAXIMALE ANTI-SYNTAXE ET ANTI-CRASH
 // =================================================================
 
 // --- BLOC 1 : CONSTANTES ET UTILITAIRES DE BASE ---
@@ -41,7 +41,7 @@ let lastNTPDate = null;
 let lastLocalTime = null; 
 
 let currentPosition = { 
-    lat: 43.2964,   // Default: Marseille (pour démarrer Astro)
+    lat: 43.2964,   // Default: Marseille
     lon: 5.3697,    
     alt: 0.0,
     acc: 10.0,      
@@ -52,6 +52,7 @@ let ukf = null;
 let kAlt = 0.0;     
 let kSpd = 0.0;     
 let kVVert = 0.0;   
+
 
 // --- BLOC 3 : FONCTIONS DE TEMPS (Incassables) ---
 
@@ -81,12 +82,12 @@ const getCDate = () => {
     return new Date(lastNTPDate.getTime() + localTimeDifference);
 };
 
+
 // --- BLOC 4 : GESTION DES CAPTEURS ET GPS ---
 
-// ⚠️ PLACEHOLDER IMU (Empêche ReferenceError si le bouton est cliqué)
-// Normalement, cette fonction serait dans un fichier utilitaire IMU.
+// ⚠️ PLACEHOLDER IMU (Garantie que le script ne plante pas si la fonction est manquante)
 const activateDeviceMotion = () => {
-    console.warn("🟡 Le code pour 'activateDeviceMotion' n'est pas implémenté ou chargé.");
+    console.warn("🟡 La fonction 'activateDeviceMotion' n'est pas implémentée ou chargée.");
     if ($('statut-capteur')) $('statut-capteur').textContent = 'IMU Non implémenté';
 };
 
@@ -102,10 +103,13 @@ const handleGeolocation = (pos) => {
         time: pos.timestamp 
     };
     
-    // Si l'UKF est initialisé, on lui passe la mesure GPS
-    if (window.ukf && typeof window.ukf.update === 'function') {
-        window.ukf.update(currentPosition); 
-        // L'UKF met à jour les variables kAlt, kSpd, kVVert dans une implémentation complète
+    // 🚨 PROTECTION UKF : Appeler ukf.update doit être protégé
+    try {
+        if (window.ukf && typeof window.ukf.update === 'function') {
+            window.ukf.update(currentPosition); 
+        }
+    } catch (ukfError) {
+        console.error("🔴 Échec de la mise à jour UKF (Fonction update) :", ukfError.message);
     }
     
     isGpsRunning = true;
@@ -126,6 +130,7 @@ const initGPS = () => {
     }
     if ($('gps-status')) $('gps-status').textContent = 'Acquisition en cours...';
 };
+
 
 // --- BLOC 5 : MISES À JOUR PÉRIODIQUES DU DOM ---
 
@@ -151,17 +156,17 @@ const updateDOMFast = () => {
         if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(gamma, 4);
 
     } catch (e) {
-        console.error("🔴 ERREUR DANS updateDOMFast (La boucle continue)", e.message);
+        console.error("🔴 ERREUR NON GÉRÉE dans updateDOMFast (La boucle continue)", e.message);
     }
     
-    // 🚨 Le setTimeout garantit la récurrence, même en cas d'erreur.
+    // 🚨 Le setTimeout garantit la récurrence, MÊME en cas d'erreur.
     setTimeout(updateDOMFast, 100);
 };
 
 const updateDOMSlow = () => {
     try { // ⬅️ PROTECTION ANTI-CRASH
 
-        // --- HORLOGE ET DATE (Doit être affiché immédiatement) ---
+        // --- HORLOGE ET DATE ---
         const now = getCDate(); 
         if (now) {
             if ($('local-time') && !$('local-time').textContent.includes('SYNCHRO ÉCHOUÉE')) {
@@ -177,9 +182,7 @@ const updateDOMSlow = () => {
         
         if (typeof calculateAstroDataHighPrec === 'function' && lat !== 'N/A') {
             try { 
-                // ⚠️ ICI SE TROUVERAIT L'APPEL AUX FONCTIONS ASTRO
-                // Ex: const astroData = calculateAstroDataHighPrec(lat, lon, now);
-                // Ex: $('sun-alt').textContent = dataOrDefault(astroData.sun.alt, 2, '°');
+                // ⚠️ La logique Astro complète doit être ici. (Ex: calculateAstroDataHighPrec(lat, lon, now); )
                 
             } catch (astroError) {
                 console.error("🔴 ERREUR DANS LA LOGIQUE ASTRO : ", astroError.message);
@@ -187,7 +190,6 @@ const updateDOMSlow = () => {
             }
 
         } else if (typeof calculateAstroDataHighPrec !== 'function') {
-            // Mise à jour de l'état si les librairies Astro manquent
             if ($('tst')) $('tst').textContent = 'N/A (Astro.js manquant)';
         }
 
@@ -195,10 +197,10 @@ const updateDOMSlow = () => {
         if ($('meteo-status')) $('meteo-status').textContent = 'INACTIF (API requise)';
 
     } catch (e) {
-        console.error("🔴 ERREUR DANS updateDOMSlow (La boucle continue)", e.message);
+        console.error("🔴 ERREUR NON GÉRÉE dans updateDOMSlow (La boucle continue)", e.message);
     }
     
-    // Le setTimeout garantit la récurrence, même en cas d'erreur.
+    // Le setTimeout garantit la récurrence.
     setTimeout(updateDOMSlow, DOM_SLOW_UPDATE_MS);
 };
 
@@ -213,7 +215,6 @@ window.onload = () => {
         if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR (math.js manquant) 🔴';
         
     } else if (typeof ProfessionalUKF !== 'undefined') { 
-        // Si math.js est là ET la classe UKF est définie, on l'initialise
         try {
             window.ukf = new ProfessionalUKF(); 
             console.log("UKF 21 États Initialisé. 🟢");
@@ -223,7 +224,6 @@ window.onload = () => {
             if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR CONSTRUCTEUR 🔴';
         }
     } else {
-        // math.js est là, mais ukf-lib.js n'a pas défini la classe ProfessionalUKF
         console.error("🔴 ÉCHEC CRITIQUE : La classe ProfessionalUKF n'est pas définie. Chargez lib/ukf-lib.js.");
         if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR (Classe manquante) 🔴';
     }
@@ -233,11 +233,11 @@ window.onload = () => {
     
     const activateButton = document.getElementById('activate-sensors-btn');
     if (activateButton) {
-        // 🚨 NOUVELLE VÉRIFICATION DÉFENSIVE : Empêche le crash du script si la fonction n'est pas là.
+        // VÉRIFICATION DÉFENSIVE : Assure que la fonction existe avant d'ajouter l'écouteur.
         if (typeof activateDeviceMotion === 'function') {
             activateButton.addEventListener('click', activateDeviceMotion); 
         } else {
-             console.warn("🟡 AVERTISSEMENT : La fonction 'activateDeviceMotion' est manquante ou non définie. Le bouton IMU est inactif.");
+             console.warn("🟡 AVERTISSEMENT : La fonction 'activateDeviceMotion' n'est pas définie. Le bouton IMU est inactif.");
         }
     } 
     
