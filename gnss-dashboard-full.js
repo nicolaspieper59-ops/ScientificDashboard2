@@ -197,12 +197,22 @@ window.onload = () => {
         if ($('ekf-status')) $('ekf-status').textContent = 'ERREUR (Classe manquante) 🔴';
     }
     
+    
+// --- BLOC 6 : INITIALISATION DU SYSTÈME (window.onload) ---
+// ... (Initialisation UKF non-bloquante ici)
+
     // 2. Initialisation des capteurs (GPS et IMU)
-    // CES FONCTIONS S'EXÉCUTENT MAINTENANT MÊME SI L'UKF EST EN PANNE.
     initGPS(); 
-    if (document.getElementById('activate-sensors-btn')) {
-        // L'appel à cette fonction doit exister dans gnss-dashboard-full.js
-        document.getElementById('activate-sensors-btn').addEventListener('click', activateDeviceMotion); 
+    
+    const activateButton = document.getElementById('activate-sensors-btn');
+    if (activateButton) {
+        // Vérifie si la fonction existe avant d'essayer d'y faire référence
+        if (typeof activateDeviceMotion === 'function') {
+            activateButton.addEventListener('click', activateDeviceMotion); 
+        } else {
+             // Si la fonction manque, on log l'erreur mais on ne crash pas.
+             console.warn("🟡 AVERTISSEMENT : La fonction 'activateDeviceMotion' est manquante. Le bouton IMU est désactivé.");
+        }
     } 
     
     // 3. Démarrage de la synchronisation NTP (réseau)
