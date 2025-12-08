@@ -92,6 +92,59 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     // =========================================================
     // BLOC 2 : MODÈLES PHYSIQUES ET SYSTÈME
     // =========================================================
+    // --- FONCTIONS AJOUTÉES/CORRIGÉES (BLOC 2) ---
+
+/**
+ * Met à jour le paramètre de gravité (G_ACC) en fonction du corps céleste.
+ * @returns {object} {G_ACC_NEW: new_gravity_value}
+ */
+function updateCelestialBody(body, alt_m, radius_m = 100, omega_rad_s = 0.0) {
+    let G_ACC_NEW = 9.8067; // Earth Standard
+    
+    // Assurez-vous que cette constante est définie dans votre état global
+    const R_E_BASE = 6371000; // Rayon terrestre moyen (m)
+
+    switch (body) {
+        case 'EARTH':
+            // Formule standard d'ajustement de la gravité avec l'altitude
+            G_ACC_NEW = 9.8067 * (R_E_BASE / (R_E_BASE + alt_m)) ** 2;
+            break;
+        case 'MOON':
+            G_ACC_NEW = 1.62; // Gravité Lunaire
+            break;
+        case 'MARS':
+            G_ACC_NEW = 3.72; // Gravité Martienne
+            break;
+        case 'ROTATING':
+            // Gravité centrifuge pour un corps en rotation
+            const V_ROT = radius_m * omega_rad_s;
+            G_ACC_NEW = Math.sqrt(9.8067**2 + (V_ROT**2 / radius_m)**2); 
+            break;
+        default:
+            G_ACC_NEW = 9.8067; 
+            break;
+    }
+
+    // Mise à jour de la variable globale G_ACC si elle existe
+    if (typeof G_ACC !== 'undefined') G_ACC = G_ACC_NEW;
+
+    if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+    return { G_ACC_NEW };
+}
+
+/**
+ * Calcule le rapport de distance (utilisé pour la correction d'altitude ou le mode Nether).
+ * @param {number} alt_m - Altitude actuelle en mètres.
+ * @returns {number} Le ratio de correction.
+ */
+function calculateDistanceRatio(alt_m) {
+    if (netherMode) return 8.0; // Mode Nether (1:8)
+
+    // Mode Correction d'Altitude: Réduire l'impact des mouvements 2D/3D à haute altitude
+    const R_E_BASE = 6371000;
+    const ratio = (R_E_BASE + alt_m) / R_E_BASE;
+    return ratio;
+                }
 
     function getSpeedOfSound(T_K) { 
         if (T_K <= 0 || isNaN(T_K)) return 340.29;
@@ -457,6 +510,25 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 // BLOC 6 : FONCTIONS DE CONTRÔLE ET LISTENERS (COMPLET)
 // =========================================================
     
+    // =================================================================
+// DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
+// =================================================================
+
+((window) => {
+    
+    // --- VÉRIFICATION DES DÉPENDANCES CRITIQUES ---
+    // Si math.js ou ProfessionalUKF sont manquants, l'UKF sera null.
+    if (typeof math === 'undefined') {
+         console.error("🔴 ERREUR CRITIQUE: math.js manquant.");
+    }
+    if (typeof ProfessionalUKF === 'undefined') {
+        console.error("🔴 ERREUR CRITIQUE: La classe ProfessionalUKF est manquante. Charger lib/ukf-lib.js !");
+    }
+
+    // Ceci est la ligne critique pour l'UKF
+    let ukf = (typeof ProfessionalUKF !== 'undefined' && typeof math !== 'undefined') ? new ProfessionalUKF() : null;
+    
+    // ... le reste de vos variables globales ...
     function toggleGpsPause() {
         isGpsPaused = !isGpsPaused;
         const btn = $('toggle-gps-btn');
