@@ -1,22 +1,22 @@
 // =================================================================
 // GNSS SPACETIME DASHBOARD - FICHIER COMPLET & ROBUSTE (UKF 21 ÉTATS)
-// FUSION DE TOUTES LES MEILLEURES FONCTIONNALITÉS ET CORRECTIONS
+// VERSION : FINALE CORRIGÉE (Auto-Contenue)
 // =================================================================
 
 // ⚠️ DÉPENDANCES CRITIQUES (doivent être chargées dans l'HTML) :
 // - math.min.js, leaflet.js, turf.min.js
-// - lib/ukf-lib.js, lib/astro.js, lib/ephem.js
+// - lib/ukf-lib.js, lib/astro.js, (suncalc.js peut être nécessaire si astro.js l'utilise)
 // =================================================================
 
 // --- 1. CONSTANTES ET UTILITAIRES DE BASE ---
 
 const $ = id => document.getElementById(id);
 
-// --- CLÉS D'API & ENDPOINTS (Assumant un proxy Vercel) ---
-const PROXY_WEATHER_ENDPOINT = "/api/weather"; // Relatif
+// --- CLÉS D'API & ENDPOINTS ---
+const PROXY_WEATHER_ENDPOINT = "/api/weather"; // Relatif (à configurer côté serveur)
 const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
 const DOM_SLOW_UPDATE_MS = 2000;
-const DOM_FAST_UPDATE_MS = 50; // Pour les chronomètres
+const DOM_FAST_UPDATE_MS = 50; 
 
 // --- CONSTANTES MATHÉMATIQUES & PHYSIQUES ---
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
@@ -53,7 +53,6 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     return val.toExponential(decimals) + suffix;
 };
 
-
 // --- 2. ÉTAT GLOBAL ET VARIABLES DE CONTRÔLE ---
 
 let ukf = null;
@@ -63,25 +62,27 @@ let mapCircle = null;
 let gpsWatchId = null;
 
 // Variables de Session
-let totalDistance = 0.0;    // Distance parcourue (m)
-let maxSpeed = 0.0;         // Vitesse maximale (m/s)
-let isEmergencyStopped = false; // Arrêt d'urgence
-let isGpsPaused = false; 
-let sessionStartTime = Date.now(); // Début de session
-let movementStartTime = null; // Début du mouvement (pour vitesse moyenne)
-let currentMovementTime = 0; // Temps de mouvement total (ms)
+let totalDistance = 0.0;    
+let maxSpeed = 0.0;         
+let isEmergencyStopped = false; 
+let isGpsPaused = false; // Ajouté pour la fonction de pause
+let sessionStartTime = Date.now(); 
+let movementStartTime = null; 
+let currentMovementTime = 0; 
 
 // Variables de Physique et Contrôle
-let currentMass = 70.0;     // Masse de l'objet (kg)
-let currentCelestialBody = 'TERRE'; // 'TERRE', 'MARS', 'ROTATING'
-let netherMode = false;     // Mode Minecraft
-let currentSpeed = 0.0;     // Vitesse filtrée (m/s)
-let kAlt = 0.0;             // Altitude filtrée (m)
-let G_ACC = G_STD;          // Gravité locale (m/s²)
+let currentMass = 70.0;     
+let currentCelestialBody = 'TERRE'; 
+let netherMode = false;     
+let currentSpeed = 0.0;     
+let kAlt = 0.0;             
+let G_ACC = G_STD;          
+let rotationRadius = 100.0; // Pour le mode ROTATING
+let angularVelocity = 0.0;  // Pour le mode ROTATING
 
 // Position de travail (Marseille par défaut)
 let currentPosition = { lat: 43.2964, lon: 5.3697, acc: 100.0, spd: 0.0, alt: 0.0 };
-let lastPosition = { lat: 43.2964, lon: 5.3697 }; // Pour la distance Turf
+let lastPosition = { lat: 43.2964, lon: 5.3697, alt: 0.0 }; 
 
 // Météo (Valeurs ISA par défaut)
 let lastWeatherData = {
@@ -98,49 +99,73 @@ let lServH = 0; // Temps serveur (NTP)
 let lLocH = 0;  // Temps local
 
 
-// --- 3. MODÈLES DE CALCULS AVANCÉS (Vérification et Correction) ---
+// --- 3. MODÈLES DE CALCULS AVANCÉS (Utilitaires) ---
+
+/**
+ * Calcule la masse volumique de l'air humide (kg/m³)
+ * @param {number} p_Pa Pression atmosphérique (Pa)
+ * @param {number} T_K Température (K)
+ * @param {number} h_perc Humidité relative (0.0 à 1.0)
+ */
+function getAirDensity(p_Pa, T_K, h_perc) {
+    if (isNaN(p_Pa) || isNaN(T_K) || T_K <= 0) return RHO_SEA_LEVEL;
+    // Formule simplifiée de la pression de vapeur saturante (hPa)
+    const P_VAPOR = 6.1078 * Math.pow(10, (7.5 * (T_K - 273.15)) / (237.3 + (T_K - 273.15))); 
+    const P_VAPOR_PA = P_VAPOR * 100 * h_perc; // Pression de vapeur réelle (Pa)
+    // Constante spécifique de l'air humide (J/kg·K)
+    const R_SPECIFIC_HUMID_AIR = R_SPECIFIC_AIR * (1 + 0.608 * P_VAPOR_PA / p_Pa); 
+    // Densité (loi des gaz parfaits)
+    return p_Pa / (R_SPECIFIC_HUMID_AIR * T_K); 
+}
+
+/**
+ * Calcule la vitesse du son (m/s) en fonction de la température
+ * @param {number} T_K Température (K)
+ */
+function getSpeedOfSound(T_K) {
+    if (isNaN(T_K) || T_K <= 0) return 340.29; 
+    // Vitesse du son : C = sqrt(γ * R * T)
+    return Math.sqrt(GAMMA_AIR * R_SPECIFIC_AIR * T_K);
+}
 
 // 3.1. Calcul de la Gravité (WGS84 et Simulé)
-function updateCelestialBody(body, alt, radius = 100, omega = 0) {
-    let G_BASE;
+function updateCelestialBody(body, alt) {
+    let G_BASE = G_STD;
     let PLANET_MASS = 5.972e24; // Terre
-    let PLANET_RADIUS = WGS84_A; // Terre
-
+    
     switch (body) {
         case 'TERRE':
-            // Utilisation du modèle WGS84 pour la gravité locale
             const phi = currentPosition.lat * D2R;
             const sinSq = Math.sin(phi) ** 2;
-            const WGS84_BETA = (WGS84_G_EQUATOR * WGS84_A - 9.832) / WGS84_G_EQUATOR; // Simplification du facteur
-            const factor = (1 + WGS84_BETA * sinSq) / Math.sqrt(1 - WGS84_E2 * sinSq);
-            G_BASE = WGS84_G_EQUATOR * factor;
+            // Modèle WGS84 pour la gravité de surface
+            const G_SURFACE = WGS84_G_EQUATOR * (1 + 0.0053024 * sinSq - 0.0000058 * sinSq ** 2);
             // Correction d'altitude (Free Air)
-            G_ACC = G_BASE * (1 - (2 * alt / WGS84_A));
+            G_ACC = G_SURFACE * (1 - (2 * alt / WGS84_A));
+            G_BASE = G_SURFACE;
             break;
 
         case 'MARS':
-            G_ACC = 3.7207; // Gravité de surface de Mars
+            G_ACC = 3.7207; 
             PLANET_MASS = 6.39e23;
-            PLANET_RADIUS = 3389500;
             break;
 
         case 'ROTATING':
-            // Simulation de la force centrifuge sur un objet en rotation
-            const radiusM = parseFloat(radius) || 100;
-            const omegaRad = parseFloat(omega) || 0.0;
+            const radiusM = parseFloat($('rotation-radius').value) || 100;
+            const omegaRad = parseFloat($('angular-velocity').value) || 0.0;
             const A_CENTRIFUGAL = (radiusM * omegaRad ** 2);
-            // On soustrait l'accélération centrifuge à la gravité terrestre standard
             G_ACC = G_STD - A_CENTRIFUGAL; 
-            if (G_ACC < 0) G_ACC = 0.001; // Éviter la gravité négative
+            if (G_ACC < 0) G_ACC = 0.001;
+            G_BASE = G_STD;
             break;
 
         default:
-            G_ACC = G_STD; // Fallback
+            G_ACC = G_STD;
     }
 
-    if ($('gravity-local')) $('gravity-local').textContent = `${dataOrDefault(G_ACC, 4)} m/s²`;
+    if ($('gravity-base')) $('gravity-base').textContent = dataOrDefault(G_BASE, 4, ' m/s²');
+    if ($('gravity-local')) $('gravity-local').textContent = dataOrDefault(G_ACC, 4, ' m/s²');
 
-    // Calcul du Rayon de Schwarzschild (Rs = 2GM/c²)
+    // Rayon de Schwarzschild (Rs = 2GM/c²)
     const Rs = (2 * G_U * PLANET_MASS) / (C_L ** 2);
     if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(Rs, 4, ' m');
     
@@ -149,7 +174,6 @@ function updateCelestialBody(body, alt, radius = 100, omega = 0) {
 
 // 3.2. Modèle Relativité (Facteur de Lorentz)
 function calculateRelativity(v) {
-    // Évite la division par zéro si v > C_L (impossible, mais sécurise)
     const v_safe = Math.min(v, C_L * 0.99999999999);
     const beta = v_safe / C_L;
     const gamma = 1.0 / Math.sqrt(1.0 - beta ** 2);
@@ -161,13 +185,7 @@ function calculateRelativity(v) {
     const E = gamma * currentMass * C_L ** 2;
     const E0 = currentMass * C_L ** 2;
 
-    return {
-        gamma,
-        beta,
-        timeDilation: DILATION_FACTOR,
-        E,
-        E0
-    };
+    return { gamma, beta, timeDilation: DILATION_FACTOR, E, E0 };
 }
 
 // 3.3. Modèle Aérodynamique (Forces et Mach)
@@ -175,16 +193,13 @@ function calculateAerodynamics(v) {
     const rho = lastWeatherData.air_density;
     const Cs = lastWeatherData.speed_of_sound;
 
-    // Vitesse du Son (Correction ISA si Météo HS)
     const speedOfSound = Cs > 0 ? Cs : 340.29; 
-
-    // Nombre de Mach
     const mach = v / speedOfSound;
 
     // Pression Dynamique (q = 0.5 * ρ * v²)
     const q = 0.5 * rho * v ** 2;
 
-    // Force de Coriolis (simplifiée, uniquement composante horizontale F_corio = 2mωv sin(φ))
+    // Force de Coriolis
     const phi = currentPosition.lat * D2R;
     const F_coriolis = 2 * currentMass * OMEGA_EARTH * v * Math.sin(phi);
 
@@ -194,7 +209,6 @@ function calculateAerodynamics(v) {
 
 // --- 4. GESTION TEMPS (NTP & Chronomètres) ---
 
-// 4.1. Synchro NTP
 function getCDate(serverTimeMs, localTimeMs) {
     if (serverTimeMs > 0 && localTimeMs > 0) {
         const offset = serverTimeMs - localTimeMs;
@@ -213,11 +227,12 @@ async function syncTime() {
     } catch (e) {
         lServH = 0;
         lLocH = 0;
+        if ($('local-time')) $('local-time').textContent = 'SYNCHRO ÉCHOUÉE ❌';
+        if ($('date-display')) $('date-display').textContent = new Date().toLocaleDateString('fr-FR');
         console.warn("NTP: Échec, utilisation heure système.");
     }
 }
 
-// 4.2. Boucle Rapide pour Chronomètres
 function fastLoop() {
     const now = Date.now();
     
@@ -235,7 +250,7 @@ function fastLoop() {
     const totalMovementTimeSec = currentMovementTime / 1000;
     if ($('temps-mouvement')) $('temps-mouvement').textContent = dataOrDefault(totalMovementTimeSec, 2, ' s');
     
-    // Heure Minecraft (Correction: 20 minutes/jour, donc 72x plus rapide)
+    // Heure Minecraft
     const mcTimeMs = (now - sessionStartTime) * 72;
     const mcHour = Math.floor((mcTimeMs / 3600000) % 24);
     const mcMinute = Math.floor((mcTimeMs / 60000) % 60);
@@ -264,7 +279,7 @@ function updateMap(lat, lon, acc) {
     mapMarker.setLatLng(newLatLng);
     mapCircle.setLatLng(newLatLng);
     mapCircle.setRadius(acc);
-    // mapInstance.panTo(newLatLng); // Optionnel: centrage constant
+    // mapInstance.panTo(newLatLng); 
 }
 
 
@@ -277,21 +292,18 @@ function handleMotion(event) {
     const acc = event.accelerationIncludingGravity;
     const gyro = event.rotationRate || {};
 
-    // Affichage Accélération
     if (acc) {
         if ($('acceleration-x')) $('acceleration-x').textContent = dataOrDefault(acc.x, 2);
         if ($('acceleration-y')) $('acceleration-y').textContent = dataOrDefault(acc.y, 2);
         if ($('acceleration-z')) $('acceleration-z').textContent = dataOrDefault(acc.z, 2);
     }
     
-    // Envoi des données à l'UKF
     if (ukf && acc) {
         const ax = acc.x || 0; const ay = acc.y || 0; const az = acc.z || 0;
         const gx = gyro.alpha || 0; const gy = gyro.beta || 0; const gz = gyro.gamma || 0;
         ukf.predict(ax, ay, az, gx, gy, gz);
     }
 
-    // Affichage Niveau à Bulle (utilisant rotationRate pour le débogage)
     if ($('pitch-level')) $('pitch-level').textContent = dataOrDefault(gyro.beta, 1, '°');
     if ($('roll-level')) $('roll-level').textContent = dataOrDefault(gyro.gamma, 1, '°');
 }
@@ -299,7 +311,6 @@ function handleMotion(event) {
 function activateDeviceMotion() {
     if ($('imu-status')) $('imu-status').textContent = 'Initialisation... 🟡';
 
-    // Gestion des permissions iOS 13+ (nécessite HTTPS)
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         DeviceMotionEvent.requestPermission()
             .then(response => {
@@ -314,7 +325,6 @@ function activateDeviceMotion() {
                 if ($('imu-status')) $('imu-status').textContent = 'Erreur 🔴';
             });
     } else {
-        // Pour Android / autres (pas de permission nécessaire)
         window.addEventListener('devicemotion', handleMotion);
         if ($('imu-status')) $('imu-status').textContent = 'Actif 🟢';
     }
@@ -327,35 +337,28 @@ function onPositionUpdate(pos) {
     const { latitude, longitude, accuracy, altitude, speed } = pos.coords;
     const currentLat = latitude;
     const currentLon = longitude;
-    const currentAlt = altitude || kAlt; // Utilise l'UKF/précédent si l'alt est nulle
+    const currentAlt = altitude || kAlt; 
 
-    // Calcul de la distance 3D depuis la dernière position
+    // Calcul de la distance 3D
     if (typeof turf !== 'undefined' && turf.distance) {
         const from = turf.point([lastPosition.lon, lastPosition.lat]);
         const to = turf.point([currentLon, currentLat]);
-        // Distance Haversine en km
         const haversineDistKm = turf.distance(from, to, { units: 'kilometers' });
-        // Conversion en mètres
         const distM = haversineDistKm * 1000; 
-
-        // Ajouter la composante verticale (altitude)
         const altChange = currentAlt - lastPosition.alt || 0;
         const dist3D = Math.sqrt(distM ** 2 + altChange ** 2);
         
         totalDistance += dist3D;
         lastPosition = { lat: currentLat, lon: currentLon, alt: currentAlt };
         
-        // CORRECTION MODE NETHER
         const displayRatio = netherMode ? 1 / 8 : 1.0;
         if ($('distance-total-3d')) $('distance-total-3d').textContent = dataOrDefault((totalDistance * displayRatio) / 1000, 3, ' km');
     }
 
-    // Mise à jour objet courant
     currentPosition = {
         lat: currentLat, lon: currentLon, acc: accuracy, alt: currentAlt, spd: speed || 0
     };
 
-    // Mise à jour Vitesse Max
     maxSpeed = Math.max(maxSpeed, currentPosition.spd);
 
     // Pipeline UKF
@@ -365,7 +368,6 @@ function onPositionUpdate(pos) {
         kAlt = state.alt;
         currentSpeed = state.speed;
 
-        // Affichage UKF/EKF
         if ($('lat-ekf')) $('lat-ekf').textContent = dataOrDefault(state.lat, 6, ' °');
         if ($('lon-ekf')) $('lon-ekf').textContent = dataOrDefault(state.lon, 6, ' °');
         if ($('alt-ekf')) $('alt-ekf').textContent = dataOrDefault(kAlt, 2, ' m');
@@ -380,17 +382,18 @@ function onPositionUpdate(pos) {
     // Mise à jour DOM Rapide
     if ($('lat-val')) $('lat-val').textContent = dataOrDefault(currentPosition.lat, 6, ' °');
     if ($('lon-val')) $('lon-val').textContent = dataOrDefault(currentPosition.lon, 6, ' °');
-    if ($('speed-stable')) $('speed-stable').textContent = dataOrDefault(currentSpeed * KMH_MS, 1, ' km/h');
+    // Vitesse Stable (km/h)
+    if ($('speed-stable')) $('speed-stable').textContent = dataOrDefault(currentSpeed * KMH_MS, 1, ' km/h'); 
     if ($('acc-horiz')) $('acc-horiz').textContent = dataOrDefault(currentPosition.acc, 1, ' m');
     if ($('vitesse-max-session')) $('vitesse-max-session').textContent = dataOrDefault(maxSpeed * KMH_MS, 1, ' km/h');
     
     // Mise à jour Carte
     updateMap(currentPosition.lat, currentPosition.lon, currentPosition.acc);
     
-    // Physique
-    updateGravityWGS84(currentPosition.lat, kAlt);
+    // Physique (CORRECTION: utilise le corps céleste sélectionné)
+    updateCelestialBody(currentCelestialBody, kAlt);
 
-    // Météo (Mise à jour immédiate de la vitesse du son si les données sont prêtes)
+    // Calculs Physiques
     const { mach, q, F_coriolis, speedOfSound } = calculateAerodynamics(currentSpeed);
     const { gamma, beta, timeDilation, E, E0 } = calculateRelativity(currentSpeed);
 
@@ -404,6 +407,8 @@ function onPositionUpdate(pos) {
     if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(q, 2, ' Pa');
     if ($('force-coriolis')) $('force-coriolis').textContent = dataOrDefault(F_coriolis, 4, ' N');
     if ($('vitesse-lumiere-perc')) $('vitesse-lumiere-perc').textContent = dataOrDefault(beta * 100, 2, ' %');
+    if ($('gnss-status')) $('gnss-status').textContent = 'Actif 🟢';
+
 }
 
 function initGPS() {
@@ -442,6 +447,14 @@ function resetMaxSpeed() {
     if ($('vitesse-max-session')) $('vitesse-max-session').textContent = dataOrDefault(maxSpeed * KMH_MS, 1, ' km/h');
 }
 
+function toggleGpsPause() {
+    isGpsPaused = !isGpsPaused;
+    const btn = $('gps-toggle-btn');
+    if (btn) btn.innerHTML = isGpsPaused ? '▶️ MARCHE GPS' : '⏸️ PAUSE GPS';
+    if ($('gnss-status')) $('gnss-status').textContent = isGpsPaused ? 'PAUSE ⏸️' : 'Recherche... 🟡';
+    if (!isGpsPaused) initGPS(); // Relance si était en pause
+}
+
 function toggleEmergencyStop() {
     isEmergencyStopped = !isEmergencyStopped;
     const btn = $('emergency-stop-btn');
@@ -457,6 +470,26 @@ function toggleEmergencyStop() {
         initGPS();
         if ($('ekf-status')) $('ekf-status').textContent = 'Initialisé 🟢';
     }
+}
+
+function captureData() {
+    const now = new Date().toISOString();
+    const dataSnapshot = {
+        timestamp: now,
+        position: currentPosition,
+        ukfState: ukf ? ukf.getState() : 'Filtre UKF INACTIF',
+        distance_km: totalDistance / 1000,
+        maxSpeed_kmh: maxSpeed * KMH_MS
+    };
+    
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataSnapshot, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `gnss_data_capture_${now.substring(0, 19).replace('T', '_')}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+    alert("Données de session exportées en JSON.");
 }
 
 function fullReset() {
@@ -489,14 +522,13 @@ function slowLoop() {
     if ($('local-time')) $('local-time').textContent = now.toLocaleTimeString('fr-FR');
     if ($('date-display')) $('date-display').textContent = now.toLocaleDateString('fr-FR');
 
-    // 2. Astro (lib/astro.js)
+    // 2. Astro
     if (typeof getAstroData === 'function') {
         const astro = getAstroData(now, currentPosition.lat, currentPosition.lon);
         if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(astro.sun.altitude * R2D, 1, ' °');
         if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(astro.sun.azimuth * R2D, 1, ' °');
         if ($('moon-phase-name')) $('moon-phase-name').textContent = astro.moon.phaseName;
         if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astro.moon.fraction * 100, 1, ' %');
-        if ($('date-display-astro')) $('date-display-astro').textContent = now.toLocaleDateString('fr-FR');
     }
 
     // 3. Météo
@@ -522,13 +554,16 @@ async function updateWeather() {
 
         const p_Pa = lastWeatherData.pressure_hPa * 100;
         lastWeatherData.air_density = getAirDensity(p_Pa, lastWeatherData.tempK, lastWeatherData.humidity_perc/100);
-        lastWeatherData.speed_of_sound = calculateAerodynamics(0).speedOfSound; // Recalcul de Cs
+        lastWeatherData.speed_of_sound = getSpeedOfSound(lastWeatherData.tempK); 
+
         updateWeatherDOM();
         if ($('statut-meteo')) $('statut-meteo').textContent = 'Actif 🟢';
 
     } catch (e) {
         // Fallback ISA
-        updateWeatherDOM(lastWeatherData, true);
+        lastWeatherData.air_density = RHO_SEA_LEVEL;
+        lastWeatherData.speed_of_sound = getSpeedOfSound(TEMP_SEA_LEVEL_K);
+        updateWeatherDOM();
         if ($('statut-meteo')) $('statut-meteo').textContent = 'Défaut (ISA) 🟡';
     }
 }
@@ -539,14 +574,13 @@ function updateWeatherDOM() {
     if ($('pressure-hpa')) $('pressure-hpa').textContent = dataOrDefault(d.pressure_hPa, 0) + ' hPa';
     if ($('humidity-perc')) $('humidity-perc').textContent = dataOrDefault(d.humidity_perc, 0) + ' %';
     if ($('air-density')) $('air-density').textContent = dataOrDefault(d.air_density, 3) + ' kg/m³';
-}
-
+                                                    }
 
 // --- 9. INITIALISATION FINALE (window.onload) ---
 
 window.addEventListener('load', () => {
 
-    // 1. Initialiser UKF (Vérification critique des dépendances)
+    // 1. Initialiser UKF
     if (typeof ProfessionalUKF !== 'undefined' && typeof math !== 'undefined') {
         try {
             ukf = new ProfessionalUKF();
@@ -557,10 +591,8 @@ window.addEventListener('load', () => {
     } else {
         if ($('ekf-status')) $('ekf-status').textContent = 'DÉSACTIVÉ 🔴';
     }
-    
-    // 2. Initialiser la Carte (Leaflet & Turf)
+    // 2. Initialiser la Carte
     initMap();
-    if (typeof turf === 'undefined') console.error("Turf.js n'est pas chargé, la distance 3D sera limitée.");
 
     // 3. Initialisation de l'heure et des données par défaut
     syncTime();
@@ -575,14 +607,15 @@ window.addEventListener('load', () => {
     // 5. Démarrer GPS
     initGPS();
 
-    // 6. Listeners d'événements CRITIQUES
+// 6. Listeners d'événements 
     
     // Contrôles Système
-    if ($('gps-toggle-btn')) $('gps-toggle-btn').addEventListener('click', toggleGpsPause); // Déjà défini, mais rappelé
+    // CORRECTION : S'assure que le listener utilise la fonction définie ci-dessus.
+    if ($('gps-toggle-btn')) $('gps-toggle-btn').addEventListener('click', toggleGpsPause); 
     if ($('emergency-stop-btn')) $('emergency-stop-btn').addEventListener('click', toggleEmergencyStop);
     if ($('full-reset-btn')) $('full-reset-btn').addEventListener('click', fullReset);
     if ($('capture-data-btn')) $('capture-data-btn').addEventListener('click', captureData);
-    if ($('night-mode-btn')) $('night-mode-btn').addEventListener('click', toggleNightMode);
+    if ($('night-mode-btn') || $('toggle-mode-btn')) ($('night-mode-btn') || $('toggle-mode-btn')).addEventListener('click', toggleNightMode);
 
     // Réinitialisation des Mesures
     if ($('reset-vmax-btn')) $('reset-vmax-btn').addEventListener('click', resetMaxSpeed);
@@ -608,4 +641,16 @@ window.addEventListener('load', () => {
         $('nether-toggle-btn').textContent = `Mode Nether: ${netherMode ? 'ACTIVÉ (1:8)' : 'DÉSACTIVÉ (1:1)'}`;
         if ($('nether-mode-ratio')) $('nether-mode-ratio').textContent = netherMode ? '1:8' : '1:1';
     });
+    
+    // Rotation/Station (S'assure que les champs sont bien écoutés pour ROTATING)
+    const updateRotationListeners = () => {
+        rotationRadius = parseFloat($('rotation-radius').value) || 100;
+        angularVelocity = parseFloat($('angular-velocity').value) || 0.0;
+        if (currentCelestialBody === 'ROTATING') {
+            updateCelestialBody('ROTATING', kAlt);
+        }
+    };
+    if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotationListeners);
+    if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotationListeners);
+
 });
