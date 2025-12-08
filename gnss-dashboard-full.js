@@ -87,39 +87,54 @@
     }
 
     function toggleGPS() {
+        const toggleBtn = $('toggle-gps-btn'); // ID du bouton
+        
         if (state.isRunning) {
             // ARRÊT
-            navigator.geolocation.clearWatch(state.gpsId);
-            clearInterval(state.loops.fast);
-            clearInterval(state.loops.slow);
+            if (state.gpsId) navigator.geolocation.clearWatch(state.gpsId);
+            if (state.loops.fast) clearInterval(state.loops.fast);
+            if (state.loops.slow) clearInterval(state.loops.slow);
             state.isRunning = false;
             setTxt('gps-status-dr', 'Arrêté');
-            const btn = $('toggle-gps-btn');
-            if(btn) { btn.textContent = '▶️ MARCHE GPS'; btn.style.background = '#28a745'; }
-        } else {
-            // DÉMARRAGE
-            if (!state.ukf) {
-                try {
-                    state.ukf = new window.ProfessionalUKF(); // Utilise la librairie corrigée
-                } catch(e) {
-                    alert("Erreur critique: UKF non chargé. Vérifiez ukf-lib.js");
-                    return;
-                }
+            if(toggleBtn) { toggleBtn.textContent = '▶️ MARCHE GPS'; toggleBtn.style.background = '#28a745'; }
+            setTxt('ekf-status', 'Arrêté');
+            return;
+        } 
+        
+        // DÉMARRAGE
+        
+        // 1. Initialisation Critique de l'UKF
+        if (!state.ukf) {
+            try {
+                state.ukf = new window.ProfessionalUKF();
+                // ✅ SUCCÈS : Mise à jour immédiate du statut
+                setTxt('ekf-status', 'Initialisé 🟢'); 
+            } catch(e) {
+                // 🔴 ÉCHEC : Retour immédiat si UKF n'est pas défini (librairie manquante)
+                console.error("Erreur critique: UKF non chargé ou math.js manquant. Vérifiez ukf-lib.js", e);
+                alert("Erreur critique: UKF non chargé. Script arrêté.");
+                setTxt('ekf-status', 'ERREUR CRITIQUE 🔴');
+                if(toggleBtn) toggleBtn.textContent = 'ERREUR DÉMARRAGE';
+                return; // Bloque le reste du script
             }
-            
-            state.gpsId = navigator.geolocation.watchPosition(onGPSUpdate, onGPSError, CONFIG.GPS_OPTIONS);
-            
-            // Démarrage des boucles
-            state.lastTime = performance.now();
-            state.loops.fast = setInterval(fastLoop, CONFIG.IMU_FREQ_MS);
-            state.loops.slow = setInterval(slowLoop, CONFIG.SLOW_UPDATE_MS);
-            
-            state.isRunning = true;
-            setTxt('gps-status-dr', 'Acquisition...');
-            const btn = $('toggle-gps-btn');
-            if(btn) { btn.textContent = '⏸️ PAUSE GPS'; btn.style.background = '#ffc107'; }
         }
+        
+        // 2. Démarrage des capteurs GPS
+        state.gpsId = navigator.log(navigator.geolocation.watchPosition(onGPSUpdate, onGPSError, CONFIG.GPS_OPTIONS));
+        
+        // 3. Démarrage des boucles de traitement
+        state.sessionStartTime = performance.now(); // Démarre le compteur de session
+        state.lastTime = performance.now();
+        state.loops.fast = setInterval(fastLoop, CONFIG.IMU_FREQ_MS);
+        state.loops.slow = setInterval(slowLoop, CONFIG.SLOW_UPDATE_MS);
+        
+        // 4. Mise à jour de l'état général et UI
+        state.isRunning = true;
+        setTxt('gps-status-dr', 'Acquisition...');
+        if(toggleBtn) { toggleBtn.textContent = '⏸️ PAUSE GPS'; toggleBtn.style.background = '#ffc107'; }
     }
+            
+            
 
     function onGPSUpdate(pos) {
         const { latitude, longitude, altitude, accuracy, speed } = pos.coords;
@@ -161,22 +176,30 @@
     // =================================================================
     // 3. BOUCLES DE TRAITEMENT (CORE LOGIC)
     // =================================================================
-
-    // --- BOUCLE RAPIDE (50Hz) : Prédiction & Physique ---
+    
+   // --- BOUCLE RAPIDE (50Hz) : Prédiction & Physique ---
     function fastLoop() {
-        if (!state.ukf) return;
+        if (!state.ukf || !state.isRunning) return;
 
         const now = performance.now();
         const dt = (now - state.lastTime) / 1000; // en secondes
         state.lastTime = now;
 
         if (dt <= 0) return;
+        
+        // CORRECTION CRITIQUE 1 : Mise à jour du temps de session
+        const sessionElapsedSeconds = (now - state.sessionStartTime) / 1000;
+        // Assumons que l'ID est 'session-elapsed-time'. 
+        // VÉRIFIEZ VOTRE HTML pour l'ID du champ "Temps écoulé (Session)".
+        setTxt('session-elapsed-time', sessionElapsedSeconds.toFixed(2) + " s"); 
 
         // 1. Prédiction UKF avec données IMU
         state.ukf.predict({
             accel: [state.imu.ax, state.imu.ay, state.imu.az],
-            gyro: [0, 0, 0] // Placeholder si pas de gyro
+            gyro: [0, 0, 0]
         }, dt);
+
+        // ... Reste du code de fastLoop pour les calculs de Vitesse, Position, etc.
 
         // 2. Récupération de l'état estimé
         const estimated = state.ukf.getState(); // { lat, lon, alt, speed, ... }
@@ -217,9 +240,12 @@
         const now = getPreciseTime();
 
         // 1. Horloge
-        setTxt('local-time', now.toLocaleTimeString());
-        setTxt('date-display', now.toLocaleDateString());
-        setTxt('time-minecraft', window.getMinecraftTime ? window.getMinecraftTime(now) : "N/A");
+        // ID pour "Heure Locale (NTP)"
+        setTxt('local-time', now.toLocaleTimeString('fr-FR')); 
+        // ID pour "Date & Heure (UTC/GMT)"
+        setTxt('date-display', now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR')); 
+        
+        // ... Reste du code de slowLoop pour l'Astro, la Météo, etc.
 
         // 2. Astro (Seulement si position valide)
         if (state.position.lat && window.getSolarTime && window.SunCalc) {
