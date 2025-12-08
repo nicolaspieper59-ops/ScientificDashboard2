@@ -454,12 +454,12 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
 
     // =========================================================
-    // BLOC 6 : FONCTIONS DE CONTRÔLE ET LISTENERS (Conservé)
-    // =========================================================
+// BLOC 6 : FONCTIONS DE CONTRÔLE ET LISTENERS (COMPLET)
+// =========================================================
     
     function toggleGpsPause() {
         isGpsPaused = !isGpsPaused;
-        const btn = $('toggle-gps-btn'); 
+        const btn = $('toggle-gps-btn');
         if (btn) btn.innerHTML = isGpsPaused ? '▶️ MARCHE GPS' : '⏸️ PAUSE GPS';
         
         if (isGpsPaused) {
@@ -467,29 +467,108 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             gpsWatchID = null;
             if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'PAUSE ⏸️';
         } else {
-            initGPS(); 
+            initGPS();
             if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'Recherche... 🟡';
         }
     }
     
+    // Fonction d'initialisation de tous les écouteurs d'événements
     function setupEventListeners() {
+        // 1. Contrôles de Base et Réinitialisation
         if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGpsPause);
         if ($('activate-sensors-btn')) $('activate-sensors-btn').addEventListener('click', activateDeviceMotion);
         
-        // --- CONTRÔLES COMPLETS (Basés sur vos autres snippets) ---
-        if ($('nether-toggle-btn')) $('nether-toggle-btn').addEventListener('click', () => {
-            netherMode = !netherMode;
-            $('nether-toggle-btn').textContent = `Mode Nether: ${netherMode ? 'ACTIVÉ (1:8) 🔥' : 'DÉSACTIVÉ (1:1) 🌍'}`;
-        });
-        
-        if ($('mass-input')) $('mass-input').addEventListener('input', (e) => {
-             currentMass = parseFloat(e.target.value) || 70.0;
-             $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
-        });
-        
-        if ($('ukf-reactivity-mode')) $('ukf-reactivity-mode').addEventListener('change', (e) => {
-            currentUKFReactivity = e.target.value;
-            if (ukf && ukf.getProcessNoiseMatrix) {
-                ukf.Q_Base = ukf.getProcessNoiseMatrix(currentUKFReactivity); 
+        // Bouton de réinitialisation complète
+        if ($('full-reset-btn')) $('full-reset-btn').addEventListener('click', () => { 
+            if(confirm("Voulez-vous vraiment TOUT RÉINITIALISER (recharger la page) ?")) { 
+                location.reload(); 
             }
         });
+
+        // 2. Paramètres Physiques / UKF
+        
+        // Entrée Masse Utilisateur
+        if ($('mass-input')) $('mass-input').addEventListener('input', (e) => {
+             currentMass = parseFloat(e.target.value) || 70.0;
+             if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+        });
+
+        // Sélection de Corps Céleste (Gravité)
+        if ($('celestial-body-select')) $('celestial-body-select').addEventListener('change', (e) => {
+            currentCelestialBody = e.target.value;
+            // Nécessite la fonction updateCelestialBody définie dans les premiers blocs
+            if (typeof updateCelestialBody !== 'undefined') {
+                const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+                if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+            }
+        });
+
+        // Contrôles de Rotation (pour le mode 'ROTATING')
+        const updateRotation = () => {
+            rotationRadius = parseFloat($('rotation-radius').value) || 100;
+            angularVelocity = parseFloat($('angular-velocity').value) || 0.0;
+            if (currentCelestialBody === 'ROTATING' && typeof updateCelestialBody !== 'undefined') {
+                const { G_ACC_NEW } = updateCelestialBody('ROTATING', kAlt, rotationRadius, angularVelocity);
+                if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+            }
+        };
+        if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
+        if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
+        
+        // Mode Nether (Ratio de distance 1:8 pour l'altitude/distance)
+        const netherToggleBtn = $('nether-toggle-btn');
+        if (netherToggleBtn) netherToggleBtn.addEventListener('click', () => {
+            netherMode = !netherMode;
+            netherToggleBtn.textContent = `Mode Nether: ${netherMode ? 'ACTIVÉ (1:8) 🔥' : 'DÉSACTIVÉ (1:1) 🌍'}`;
+        });
+
+        // Réactivité UKF (Matrice de bruit de processus Q)
+        if ($('ukf-reactivity-mode')) $('ukf-reactivity-mode').addEventListener('change', (e) => {
+            currentUKFReactivity = e.target.value;
+            if (ukf && ukf.getProcessNoiseMatrix) { // Assure que la méthode existe dans ukf-lib.js
+                ukf.Q_Base = ukf.getProcessNoiseMatrix(currentUKFReactivity); 
+                console.log(`UKF : Réactivité changée à ${currentUKFReactivity}.`);
+            }
+        });
+
+        // Bouton "Rapport Distance" (Correction Altitude, si l'altitude est grande)
+        if ($('distance-ratio-toggle-btn')) $('distance-ratio-toggle-btn').addEventListener('click', () => {
+            distanceRatioMode = !distanceRatioMode;
+            // Nécessite la fonction calculateDistanceRatio définie dans les premiers blocs
+            const ratio = (distanceRatioMode && typeof calculateDistanceRatio !== 'undefined') ? calculateDistanceRatio(kAlt || 0) : 1.0;
+            $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
+        });
+    }
+
+
+// =========================================================
+// BLOC 7 : INITIALISATION DU SYSTÈME
+// =========================================================
+    
+    window.addEventListener('load', () => {
+        
+        // 1. Initialisation des systèmes critiques
+        syncH(); // Démarrer la synchro NTP
+        initMap(); // Initialisation de la carte Leaflet
+        initGPS(); // Démarrage du GPS avec options stables
+        setupEventListeners(); // Attacher TOUS les contrôles
+
+        // 2. Initialisation de l'état physique par défaut
+        if (typeof updateCelestialBody !== 'undefined') {
+            // Déclenche une première mise à jour de la gravité (si la fonction existe)
+            updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity); 
+        }
+        
+        // 3. Mise à jour de l'affichage initial des statuts
+        if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'Recherche... 🟡';
+        if ($('ukf-status')) $('ukf-status').textContent = ukf ? 'Actif 🟢' : 'UKF N/A 🔴';
+        if ($('toggle-gps-btn') && isGpsPaused === false) $('toggle-gps-btn').innerHTML = '⏸️ PAUSE GPS';
+        if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
+
+        // 4. Boucle principale de rafraîchissement (4 fois par seconde)
+        setInterval(updateDashboardDOM, 250); 
+    });
+
+})(window); // Fermeture de l'IIFE
+
+// --- FIN DU FICHIER ---
