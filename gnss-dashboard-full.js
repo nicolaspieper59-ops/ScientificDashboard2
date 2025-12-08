@@ -1,6 +1,6 @@
 // =================================================================
-// GNSS SPACETIME DASHBOARD - FICHIER COMPLET V7 (UKF 21 ÉTATS)
-// FUSION DE TOUTES LES MEILLEURES FONCTIONNALITÉS + FIX GPS/IMU ANCIENNE API
+// GNSS SPACETIME DASHBOARD - FICHIER COMPLET V9 (UKF 21 ÉTATS)
+// ARCHITECTURE STABLE, RÉSILIENTE & READY POUR DEAD RECKONING
 // =================================================================
 
 // ⚠️ DÉPENDANCES CRITIQUES (doivent être chargées dans l'HTML AVANT ce fichier) :
@@ -30,28 +30,31 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
 ((window) => {
     
-    // --- VÉRIFICATION DES DÉPENDANCES CRITIQUES ---
-    if (typeof math === 'undefined' || typeof L === 'undefined' || typeof SunCalc === 'undefined' || typeof turf === 'undefined') {
-         console.error("🔴 ERREUR CRITIQUE: Dépendances manquantes (math, Leaflet, SunCalc, Turf). Le système est limité.");
+    // --- VÉRIFICATION DES DÉPENDANCES CRITIQUES (DÉGRADATION GRACIEUSE) ---
+    if (typeof math === 'undefined' || typeof ProfessionalUKF === 'undefined') {
+         console.error("🔴 ERREUR CRITIQUE: Librairies Math/UKF manquantes. Le filtre UKF est désactivé.");
     }
-    if (typeof ProfessionalUKF === 'undefined') {
-        console.error("🔴 ERREUR CRITIQUE: La classe ProfessionalUKF (21 États) est manquante. Charger lib/ukf-lib.js !");
+    if (typeof L === 'undefined' || typeof SunCalc === 'undefined' || typeof turf === 'undefined') {
+         console.warn("🟡 AVERTISSEMENT: Cartographie/Astro manquante. Ces sections seront désactivées.");
     }
+
 
     // --- CLÉS D'API & ENDPOINTS ---
     const PROXY_BASE_URL = "https://scientific-dashboard2.vercel.app";
     const PROXY_WEATHER_ENDPOINT = `${PROXY_BASE_URL}/api/weather`;
     const SERVER_TIME_ENDPOINT = "https://worldtimeapi.org/api/utc";
-    const DOM_SLOW_UPDATE_MS = 2000;
+    const DOM_SLOW_UPDATE_MS = 250; // Taux de rafraîchissement DOM
+
     
     // --- CONSTANTES PHYSIQUES ET MATHÉMATIQUES FONDAMENTALES ---
     const D2R = Math.PI / 180, R2D = 180 / Math.PI;
     const KMH_MS = 3.6;
-    const C_L = 299792458;
-    const G_U = 6.67430e-11;
-    const TEMP_SEA_LEVEL_K = 288.15; // 15°C en Kelvin
+    const C_L = 299792458; // Vitesse de la lumière
+    const G_U = 6.67430e-11; // Constante gravitationnelle
+    const TEMP_SEA_LEVEL_K = 288.15; // 15°C en Kelvin (ISA)
     const RHO_SEA_LEVEL = 1.225; // Densité de l'air ISA (kg/m³)
-    const BARO_ALT_REF_HPA = 1013.25;
+    const BARO_ALT_REF_HPA = 1013.25; // Pression de référence (ISA)
+    const R_E_BASE = 6371000; // Rayon terrestre de base (m)
 
     // --- ÉTAT GLOBAL ET VARIABLES DE CONTRÔLE ---
     let ukf = (typeof ProfessionalUKF !== 'undefined' && typeof math !== 'undefined') ? new ProfessionalUKF() : null;
@@ -63,25 +66,27 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let currentCelestialBody = 'EARTH';
     let rotationRadius = 100;
     let angularVelocity = 0.0;
-    
+    let initTime = Date.now(); // Temps de démarrage de la session
+
+    // Position initiale par défaut (pour débloquer Astro/Météo)
     let currentPosition = { lat: 43.2964, lon: 5.3697, acc: 10.0, spd: 0.0, alt: 0.0 };
     let currentMass = 70.0;
     let totalDistance = 0.0;
     let maxSpeed = 0.0;
-    let kAlt = 0.0; 
+    let kAlt = 0.0; // Altitude filtrée/estimée (utilisée par les modèles)
     let gpsWatchID = null;
-    let lServH = null; 
-    let lLocH = new Date(); 
+    let lServH = null; // Heure serveur
+    let lLocH = new Date(); // Heure locale au moment de la synchro
     let ntpSyncSuccess = false; 
     let lastKnownWeather = null;
-    let isWeatherAPIFailing = true; 
     let currentSpeedOfSound = 340.29; 
     let currentAirDensity = RHO_SEA_LEVEL;
     let imuAccels = { x: 0, y: 0, z: 0 };
     let imuAngles = { pitch: 0, roll: 0 };
     let lastLat = currentPosition.lat;
     let lastLon = currentPosition.lon;
-    
+    let lastIMUTime = 0; // Pour calculer dt dans la boucle IMU/Prediction
+
     // --- VARIABLES CARTE LEAFLET ---
     let map = null;
     let marker = null;
@@ -90,64 +95,48 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
 
     // =========================================================
-    // BLOC 2 : MODÈLES PHYSIQUES ET SYSTÈME
+    // BLOC 2 : MODÈLES PHYSIQUES ET UTILITAIRES (FONCTIONS CRITIQUES)
     // =========================================================
-    // --- FONCTIONS AJOUTÉES/CORRIGÉES (BLOC 2) ---
 
-/**
- * Met à jour le paramètre de gravité (G_ACC) en fonction du corps céleste.
- * @returns {object} {G_ACC_NEW: new_gravity_value}
- */
-function updateCelestialBody(body, alt_m, radius_m = 100, omega_rad_s = 0.0) {
-    let G_ACC_NEW = 9.8067; // Earth Standard
-    
-    // Assurez-vous que cette constante est définie dans votre état global
-    const R_E_BASE = 6371000; // Rayon terrestre moyen (m)
+    function updateCelestialBody(body, alt_m, radius_m = 100, omega_rad_s = 0.0) {
+        let G_ACC_NEW = 9.8067; 
 
-    switch (body) {
-        case 'EARTH':
-            // Formule standard d'ajustement de la gravité avec l'altitude
-            G_ACC_NEW = 9.8067 * (R_E_BASE / (R_E_BASE + alt_m)) ** 2;
-            break;
-        case 'MOON':
-            G_ACC_NEW = 1.62; // Gravité Lunaire
-            break;
-        case 'MARS':
-            G_ACC_NEW = 3.72; // Gravité Martienne
-            break;
-        case 'ROTATING':
-            // Gravité centrifuge pour un corps en rotation
-            const V_ROT = radius_m * omega_rad_s;
-            G_ACC_NEW = Math.sqrt(9.8067**2 + (V_ROT**2 / radius_m)**2); 
-            break;
-        default:
-            G_ACC_NEW = 9.8067; 
-            break;
+        switch (body) {
+            case 'EARTH':
+                // Ajustement de la gravité en fonction de l'altitude (Approximation)
+                G_ACC_NEW = 9.8067 * (R_E_BASE / (R_E_BASE + alt_m)) ** 2;
+                break;
+            case 'MOON':
+                G_ACC_NEW = 1.62;
+                break;
+            case 'MARS':
+                G_ACC_NEW = 3.72;
+                break;
+            case 'ROTATING':
+                // Modèle rotationnel (Force centrifuge incluse)
+                const V_ROT = radius_m * omega_rad_s;
+                // Calcul vectoriel simplifié
+                G_ACC_NEW = Math.sqrt(9.8067**2 + (V_ROT**2 / radius_m)**2); 
+                break;
+            default:
+                G_ACC_NEW = 9.8067; 
+                break;
+        }
+
+        if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+        return { G_ACC_NEW };
     }
 
-    // Mise à jour de la variable globale G_ACC si elle existe
-    if (typeof G_ACC !== 'undefined') G_ACC = G_ACC_NEW;
+    function calculateDistanceRatio(alt_m) {
+        if (netherMode) return 8.0; 
 
-    if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
-    return { G_ACC_NEW };
-}
-
-/**
- * Calcule le rapport de distance (utilisé pour la correction d'altitude ou le mode Nether).
- * @param {number} alt_m - Altitude actuelle en mètres.
- * @returns {number} Le ratio de correction.
- */
-function calculateDistanceRatio(alt_m) {
-    if (netherMode) return 8.0; // Mode Nether (1:8)
-
-    // Mode Correction d'Altitude: Réduire l'impact des mouvements 2D/3D à haute altitude
-    const R_E_BASE = 6371000;
-    const ratio = (R_E_BASE + alt_m) / R_E_BASE;
-    return ratio;
-                }
-
+        // Rapport de correction basé sur la distance au centre de la Terre
+        const ratio = (R_E_BASE + alt_m) / R_E_BASE;
+        return ratio;
+    }
+    
     function getSpeedOfSound(T_K) { 
-        if (T_K <= 0 || isNaN(T_K)) return 340.29;
+        if (T_K <= 0 || isNaN(T_K)) return 340.29; // Fallback
         return 20.0468 * Math.sqrt(T_K); 
     }
     
@@ -155,16 +144,12 @@ function calculateDistanceRatio(alt_m) {
         return (2 * G_U * mass_kg) / (C_L ** 2); 
     }
 
-    // Assurez-vous que cette fonction est bien dans votre lib/astro.js
-    // Si la fonction est manquante, le fallback doit être géré dans updateAstroDOM.
     function getAstroData(lat, lon, date) {
-        if (typeof SunCalc === 'undefined') return {}; // Fallback si SunCalc est manquant
-
+        if (typeof SunCalc === 'undefined') return {}; 
         const times = SunCalc.getTimes(date, lat, lon);
         const sunPos = SunCalc.getPosition(date, lat, lon);
         const moonPos = SunCalc.getMoonPosition(date, lat, lon);
         const moonIllum = SunCalc.getMoonIllumination(date);
-
         return { times, sunPos, moonPos, moonIllum };
     }
 
@@ -188,21 +173,20 @@ function calculateDistanceRatio(alt_m) {
         return new Date(serverTime.getTime() + diff_ms);
     }
     
-    // ... (fetchWeather conservé)
     async function fetchWeather(lat, lon) {
         try {
             const response = await fetch(`${PROXY_WEATHER_ENDPOINT}?lat=${lat}&lon=${lon}`);
             if (!response.ok) throw new Error("Erreur Proxy ou API Météo");
             const data = await response.json();
             const tempK = data.tempC + 273.15;
-            isWeatherAPIFailing = false;
             lastKnownWeather = { 
                 tempC: data.tempC, pressure_hPa: data.pressure_hPa, humidity_perc: data.humidity_perc,
                 air_density: (data.pressure_hPa * 100) / (287.058 * tempK), tempK: tempK
             };
             return lastKnownWeather;
         } catch (e) {
-            isWeatherAPIFailing = true;
+            // Dégradation gracieuse : retourne les valeurs ISA par défaut
+            if ($('temp-air')) $('temp-air').textContent = 'ISA (Défaut)';
             return lastKnownWeather || { 
                 tempC: 15.0, pressure_hPa: BARO_ALT_REF_HPA, humidity_perc: 50.0,
                 air_density: RHO_SEA_LEVEL, tempK: TEMP_SEA_LEVEL_K
@@ -211,95 +195,8 @@ function calculateDistanceRatio(alt_m) {
     }
 
     // =========================================================
-    // BLOC 3 : FUSION GNSS / UKF / IMU (avec Fixes)
+    // BLOC 3 : FUSION GNSS / UKF / IMU 
     // =========================================================
-
-    function initGPS() {
-        if (gpsWatchID) navigator.geolocation.clearWatch(gpsWatchID);
-
-        // 🌟 FIX CRITIQUE GPS: Paramètres plus stables et tolérants
-        const GPS_OPTS = { 
-            enableHighAccuracy: true, 
-            maximumAge: 3000,     
-            timeout: 15000        
-        };
-
-        let lastTimestamp = 0;
-
-        gpsWatchID = navigator.geolocation.watchPosition(
-            (position) => {
-                if (isGpsPaused) return;
-
-                const timestamp = position.timestamp;
-                const dt = (timestamp - lastTimestamp) / 1000 || 0;
-                lastTimestamp = timestamp;
-
-                const gpsData = {
-                    lat: position.coords.latitude,
-                    lon: position.coords.longitude,
-                    alt: position.coords.altitude || 0.0,
-                    speed: position.coords.speed || 0.0,
-                    acc: position.coords.accuracy,
-                    bearing: position.coords.heading || 0.0,
-                    timestamp: timestamp
-                };
-
-                // UKF Predict / Update
-                if (ukf) {
-                    if (dt > 0 && ukf.x) {
-                        ukf.predict(dt); 
-                    }
-                    ukf.update(gpsData);
-
-                    const ukfState = ukf.getState();
-                    currentPosition.lat = ukfState.lat;
-                    currentPosition.lon = ukfState.lon;
-                    currentPosition.alt = ukfState.alt;
-                    currentPosition.spd = ukfState.speed;
-                    currentPosition.acc = ukfState.kUncert; // Incertitude UKF
-                } else {
-                    // Fallback sur données brutes
-                    currentPosition.lat = gpsData.lat;
-                    currentPosition.lon = gpsData.lon;
-                    currentPosition.alt = gpsData.alt;
-                    currentPosition.spd = gpsData.speed;
-                    currentPosition.acc = gpsData.acc;
-                }
-                
-                kAlt = currentPosition.alt; // Altitude filtrée/brute
-
-                // Logique de calcul de distance et vitesse max (conservée)
-                if (lastLat !== null && lastLon !== null && currentPosition.spd > 0.1) {
-                    // Calcul de la distance 2D (Turf.js serait utilisé ici si implémenté)
-                    const from = turf.point([lastLon, lastLat]);
-                    const to = turf.point([currentPosition.lon, currentPosition.lat]);
-                    const distance2D = turf.distance(from, to, {units: 'meters'});
-                    // Approximation de la distance 3D
-                    const distance3D = Math.sqrt(distance2D**2 + (currentPosition.alt - kAlt)**2);
-                    totalDistance += distance3D; 
-                }
-                lastLat = currentPosition.lat;
-                lastLon = currentPosition.lon;
-                
-                const speedKmh = currentPosition.spd * 3.6;
-                if (speedKmh > maxSpeed) maxSpeed = speedKmh;
-                
-                // Mise à jour Météo (toutes les 10 secondes)
-                if (Date.now() % 10000 < 500) { 
-                    fetchWeather(currentPosition.lat, currentPosition.lon).then(data => {
-                        currentAirDensity = data.air_density;
-                        currentSpeedOfSound = getSpeedOfSound(data.tempK);
-                    });
-                }
-                if ($('gps-status-indicator')) $('gps-status-indicator').textContent = `Signal OK (Acc: ${dataOrDefault(currentPosition.acc, 1)}m) 🟢`;
-            },
-            (error) => {
-                if ($('gps-status-indicator')) $('gps-status-indicator').textContent = `ERREUR GPS (${error.code}) 🔴`;
-                currentPosition.spd = 0.0;
-            },
-            GPS_OPTS
-        );
-    }
 
     function handleDeviceMotion(event) {
         if (event.acceleration) {
@@ -314,11 +211,32 @@ function calculateDistanceRatio(alt_m) {
             imuAngles.pitch = Math.atan2(ax, Math.sqrt(ay*ay + az*az)) * R2D;
             imuAngles.roll = Math.atan2(ay, Math.sqrt(ax*ax + az*az)) * R2D;
         }
+        
+        // ⚠️ LOGIQUE CRITIQUE DE DEAD RECKONING
+        const timestamp = event.timeStamp || Date.now();
+        const dt = (timestamp - lastIMUTime) / 1000 || 0;
+        lastIMUTime = timestamp;
+
+        if (ukf && dt > 0 && isIMUActive) {
+            // Lancement de la Prédiction UKF à haute fréquence (pilotée par IMU)
+            // L'UKF prédit l'état (vitesse/position) même si le GPS est perdu (Dead Reckoning)
+            ukf.predict(dt, imuAccels); 
+            
+            // Met à jour l'état actuel avec l'estimation UKF
+            const ukfState = ukf.getState();
+            currentPosition.spd = ukfState.speed;
+            currentPosition.alt = ukfState.alt;
+            currentPosition.acc = ukfState.kUncert;
+
+            if ($('gps-status-indicator') && !$('gps-status-indicator').textContent.includes('Signal OK')) {
+                // Si pas de GPS, affiche le mode d'estimation
+                 $('gps-status-indicator').textContent = `Estimation UKF (IMU) 🟡 Acc: ${dataOrDefault(currentPosition.acc, 2)}m`;
+            }
+        }
     }
 
     function activateDeviceMotion() {
         const statusEl = $('imu-status');
-        // 🌟 FIX CRITIQUE CAPTEURS: Demande de permission pour iOS/Safari
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
@@ -343,53 +261,128 @@ function calculateDistanceRatio(alt_m) {
         }
     }
 
+    function initGPS() {
+        if (gpsWatchID) navigator.geolocation.clearWatch(gpsWatchID);
+
+        const GPS_OPTS = { 
+            enableHighAccuracy: true, 
+            maximumAge: 3000,     
+            timeout: 15000        
+        };
+
+        gpsWatchID = navigator.geolocation.watchPosition(
+            (position) => {
+                if (isGpsPaused) return;
+
+                const gpsData = {
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude,
+                    alt: position.coords.altitude || 0.0,
+                    speed: position.coords.speed || 0.0,
+                    acc: position.coords.accuracy,
+                    bearing: position.coords.heading || 0.0,
+                    timestamp: position.timestamp
+                };
+
+                // Correction de l'état UKF avec les données GPS (Update)
+                if (ukf) {
+                    ukf.update(gpsData);
+                    const ukfState = ukf.getState();
+                    currentPosition.lat = ukfState.lat;
+                    currentPosition.lon = ukfState.lon;
+                    currentPosition.alt = ukfState.alt;
+                    currentPosition.spd = ukfState.speed;
+                    currentPosition.acc = ukfState.kUncert;
+                } else {
+                    currentPosition.lat = gpsData.lat;
+                    currentPosition.lon = gpsData.lon;
+                    currentPosition.alt = gpsData.alt;
+                    currentPosition.spd = gpsData.speed;
+                    currentPosition.acc = gpsData.acc;
+                }
+                
+                kAlt = currentPosition.alt; 
+
+                // Logique de calcul de distance
+                if (typeof turf !== 'undefined' && currentPosition.spd > 0.1) {
+                    const from = turf.point([lastLon, lastLat]);
+                    const to = turf.point([currentPosition.lon, currentPosition.lat]);
+                    const distance2D = turf.distance(from, to, {units: 'meters'});
+                    totalDistance += distance2D * (distanceRatioMode ? calculateDistanceRatio(kAlt) : 1.0);
+                }
+                lastLat = currentPosition.lat;
+                lastLon = currentPosition.lon;
+                
+                const speedKmh = currentPosition.spd * 3.6;
+                if (speedKmh > maxSpeed) maxSpeed = speedKmh;
+                
+                // Mise à jour Météo (toutes les 10 secondes)
+                if (Date.now() % 10000 < 500) { 
+                    fetchWeather(currentPosition.lat, currentPosition.lon).then(data => {
+                        currentAirDensity = data.air_density;
+                        currentSpeedOfSound = getSpeedOfSound(data.tempK);
+                    });
+                }
+                if ($('gps-status-indicator')) $('gps-status-indicator').textContent = `Signal OK 🛰️ (Acc: ${dataOrDefault(currentPosition.acc, 1)}m) 🟢`;
+            },
+            (error) => {
+                // Gestion des erreurs GPS
+                if (error.code === 1) { 
+                     if ($('gps-status-indicator')) $('gps-status-indicator').textContent = `ERREUR GPS: Permission Refusée ❌`;
+                } else {
+                     if ($('gps-status-indicator')) $('gps-status-indicator').textContent = `ERREUR GPS (${error.code}) 🔴`;
+                }
+                currentPosition.spd = 0.0;
+            },
+            GPS_OPTS
+        );
+    }
+    
+
     // =========================================================
-    // BLOC 4 : GESTION DE LA CARTE (LEAFLET)
+    // BLOC 4 & 5 : CARTE (LEAFLET) & MISE À JOUR DU DOM
     // =========================================================
     
     function initMap() {
         if (typeof L === 'undefined' || !$('map-container')) return;
-
-        map = L.map('map-container', { 
-            center: [currentPosition.lat, currentPosition.lon], 
-            zoom: MAP_INITIAL_ZOOM,
-            attributionControl: false // Pour un look plus propre
-        });
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            // Votre attribution (laissez ceci par courtoisie ou supprimez l'attributiionControl ci-dessus)
-            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OSM</a>'
-        }).addTo(map);
+        map = L.map('map-container', { center: [currentPosition.lat, currentPosition.lon], zoom: MAP_INITIAL_ZOOM, attributionControl: false });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
         marker = L.marker([currentPosition.lat, currentPosition.lon]).addTo(map);
         trackPolyline = L.polyline([], {color: '#007bff', weight: 3}).addTo(map);
+        
+        if ($('map-container')) $('map-container').textContent = ''; 
     }
     
     function updateMapDOM() {
-        if (!map || !marker || !trackPolyline) return;
-
+        if (!map || !marker || !trackPolyline) {
+             if ($('map-container')) $('map-container').textContent = 'Carte Leaflet N/A (librairie manquante)';
+             return;
+        }
+        
         const lat = currentPosition.lat;
         const lon = currentPosition.lon;
         const latlng = [lat, lon];
         
-        // Mettre à jour le marqueur
         marker.setLatLng(latlng);
-        // Centrer la carte sur la nouvelle position (optionnel, peut être lourd)
-        // map.setView(latlng, map.getZoom()); 
-        
-        // Ajouter à la trace (limiter la taille de la trace si nécessaire)
         trackPolyline.addLatLng(latlng);
         
-        // Mise à jour de l'affichage des coordonnées brutes
         if ($('lat-raw')) $('lat-raw').textContent = dataOrDefault(lat, 6);
         if ($('lon-raw')) $('lon-raw').textContent = dataOrDefault(lon, 6);
+        if ($('lat-ekf')) $('lat-ekf').textContent = dataOrDefault(currentPosition.lat, 6);
+        if ($('lon-ekf')) $('lon-ekf').textContent = dataOrDefault(currentPosition.lon, 6);
+        if ($('alt-ekf')) $('alt-ekf').textContent = dataOrDefault(currentPosition.alt, 2) + ' m';
+        if ($('ukf-uncertainty')) $('ukf-uncertainty').textContent = dataOrDefault(currentPosition.acc, 4); 
     }
 
-
-    // =========================================================
-    // BLOC 5 : MISE À JOUR DU DOM (Affichage & Astro)
-    // =========================================================
+    function getMoonPhaseName(phase) {
+        if (phase < 0.05 || phase > 0.95) return 'Nouvelle Lune 🌑';
+        if (phase < 0.25) return 'Premier Croissant 🌒';
+        if (phase < 0.5) return 'Premier Quartier 🌓';
+        if (phase < 0.75) return 'Lune Gibbeuse Croissante 🌔';
+        if (phase < 0.85) return 'Pleine Lune 🌕';
+        return 'Lune Décroissante 🌖';
+    }
 
     function updateAstroDOM(lat, lon) {
         if (typeof getAstroData === 'undefined') {
@@ -409,34 +402,16 @@ function calculateDistanceRatio(alt_m) {
             if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(sunAziDeg, 2) + '°';
         }
         
-        if (astroData.moonPos) {
-            const moonAltDeg = astroData.moonPos.altitude * R2D;
-            const moonAziDeg = astroData.moonPos.azimuth * R2D;
-            if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(moonAltDeg, 2) + '°';
-            if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(moonAziDeg, 2) + '°';
-        }
-
         if (astroData.moonIllum) {
-            const moonPhaseName = getMoonPhaseName(astroData.moonIllum.phase); // Supposons que cette fonction existe dans astro.js
+            const moonPhaseName = getMoonPhaseName(astroData.moonIllum.phase);
             if ($('moon-phase-name')) $('moon-phase-name').textContent = moonPhaseName;
             if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moonIllum.fraction * 100, 1) + '%';
         }
-
-        // Complétez ici avec la logique d'affichage complète pour les heures de lever/coucher, etc.
-    }
-
-    // Fonction fictive pour ne pas dépendre entièrement de votre astro.js
-    function getMoonPhaseName(phase) {
-        if (phase < 0.05 || phase > 0.95) return 'Nouvelle Lune 🌑';
-        if (phase < 0.25) return 'Premier Croissant 🌒';
-        if (phase < 0.5) return 'Premier Quartier 🌓';
-        if (phase < 0.75) return 'Lune Gibbeuse Croissante 🌔';
-        if (phase < 0.85) return 'Pleine Lune 🌕';
-        return 'Lune Décroissante 🌖';
     }
 
 
     function updateDashboardDOM() {
+        // --- MISE À JOUR DES VARIABLES CLÉS (lecture de l'état UKF/IMU) ---
         const speed3D = currentPosition.spd; 
         const speedKmh = speed3D * 3.6;
         const mach = speed3D / currentSpeedOfSound;
@@ -445,202 +420,148 @@ function calculateDistanceRatio(alt_m) {
         const restMassEnergy = currentMass * C_L ** 2;
         const schwarzschildRadius = getSchwarzschildRadius(currentMass);
         const elapsedTime = (Date.now() - initTime) / 1000;
-        const ukfState = ukf ? ukf.getState() : currentPosition;
         
         // TEMPS
         const now = getCDate(lServH, lLocH);
         if ($('temps-ecoule-session')) $('temps-ecoule-session').textContent = `${dataOrDefault(elapsedTime, 2)} s`;
-        if ($('local-time-ntp')) {
-            let ntpText = now.toLocaleTimeString('fr-FR');
-            if (!ntpSyncSuccess) ntpText += ' (Local)'; 
-            $('local-time-ntp').textContent = ntpText;
-        }
-        if ($('date-utc-gmt')) {
-             let dateText = now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR');
-             dateText += ntpSyncSuccess ? ' UTC' : ' LOCAL (Échec UTC)';
-             $('date-utc-gmt').textContent = dateText;
-        }
+        if ($('local-time-ntp')) $('local-time-ntp').textContent = now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? '' : ' (Local)');
+        if ($('date-utc-gmt')) $('date-utc-gmt').textContent = now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? ' UTC' : ' LOCAL');
+
 
         // MÉTÉO / PHYSIQUE
         let weatherData = lastKnownWeather;
-        if (isWeatherAPIFailing && !weatherData) {
-            weatherData = { tempC: 15.0, pressure_hPa: BARO_ALT_REF_HPA, air_density: RHO_SEA_LEVEL };
-            if ($('weather-status')) $('weather-status').textContent = 'API ÉCHOUÉE (ISA) 🟡';
-        } else if (!isWeatherAPIFailing) {
-            if ($('weather-status')) $('weather-status').textContent = 'Actif 🟢';
-        }
         if ($('temp-air')) $('temp-air').textContent = dataOrDefault(weatherData ? weatherData.tempC : null, 2, ' °C');
         if ($('pressure-atm')) $('pressure-atm').textContent = dataOrDefault(weatherData ? weatherData.pressure_hPa : null, 0, ' hPa');
-        if ($('air-density-rho')) $('air-density-rho').textContent = dataOrDefault(weatherData ? weatherData.air_density : null, 3, ' kg/m³');
+        if ($('air-density-rho')) $('air-density-rho').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³');
 
         // VITESSE/RELATIVITÉ
         if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${dataOrDefault(currentSpeedOfSound, 4)} m/s`;
         if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(schwarzschildRadius, 4, ' m');
-        if ($('vitesse-inst')) $('vitesse-inst').textContent = `${dataOrDefault(speedKmh, 1)} km/h`;
-        if ($('vitesse-brute-ms')) $('vitesse-brute-ms').textContent = `${dataOrDefault(speed3D, 2)} m/s`;
-        if ($('vitesse-max-session')) $('vitesse-max-session').textContent = `${dataOrDefault(maxSpeed, 1)} km/h`;
-        if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach, 4);
-        if ($('perc-speed-light')) $('perc-speed-light').textContent = dataOrDefaultExp(lightPerc, 2, ' %');
-        if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentzFactor, 4);
-        if ($('energie-masse-repos')) $('energie-masse-repos').textContent = dataOrDefaultExp(restMassEnergy, 4, ' J');
-        if ($('dist-total-3d')) $('dist-total-3d').textContent = `${dataOrDefault(totalDistance / 1000, 3)} km | ${dataOrDefault(totalDistance, 2)} m`;
-        
-        // POSITION EKF/UKF
-        if ($('lat-ekf')) $('lat-ekf').textContent = dataOrDefault(ukfState.lat, 6);
-        if ($('lon-ekf')) $('lon-ekf').textContent = dataOrDefault(ukfState.lon, 6);
-        if ($('alt-ekf')) $('alt-ekf').textContent = dataOrDefault(ukfState.alt, 2) + ' m';
-        if ($('gps-accuracy')) $('gps-accuracy').textContent = dataOrDefault(currentPosition.acc, 2) + ' m';
-        if ($('ukf-uncertainty')) $('ukf-uncertainty').textContent = dataOrDefault(ukfState.kUncert, 4);
-        
-        // IMU
-        if ($('accel-x')) $('accel-x').textContent = dataOrDefault(imuAccels.x, 2) + ' m/s²';
-        if ($('accel-y')) $('accel-y').textContent = dataOrDefault(imuAccels.y, 2) + ' m/s²';
-        if ($('accel-z')) $('accel-z').textContent = dataOrDefault(imuAccels.z, 2) + ' m/s²';
-        if ($('pitch-imu')) $('pitch-imu').textContent = dataOrDefault(imuAngles.pitch, 1) + '°';
-        if ($('roll-imu')) $('roll-imu').textContent = dataOrDefault(imuAngles.roll, 1) + '°';
-        if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
+        // Vitesse affichée sera 0.0 si le GPS est perdu ET l'IMU n'est pas activé/supporté
+        if ($('vitesse-inst')) $('vitesse-inst').textContent = `${dataOrDefault(speedKmh, 1)} km/h`; 
+        if ($('vitesse-brute-ms')) $('vitesse-brute-ms').textContent = `${dataOrDefault(speed3D, 2)} m/s`; 
+if ($('vitesse-max-session')) $('vitesse-max-session').textContent = `${dataOrDefault(maxSpeed, 1)} km/h`;
+if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach, 4);
+if ($('perc-speed-light')) $('perc-speed-light').textContent = dataOrDefaultExp(lightPerc, 2, ' %');
+if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentzFactor, 4);
+if ($('energie-masse-repos')) $('energie-masse-repos').textContent = dataOrDefaultExp(restMassEnergy, 4, ' J');
+if ($('dist-total-3d')) $('dist-total-3d').textContent = `${dataOrDefault(totalDistance / 1000, 3)} km | ${dataOrDefault(totalDistance, 2)} m`;
 
-        // Mise à jour de la Carte et de l'Astro
-    updateMapDOM();
-        updateAstroDOM(currentPosition.lat, currentPosition.lon);
-    }
+// IMU
+if ($('accel-x')) $('accel-x').textContent = dataOrDefault(imuAccels.x, 2) + ' m/s²';
+if ($('accel-y')) $('accel-y').textContent = dataOrDefault(imuAccels.y, 2) + ' m/s²';
+if ($('accel-z')) $('accel-z').textContent = dataOrDefault(imuAccels.z, 2) + ' m/s²';
+if ($('pitch-imu')) $('pitch-imu').textContent = dataOrDefault(imuAngles.pitch, 1) + '°';
+if ($('roll-imu')) $('roll-imu').textContent = dataOrDefault(imuAngles.roll, 1) + '°';
+if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
+
+// Mise à jour de la Carte et de l'Astro
+updateMapDOM();
+updateAstroDOM(currentPosition.lat, currentPosition.lon);
+}
 
 
-    // =========================================================
-// BLOC 6 : FONCTIONS DE CONTRÔLE ET LISTENERS (COMPLET)
 // =========================================================
-    
-    // =================================================================
-// DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
-// =================================================================
+// BLOC 6 : FONCTIONS DE CONTRÔLE ET LISTENERS
+// =========================================================
 
-((window) => {
-    
-    // --- VÉRIFICATION DES DÉPENDANCES CRITIQUES ---
-    // Si math.js ou ProfessionalUKF sont manquants, l'UKF sera null.
-    if (typeof math === 'undefined') {
-         console.error("🔴 ERREUR CRITIQUE: math.js manquant.");
+function toggleGpsPause() {
+isGpsPaused = !isGpsPaused;
+const btn = $('toggle-gps-btn'); 
+if (btn) btn.innerHTML = isGpsPaused ? '▶️ MARCHE GPS' : '⏸️ PAUSE GPS';
+
+if (isGpsPaused) {
+    if (gpsWatchID) navigator.geolocation.clearWatch(gpsWatchID);
+    gpsWatchID = null;
+    if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'PAUSE ⏸️';
+} else {
+    initGPS(); 
+    if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'Recherche... 🟡';
+}
+}
+
+function setupEventListeners() {
+if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGpsPause);
+if ($('activate-sensors-btn')) $('activate-sensors-btn').addEventListener('click', activateDeviceMotion);
+
+if ($('full-reset-btn')) $('full-reset-btn').addEventListener('click', () => { 
+    if(confirm("Voulez-vous vraiment TOUT RÉINITIALISER (recharger la page) ?")) { 
+        location.reload(); 
     }
-    if (typeof ProfessionalUKF === 'undefined') {
-        console.error("🔴 ERREUR CRITIQUE: La classe ProfessionalUKF est manquante. Charger lib/ukf-lib.js !");
+});
+
+if ($('mass-input')) $('mass-input').addEventListener('input', (e) => {
+     currentMass = parseFloat(e.target.value) || 70.0;
+     if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
+});
+
+// Contrôle Corps Céleste (Gravité)
+if ($('celestial-body-select')) $('celestial-body-select').addEventListener('change', (e) => {
+    currentCelestialBody = e.target.value;
+    const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
+    if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
+});
+
+// Contrôles de Rotation
+const updateRotation = () => {
+    rotationRadius = parseFloat($('rotation-radius').value) || 100;
+    angularVelocity = parseFloat($('angular-velocity').value) || 0.0;
+    if (currentCelestialBody === 'ROTATING') {
+        const { G_ACC_NEW } = updateCelestialBody('ROTATING', kAlt, rotationRadius, angularVelocity);
+        $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
     }
+};
+if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
+if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
 
-    // Ceci est la ligne critique pour l'UKF
-    let ukf = (typeof ProfessionalUKF !== 'undefined' && typeof math !== 'undefined') ? new ProfessionalUKF() : null;
-    
-    // ... le reste de vos variables globales ...
-    function toggleGpsPause() {
-        isGpsPaused = !isGpsPaused;
-        const btn = $('toggle-gps-btn');
-        if (btn) btn.innerHTML = isGpsPaused ? '▶️ MARCHE GPS' : '⏸️ PAUSE GPS';
-        
-        if (isGpsPaused) {
-            if (gpsWatchID) navigator.geolocation.clearWatch(gpsWatchID);
-            gpsWatchID = null;
-            if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'PAUSE ⏸️';
-        } else {
-            initGPS();
-            if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'Recherche... 🟡';
-        }
+// Mode Nether
+const netherToggleBtn = $('nether-toggle-btn');
+if (netherToggleBtn) netherToggleBtn.addEventListener('click', () => {
+    netherMode = !netherMode;
+    netherToggleBtn.textContent = `Mode Nether: ${netherMode ? 'ACTIVÉ (1:8) 🔥' : 'DÉSACTIVÉ (1:1) 🌍'}`;
+});
+
+// Rapport Distance
+if ($('distance-ratio-toggle-btn')) $('distance-ratio-toggle-btn').addEventListener('click', () => {
+    distanceRatioMode = !distanceRatioMode;
+    const ratio = distanceRatioMode ? calculateDistanceRatio(kAlt || 0) : 1.0;
+    $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
+});
+
+// Réactivité UKF
+if ($('ukf-reactivity-mode')) $('ukf-reactivity-mode').addEventListener('change', (e) => {
+    currentUKFReactivity = e.target.value;
+    if (ukf && ukf.getProcessNoiseMatrix) {
+        ukf.Q_Base = ukf.getProcessNoiseMatrix(currentUKFReactivity); 
     }
-    
-    // Fonction d'initialisation de tous les écouteurs d'événements
-    function setupEventListeners() {
-        // 1. Contrôles de Base et Réinitialisation
-        if ($('toggle-gps-btn')) $('toggle-gps-btn').addEventListener('click', toggleGpsPause);
-        if ($('activate-sensors-btn')) $('activate-sensors-btn').addEventListener('click', activateDeviceMotion);
-        
-        // Bouton de réinitialisation complète
-        if ($('full-reset-btn')) $('full-reset-btn').addEventListener('click', () => { 
-            if(confirm("Voulez-vous vraiment TOUT RÉINITIALISER (recharger la page) ?")) { 
-                location.reload(); 
-            }
-        });
-
-        // 2. Paramètres Physiques / UKF
-        
-        // Entrée Masse Utilisateur
-        if ($('mass-input')) $('mass-input').addEventListener('input', (e) => {
-             currentMass = parseFloat(e.target.value) || 70.0;
-             if ($('mass-display')) $('mass-display').textContent = `${currentMass.toFixed(3)} kg`;
-        });
-
-        // Sélection de Corps Céleste (Gravité)
-        if ($('celestial-body-select')) $('celestial-body-select').addEventListener('change', (e) => {
-            currentCelestialBody = e.target.value;
-            // Nécessite la fonction updateCelestialBody définie dans les premiers blocs
-            if (typeof updateCelestialBody !== 'undefined') {
-                const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
-                if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
-            }
-        });
-
-        // Contrôles de Rotation (pour le mode 'ROTATING')
-        const updateRotation = () => {
-            rotationRadius = parseFloat($('rotation-radius').value) || 100;
-            angularVelocity = parseFloat($('angular-velocity').value) || 0.0;
-            if (currentCelestialBody === 'ROTATING' && typeof updateCelestialBody !== 'undefined') {
-                const { G_ACC_NEW } = updateCelestialBody('ROTATING', kAlt, rotationRadius, angularVelocity);
-                if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
-            }
-        };
-        if ($('rotation-radius')) $('rotation-radius').addEventListener('input', updateRotation);
-        if ($('angular-velocity')) $('angular-velocity').addEventListener('input', updateRotation);
-        
-        // Mode Nether (Ratio de distance 1:8 pour l'altitude/distance)
-        const netherToggleBtn = $('nether-toggle-btn');
-        if (netherToggleBtn) netherToggleBtn.addEventListener('click', () => {
-            netherMode = !netherMode;
-            netherToggleBtn.textContent = `Mode Nether: ${netherMode ? 'ACTIVÉ (1:8) 🔥' : 'DÉSACTIVÉ (1:1) 🌍'}`;
-        });
-
-        // Réactivité UKF (Matrice de bruit de processus Q)
-        if ($('ukf-reactivity-mode')) $('ukf-reactivity-mode').addEventListener('change', (e) => {
-            currentUKFReactivity = e.target.value;
-            if (ukf && ukf.getProcessNoiseMatrix) { // Assure que la méthode existe dans ukf-lib.js
-                ukf.Q_Base = ukf.getProcessNoiseMatrix(currentUKFReactivity); 
-                console.log(`UKF : Réactivité changée à ${currentUKFReactivity}.`);
-            }
-        });
-
-        // Bouton "Rapport Distance" (Correction Altitude, si l'altitude est grande)
-        if ($('distance-ratio-toggle-btn')) $('distance-ratio-toggle-btn').addEventListener('click', () => {
-            distanceRatioMode = !distanceRatioMode;
-            // Nécessite la fonction calculateDistanceRatio définie dans les premiers blocs
-            const ratio = (distanceRatioMode && typeof calculateDistanceRatio !== 'undefined') ? calculateDistanceRatio(kAlt || 0) : 1.0;
-            $('distance-ratio-toggle-btn').textContent = `Rapport Distance: ${distanceRatioMode ? 'ALTITUDE' : 'SURFACE'} (${ratio.toFixed(3)})`;
-        });
-    }
-
+});
+}
 
 // =========================================================
 // BLOC 7 : INITIALISATION DU SYSTÈME
 // =========================================================
+
+window.addEventListener('load', () => {
     
-    window.addEventListener('load', () => {
-        
-        // 1. Initialisation des systèmes critiques
-        syncH(); // Démarrer la synchro NTP
-        initMap(); // Initialisation de la carte Leaflet
-        initGPS(); // Démarrage du GPS avec options stables
-        setupEventListeners(); // Attacher TOUS les contrôles
+    // 1. Initialisation des systèmes critiques
+    syncH(); 
+    initMap(); 
+    setupEventListeners();
 
-        // 2. Initialisation de l'état physique par défaut
-        if (typeof updateCelestialBody !== 'undefined') {
-            // Déclenche une première mise à jour de la gravité (si la fonction existe)
-            updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity); 
-        }
-        
-        // 3. Mise à jour de l'affichage initial des statuts
-        if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'Recherche... 🟡';
-        if ($('ukf-status')) $('ukf-status').textContent = ukf ? 'Actif 🟢' : 'UKF N/A 🔴';
-        if ($('toggle-gps-btn') && isGpsPaused === false) $('toggle-gps-btn').innerHTML = '⏸️ PAUSE GPS';
-        if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
+    // 2. Initialisation de l'état physique par défaut
+    updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity); 
+    
+    // 3. Démarrage du GPS (avec l'option de Dead Reckoning via IMU)
+    initGPS(); 
+    
+    // 4. Mise à jour de l'affichage initial des statuts
+    if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'Recherche... 🟡';
+    if ($('ukf-status')) $('ukf-status').textContent = ukf ? 'Actif 🟢' : 'UKF N/A 🔴';
+    if ($('toggle-gps-btn') && isGpsPaused === false) $('toggle-gps-btn').innerHTML = '⏸️ PAUSE GPS';
+    if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
 
-        // 4. Boucle principale de rafraîchissement (4 fois par seconde)
-        setInterval(updateDashboardDOM, 250); 
-    });
+    // 5. Boucle principale de rafraîchissement (Lecture de l'état UKF/IMU/GPS)
+    setInterval(updateDashboardDOM, 250); 
+});
 
-})(window); // Fermeture de l'IIFE
-
-// --- FIN DU FICHIER ---
+})(window);
