@@ -394,6 +394,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
 
     function updateDashboardDOM() {
+        try {
         // --- MISE À JOUR DES VARIABLES CLÉS (lecture de l'état UKF/IMU) ---
         const speed3D = currentPosition.spd; 
         const speedKmh = speed3D * 3.6;
@@ -407,10 +408,17 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         // TEMPS (CORRECTION D'ID CRITIQUE 1)
         const now = getCDate(lServH, lLocH);
         if ($('elapsed-session-time')) $('elapsed-session-time').textContent = `${dataOrDefault(elapsedTime, 2)} s`;
+
+        
     
     // Utilise l'ID de votre HTML: 'local-time-ntp' et 'date-heure-utc'
         if ($('local-time-ntp')) $('local-time-ntp').textContent = now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? '' : ' (Local)');
         if ($('date-heure-utc')) $('date-heure-utc').textContent = now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? ' UTC' : ' LOCAL');
+
+        const now = getCDate(lServH, lLocH); 
+    if ($('date-heure-utc')) {
+        $('date-heure-utc').textContent = now.toUTCString().replace('GMT', 'UTC');
+    }
 
 
     // MÉTÉO / PHYSIQUE (CORRECTION D'ID CRITIQUE 2, 3 et 4)
@@ -445,7 +453,11 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         // Note: Le statut IMU est mis à jour directement par activateDeviceMotion()
         if ($('ukf-status')) $('ukf-status').textContent = ukf ? 'Actif 🟢' : 'UKF N/A 🔴';
 
+} catch (e) {
+        console.error("Erreur dans updateDashboardDOM:", e);
 
+      }
+    }
         updateMapDOM();
         updateAstroDOM(currentPosition.lat, currentPosition.lon);
     }
@@ -554,9 +566,6 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
              initGPS(); // Démarrage du GPS
         }
         
-        // Maintien du statut initial IMU si l'activation ci-dessus a échoué silencieusement
-        if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
-
         // 4. Boucle principale de rafraîchissement
         setInterval(updateDashboardDOM, 250); 
     });
