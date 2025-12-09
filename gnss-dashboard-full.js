@@ -404,24 +404,30 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         const schwarzschildRadius = getSchwarzschildRadius(currentMass);
         const elapsedTime = (Date.now() - initTime) / 1000;
         
-        // TEMPS (Fallbacks garantis si les IDs sont corrects)
+        // TEMPS (CORRECTION D'ID CRITIQUE 1)
         const now = getCDate(lServH, lLocH);
-        if ($('temps-ecoule-session')) $('temps-ecoule-session').textContent = `${dataOrDefault(elapsedTime, 2)} s`;
-        
-        // 🛑 L'heure est désormais garantie d'afficher quelque chose si les IDs existent
+        if ($('elapsed-session-time')) $('elapsed-session-time').textContent = `${dataOrDefault(elapsedTime, 2)} s`;
+    
+    // Utilise l'ID de votre HTML: 'local-time-ntp' et 'date-heure-utc'
         if ($('local-time-ntp')) $('local-time-ntp').textContent = now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? '' : ' (Local)');
-        if ($('date-utc-gmt')) $('date-utc-gmt').textContent = now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? ' UTC' : ' LOCAL');
+        if ($('date-heure-utc')) $('date-heure-utc').textContent = now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? ' UTC' : ' LOCAL');
 
 
-        // MÉTÉO / PHYSIQUE (utilise les valeurs ISA ou réelles si disponibles)
-        if ($('temp-air')) $('temp-air').textContent = dataOrDefault(lastKnownWeather.tempC, 2, ' °C'); 
-        if ($('pressure-atm')) $('pressure-atm').textContent = dataOrDefault(lastKnownWeather.pressure_hPa, 0, ' hPa'); 
-        if ($('air-density-rho')) $('air-density-rho').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³');
+    // MÉTÉO / PHYSIQUE (CORRECTION D'ID CRITIQUE 2, 3 et 4)
+    // Utilise les IDs de votre HTML: 'air-temp-c', 'pressure-hpa', 'air-density'
+        if ($('air-temp-c')) $('air-temp-c').textContent = dataOrDefault(lastKnownWeather.tempC, 2, ' °C'); 
+        if ($('pressure-hpa')) $('pressure-hpa').textContent = dataOrDefault(lastKnownWeather.pressure_hPa, 0, ' hPa'); 
+        if ($('air-density')) $('air-density').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³'); // Anciennement air-density-rho
 
-        // VITESSE/RELATIVITÉ
+    // VITESSE/RELATIVITÉ
         if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${dataOrDefault(currentSpeedOfSound, 4)} m/s`;
         if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(schwarzschildRadius, 4, ' m');
-        if ($('vitesse-inst')) $('vitesse-inst').textContent = `${dataOrDefault(speedKmh, 1)} km/h`; 
+        if ($('vitesse-inst')) $('vitesse-inst').textContent = `${dataOrDefault(speedKmh, 1)} km/h`;
+        if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach, 4);
+        if ($('perc-speed-light')) $('perc-speed-light').textContent = dataOrDefaultExp(lightPerc, 2, ' %');
+        if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentzFactor, 4);
+        if ($('energie-masse-repos')) $('energie-masse-repos').textContent = dataOrDefaultExp(restMassEnergy, 4, ' J');
+        if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(schwarzschildRadius, 4, ' m');
         if ($('vitesse-brute-ms')) $('vitesse-brute-ms').textContent = `${dataOrDefault(speed3D, 2)} m/s`;
         if ($('vitesse-max-session')) $('vitesse-max-session').textContent = `${dataOrDefault(maxSpeed, 1)} km/h`;
         if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach, 4);
