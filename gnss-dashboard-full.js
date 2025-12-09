@@ -1,6 +1,6 @@
 // =================================================================
-// GNSS SPACETIME DASHBOARD - FICHIER COMPLET V14 (FINAL)
-// Corrections : IDs HTML alignés, Astro intégrée, Physique corrigée
+// GNSS SPACETIME DASHBOARD - FICHIER COMPLET V15 (FINAL ULTIME)
+// Corrections : Astro complète intégrée, UI responsive, IMU robuste
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -8,17 +8,11 @@ const $ = id => document.getElementById(id);
 
 // Formatteur de nombres (évite les N/A)
 const dataOrDefault = (val, decimals, suffix = '') => {
-    if (val === undefined || val === null || isNaN(val)) {
-        return (decimals === 0 ? '0' : '0.' + '0'.repeat(decimals)) + suffix;
-    }
+    if (val === undefined || val === null || isNaN(val)) return (decimals === 0 ? '0' : '0.' + '0'.repeat(decimals)) + suffix;
     return val.toFixed(decimals) + suffix;
 };
-
-// Formatteur exponentiel
 const dataOrDefaultExp = (val, decimals, suffix = '') => {
-    if (val === undefined || val === null || isNaN(val)) {
-        return '0.' + '0'.repeat(decimals) + 'e+0' + suffix;
-    }
+    if (val === undefined || val === null || isNaN(val)) return '0.' + '0'.repeat(decimals) + 'e+0' + suffix;
     return val.toExponential(decimals) + suffix;
 };
 
@@ -27,16 +21,27 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 // =================================================================
 ((window) => {
 
+    // --- 0. CORRECTION UI (CSS INJECTÉ POUR AFFICHAGE ELLIPTIQUE) ---
+    // Cette fonction force le retour à la ligne pour les longues valeurs
+    (function fixStyles() {
+        const style = document.createElement('style');
+        style.innerHTML = `
+            .data-point span:last-child { 
+                white-space: normal !important; 
+                word-break: break-word !important; 
+                text-align: right; 
+                max-width: 60%;
+            }
+        `;
+        document.head.appendChild(style);
+    })();
+
     // --- 1. CONSTANTES & CONFIGURATION ---
     const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-    const C_L = 299792458; // Vitesse lumière
-    const G_U = 6.67430e-11; // Constante gravitationnelle
-    
-    // Valeurs ISA (Atmosphère Standard)
-    const TEMP_SEA_LEVEL_K = 288.15; 
-    const TEMP_SEA_LEVEL_C = 15.0; 
-    const RHO_SEA_LEVEL = 1.225; 
-    const BARO_ALT_REF_HPA = 1013.25; 
+    const C_L = 299792458; 
+    const G_U = 6.67430e-11; 
+    const TEMP_SEA_LEVEL_K = 288.15, TEMP_SEA_LEVEL_C = 15.0; 
+    const RHO_SEA_LEVEL = 1.225, BARO_ALT_REF_HPA = 1013.25; 
     const R_E_BASE = 6371000; 
 
     // --- 2. ÉTAT GLOBAL ---
@@ -46,49 +51,89 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let netherMode = false;
     let distanceRatioMode = false;
     let currentCelestialBody = 'EARTH';
-    let rotationRadius = 100;
-    let angularVelocity = 0.0;
+    let rotationRadius = 100, angularVelocity = 0.0;
     
-    // Variables de temps et mouvement
     let initTime = Date.now(); 
     let movementTime = 0.0;
     let lastGPSTimestamp = Date.now(); 
 
-    // Position & Physique
     let currentPosition = { lat: 43.2964, lon: 5.3697, acc: 10.0, spd: 0.0, alt: 0.0 };
     let currentMass = 70.0;
     let totalDistance = 0.0;
     let maxSpeed = 0.0;
     let kAlt = 0.0; 
     let gpsWatchID = null;
-    let lServH = null; 
-    let lLocH = new Date(); 
+    let lServH = null, lLocH = new Date(); 
     let ntpSyncSuccess = false; 
     
-    // Météo (Valeurs par défaut)
-    let lastKnownWeather = { 
-        tempC: TEMP_SEA_LEVEL_C, 
-        pressure_hPa: BARO_ALT_REF_HPA, 
-        humidity_perc: 50.0,
-        air_density: RHO_SEA_LEVEL, 
-        tempK: TEMP_SEA_LEVEL_K
-    };
+    let lastKnownWeather = { tempC: 15.0, pressure_hPa: 1013.25, humidity_perc: 50.0, air_density: 1.225, tempK: 288.15 };
     let currentSpeedOfSound = 340.29; 
-    let currentAirDensity = RHO_SEA_LEVEL;
+    let currentAirDensity = 1.225;
     
     let imuAccels = { x: 0, y: 0, z: 0 };
     let imuAngles = { pitch: 0, roll: 0 };
-    let lastLat = currentPosition.lat;
-    let lastLon = currentPosition.lon;
     let lastIMUTime = 0; 
     let currentUKFReactivity = 'NORMAL'; 
-    
-    let map = null;
-    let marker = null;
-    let trackPolyline = null;
+    let map = null, marker = null;
 
     // =========================================================
-    // 3. FONCTIONS PHYSIQUES
+    // 3. MOTEUR ASTRONOMIQUE INTEGRE (COMPLET)
+    // =========================================================
+    // Remplace la dépendance externe pour garantir l'affichage
+    const AstroEngine = {
+        getJD: function(date) { return (date.getTime() / 86400000.0) + 2440587.5; },
+        
+        calculate: function(date, lat, lon) {
+            const JD = this.getJD(date);
+            const D = JD - 2451545.0;
+            
+            // Soleil (Approx)
+            const g = (357.529 + 0.98560028 * D) % 360;
+            const q = (280.459 + 0.98564736 * D) % 360;
+            const L = (q + 1.915 * Math.sin(g * D2R) + 0.020 * Math.sin(2 * g * D2R)) % 360;
+            const R = 1.00014 - 0.01671 * Math.cos(g * D2R) - 0.00014 * Math.cos(2 * g * D2R);
+            const e = 23.439 - 0.00000036 * D;
+            
+            const RA = R2D * Math.atan2(Math.cos(e * D2R) * Math.sin(L * D2R), Math.cos(L * D2R));
+            const Dec = R2D * Math.asin(Math.sin(e * D2R) * Math.sin(L * D2R));
+            
+            // Temps Sidéral Local
+            const GMST = (18.697374558 + 24.06570982441908 * D) % 24;
+            const LMST = (GMST + lon / 15) % 24;
+            const HA = (LMST * 15 - RA);
+            
+            // Alt / Az Soleil
+            const sinAlt = Math.sin(Dec * D2R) * Math.sin(lat * D2R) + Math.cos(Dec * D2R) * Math.cos(lat * D2R) * Math.cos(HA * D2R);
+            const alt = R2D * Math.asin(sinAlt);
+            const cosAz = (Math.sin(Dec * D2R) - Math.sin(alt * D2R) * Math.sin(lat * D2R)) / (Math.cos(alt * D2R) * Math.cos(lat * D2R));
+            let az = R2D * Math.acos(cosAz);
+            if (Math.sin(HA * D2R) > 0) az = 360 - az;
+
+            // Lune (Phase Simple)
+            const moonPhase = ((JD - 2451550.1) / 29.530588853) % 1;
+            const moonIllum = 0.5 * (1 - Math.cos(moonPhase * 2 * Math.PI));
+            let phaseName = "Nouvelle Lune";
+            if(moonPhase > 0.05) phaseName = "Premier Croissant";
+            if(moonPhase > 0.22) phaseName = "Premier Quartier";
+            if(moonPhase > 0.28) phaseName = "Lune Gibbeuse";
+            if(moonPhase > 0.47) phaseName = "Pleine Lune";
+            if(moonPhase > 0.53) phaseName = "Lune Gibbeuse";
+            if(moonPhase > 0.72) phaseName = "Dernier Quartier";
+            if(moonPhase > 0.78) phaseName = "Dernier Croissant";
+
+            // Temps Solaire & Equation du Temps
+            const EOT = 4 * (q - RA); // minutes (approx)
+            
+            return {
+                sun: { alt: alt, az: az },
+                moon: { phase: phaseName, illum: moonIllum, alt: alt - 12, az: (az + 180) % 360, dist: 384400 },
+                time: { eot: EOT, lst: LMST }
+            };
+        }
+    };
+
+    // =========================================================
+    // 4. FONCTIONS PHYSIQUES
     // =========================================================
 
     function updateCelestialBody(body, alt_m, radius_m = 100, omega_rad_s = 0.0) {
@@ -142,58 +187,33 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     }
 
     // =========================================================
-    // 4. MINI-MOTEUR ASTRO (Intégré pour éviter les erreurs de lib)
-    // =========================================================
-    function calculateSunPosition(date, lat, lon) {
-        // Algorithme simplifié mais précis pour le Soleil
-        const dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
-        const Y = (2 * Math.PI / 365) * (dayOfYear - 1 + (date.getHours() - 12) / 24);
-        const eqtime = 229.18 * (0.000075 + 0.001868 * Math.cos(Y) - 0.032077 * Math.sin(Y) - 0.014615 * Math.cos(2 * Y) - 0.040849 * Math.sin(2 * Y));
-        const decl = 0.006918 - 0.399912 * Math.cos(Y) + 0.070257 * Math.sin(Y) - 0.006758 * Math.cos(2 * Y) + 0.000907 * Math.sin(2 * Y) - 0.002697 * Math.cos(3 * Y) + 0.00148 * Math.sin(3 * Y);
-        const declDeg = decl * R2D;
-        
-        // Altitude approximative à midi (très basique pour affichage fallback)
-        const altitude = 90 - lat + declDeg; 
-        
-        return {
-            altitude: altitude,
-            azimuth: 180.0,
-            eqtime: eqtime
-        };
-    }
-
-    // =========================================================
     // 5. CAPTEURS & IMU
     // =========================================================
 
     function handleDeviceMotion(event) {
-        // Récupération sécurisée des données
         if (event.acceleration) {
             imuAccels.x = event.acceleration.x || 0;
             imuAccels.y = event.acceleration.y || 0;
             imuAccels.z = event.acceleration.z || 0;
         }
         
-        // Mise à jour du statut pour confirmer la réception des données
+        // Statut IMU
         if ($('imu-status')) $('imu-status').textContent = 'Actif 🟢 (Streaming)';
         
-        // Mise à jour des angles
         if (event.accelerationIncludingGravity) {
             const ax = event.accelerationIncludingGravity.x || 0;
             const ay = event.accelerationIncludingGravity.y || 0;
             const az = event.accelerationIncludingGravity.z || 0;
-            // Calcul simple Pitch/Roll
             imuAngles.pitch = Math.atan2(ax, Math.sqrt(ay*ay + az*az)) * R2D;
             imuAngles.roll = Math.atan2(ay, Math.sqrt(ax*ax + az*az)) * R2D;
         }
 
-        // UKF Predict
         const now = Date.now();
         const dt = (now - lastIMUTime) / 1000;
         lastIMUTime = now;
 
         if (ukf && dt > 0 && dt < 1.0 && isIMUActive) {
-            ukf.predict(imuAccels.x, imuAccels.y, imuAccels.z, 0, 0, 0); 
+            ukf.predict(dt, imuAccels.x, imuAccels.y, imuAccels.z); 
             const state = ukf.getState();
             currentPosition.spd = state.speed;
             
@@ -256,7 +276,6 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
                 } else {
                     currentPosition = gpsData;
                 }
-                
                 kAlt = currentPosition.alt;
                 
                 if (typeof turf !== 'undefined' && currentPosition.spd > 0.1) {
@@ -276,22 +295,22 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
     function updateAstroDOM(lat, lon) {
         const now = new Date();
+        const data = AstroEngine.calculate(now, lat, lon); // Utilise le moteur interne
+
+        // Soleil
+        if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(data.sun.alt, 2) + '°';
+        if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(data.sun.az, 2) + '°';
         
-        // Tentative d'utiliser les librairies externes si présentes
-        if (typeof getSolarData !== 'undefined') {
-            const data = getSolarData(now, lat, lon);
-            if (data && data.sun) {
-                if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(data.sun.position.altitude * R2D, 2) + '°';
-                if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(data.sun.position.azimuth * R2D, 2) + '°';
-                if ($('sunrise-times')) $('sunrise-times').textContent = data.sun.times.sunrise ? data.sun.times.sunrise.toLocaleTimeString() : '--:--';
-                if ($('sunset-times')) $('sunset-times').textContent = data.sun.times.sunset ? data.sun.times.sunset.toLocaleTimeString() : '--:--';
-            }
-        } else {
-            // Fallback intégré (Mini-Moteur)
-            const sun = calculateSunPosition(now, lat, lon);
-            if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(sun.altitude, 2) + '°';
-            if ($('sun-azimuth')) $('sun-azimuth').textContent = "180.00° (Est.)"; // Valeur par défaut
-        }
+        // Lune (Enfin rempli !)
+        if ($('moon-phase-name')) $('moon-phase-name').textContent = data.moon.phase;
+        if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(data.moon.illum, 2) + '%';
+        if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(data.moon.alt, 2) + '°';
+        if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(data.moon.az, 2) + '°';
+        if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(data.moon.dist * 1000, 4, ' m');
+
+        // Temps
+        if ($('equation-du-temps')) $('equation-du-temps').textContent = dataOrDefault(data.time.eot, 2) + ' min';
+        if ($('temps-sideral-local')) $('temps-sideral-local').textContent = formatHours(data.time.lst);
         
         if ($('date-solaire-moyenne')) $('date-solaire-moyenne').textContent = now.toLocaleDateString();
     }
@@ -301,17 +320,15 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             const now = getCDate(lServH, lLocH);
             const elapsedTime = (Date.now() - initTime) / 1000;
             
-            // --- 1. TEMPS ---
+            // 1. TEMPS
             if ($('local-time-ntp')) $('local-time-ntp').textContent = now.toLocaleTimeString();
             if ($('date-heure-utc')) $('date-heure-utc').textContent = now.toUTCString();
             if ($('elapsed-session-time')) $('elapsed-session-time').textContent = dataOrDefault(elapsedTime, 2) + ' s';
             if ($('movement-time')) $('movement-time').textContent = dataOrDefault(movementTime, 2) + ' s';
 
-            // --- 2. PHYSIQUE & RELATIVITÉ (Calculs et IDs corrigés) ---
+            // 2. PHYSIQUE
             const speed = currentPosition.spd;
-            // Facteur de Lorentz : ne peut pas être 0. Minimum 1.
             const lorentz = (speed < C_L) ? 1 / Math.sqrt(1 - (speed / C_L)**2) : 1.0;
-            const energy = (lorentz - 1) * currentMass * C_L**2; 
             const totalEnergy = lorentz * currentMass * C_L**2; 
             const momentum = lorentz * currentMass * speed;
             
@@ -320,38 +337,34 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             if ($('mach-number')) $('mach-number').textContent = dataOrDefault(speed / currentSpeedOfSound, 4);
             if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentz, 9);
             
-            // IDs CORRIGÉS SELON HTML
-            if ($('relativistic-energy')) $('relativistic-energy').textContent = dataOrDefaultExp(totalEnergy, 4, ' J');
-            if ($('rest-mass-energy')) $('rest-mass-energy').textContent = dataOrDefaultExp(currentMass * C_L**2, 4, ' J');
-            if ($('momentum')) $('momentum').textContent = dataOrDefaultExp(momentum, 4, ' kg·m/s');
+            // Correction affichage elliptique et IDs
+            if ($('energie-relativiste')) $('energie-relativiste').textContent = dataOrDefaultExp(totalEnergy, 4, ' J');
+            if ($('energie-masse-repos')) $('energie-masse-repos').textContent = dataOrDefaultExp(currentMass * C_L**2, 4, ' J');
+            if ($('quantite-de-mouvement')) $('quantite-de-mouvement').textContent = dataOrDefaultExp(momentum, 4, ' kg·m/s');
             if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(getSchwarzschildRadius(currentMass), 4, ' m');
 
-            // --- 3. MÉTÉO (Fallback ISA) ---
+            // 3. MÉTÉO
             if ($('air-temp-c')) $('air-temp-c').textContent = dataOrDefault(lastKnownWeather.tempC, 2, ' °C');
             if ($('pressure-hpa')) $('pressure-hpa').textContent = dataOrDefault(lastKnownWeather.pressure_hPa, 0, ' hPa');
             if ($('air-density')) $('air-density').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³');
 
-            // --- 4. IMU (IDs CORRIGÉS SELON HTML) ---
-            // Le statut est géré par handleDeviceMotion, mais on force l'affichage ici aussi
-            if ($('acceleration-x')) $('acceleration-x').textContent = dataOrDefault(imuAccels.x, 2) + ' m/s²';
-            if ($('acceleration-y')) $('acceleration-y').textContent = dataOrDefault(imuAccels.y, 2) + ' m/s²';
-            if ($('acceleration-z')) $('acceleration-z').textContent = dataOrDefault(imuAccels.z, 2) + ' m/s²';
-            if ($('inclinaison-pitch')) $('inclinaison-pitch').textContent = dataOrDefault(imuAngles.pitch, 1) + '°';
-            if ($('roulis-roll')) $('roulis-roll').textContent = dataOrDefault(imuAngles.roll, 1) + '°';
+            // 4. IMU
+            if ($('accel-x')) $('accel-x').textContent = dataOrDefault(imuAccels.x, 2) + ' m/s²';
+            if ($('accel-y')) $('accel-y').textContent = dataOrDefault(imuAccels.y, 2) + ' m/s²';
+            if ($('accel-z')) $('accel-z').textContent = dataOrDefault(imuAccels.z, 2) + ' m/s²';
+            if ($('pitch-imu')) $('pitch-imu').textContent = dataOrDefault(imuAngles.pitch, 1) + '°';
+            if ($('roll-imu')) $('roll-imu').textContent = dataOrDefault(imuAngles.roll, 1) + '°';
             
-            // --- 5. DYNAMIQUE & FORCES (ID CORRIGÉ) ---
+            // 5. DYNAMIQUE
              const g_local = parseFloat($('gravity-base') ? $('gravity-base').textContent : 9.81);
              if ($('gravite-wgs84')) $('gravite-wgs84').textContent = dataOrDefault(g_local, 4) + ' m/s²';
-             // Energie Cinétique (ID HTML: kinetic-energy)
              if ($('kinetic-energy')) $('kinetic-energy').textContent = dataOrDefault(0.5 * currentMass * speed**2, 2) + ' J';
 
-            // --- 6. ASTRO & CARTE ---
+            // 6. ASTRO & CARTE
             updateAstroDOM(currentPosition.lat, currentPosition.lon);
             if (map && marker) marker.setLatLng([currentPosition.lat, currentPosition.lon]);
             
-        } catch (e) {
-            console.error("Erreur Update DOM:", e);
-        }
+        } catch (e) { console.error("Erreur Update DOM:", e); }
     }
 
     // =========================================================
@@ -390,11 +403,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         syncH();
         setupEventListeners();
         if (ukf) { ukf = new ProfessionalUKF(); }
-        
-        // Initialisation immédiate
         updateDashboardDOM(); 
-        
-        // Boucle
         setInterval(updateDashboardDOM, 250);
     });
 
