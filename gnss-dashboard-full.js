@@ -470,6 +470,8 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             initGPS(); 
             if ($('gps-status-indicator')) $('gps-status-indicator').textContent = 'Recherche... 🟡';
         }
+        // AJOUTEZ CETTE LIGNE POUR VÉRIFIER L'ID IMU-STATUS
+        if ($('imu-status')) console.log('IMU STATUS ELEMENT FOUND');
     }
     
     function setupEventListeners() {
