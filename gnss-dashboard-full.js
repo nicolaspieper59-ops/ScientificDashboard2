@@ -486,40 +486,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
             const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
             if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
         });
-        // ... (autres EventListeners omis pour la concision) ...
-
-    }
-
-    // =========================================================
-    // BLOC 7 : INITIALISATION DU SYSTÈME
-    // =========================================================
-
-    window.addEventListener('load', () => {
-        
-        syncH(); 
-        initMap(); 
-        setupEventListeners();
-
-        // 2. Initialisation UKF (doit se faire après le chargement de math.js)
-        if (ukf) { ukf = new ProfessionalUKF(); }
-        
-        // 3. Force le démarrage du GPS et de l'IMU au chargement (il est initialisé en PAUSE au chargement)
-        // La ligne ci-dessous simule le premier clic pour démarrer l'IMU et le GPS
-        if (!isGpsPaused && $('toggle-gps-btn')) {
-             $('toggle-gps-btn').innerHTML = '⏸️ PAUSE GPS';
-             activateDeviceMotion(); // Tente d'activer l'IMU (peut échouer si non autorisé)
-             initGPS(); // Démarrage du GPS
-        }
-        
-        // Maintien du statut initial IMU si l'activation ci-dessus a échoué silencieusement
-        if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
-
-        // 4. Boucle principale de rafraîchissement
-        setInterval(updateDashboardDOM, 250); 
-    });
-
-})(window);
-currentCelestialBody = e.target.value;
+            currentCelestialBody = e.target.value;
             const { G_ACC_NEW } = updateCelestialBody(currentCelestialBody, kAlt, rotationRadius, angularVelocity);
             if ($('gravity-base')) $('gravity-base').textContent = `${G_ACC_NEW.toFixed(4)} m/s²`;
         });
@@ -557,4 +524,33 @@ currentCelestialBody = e.target.value;
                 ukf.Q_Base = ukf.getProcessNoiseMatrix(currentUKFReactivity); 
             }
         });
-                                                                                            }
+    }
+    // =========================================================
+    // BLOC 7 : INITIALISATION DU SYSTÈME
+    // =========================================================
+
+    window.addEventListener('load', () => {
+        
+        syncH(); 
+        initMap(); 
+        setupEventListeners();
+
+        // 2. Initialisation UKF (doit se faire après le chargement de math.js)
+        if (ukf) { ukf = new ProfessionalUKF(); }
+        
+        // 3. Force le démarrage du GPS et de l'IMU au chargement (il est initialisé en PAUSE au chargement)
+        // La ligne ci-dessous simule le premier clic pour démarrer l'IMU et le GPS
+        if (!isGpsPaused && $('toggle-gps-btn')) {
+             $('toggle-gps-btn').innerHTML = '⏸️ PAUSE GPS';
+             activateDeviceMotion(); // Tente d'activer l'IMU (peut échouer si non autorisé)
+             initGPS(); // Démarrage du GPS
+        }
+        
+        // Maintien du statut initial IMU si l'activation ci-dessus a échoué silencieusement
+        if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
+
+        // 4. Boucle principale de rafraîchissement
+        setInterval(updateDashboardDOM, 250); 
+    });
+
+})(window);
