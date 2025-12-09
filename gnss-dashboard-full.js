@@ -379,69 +379,79 @@ function getMoonPhaseName(phase) {
     // --- MISE À JOUR DU DOM ASTRO (Utilisation de lib/astro.js et lib/ephem.js) ---
 const R2D = 180 / Math.PI; // Conversion Radians vers Degrés
 
+// gnss-dashboard-full (16).js - Nouvelle fonction updateAstroDOM
 function updateAstroDOM(lat, lon) {
-    if (!lat || !lon || isNaN(lat) || isNaN(lon)) {
-        // La position GPS n'est pas encore disponible
+    // Vérification de la disponibilité des dépendances et des coordonnées
+    if (!lat || !lon || isNaN(lat) || isNaN(lon) || typeof getSolarData === 'undefined') {
         return;
     }
     
     const now = new Date();
-    
-    // =======================================================
-    // I. CALCULS DU SOLEIL (Utilisation supposée de lib/astro.js)
-    // =======================================================
-    if (typeof Astro !== 'undefined' && Astro.getSunPosition) {
-        
-        // Supposons que ces fonctions existent dans lib/astro.js
-        const sunPos = Astro.getSunPosition(now, lat, lon);
-        const sunTimes = Astro.getSunTimes(now, lat, lon);
+    // Appel de la fonction centrale d'astro.js
+    const astroData = getSolarData(now, lat, lon);
+    const R2D = 180 / Math.PI; // Redéfinition de la constante pour la sécurité
 
-        // Position
-        if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(sunPos.altitude * R2D, 2) + '°';
-        if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(sunPos.azimuth * R2D, 2) + '°';
-        
-        // Lever/Coucher et Durée
-        if ($('sunrise-times')) $('sunrise-times').textContent = sunTimes.sunrise ? sunTimes.sunrise.toLocaleTimeString('fr-FR') : 'N/A';
-        if ($('sunset-times')) $('sunset-times').textContent = sunTimes.sunset ? sunTimes.sunset.toLocaleTimeString('fr-FR') : 'N/A';
-        
-        if (sunTimes.sunset && sunTimes.sunrise) {
-            const durationMs = sunTimes.sunset.getTime() - sunTimes.sunrise.getTime();
-            const dayDurationHours = durationMs / 3600000;
-            if ($('day-duration')) $('day-duration').textContent = `${Math.floor(dayDurationHours)}h ${Math.round((dayDurationHours % 1) * 60)}min`;
-        } else {
-            if ($('day-duration')) $('day-duration').textContent = 'N/A';
-        }
+    // ================== TEMPS SOLAIRE & SIDÉRAL ==================
+    // La fonction formatHours est définie dans astro.js
+    if ($('date-solaire-moyenne')) $('date-solaire-moyenne').textContent = now.toLocaleDateString('fr-FR'); 
+    if ($('date-solaire-vraie')) $('date-solaire-vraie').textContent = now.toLocaleDateString('fr-FR');
+    
+    if ($('heure-solaire-vraie')) $('heure-solaire-vraie').textContent = formatHours(astroData.TST_HRS);
+    if ($('heure-solaire-moyenne')) $('heure-solaire-moyenne').textContent = formatHours(astroData.MST_HRS);
+    if ($('midi-solaire-local')) $('midi-solaire-local').textContent = astroData.NOON_SOLAR_UTC ? formatHours(astroData.NOON_SOLAR_UTC) : 'N/A';
+    if ($('equation-du-temps')) $('equation-du-temps').textContent = dataOrDefault(astroData.EOT_MIN, 4) + ' min';
+    if ($('ecl-longitude')) $('ecl-longitude').textContent = dataOrDefault(astroData.ECL_LONG * R2D, 2) + '°';
+    // Le temps sidéral vrai n'est pas exposé dans le snippet, il restera N/A s'il n'est pas calculé par getSolarData
+    
+    // ================== SOLEIL ==================
+    const sun = astroData.sun;
+    if (sun.position) {
+        if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(sun.position.altitude * R2D, 2) + '°';
+        if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(sun.position.azimuth * R2D, 2) + '°';
     }
     
-    // =======================================================
-    // II. CALCULS DE LA LUNE (Utilisation supposée de lib/ephem.js)
-    // =======================================================
-    if (typeof Ephem !== 'undefined' && Ephem.getMoonIllumination) {
-        
-        // Supposons que ces fonctions existent dans lib/ephem.js
-        const moonIllumination = Ephem.getMoonIllumination(now);
-        const moonPos = Ephem.getMoonPosition(now, lat, lon);
-        const moonTimes = Ephem.getMoonTimes(now, lat, lon);
-        const moonDistance = Ephem.getMoonDistance(now); // Pour le champ "Distance à la Terre"
+    // Lever/Coucher (Les temps sont des objets Date)
+    if ($('sunrise-times')) $('sunrise-times').textContent = sun.times.sunrise ? sun.times.sunrise.toLocaleTimeString('fr-FR') : 'N/A';
+    if ($('sunset-times')) $('sunset-times').textContent = sun.times.sunset ? sun.times.sunset.toLocaleTimeString('fr-FR') : 'N/A';
+    
+    // Durée du Jour
+    if (sun.times.sunset && sun.times.sunrise) {
+        const durationMs = sun.times.sunset.getTime() - sun.times.sunrise.getTime();
+        const dayDurationHours = durationMs / 3600000;
+        if ($('day-duration')) $('day-duration').textContent = `${Math.floor(dayDurationHours)}h ${Math.round((dayDurationHours % 1) * 60)}min`;
+    } else {
+        if ($('day-duration')) $('day-duration').textContent = 'N/A';
+    }
 
-        // Phase et Illumination
-        if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(moonIllumination.phase);
-        if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(moonIllumination.fraction * 100, 1) + '%';
+    // ================== LUNE ==================
+    const moon = astroData.moon;
+    
+    // Phase et Illumination (utilise getMoonPhaseName définie dans astro.js)
+    if (moon.illumination) {
+        if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(moon.illumination.phase);
+        if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(moon.illumination.fraction * 100, 1) + '%';
+    }
+    
+    // Position
+    if (moon.position) {
+        if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(moon.position.altitude * R2D, 2) + '°';
+        if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(moon.position.azimuth * R2D, 2) + '°';
         
-        // Position
-        if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(moonPos.altitude * R2D, 2) + '°';
-        if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(moonPos.azimuth * R2D, 2) + '°';
-        
-        // Lever/Coucher
-        if ($('moon-times')) $('moon-times').textContent = moonTimes.rise ? `Lever: ${moonTimes.rise.toLocaleTimeString('fr-FR')}` : 'N/A';
-        if ($('moon-times').textContent !== 'N/A' && moonTimes.set) {
-            $('moon-times').textContent += ` | Coucher: ${moonTimes.set.toLocaleTimeString('fr-FR')}`;
+        // Distance (La distance est retournée en mètres)
+        if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(moon.position.distance, 4, ' m'); 
+    }
+    
+    // Lever/Coucher
+    if ($('moon-times')) $('moon-times').textContent = moon.times.rise ? `Lever: ${moon.times.rise.toLocaleTimeString('fr-FR')}` : 'N/A';
+    if ($('moon-times').textContent !== 'N/A' && moon.times.set) {
+        $('moon-times').textContent += ` | Coucher: ${moon.times.set.toLocaleTimeString('fr-FR')}`;
+    }
         }
 
         // Distance à la Terre (Champ qui était N/A)
         if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(moonDistance, 4, ' km');
     }
-    }
+ }
 
 
     function updateDashboardDOM() {
