@@ -236,26 +236,35 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
     function activateDeviceMotion() {
         const statusEl = $('imu-status');
+        if (statusEl) statusEl.textContent = 'Tentative d\'activation... ⏳'; // Force un état intermédiaire
+
+        // LOGIQUE POUR iOS/Safari (nécessite requestPermission)
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
                     if (permissionState === 'granted') {
                         window.addEventListener('devicemotion', handleDeviceMotion, true);
                         isIMUActive = true;
-                        if (statusEl) statusEl.textContent = 'Actif 🟢';
+                        if (statusEl) statusEl.textContent = 'Actif 🟢 (IMU)';
                     } else {
+                        isIMUActive = false;
                         if (statusEl) statusEl.textContent = 'Refusé 🔴 (Permission requise)';
                     }
                 })
                 .catch(e => {
-                    if (statusEl) statusEl.textContent = 'Erreur 🔴 (API non fonctionnelle)';
+                    isIMUActive = false;
+                    if (statusEl) statusEl.textContent = 'Erreur 🔴 (API bloquée ou HTTPS manquant)';
                 });
-        } else if (typeof window.DeviceMotionEvent !== 'undefined') {
-            // Standard device motion API (Android/Desktop)
+        } 
+        // LOGIQUE pour Android/Chrome Standard (ne demande pas de permission explicite)
+        else if (typeof window.DeviceMotionEvent !== 'undefined') {
             window.addEventListener('devicemotion', handleDeviceMotion, true);
             isIMUActive = true;
-            if (statusEl) statusEl.textContent = 'Actif 🟢';
-        } else {
+            if (statusEl) statusEl.textContent = 'Actif 🟢 (Standard)';
+        } 
+        // LOGIQUE de Fallback (non supporté)
+        else {
+            isIMUActive = false;
             if (statusEl) statusEl.textContent = 'Non supporté 🔴';
         }
     }
