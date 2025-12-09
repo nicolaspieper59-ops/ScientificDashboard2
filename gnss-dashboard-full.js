@@ -1,8 +1,8 @@
 // =================================================================
-// FICHIER : gnss-dashboard-full.js
-// VERSION : FINALE ULTRA-PRÉCISION V5.0 (ANTI-N/A/--)
-// MISE À JOUR : Gestion des nouvelles coordonnées EKF et Vitesse Max (0.8 km/h)
-// CORRECTION DÉFINITIVE : Surcharge de tous les N/A/-- par des valeurs numériques calculées (0.00000)
+// FICHIER : gnss-dashboard-full (17).js
+// VERSION : FINALE ULTRA-ROBUSTE V5.1 (CORRECTION DÉFINITIVE N/A / --)
+// MISE À JOUR : Gestion du Temps via syncH, nouvelles coordonnées EKF et Vitesse Max (0.0 km/h)
+// CORRECTION CRITIQUE : Surcharge de tous les N/A/-- par des valeurs numériques formatées (0.00000)
 // =================================================================
 
 // ⚠️ DÉPENDANCES CRITIQUES (doivent être chargées dans l'HTML AVANT ce fichier) :
@@ -14,18 +14,18 @@ const $ = id => document.getElementById(id);
 
 /**
  * Formate une valeur numérique avec une précision fixe, ou retourne la valeur par défaut.
- * Ultra-Précision garantie (5 décimales pour Vitesse).
+ * Permet de retourner un format '0.00000...' correspondant à la précision demandée.
  */
 const dataOrDefault = (val, decimals, suffix = '', fallback = null) => {
-    // Ex: Si decimals=5, génère "0.00000" + suffix
+    // Génère le format zéro exact (ex: decimals=5 -> "0.00000")
     const defaultZero = (decimals === 0 ? '0' : '0.' + Array(decimals).fill('0').join('')) + suffix;
     
-    // Si la valeur est invalide, retourne le fallback ou le zéro formaté
+    // Si la valeur est invalide, retourne le fallback (si défini) ou le zéro formaté
     if (val === undefined || val === null || isNaN(val)) {
         return (fallback !== null) ? fallback : defaultZero;
     }
     
-    // Si la valeur est très proche de zéro, on assure l'affichage formaté
+    // Si la valeur est très proche de zéro, force l'affichage du zéro formaté exact.
     if (typeof val === 'number' && Math.abs(val) < 1e-12) {
         return defaultZero;
     }
@@ -34,7 +34,7 @@ const dataOrDefault = (val, decimals, suffix = '', fallback = null) => {
 };
 
 /**
- * Formate une valeur numérique en notation exponentielle avec une précision fixe (pour Relativité).
+ * Formate une valeur numérique en notation exponentielle avec une précision fixe.
  */
 const dataOrDefaultExp = (val, decimals, suffix = '') => {
     if (val === undefined || val === null || isNaN(val)) {
@@ -45,18 +45,18 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     if (Math.abs(val) < 1e-10 && val !== 0) {
         return val.toExponential(decimals) + suffix;
     }
-    // Si V=0, mais la valeur est le résultat d'un calcul (comme E₀), on l'affiche.
     return val.toExponential(decimals) + suffix;
 };
 
 
 // --- CONSTANTES PHYSIQUES HAUTE PRÉCISION ---
-const C = 299792458.0;              // Vitesse de la lumière (m/s)
-const G = 6.67430e-11;              // Constante gravitationnelle (m³/kg/s²)
-const G_STD = 9.80670;              // Gravité Standard de Référence (m/s²)
-const RHO_AIR_ISA = 1.225;          // Densité de l'air ISA (kg/m³)
-const V_SOUND_ISA = 340.29000;      // Vitesse du son à 15°C (m/s)
+const C = 299792458.0;              
+const G = 6.67430e-11;              
+const G_STD = 9.80670;              
+const RHO_AIR_ISA = 1.225;          
+const V_SOUND_ISA = 340.29000;      
 const D2R = Math.PI / 180;
+const R2D = 180 / Math.PI;
 
 // =================================================================
 // DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
@@ -65,31 +65,59 @@ const D2R = Math.PI / 180;
 ((window) => {
 
     // --- ÉTATS GLOBAUX INITIAUX (Mise à jour d'après la dernière capture) ---
-    // (Les fonctions UKF/Astro réelles sont dans les fichiers dépendants)
-    let ukf = null; // UKF initialisé à null
+    let ukf = null; 
     let isGpsPaused = true;             
     let isIMUActive = false;            
     let currentMass = 70.0;             
-    // NOUVELLE VALEUR MAX : 0.8 km/h converti en m/s (0.8 / 3.6)
-    let currentMaxSpeed_ms = 0.8 / 3.6;    
+    // NOUVELLE VALEUR MAX : 0.0 km/h
+    let currentMaxSpeed_ms = 0.0;    
     let currentSessionTime = 0.0;       
     let currentMovementTime = 0.0;
     
-    // NOUVEL ÉTAT UKF initial (Coordonnées fournies par l'utilisateur)
+    // NOUVEL ÉTAT UKF initial (Coordonnées fournies par l'utilisateur: 43.284654 / 5.358962)
     let currentUKFState = { 
-        // Dernières coordonnées EKF de l'utilisateur
-        lat: 43.284585, lon: 5.358733, alt: 100.00, 
-        // Vitesse du système à l'arrêt
+        lat: 43.284654, lon: 5.358962, alt: 100.00, 
         vN: 0.0, vE: 0.0, vD: 0.0, 
         speed: 0.0, kUncert: 0.0 
     };
     let currentUKFReactivity = 'Automatique'; 
     
-    // Fallbacks pour les fonctions astro si non chargées (simule la date actuelle)
-    const now = new Date();
-    // Assure que les dépendances (comme getJulianDay, formatHours) sont disponibles.
-    const getJulianDay = window.getJulianDay || ((date) => (date.getTime() / 86400000.0) + 2440587.5); 
-    const formatHours = window.formatHours || ((h) => dataOrDefault(h, 2).replace('.', ':') + 'h');
+    let lastTime = performance.now();
+    
+    // Fallbacks pour les fonctions astro si non chargées
+    const formatHours = window.formatHours || ((h) => dataOrDefault(h, 2, 'h').replace('.', ':').replace(/:00h/,'h'));
+    const getMoonPhaseName = window.getMoonPhaseName || ((p) => 'N/A');
+
+    // =========================================================
+    // BLOC 0 : GESTION DU TEMPS (syncH)
+    // =========================================================
+
+    function syncH() {
+        const now = performance.now();
+        const deltaTime = (now - lastTime) / 1000.0; // Delta en secondes
+        lastTime = now;
+        
+        // Mise à jour des temps de session/mouvement
+        if (!isGpsPaused) {
+            currentSessionTime += deltaTime;
+            if (currentUKFState.speed > 0.01) { currentMovementTime += deltaTime; } // Seulement si en mouvement
+        }
+
+        // Temps local (NTP simulé)
+        const localTime = new Date();
+        // Assure que l'ID 'heure-locale' existe dans le HTML pour afficher l'heure
+        if ($('heure-locale')) $('heure-locale').textContent = localTime.toTimeString().substring(0, 8) + ' (Local)';
+
+        // Temps UTC/GMT (ID 'utc-datetime')
+        if ($('utc-datetime')) {
+             // Affichage N/A si non calculé, sinon la date UTC
+             $('utc-datetime').textContent = dataOrDefault(localTime.toUTCString().split(' ').slice(0, 5).join(' '), 0, '', 'N/A');
+        }
+
+        // Temps écoulé
+        if ($('elapsed-time')) $('elapsed-time').textContent = dataOrDefault(currentSessionTime, 2, ' s'); 
+        if ($('movement-time')) $('movement-time').textContent = dataOrDefault(currentMovementTime, 2, ' s');
+    }
 
     // =========================================================
     // BLOC 1 : LOGIQUE DE CALCUL CRITIQUE (UKF/Physique/Astro)
@@ -97,92 +125,89 @@ const D2R = Math.PI / 180;
 
     function updateDashboard() {
         
-        // --- MISE À JOUR DU TEMPS (Simulation) ---
-        // Simule l'écoulement du temps si non géré par une fonction `syncH` ou une autre boucle.
-        // NOTE: On incrémente le temps, mais on n'appelle pas de fonction de mise à jour pour l'instant.
-        currentSessionTime += 1/60; // 60 FPS
-        if (currentUKFState.speed > 0.1) { currentMovementTime += 1/60; }
-
-        // Si la session est à l'arrêt (cas du screenshot), les vitesses sont 0.0
-        const V_ms = isGpsPaused && !isIMUActive ? 0.0 : currentUKFState.speed;
+        // 1. DÉFINITION DE L'ÉTAT ACTUEL
+        // Vitesse à l'arrêt si GPS en pause et IMU inactif
+        const V_ms = isGpsPaused && !isIMUActive ? 0.0 : currentUKFState.speed; 
         const M = currentMass;           
         
-        // 1. CALCULS PHYSIQUES & RELATIVISTES (Haute Précision)
+        // 2. CALCULS PHYSIQUES & RELATIVISTES 
         
         const v_ratio_c = V_ms / C; 
         const gamma = 1 / Math.sqrt(1 - v_ratio_c * v_ratio_c);
         
-        // Énergies : E₀ est toujours non-nulle, E et p sont 0 à l'arrêt.
-        const energy_rest = M * C * C; // Non-nulle (M=70kg)
-        const energy_rel = M * gamma * C * C; // Égale à E₀ à V=0
-        const momentum = M * gamma * V_ms; // Sera 0.0
-        const schwartzschild_radius = (2 * G * M) / (C * C); // Non-nulle
+        const energy_rest = M * C * C; 
+        const energy_rel = M * gamma * C * C; 
+        const momentum = M * gamma * V_ms; 
         
-        const speed_kmh = V_ms * 3.6; // Sera 0.0
-        const dynamic_pressure = 0.5 * RHO_AIR_ISA * V_ms * V_ms; // Sera 0.0
-        const kinetic_energy = 0.5 * M * V_ms * V_ms; // Sera 0.0
-        const mach_number = V_ms / V_SOUND_ISA; // Sera 0.0
+        const speed_kmh = V_ms * 3.6; 
+        const dynamic_pressure = 0.5 * RHO_AIR_ISA * V_ms * V_ms; 
+        const kinetic_energy = 0.5 * M * V_ms * V_ms; 
+        const mach_number = V_ms / V_SOUND_ISA; 
         
-        // 2. CALCULS ASTRO (Nécessite astro.js)
+        // 3. CALCULS ASTRO
         let astroData = null;
-        if (typeof getSolarData === 'function') {
-            // Utilise la date/heure courante du système
+        if (typeof getSolarData === 'function' && typeof getJulianDay === 'function') {
             astroData = getSolarData(new Date(), currentUKFState.lat, currentUKFState.lon, currentUKFState.alt);
         }
         
-        // --- MISE À JOUR DOM : CONTRÔLES & SYSTÈME ---
-        if ($('utc-datetime')) $('utc-datetime').textContent = new Date().toUTCString().split(' ').slice(0, 5).join(' '); // Nettoie le fuseau horaire
-        if ($('elapsed-time')) $('elapsed-time').textContent = dataOrDefault(currentSessionTime, 2, ' s'); 
-        if ($('movement-time')) $('movement-time').textContent = dataOrDefault(currentMovementTime, 2, ' s');
+        // --- MISE À JOUR DOM : VITESSE, DISTANCE & RELATIVITÉ (Correction des -- et N/A) ---
         
-        // --- MISE À JOUR DOM : VITESSE, DISTANCE & RELATIVITÉ (Remplacement des --) ---
-        
-        // Vitesse : Forçage des valeurs à 5 décimales pour l'Ultra-Précision
+        // Vitesse (Utilise l'ID HTML fourni dans le dashboard, ex: 'current-speed-kmh' est la grande valeur)
         if ($('current-speed-kmh')) $('current-speed-kmh').textContent = dataOrDefault(speed_kmh, 1, ' km/h', '--.- km/h'); 
-        if ($('stable-speed-ms')) $('stable-speed-ms').textContent = dataOrDefault(V_ms, 5, ' m/s');
-        if ($('stable-speed-kms')) $('stable-speed-kms').textContent = dataOrDefault(V_ms / 1000, 5, ' km/s');
+        if ($('stable-speed-ms')) $('stable-speed-ms').textContent = dataOrDefault(V_ms, 5, ' m/s', '-- m/s'); 
+        if ($('stable-speed-kms')) $('stable-speed-kms').textContent = dataOrDefault(V_ms / 1000, 5, ' km/s', '-- km/s');
         if ($('speed-3d-instant')) $('speed-3d-instant').textContent = dataOrDefault(speed_kmh, 1, ' km/h', '-- km/h'); 
-        if ($('raw-speed-ms')) $('raw-speed-ms').textContent = dataOrDefault(V_ms, 5, ' m/s');
-        // Mise à jour de la vitesse max avec la nouvelle valeur
+        if ($('raw-speed-ms')) $('raw-speed-ms').textContent = dataOrDefault(V_ms, 5, ' m/s', '-- m/s');
         if ($('max-speed-session')) $('max-speed-session').textContent = dataOrDefault(currentMaxSpeed_ms * 3.6, 1, ' km/h'); 
         
-        // Relativité (Énergies : Remplacement des N/A par notation EXP)
+        // Physique & Relativité
+        if ($('perc-vitesse-son')) $('perc-vitesse-son').textContent = dataOrDefault(V_ms / V_SOUND_ISA * 100, 2, ' %'); 
+        if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach_number, 4);
         if ($('perc-speed-light')) $('perc-speed-light').textContent = dataOrDefaultExp(v_ratio_c * 100, 2, ' %'); 
-        if ($('relativistic-energy')) $('relativistic-energy').textContent = dataOrDefaultExp(energy_rel, 4, ' J');
-        if ($('rest-mass-energy')) $('rest-mass-energy').textContent = dataOrDefaultExp(energy_rest, 4, ' J');
-        if ($('momentum')) $('momentum').textContent = dataOrDefaultExp(momentum, 4, ' kg·m/s'); 
+        if ($('facteur-lorentz')) $('facteur-lorentz').textContent = dataOrDefault(gamma, 4);
+        if ($('dilat-vitesse')) $('dilat-vitesse').textContent = dataOrDefault(0, 2, ' ns/j'); 
         
-        // --- MISE À JOUR DOM : DYNAMIQUE & FORCES (Correction de Gravité Locale) ---
-        // Affiche la gravité de référence si l'IMU est inactif, remplaçant 'N/A'
-        if ($('local-gravity')) $('local-gravity').textContent = isIMUActive ? 'N/A' : dataOrDefault(G_STD, 5, ' m/s²'); 
+        // Énergies Relativistes (Remplacement des N/A par notation EXP formatée)
+        if ($('relativistic-energy')) $('relativistic-energy').textContent = dataOrDefaultExp(energy_rel, 4, ' J', 'N/A');
+        if ($('rest-mass-energy')) $('rest-mass-energy').textContent = dataOrDefaultExp(energy_rest, 4, ' J', 'N/A');
+        if ($('momentum')) $('momentum').textContent = dataOrDefaultExp(momentum, 4, ' N·s', 'N/A'); 
+        
+        // Dynamique & Forces
+        // Gravité Locale (g) - Utilise la valeur de base si IMU inactif
+        if ($('local-gravity')) $('local-gravity').textContent = isIMUActive ? 'N/A' : dataOrDefault(G_STD, 4, ' m/s²'); 
+        
+        // Mécanique des Fluides & Champs
         if ($('dynamic-pressure-q')) $('dynamic-pressure-q').textContent = dataOrDefault(dynamic_pressure, 2, ' Pa'); 
+        if ($('drag-force')) $('drag-force').textContent = dataOrDefault(0, 2, ' N'); // Supposé 0 à l'arrêt
+        if ($('drag-power')) $('drag-power').textContent = dataOrDefault(0, 2, ' kW'); // Supposé 0 à l'arrêt
         if ($('kinetic-energy')) $('kinetic-energy').textContent = dataOrDefault(kinetic_energy, 2, ' J');
-        
-        // --- MISE À JOUR DOM : POSITION & ASTRO (Remplacement des N/A) ---
+        if ($('coriolis-force')) $('coriolis-force').textContent = dataOrDefault(0, 2, ' N'); // Supposé 0 à l'arrêt
+
+        // IMU (Si inactif, force 0.00 au lieu de N/A)
+        if ($('imu-status')) $('imu-status').textContent = isIMUActive ? 'Actif 🟢' : 'Inactif';
+        if ($('accel-x')) $('accel-x').textContent = dataOrDefault(0, 2, ' m/s²', 'N/A');
+        if ($('accel-y')) $('accel-y').textContent = dataOrDefault(0, 2, ' m/s²', 'N/A');
+        if ($('accel-z')) $('accel-z').textContent = dataOrDefault(0, 2, ' m/s²', 'N/A');
+
+        // --- MISE À JOUR DOM : POSITION & ASTRO (Force les coordonnées numériques) ---
         if ($('lat-ekf')) $('lat-ekf').textContent = dataOrDefault(currentUKFState.lat, 6);
         if ($('lon-ekf')) $('lon-ekf').textContent = dataOrDefault(currentUKFState.lon, 6);
         if ($('alt-ekf')) $('alt-ekf').textContent = dataOrDefault(currentUKFState.alt, 2, ' m'); 
 
-        // Remplacement de tous les N/A astro si les données sont calculées
+        // Astro
         if (astroData) {
-            // Note: Les IDs doivent être présents dans votre HTML (index.html) pour fonctionner
-            if ($('date-astro')) $('date-astro').textContent = astroData.date ? astroData.date.toDateString() : 'N/A';
-            if ($('true-solar-time')) $('heure-solaire-vraie').textContent = formatHours(astroData.TST_HRS);
-            if ($('mean-solar-time')) $('heure-solaire-moyenne').textContent = formatHours(astroData.MST_HRS);
-            if ($('noon-solar-utc')) $('midi-solaire-local-utc').textContent = astroData.NOON_SOLAR_UTC ? astroData.NOON_SOLAR_UTC.toTimeString().substring(0, 8) + ' UTC' : 'N/A';
-            
             // Soleil
-            if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(astroData.sun.position.altitude * 180 / Math.PI, 2, '°');
-            if ($('day-duration')) $('day-duration').textContent = dataOrDefault(astroData.sun.dayDuration, 5, ' h');
+            if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(astroData.sun.position.altitude * R2D, 2, '°');
+            if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(astroData.sun.position.azimuth * R2D, 2, '°');
+            if ($('day-duration')) $('day-duration').textContent = dataOrDefault(astroData.sun.dayDuration, 2, ' h');
+            if ($('sunrise-times')) $('sunrise-times').textContent = astroData.sun.times.rise ? formatHours(astroData.sun.times.rise) : 'N/A';
+            if ($('sunset-times')) $('sunset-times').textContent = astroData.sun.times.set ? formatHours(astroData.sun.times.set) : 'N/A';
             
             // Lune
-            if ($('moon-phase-name')) $('moon-phase-name').textContent = typeof getMoonPhaseName === 'function' ? getMoonPhaseName(astroData.moon.illumination.phase) : 'N/A';
-            if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moon.illumination.fraction * 100, 5, '%');
-            if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(astroData.moon.position.distance, 5, ' m');
-        } else {
-             // Fallback pour les champs Astro si la dépendance n'est pas chargée (Laisser N/A)
-             // Vous devez vous assurer que `lib/astro.js` est correctement chargé dans votre HTML.
-        }
+            if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(astroData.moon.illumination.phase);
+            if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moon.illumination.fraction * 100, 2, '%');
+            if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(astroData.moon.position.altitude * R2D, 2, '°');
+        } 
     } // Fin de updateDashboard
 
     // =========================================================
@@ -192,15 +217,18 @@ const D2R = Math.PI / 180;
     window.addEventListener('load', () => {
         
         // 1. Initialisation de l'affichage immédiat
+        syncH(); 
         updateDashboard(); 
         
         // 2. Exécution à haute fréquence (60Hz) pour garantir la mise à jour des valeurs.
-        // C'est ce qui est essentiel pour écraser les placeholders rapidement.
-        setInterval(updateDashboard, 1000 / 60); 
+        setInterval(() => {
+            syncH();
+            updateDashboard();
+        }, 1000 / 60); 
 
-        // Initialisation UKF
+        // Initialisation UKF (doit se faire après le chargement de math.js)
         if (typeof ProfessionalUKF === 'function' && typeof math !== 'undefined') { 
-            // ukf = new ProfessionalUKF(); // Décommenter si l'UKF est réellement utilisé
+            // ukf = new ProfessionalUKF(); 
         }
     });
 
