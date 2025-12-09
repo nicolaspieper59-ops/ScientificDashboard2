@@ -363,33 +363,84 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         if ($('ukf-uncertainty')) $('ukf-uncertainty').textContent = dataOrDefault(currentPosition.acc, 4); 
     }
 
-    function getMoonPhaseName(phase) {
-        if (phase < 0.05 || phase > 0.95) return 'Nouvelle Lune 🌑';
-        if (phase < 0.25) return 'Premier Croissant 🌒';
-        if (phase < 0.5) return 'Premier Quartier 🌓';
-        if (phase < 0.75) return 'Lune Gibbeuse Croissante 🌔';
-        if (phase < 0.85) return 'Pleine Lune 🌕';
-        return 'Lune Décroissante 🌖';
-    }
+    // --- FONCTION UTILITAIRE POUR LA LUNE ---
+function getMoonPhaseName(phase) {
+    if (phase < 0.03 || phase > 0.97) return 'Nouvelle Lune 🌑';
+    if (phase < 0.22) return 'Premier Croissant 🌒';
+    if (phase < 0.28) return 'Premier Quartier 🌓';
+    if (phase < 0.47) return 'Lune Gibbeuse Croissante 🌔';
+    if (phase < 0.53) return 'Pleine Lune 🌕';
+    if (phase < 0.72) return 'Lune Gibbeuse Décroissante 🌖';
+    if (phase < 0.78) return 'Dernier Quartier 🌗';
+    if (phase < 0.97) return 'Dernier Croissant Décroissant 🌘';
+    return 'N/A';
+}
 
-    function updateAstroDOM(lat, lon) {
-        if (typeof getAstroData === 'undefined' || typeof SunCalc === 'undefined') return;
+    // --- MISE À JOUR DU DOM ASTRO (Utilisation de lib/astro.js et lib/ephem.js) ---
+const R2D = 180 / Math.PI; // Conversion Radians vers Degrés
+
+function updateAstroDOM(lat, lon) {
+    if (!lat || !lon || isNaN(lat) || isNaN(lon)) {
+        // La position GPS n'est pas encore disponible
+        return;
+    }
+    
+    const now = new Date();
+    
+    // =======================================================
+    // I. CALCULS DU SOLEIL (Utilisation supposée de lib/astro.js)
+    // =======================================================
+    if (typeof Astro !== 'undefined' && Astro.getSunPosition) {
         
-        const now = getCDate(lServH, lLocH);
-        const astroData = getAstroData(lat, lon, now);
+        // Supposons que ces fonctions existent dans lib/astro.js
+        const sunPos = Astro.getSunPosition(now, lat, lon);
+        const sunTimes = Astro.getSunTimes(now, lat, lon);
+
+        // Position
+        if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(sunPos.altitude * R2D, 2) + '°';
+        if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(sunPos.azimuth * R2D, 2) + '°';
         
-        if (astroData.sunPos) {
-            const sunAltDeg = astroData.sunPos.altitude * R2D;
-            const sunAziDeg = astroData.sunPos.azimuth * R2D;
-            if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(sunAltDeg, 2) + '°';
-            if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(sunAziDeg, 2) + '°';
+        // Lever/Coucher et Durée
+        if ($('sunrise-times')) $('sunrise-times').textContent = sunTimes.sunrise ? sunTimes.sunrise.toLocaleTimeString('fr-FR') : 'N/A';
+        if ($('sunset-times')) $('sunset-times').textContent = sunTimes.sunset ? sunTimes.sunset.toLocaleTimeString('fr-FR') : 'N/A';
+        
+        if (sunTimes.sunset && sunTimes.sunrise) {
+            const durationMs = sunTimes.sunset.getTime() - sunTimes.sunrise.getTime();
+            const dayDurationHours = durationMs / 3600000;
+            if ($('day-duration')) $('day-duration').textContent = `${Math.floor(dayDurationHours)}h ${Math.round((dayDurationHours % 1) * 60)}min`;
+        } else {
+            if ($('day-duration')) $('day-duration').textContent = 'N/A';
         }
+    }
+    
+    // =======================================================
+    // II. CALCULS DE LA LUNE (Utilisation supposée de lib/ephem.js)
+    // =======================================================
+    if (typeof Ephem !== 'undefined' && Ephem.getMoonIllumination) {
         
-        if (astroData.moonIllum) {
-            const moonPhaseName = getMoonPhaseName(astroData.moonIllum.phase);
-            if ($('moon-phase-name')) $('moon-phase-name').textContent = moonPhaseName;
-            if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moonIllum.fraction * 100, 1) + '%';
+        // Supposons que ces fonctions existent dans lib/ephem.js
+        const moonIllumination = Ephem.getMoonIllumination(now);
+        const moonPos = Ephem.getMoonPosition(now, lat, lon);
+        const moonTimes = Ephem.getMoonTimes(now, lat, lon);
+        const moonDistance = Ephem.getMoonDistance(now); // Pour le champ "Distance à la Terre"
+
+        // Phase et Illumination
+        if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(moonIllumination.phase);
+        if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(moonIllumination.fraction * 100, 1) + '%';
+        
+        // Position
+        if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(moonPos.altitude * R2D, 2) + '°';
+        if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(moonPos.azimuth * R2D, 2) + '°';
+        
+        // Lever/Coucher
+        if ($('moon-times')) $('moon-times').textContent = moonTimes.rise ? `Lever: ${moonTimes.rise.toLocaleTimeString('fr-FR')}` : 'N/A';
+        if ($('moon-times').textContent !== 'N/A' && moonTimes.set) {
+            $('moon-times').textContent += ` | Coucher: ${moonTimes.set.toLocaleTimeString('fr-FR')}`;
         }
+
+        // Distance à la Terre (Champ qui était N/A)
+        if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(moonDistance, 4, ' km');
+    }
     }
 
 
@@ -418,11 +469,18 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
 
         if ($('elapsed-session-time')) $('elapsed-session-time').textContent = `${dataOrDefault(elapsedTime, 2)} s`;
         if ($('movement-time')) $('movement-time').textContent = `${dataOrDefault(movementTime / 1000, 2)} s`;
+
+        // --- MÉTÉO & PHYSIQUE ---
+        // CORRECTION : Assure l'affichage des valeurs par défaut ISA si l'API Météo est N/A.
+        if ($('air-temp-c')) $('air-temp-c').textContent = dataOrDefault(lastKnownWeather.tempC, 2, ' °C'); 
+        if ($('pressure-hpa')) $('pressure-hpa').textContent = dataOrDefault(lastKnownWeather.pressure_hPa, 0, ' hPa'); 
+        if ($('air-density')) $('air-density').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³');    
         
         // --- VITESSE & RELATIVITÉ ---
         if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${dataOrDefault(currentSpeedOfSound, 4)} m/s`;
         if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(schwarzschildRadius, 4, ' m');
         if ($('vitesse-inst')) $('vitesse-inst').textContent = `${dataOrDefault(speedKmh, 1)} km/h`;
+        if ($('perc-vitesse-son')) $('perc-vitesse-son').textContent = dataOrDefault(speed3D / currentSpeedOfSound * 100, 2) + ' %';    
         if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach, 4);
         if ($('perc-speed-light')) $('perc-speed-light').textContent = dataOrDefaultExp(lightPerc, 2, ' %');
         if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentzFactor, 4);
