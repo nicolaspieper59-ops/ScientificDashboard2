@@ -72,6 +72,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let currentMass = 70.0;
     let totalDistance = 0.0;
     let maxSpeed = 0.0;
+    let movementTime = 0.0;
     let kAlt = 0.0; // Altitude filtrée/estimée
     let gpsWatchID = null;
     let lServH = null; // Heure serveur
@@ -390,6 +391,23 @@ function updateAstroDOM(lat, lon) {
     // Appel de la fonction centrale d'astro.js
     const astroData = getSolarData(now, lat, lon);
     const R2D = 180 / Math.PI; // Redéfinition de la constante pour la sécurité
+    // gnss-dashboard-full (17).js - dans la boucle de succès de initGPS
+// ... (vers la ligne 390, après la mise à jour des coordonnées)
+                
+                // Logique de distance
+                const timeDelta = (position.timestamp - lastGPSTimestamp) / 1000; // Calcule le temps depuis la dernière position
+                lastGPSTimestamp = position.timestamp; // (Assurez-vous que lastGPSTimestamp est définie globalement)
+
+                if (typeof turf !== 'undefined' && currentPosition.spd > 0.1) {
+                    const from = turf.point([lastLon, lastLat]);
+                    const to = turf.point([currentPosition.lon, currentPosition.lat]);
+                    const distance2D = turf.distance(from, to, {units: 'meters'});
+                    totalDistance += distance2D * (distanceRatioMode ? calculateDistanceRatio(kAlt) : 1.0);
+                    
+                    // CORRECTION : Incrémentation du temps de mouvement
+                    movementTime += timeDelta; 
+                }
+// ...
 
     // ================== TEMPS SOLAIRE & SIDÉRAL ==================
     // La fonction formatHours est définie dans astro.js
@@ -445,14 +463,9 @@ function updateAstroDOM(lat, lon) {
     if ($('moon-times')) $('moon-times').textContent = moon.times.rise ? `Lever: ${moon.times.rise.toLocaleTimeString('fr-FR')}` : 'N/A';
     if ($('moon-times').textContent !== 'N/A' && moon.times.set) {
         $('moon-times').textContent += ` | Coucher: ${moon.times.set.toLocaleTimeString('fr-FR')}`;
-    }
-        }
-
+         
         // Distance à la Terre (Champ qui était N/A)
-        if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(moonDistance, 4, ' km');
-    }
- }
-
+    if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(moonDistance, 4, ' km');
 
     function updateDashboardDOM() {
         try {
@@ -498,10 +511,6 @@ function updateAstroDOM(lat, lon) {
         if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(schwarzschildRadius, 4, ' m');
         if ($('vitesse-brute-ms')) $('vitesse-brute-ms').textContent = `${dataOrDefault(speed3D, 2)} m/s`;
         if ($('vitesse-max-session')) $('vitesse-max-session').textContent = `${dataOrDefault(maxSpeed, 1)} km/h`;
-        if ($('mach-number')) $('mach-number').textContent = dataOrDefault(mach, 4);
-        if ($('perc-speed-light')) $('perc-speed-light').textContent = dataOrDefaultExp(lightPerc, 2, ' %');
-        if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentzFactor, 4);
-        if ($('energie-masse-repos')) $('energie-masse-repos').textContent = dataOrDefaultExp(restMassEnergy, 4, ' J');
         if ($('dist-total-3d')) $('dist-total-3d').textContent = `${dataOrDefault(totalDistance / 1000, 3)} km | ${dataOrDefault(totalDistance, 2)} m`;
 
         // --- MÉTÉO & BIOSVT ---
