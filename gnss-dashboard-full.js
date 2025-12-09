@@ -405,29 +405,21 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         const schwarzschildRadius = getSchwarzschildRadius(currentMass);
         const elapsedTime = (Date.now() - initTime) / 1000;
         
-        // TEMPS (CORRECTION D'ID CRITIQUE 1)
+        // --- TEMPS & SYSTÈME ---
         const now = getCDate(lServH, lLocH);
-        if ($('elapsed-session-time')) $('elapsed-session-time').textContent = `${dataOrDefault(elapsedTime, 2)} s`;
 
-        
-    
-    // Utilise l'ID de votre HTML: 'local-time-ntp' et 'date-heure-utc'
+        // Heure Locale
         if ($('local-time-ntp')) $('local-time-ntp').textContent = now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? '' : ' (Local)');
-        if ($('date-heure-utc')) $('date-heure-utc').textContent = now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR') + (ntpSyncSuccess ? ' UTC' : ' LOCAL');
+        
+        // AJOUT : Date & Heure (UTC/GMT)
+        if ($('date-heure-utc')) {
+            $('date-heure-utc').textContent = now.toUTCString().replace('GMT', 'UTC');
+        }
 
-        const now = getCDate(lServH, lLocH); 
-    if ($('date-heure-utc')) {
-        $('date-heure-utc').textContent = now.toUTCString().replace('GMT', 'UTC');
-    }
-
-
-    // MÉTÉO / PHYSIQUE (CORRECTION D'ID CRITIQUE 2, 3 et 4)
-    // Utilise les IDs de votre HTML: 'air-temp-c', 'pressure-hpa', 'air-density'
-        if ($('air-temp-c')) $('air-temp-c').textContent = dataOrDefault(lastKnownWeather.tempC, 2, ' °C'); 
-        if ($('pressure-hpa')) $('pressure-hpa').textContent = dataOrDefault(lastKnownWeather.pressure_hPa, 0, ' hPa'); 
-        if ($('air-density')) $('air-density').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³'); // Anciennement air-density-rho
-
-    // VITESSE/RELATIVITÉ
+        if ($('elapsed-session-time')) $('elapsed-session-time').textContent = `${dataOrDefault(elapsedTime, 2)} s`;
+        if ($('movement-time')) $('movement-time').textContent = `${dataOrDefault(movementTime / 1000, 2)} s`;
+        
+        // --- VITESSE & RELATIVITÉ ---
         if ($('vitesse-son-locale')) $('vitesse-son-locale').textContent = `${dataOrDefault(currentSpeedOfSound, 4)} m/s`;
         if ($('schwarzschild-radius')) $('schwarzschild-radius').textContent = dataOrDefaultExp(schwarzschildRadius, 4, ' m');
         if ($('vitesse-inst')) $('vitesse-inst').textContent = `${dataOrDefault(speedKmh, 1)} km/h`;
@@ -443,24 +435,31 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
         if ($('lorentz-factor')) $('lorentz-factor').textContent = dataOrDefault(lorentzFactor, 4);
         if ($('energie-masse-repos')) $('energie-masse-repos').textContent = dataOrDefaultExp(restMassEnergy, 4, ' J');
         if ($('dist-total-3d')) $('dist-total-3d').textContent = `${dataOrDefault(totalDistance / 1000, 3)} km | ${dataOrDefault(totalDistance, 2)} m`;
-        
-        // IMU
+
+        // --- MÉTÉO & BIOSVT ---
+        // Affichage des fallbacks ISA (15°C, 1013 hPa) si les données API sont N/A
+        if ($('air-temp-c')) $('air-temp-c').textContent = dataOrDefault(lastKnownWeather.tempC, 2, ' °C'); 
+        if ($('pressure-hpa')) $('pressure-hpa').textContent = dataOrDefault(lastKnownWeather.pressure_hPa, 0, ' hPa'); 
+        if ($('air-density')) $('air-density').textContent = dataOrDefault(currentAirDensity, 3, ' kg/m³');
+
+        // --- IMU (ACCÉLÉROMÈTRE/GYROSCOPE) ---    
         if ($('accel-x')) $('accel-x').textContent = dataOrDefault(imuAccels.x, 2) + ' m/s²';
         if ($('accel-y')) $('accel-y').textContent = dataOrDefault(imuAccels.y, 2) + ' m/s²';
         if ($('accel-z')) $('accel-z').textContent = dataOrDefault(imuAccels.z, 2) + ' m/s²';
         if ($('pitch-imu')) $('pitch-imu').textContent = dataOrDefault(imuAngles.pitch, 1) + '°';
         if ($('roll-imu')) $('roll-imu').textContent = dataOrDefault(imuAngles.roll, 1) + '°';
-        // Note: Le statut IMU est mis à jour directement par activateDeviceMotion()
-        if ($('ukf-status')) $('ukf-status').textContent = ukf ? 'Actif 🟢' : 'UKF N/A 🔴';
 
-} catch (e) {
-        console.error("Erreur dans updateDashboardDOM:", e);
-
-      }
-    }
-        updateMapDOM();
+        // --- EKF/UKF & DEBUG ---
+        if ($('ukf-status')) $('ukf-status').textContent = ukf ? 'Actif 🟢' : 'UKF N/A 🔴'; 
+        
+        // --- ASTRO & CARTE ---
         updateAstroDOM(currentPosition.lat, currentPosition.lon);
+        updateMapDOM();
+        
+    } catch (e) {
+        console.error("Erreur critique dans updateDashboardDOM :", e);
     }
+}     
 
 
     // =========================================================
