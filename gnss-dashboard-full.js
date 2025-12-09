@@ -73,6 +73,7 @@ const dataOrDefaultExp = (val, decimals, suffix = '') => {
     let totalDistance = 0.0;
     let maxSpeed = 0.0;
     let movementTime = 0.0;
+    let lastGPSTimestamp = Date.now()
     let kAlt = 0.0; // Altitude filtrée/estimée
     let gpsWatchID = null;
     let lServH = null; // Heure serveur
@@ -407,6 +408,9 @@ function updateAstroDOM(lat, lon) {
                     // CORRECTION : Incrémentation du temps de mouvement
                     movementTime += timeDelta; 
                 }
+    
+    lastLat = currentPosition.lat;
+    lastLon = currentPosition.lon;
 // ...
 
     // ================== TEMPS SOLAIRE & SIDÉRAL ==================
@@ -457,7 +461,6 @@ function updateAstroDOM(lat, lon) {
         
         // Distance (La distance est retournée en mètres)
         if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(moon.position.distance, 4, ' m'); 
-    }
     
     // Lever/Coucher
     if ($('moon-times')) $('moon-times').textContent = moon.times.rise ? `Lever: ${moon.times.rise.toLocaleTimeString('fr-FR')}` : 'N/A';
