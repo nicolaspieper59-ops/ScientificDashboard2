@@ -1,7 +1,6 @@
 // =================================================================
 // FICHIER : gnss-dashboard-full.js (V7.3 - FINAL ET DÉFINITIF)
 // VERSION : INCLUSION DE TOUS LES CORRECTIFS D'ID ET DE L'HEURE UTC
-// DÉPENDANCES CRITIQUES: lib/ukf-lib.js (avec getGravity), lib/astro.js (avec getSolarData)
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -133,12 +132,11 @@ const D2R = Math.PI / 180;
         const today = new Date();
         let astroData = null;
         try {
-            // Tente de calculer les données astro si la fonction est définie
+            // Vérifie si la fonction getSolarData est disponible (définie dans lib/astro.js)
             if (typeof window.getSolarData === 'function') {
                 astroData = window.getSolarData(today, currentUKFState.lat, currentUKFState.lon, currentUKFState.alt);
             }
         } catch (e) {
-            // Laisse astroData à null et affiche l'erreur dans la console si nécessaire
             console.error("Erreur critique lors du calcul Astro. Vérifiez astro.js et ses dépendances.", e);
         }
         
@@ -152,12 +150,12 @@ const D2R = Math.PI / 180;
         // ID: local-gravity
         if ($('local-gravity')) $('local-gravity').textContent = dataOrDefault(calculatedGravity, 4, ' m/s²'); 
         
-        // Énergie Cinétique (ID unifié)
+        // Énergie Cinétique (ID correct: kinetic-energy)
         if ($('kinetic-energy')) $('kinetic-energy').textContent = dataOrDefault(kinetic_energy, 2, ' J'); 
         if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(dynamic_pressure, 2, ' Pa');
 
 
-        // --- MISE À JOUR DOM : POSITION EKF (Fonctionnel) ---
+        // --- MISE À JOUR DOM : POSITION EKF ---
         if ($('lat-ekf')) $('lat-ekf').textContent = dataOrDefault(currentUKFState.lat, 6);
         if ($('lon-ekf')) $('lon-ekf').textContent = dataOrDefault(currentUKFState.lon, 6);
         if ($('alt-ekf')) $('alt-ekf').textContent = dataOrDefault(currentUKFState.alt, 2, ' m'); 
@@ -175,20 +173,20 @@ const D2R = Math.PI / 180;
             
             // Lune
             if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(astroData.moon.illumination.phase);
-            // 🟢 FIX CRITIQUE: Utilisation de l'ID "moon-illuminated"
+            // ID Corrigé: moon-illuminated
             if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moon.illumination.fraction * 100, 1, ' %');
             if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(astroData.moon.position.altitude * R2D, 2, '°');
             if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(astroData.moon.position.azimuth * R2D, 2, '°'); 
             if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(astroData.moon.position.distance, 2, ' m');
         } else {
-             // Fallbacks pour tous les champs Astro
+             // Fallbacks pour tous les champs Astro (tous les champs N/A si astroData est null)
              if ($('tst-time')) $('tst-time').textContent = 'N/A';
              if ($('mst-time')) $('mst-time').textContent = 'N/A';
              if ($('equation-of-time')) $('equation-of-time').textContent = 'N/A';
              if ($('sun-alt')) $('sun-alt').textContent = 'N/A';
              if ($('sun-azimuth')) $('sun-azimuth').textContent = 'N/A'; 
              if ($('moon-phase-name')) $('moon-phase-name').textContent = 'N/A';
-             if ($('moon-illuminated')) $('moon-illuminated').textContent = 'N/A'; // ID Corrigé
+             if ($('moon-illuminated')) $('moon-illuminated').textContent = 'N/A';
              if ($('moon-alt')) $('moon-alt').textContent = 'N/A';
              if ($('moon-azimuth')) $('moon-azimuth').textContent = 'N/A'; 
              if ($('moon-distance')) $('moon-distance').textContent = 'N/A';
@@ -207,7 +205,7 @@ const D2R = Math.PI / 180;
         }
 
         // 1. Initialisation des fonctions de base
-        syncH(); // Appel immédiat pour l'heure
+        syncH(); 
 
         // 2. Mise à jour initiale des statuts (Gravity, Astro, Capteurs)
         updateDashboard();
