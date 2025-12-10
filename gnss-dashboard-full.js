@@ -121,6 +121,8 @@ function initIMUSensors() {
                     lastIMU.acc.x = event.accelerationIncludingGravity.x || 0;
                     lastIMU.acc.y = event.accelerationIncludingGravity.y || 0;
                     lastIMU.acc.z = event.accelerationIncludingGravity.z || 0;
+
+                    console.log("IMU - Mouvement Reçu (X) :", event.accelerationIncludingGravity.x);
                 }
                 isImuActive = true;
                 $('imu-status').textContent = 'Actif (Mouvement)';
