@@ -1,6 +1,6 @@
 // =================================================================
-// FICHIER : gnss-dashboard-full.js (V7.3 - FINAL ET DÉFINITIF)
-// VERSION : INCLUSION DE TOUS LES CORRECTIFS D'ID ET DE L'HEURE UTC
+// FICHIER : gnss-dashboard-full.js (V8.0 - ADAPTATION COMPLÈTE À TOUS LES ID HTML)
+// VERSION : DÉFINITIVE - Tous les ID de Temps et Astro sont synchronisés avec le HTML fourni
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -70,6 +70,7 @@ const D2R = Math.PI / 180;
     const formatHours = window.formatHours || ((h) => 'N/A');
     const getMoonPhaseName = window.getMoonPhaseName || ((p) => 'N/A');
     const getSolarData = window.getSolarData || ((d, lat, lon, alt) => null);
+    // getGravity est supposée définie dans ukf-lib.js ou ses dépendances
 
 // =========================================================
 // BLOC 0 : GESTION DU TEMPS (syncH)
@@ -88,9 +89,10 @@ const D2R = Math.PI / 180;
         const localTime = new Date();
         
         // --- MISE À JOUR DU TEMPS LOCAL ---
-        if ($('heure-locale')) $('heure-locale').textContent = localTime.toTimeString().substring(0, 8) + ' (Local)';
+        // L'ID 'local-time-ntp' est dans le HTML, nous allons l'utiliser
+        if ($('local-time-ntp')) $('local-time-ntp').textContent = localTime.toTimeString().substring(0, 8) + ' (Local)';
 
-        // 🟢 FIX CRITIQUE: AFFICHAGE STABLE DE L'HEURE UTC
+        // 🟢 ID CORRECT: Date & Heure (UTC/GMT)
         try {
             const utcDatePart = localTime.toLocaleDateString('fr-FR', {
                 year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC'
@@ -108,9 +110,10 @@ const D2R = Math.PI / 180;
         }
 
 
-        // Temps écoulé
-        if ($('elapsed-time')) $('elapsed-time').textContent = dataOrDefault(currentSessionTime, 2, ' s'); 
-        if ($('movement-time')) $('movement-time').textContent = dataOrDefault(currentMovementTime, 2, ' s');
+        // 🟢 FIX CRITIQUE: Temps écoulé (Session) -> ID: elapsed-session-time
+        if ($('elapsed-session-time')) $('elapsed-session-time').textContent = dataOrDefault(currentSessionTime, 2, ' s'); 
+        // 🟢 FIX CRITIQUE: Temps de Mouvement -> ID: elapsed-motion-time
+        if ($('elapsed-motion-time')) $('elapsed-motion-time').textContent = dataOrDefault(currentMovementTime, 2, ' s');
     }
 
 // =========================================================
@@ -132,7 +135,7 @@ const D2R = Math.PI / 180;
         const today = new Date();
         let astroData = null;
         try {
-            // Vérifie si la fonction getSolarData est disponible (définie dans lib/astro.js)
+            // Tente de calculer les données astro si la fonction est définie
             if (typeof window.getSolarData === 'function') {
                 astroData = window.getSolarData(today, currentUKFState.lat, currentUKFState.lon, currentUKFState.alt);
             }
@@ -147,42 +150,43 @@ const D2R = Math.PI / 180;
             ? window.getGravity(currentUKFState.lat * D2R, currentUKFState.alt) 
             : G_STD; 
             
-        // ID: local-gravity
+        // 🟢 ID CORRECT: Gravité Locale (g) -> ID: local-gravity
         if ($('local-gravity')) $('local-gravity').textContent = dataOrDefault(calculatedGravity, 4, ' m/s²'); 
         
-        // Énergie Cinétique (ID correct: kinetic-energy)
+        // 🟢 ID CORRECT: Énergie Cinétique (J) -> ID: kinetic-energy
         if ($('kinetic-energy')) $('kinetic-energy').textContent = dataOrDefault(kinetic_energy, 2, ' J'); 
         if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(dynamic_pressure, 2, ' Pa');
 
 
-        // --- MISE À JOUR DOM : POSITION EKF ---
+        // --- MISE À JOUR DOM : POSITION EKF (Fonctionnel) ---
         if ($('lat-ekf')) $('lat-ekf').textContent = dataOrDefault(currentUKFState.lat, 6);
         if ($('lon-ekf')) $('lon-ekf').textContent = dataOrDefault(currentUKFState.lon, 6);
         if ($('alt-ekf')) $('alt-ekf').textContent = dataOrDefault(currentUKFState.alt, 2, ' m'); 
 
         // --- MISE À JOUR DOM : ASTRO ---
         if (astroData) {
-            // TST/MST
-            if ($('tst-time')) $('tst-time').textContent = formatHours(astroData.TST_HRS);
-            if ($('mst-time')) $('mst-time').textContent = formatHours(astroData.MST_HRS);
-            if ($('equation-of-time')) $('equation-of-time').textContent = dataOrDefault(astroData.EOT_MIN, 2, ' min'); 
+            // 🟢 FIX CRITIQUE: Heure Solaire Vraie (TST) -> ID: tst
+            if ($('tst')) $('tst').textContent = formatHours(astroData.TST_HRS);
+            // 🟢 FIX CRITIQUE: Heure Solaire Moyenne (MST) -> ID: mst
+            if ($('mst')) $('mst').textContent = formatHours(astroData.MST_HRS);
+            // 🟢 FIX CRITIQUE: Équation du Temps (EOT) -> ID: eot
+            if ($('eot')) $('eot').textContent = dataOrDefault(astroData.EOT_MIN, 2, ' min'); 
             
-            // Soleil
+            // Soleil (ID OK)
             if ($('sun-alt')) $('sun-alt').textContent = dataOrDefault(astroData.sun.position.altitude * R2D, 2, '°');
             if ($('sun-azimuth')) $('sun-azimuth').textContent = dataOrDefault(astroData.sun.position.azimuth * R2D, 2, '°'); 
             
-            // Lune
+            // Lune (ID OK)
             if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(astroData.moon.illumination.phase);
-            // ID Corrigé: moon-illuminated
             if ($('moon-illuminated')) $('moon-illuminated').textContent = dataOrDefault(astroData.moon.illumination.fraction * 100, 1, ' %');
             if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(astroData.moon.position.altitude * R2D, 2, '°');
             if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(astroData.moon.position.azimuth * R2D, 2, '°'); 
             if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(astroData.moon.position.distance, 2, ' m');
         } else {
-             // Fallbacks pour tous les champs Astro (tous les champs N/A si astroData est null)
-             if ($('tst-time')) $('tst-time').textContent = 'N/A';
-             if ($('mst-time')) $('mst-time').textContent = 'N/A';
-             if ($('equation-of-time')) $('equation-of-time').textContent = 'N/A';
+             // Fallbacks pour tous les champs Astro (doit correspondre aux IDs ci-dessus)
+             if ($('tst')) $('tst').textContent = 'N/A';
+             if ($('mst')) $('mst').textContent = 'N/A';
+             if ($('eot')) $('eot').textContent = 'N/A';
              if ($('sun-alt')) $('sun-alt').textContent = 'N/A';
              if ($('sun-azimuth')) $('sun-azimuth').textContent = 'N/A'; 
              if ($('moon-phase-name')) $('moon-phase-name').textContent = 'N/A';
@@ -205,7 +209,7 @@ const D2R = Math.PI / 180;
         }
 
         // 1. Initialisation des fonctions de base
-        syncH(); 
+        syncH(); // Appel immédiat pour l'heure
 
         // 2. Mise à jour initiale des statuts (Gravity, Astro, Capteurs)
         updateDashboard();
