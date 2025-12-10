@@ -1,6 +1,6 @@
 // =================================================================
-// FICHIER : gnss-dashboard-full.js (V7.3 - FIX CRITIQUE GRAVITÉ/CAPTEURS)
-// VERSION : FINALE ULTRA-ROBUSTE V7.3 (Correction Gravité et Initialisation Capteurs)
+// FICHIER : gnss-dashboard-full.js (V7.3 - ULTRA-FIX GRAVITÉ/CAPTEURS/UTC)
+// VERSION : FINALE ULTRA-ROBUSTE V7.3
 // DÉPENDANCE CRITIQUE: window.getGravity DOIT être défini dans lib/ukf-lib.js
 // =================================================================
 
@@ -43,7 +43,7 @@ const G_STD = 9.8067;
 const RHO_AIR_ISA = 1.225;          
 const V_SOUND_ISA = 340.2900;       
 const R2D = 180 / Math.PI;
-const D2R = Math.PI / 180; // Ajout de D2R pour la conversion des coordonnées
+const D2R = Math.PI / 180; // Pour la conversion des coordonnées
 
 // =================================================================
 // DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
@@ -53,7 +53,7 @@ const D2R = Math.PI / 180; // Ajout de D2R pour la conversion des coordonnées
 
     // --- ÉTATS GLOBAUX INITIAUX ---
     let ukf = null; 
-    let isGpsPaused = true; // 🟢 FIX: Mode PAUSE GPS par défaut           
+    let isGpsPaused = true; // Mode PAUSE GPS par défaut           
     let isIMUActive = false;            
     let currentMass = 70.0;             
     
@@ -95,17 +95,21 @@ const D2R = Math.PI / 180; // Ajout de D2R pour la conversion des coordonnées
         // --- MISE À JOUR DU TEMPS ---
         if ($('heure-locale')) $('heure-locale').textContent = localTime.toTimeString().substring(0, 8) + ' (Local)';
 
-        // 🟢 FIX CRITIQUE : FORCER L'AFFICHAGE DE L'HEURE UTC
-        const utcDatePart = localTime.toLocaleDateString('fr-FR', {
-            year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC'
-        }).replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$1-$2-$3'); // Format J-M-A
-        
-        const utcTimePart = localTime.toLocaleTimeString('fr-FR', {
-            hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC'
-        });
+        // FIX CRITIQUE: AFFICHAGE DE L'HEURE UTC
+        try {
+            const utcDatePart = localTime.toLocaleDateString('fr-FR', {
+                year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC'
+            }).replace(/\//g, '-'); // Remplacer les / par des -
+            
+            const utcTimePart = localTime.toLocaleTimeString('fr-FR', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC'
+            });
 
-        if ($('utc-datetime')) {
-            $('utc-datetime').textContent = utcDatePart + ' ' + utcTimePart + ' UTC/GMT';
+            if ($('utc-datetime')) {
+                $('utc-datetime').textContent = utcDatePart + ' ' + utcTimePart + ' UTC/GMT';
+            }
+        } catch (e) {
+            if ($('utc-datetime')) $('utc-datetime').textContent = 'Erreur UTC';
         }
 
 
@@ -161,7 +165,7 @@ const D2R = Math.PI / 180; // Ajout de D2R pour la conversion des coordonnées
         // --- MISE À JOUR DOM : DYNAMIQUE & EKF DEBUG ---
         
         // Dynamique & Forces
-        // 🟢 FIX CRITIQUE: Appel à getGravity (qui DOIT être ajouté dans ukf-lib.js)
+        // FIX CRITIQUE: Appel à getGravity (qui DOIT être ajouté dans ukf-lib.js)
         const calculatedGravity = (typeof window.getGravity === 'function') 
             ? window.getGravity(currentUKFState.lat * D2R, currentUKFState.alt) 
             : G_STD; // Fallback à 9.8067 m/s² si la fonction manque
@@ -213,18 +217,18 @@ const D2R = Math.PI / 180; // Ajout de D2R pour la conversion des coordonnées
     } // Fin de updateDashboard
 
     // =========================================================
-    // BLOC 7 : INITIALISATION DU SYSTÈME
+    // BLOC 7 : INITIALISATION DU SYSTÈME (AU CHARGEMENT DE LA PAGE)
     // =========================================================
 
     window.addEventListener('load', () => {
         
         // Initialisation UKF (doit se faire après le chargement de math.js et ukf-lib.js)
-        // Vérifie si la classe ProfessionalUKF est disponible
         if (typeof window.ProfessionalUKF === 'function') { 
             ukf = new ProfessionalUKF();
         }
         
-        // 🟢 FIX CRITIQUE: Tenter d'initialiser les capteurs (pour mise à jour statut)
+        // FIX CRITIQUE: INITIALISATION DES CAPTEURS
+        // Ces fonctions doivent être définies dans un fichier tiers (ex: imu.js ou ukf-lib.js)
         if (typeof window.initIMUSensors === 'function') {
             window.initIMUSensors();
             isIMUActive = true;
@@ -234,9 +238,13 @@ const D2R = Math.PI / 180; // Ajout de D2R pour la conversion des coordonnées
         }
         
         // MISE À JOUR INITIALE DU STATUT DES CAPTEURS
-        if ($('imu-status') && !isIMUActive) {
-            $('imu-status').textContent = 'Inactif (Non-démarré)';
+        if ($('imu-status')) {
+            $('imu-status').textContent = isIMUActive ? 'Actif' : 'Inactif';
         }
+        if ($('env-status')) {
+            $('env-status').textContent = 'Initialisé'; // Placeholder
+        }
+
 
         // Exécution immédiate
         syncH(); 
