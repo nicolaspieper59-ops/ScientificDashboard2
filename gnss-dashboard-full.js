@@ -1,7 +1,7 @@
 // =================================================================
-// FICHIER : gnss-dashboard-full.js (V7.2 - FIX CRITIQUE FINAL)
-// VERSION : FINALE ULTRA-ROBUSTE V7.2 (Correction des N/A critiques et Astro)
-// MISE À JOUR : isGpsPaused = true (Mode PAUSE GPS selon l'état utilisateur).
+// FICHIER : gnss-dashboard-full.js (V7.3 - FIX CRITIQUE GRAVITÉ/CAPTEURS)
+// VERSION : FINALE ULTRA-ROBUSTE V7.3 (Correction Gravité et Initialisation Capteurs)
+// DÉPENDANCE CRITIQUE: window.getGravity DOIT être défini dans lib/ukf-lib.js
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -43,6 +43,7 @@ const G_STD = 9.8067;
 const RHO_AIR_ISA = 1.225;          
 const V_SOUND_ISA = 340.2900;       
 const R2D = 180 / Math.PI;
+const D2R = Math.PI / 180; // Ajout de D2R pour la conversion des coordonnées
 
 // =================================================================
 // DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
@@ -160,7 +161,12 @@ const R2D = 180 / Math.PI;
         // --- MISE À JOUR DOM : DYNAMIQUE & EKF DEBUG ---
         
         // Dynamique & Forces
-        if ($('local-gravity')) $('local-gravity').textContent = dataOrDefault(G_STD, 4, ' m/s²'); // 🟢 FIX CRITIQUE
+        // 🟢 FIX CRITIQUE: Appel à getGravity (qui DOIT être ajouté dans ukf-lib.js)
+        const calculatedGravity = (typeof window.getGravity === 'function') 
+            ? window.getGravity(currentUKFState.lat * D2R, currentUKFState.alt) 
+            : G_STD; // Fallback à 9.8067 m/s² si la fonction manque
+            
+        if ($('local-gravity')) $('local-gravity').textContent = dataOrDefault(calculatedGravity, 4, ' m/s²'); 
         
         // Mécanique des Fluides & Champs
         if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(dynamic_pressure, 2, ' Pa');
@@ -218,6 +224,20 @@ const R2D = 180 / Math.PI;
             ukf = new ProfessionalUKF();
         }
         
+        // 🟢 FIX CRITIQUE: Tenter d'initialiser les capteurs (pour mise à jour statut)
+        if (typeof window.initIMUSensors === 'function') {
+            window.initIMUSensors();
+            isIMUActive = true;
+        }
+        if (typeof window.initEnvironmentalSensors === 'function') {
+            window.initEnvironmentalSensors();
+        }
+        
+        // MISE À JOUR INITIALE DU STATUT DES CAPTEURS
+        if ($('imu-status') && !isIMUActive) {
+            $('imu-status').textContent = 'Inactif (Non-démarré)';
+        }
+
         // Exécution immédiate
         syncH(); 
         updateDashboard(); 
