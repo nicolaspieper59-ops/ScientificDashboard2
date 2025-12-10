@@ -105,62 +105,75 @@ function syncH() {
 }
 
 // =================================================================
-// PARTIE 4 : CAPTEURS IMU (IMU - Correction "Ancienne API")
+// PARTIE 4 : CAPTEURS IMU (IMU - Correction V11.1 - Android Force)
 // =================================================================
 
-// NOTE: Cette fonction doit être appelée UNIQUEMENT par un geste utilisateur (ex: clic)
-function initIMUSensors() {
-    if (isImuActive) return;
+// NOUVELLE VARIABLE GLOBALE : Ajoutez ceci en haut de votre fichier (si elle n'y est pas)
+// let imuListenersAttached = false; 
 
-    const startLegacyIMU = () => {
-        // ANCIENNE API (DeviceMotionEvent pour Accéléromètre)
+function initIMUSensors() {
+    // Si les écouteurs ont déjà été attachés lors d'une session précédente (ou d'un clic précédent), on arrête.
+    if (window.imuListenersAttached) {
+        if (!isImuActive) $('imu-status').textContent = 'En attente de données...';
+        return;
+    }
+    
+    // Fonction principale qui attache les Event Listeners
+    const attachLegacyIMUListeners = () => {
+        // --- 1. ACCÉLÉROMÈTRE (DeviceMotionEvent) ---
         if (window.DeviceMotionEvent) {
             window.addEventListener('devicemotion', (event) => {
-                // Utilise event.accelerationIncludingGravity pour les axes (plus fréquent sur les anciens devices)
                 if (event.accelerationIncludingGravity) {
                     lastIMU.acc.x = event.accelerationIncludingGravity.x || 0;
                     lastIMU.acc.y = event.accelerationIncludingGravity.y || 0;
                     lastIMU.acc.z = event.accelerationIncludingGravity.z || 0;
-
-                    console.log("IMU - Mouvement Reçu (X) :", event.accelerationIncludingGravity.x);
+                    // Laissez ce log si vous pouvez déboguer
+                    // console.log("IMU - Mouvement Reçu (X) :", lastIMU.acc.x); 
                 }
                 isImuActive = true;
                 $('imu-status').textContent = 'Actif (Mouvement)';
             }, { once: false });
+        } else {
+             console.warn("IMU - DeviceMotionEvent non supporté sur ce navigateur.");
         }
         
-        // ANCIENNE API (DeviceOrientationEvent pour Gyroscope/Pitch/Roll)
+        // --- 2. GYROSCOPE (DeviceOrientationEvent) ---
         if (window.DeviceOrientationEvent) {
             window.addEventListener('deviceorientation', (event) => {
-                // event.beta (pitch), event.gamma (roll)
                 lastIMU.pitch = event.beta || 0;
                 lastIMU.roll = event.gamma || 0;
                 isImuActive = true;
                 $('imu-status').textContent = 'Actif (Orientation)';
             }, { once: false });
+        } else {
+             console.warn("IMU - DeviceOrientationEvent non supporté sur ce navigateur.");
         }
         
-        // Si l'initialisation s'est faite sans erreur visible
-        if (!isImuActive) $('imu-status').textContent = 'Inactif (En attente de données)';
+        window.imuListenersAttached = true;
+        // Met à jour le statut, en attente de la première donnée
+        if (!isImuActive) $('imu-status').textContent = 'En attente de données...'; 
     };
 
-    // Tenter l'API de permission (iOS 13+ et certains Chrome)
+    // --- LOGIQUE DE PERMISSION ---
+    // 1. Tenter l'API de permission (Obligatoire iOS, parfois Chrome récent)
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        $('imu-status').textContent = 'En attente de permission (Système)...';
         DeviceMotionEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
-                    startLegacyIMU();
+                    attachLegacyIMUListeners();
                 } else {
                     $('imu-status').textContent = 'Refusé (Permission requise)';
                 }
             })
             .catch(error => {
-                // Si la fonction existe mais plante (ex: environnement non sécurisé), on tente quand même
-                startLegacyIMU();
+                // Si la fonction de permission existe mais plante (typiquement Android), on tente le fallback immédiat.
+                console.warn("Échec de requestPermission. Tentative de démarrage forcé...");
+                attachLegacyIMUListeners(); 
             });
     } else {
-        // ANCIENNE API standard (Android, anciens navigateurs, non-HTTPS)
-        startLegacyIMU();
+        // 2. DÉMARRAGE FORCÉ/STANDARD (Path principal pour la majorité des Android)
+        attachLegacyIMUListeners();
     }
 }
 
