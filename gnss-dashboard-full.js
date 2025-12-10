@@ -1,5 +1,5 @@
 // =================================================================
-// FICHIER : gnss-dashboard-full.js (V7.3 - FINAL & CONSOLIDÉ)
+// FICHIER : gnss-dashboard-full.js (V7.3 - FINAL ET DÉFINITIF)
 // VERSION : FINALE ULTRA-ROBUSTE V7.3
 // DÉPENDANCES CRITIQUES: lib/ukf-lib.js (avec getGravity), lib/astro.js (avec getSolarData)
 // =================================================================
@@ -30,7 +30,7 @@ const dataOrDefault = (val, decimals, suffix = '', fallback = null, forceZero = 
 const dataOrDefaultExp = (val, decimals, suffix = '') => {
     if (val === undefined || val === null || isNaN(val) || Math.abs(val) < 1e-30) {
         const zeroDecimals = '0.' + Array(decimals).fill('0').join('');
-        return zeroDecimals + 'e+0';
+        return zeroDecimals + 'e+0' + suffix;
     }
     return val.toExponential(decimals).replace('.', ',');
 };
@@ -53,17 +53,17 @@ const D2R = Math.PI / 180;
 
     // --- ÉTATS GLOBAUX INITIAUX ---
     let ukf = null; 
-    let isGpsPaused = true; // Mode PAUSE GPS par défaut           
+    let isGpsPaused = true; 
     let isIMUActive = false;            
     let currentMass = 70.0;             
     
-    let currentMaxSpeed_ms = 0.5 / 3.6;    
+    let currentMaxSpeed_ms = 0.0 / 3.6;    
     let currentSessionTime = 0.00;       
     let currentMovementTime = 0.00;
     
     // État UKF initial (utilisé pour les calculs astro)
     let currentUKFState = { 
-        lat: 43.284572, lon: 5.358710, alt: 100.00, // Coordonnées initiales de Marseille
+        lat: 43.284572, lon: 5.358710, alt: 100.00, // Coordonnées initiales
         vN: 0.0, vE: 0.0, vD: 0.0, 
         speed: 0.0, kUncert: 0.0 
     };
@@ -72,7 +72,6 @@ const D2R = Math.PI / 180;
     let lastTime = performance.now();
     
     // --- VÉRIFICATION ET FALLBACKS DES DÉPENDANCES ASTRO ---
-    // Les fonctions formatHours et getMoonPhaseName sont dans astro.js
     const formatHours = window.formatHours || ((h) => 'N/A');
     const getMoonPhaseName = window.getMoonPhaseName || ((p) => 'N/A');
     const getSolarData = window.getSolarData || ((d, lat, lon, alt) => null);
@@ -146,7 +145,8 @@ const D2R = Math.PI / 180;
                 astroData = window.getSolarData(today, currentUKFState.lat, currentUKFState.lon, currentUKFState.alt);
             }
         } catch (e) {
-            // Laisse astroData à null
+            // Si une erreur se produit dans getSolarData, cela ne doit pas faire planter le reste
+            console.error("Erreur lors du calcul Astro:", e);
         }
         
         // --- MISE À JOUR DOM : VITESSE & RELATIVITÉ ---
@@ -166,17 +166,17 @@ const D2R = Math.PI / 180;
         
         // --- MISE À JOUR DOM : DYNAMIQUE & EKF DEBUG ---
         
-        // Dynamique & Forces
-        // FIX CRITIQUE: Appel à getGravity (qui DOIT être ajouté dans ukf-lib.js)
+        // Gravité Locale
         const calculatedGravity = (typeof window.getGravity === 'function') 
             ? window.getGravity(currentUKFState.lat * D2R, currentUKFState.alt) 
             : G_STD; // Fallback à 9.8067 m/s² si la fonction manque
             
+        // ⚠️ VÉRIFIEZ L'ID DE CET ÉLÉMENT: il doit correspondre à l'ID de la Gravité Locale dans votre HTML
         if ($('local-gravity')) $('local-gravity').textContent = dataOrDefault(calculatedGravity, 4, ' m/s²'); 
         
         // Mécanique des Fluides & Champs
         if ($('dynamic-pressure')) $('dynamic-pressure').textContent = dataOrDefault(dynamic_pressure, 2, ' Pa');
-        if ($('kinetic-energy')) $('kinetic-energy').textContent = dataOrDefault(kinetic_energy, 2, ' J'); 
+        if ($('kinetic-energy')) $('kinetic_energy').textContent = dataOrDefault(kinetic_energy, 2, ' J'); 
         
         // Filtre EKF/UKF & Debug
         const gpsStatusText = isGpsPaused ? 'PAUSE GPS' : 'ATTENTE SIGNAL';
@@ -231,10 +231,12 @@ const D2R = Math.PI / 180;
         // Initialisation UKF
         if (typeof window.ProfessionalUKF === 'function') { 
             ukf = new ProfessionalUKF();
+        } else {
+             console.error("🔴 ERREUR CRITIQUE: ProfessionalUKF non trouvé. Le filtre UKF est désactivé.");
         }
 
         // 1. Initialisation des fonctions de base (GPS, Synchro, Contrôles)
-        syncH(); 
+        syncH(); // Appel immédiat
         if (typeof window.initGPS === 'function') {
             window.initGPS(); 
         }
@@ -260,12 +262,12 @@ const D2R = Math.PI / 180;
             updateDashboard(); 
         }, 1000 / 60);
         
-        // Vérification du statut Capteur IMU après tentative d'initialisation
+        // Vérification du statut Capteur IMU
         if ($('imu-status')) {
             $('imu-status').textContent = isIMUActive ? 'Actif' : 'Inactif';
         }
         if ($('env-status')) {
-             $('env-status').textContent = 'Initialisé'; // Statut par défaut si non pris en charge
+             $('env-status').textContent = 'Initialisé'; // Placeholder
         }
 
     });
