@@ -222,40 +222,42 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
 
     window.addEventListener('load', () => {
         
-        // Initialisation UKF (doit se faire après le chargement de math.js et ukf-lib.js)
+        // Initialisation UKF
         if (typeof window.ProfessionalUKF === 'function') { 
             ukf = new ProfessionalUKF();
         }
-        
-        // FIX CRITIQUE: INITIALISATION DES CAPTEURS
-        // Ces fonctions doivent être définies dans un fichier tiers (ex: imu.js ou ukf-lib.js)
+
+        // 1. Initialisation des fonctions de base (GPS, Synchro, Contrôles)
+        syncH(); // Démarrer la synchro NTP (pour Heure Locale)
+        if (typeof window.initGPS === 'function') {
+            window.initGPS(); // Démarrer le GPS (si elle est définie)
+        }
+        if (typeof window.setupEventListeners === 'function') {
+            window.setupEventListeners(); // Attacher les contrôles
+        }
+
+        // 🟢 FIX CRITIQUE: INITIALISATION DES CAPTEURS
         if (typeof window.initIMUSensors === 'function') {
             window.initIMUSensors();
-            isIMUActive = true;
+            isIMUActive = true; // Variable à mettre à jour si l'initialisation réussit
         }
         if (typeof window.initEnvironmentalSensors === 'function') {
             window.initEnvironmentalSensors();
         }
         
-        // MISE À JOUR INITIALE DU STATUT DES CAPTEURS
-        if ($('imu-status')) {
-            $('imu-status').textContent = isIMUActive ? 'Actif' : 'Inactif';
-        }
-        if ($('env-status')) {
-            $('env-status').textContent = 'Initialisé'; // Placeholder
-        }
+        // 2. Mise à jour initiale des statuts (Gravity, Astro, Capteurs)
+        updateDashboardDOM();
 
-
-        // Exécution immédiate
-        syncH(); 
-        updateDashboard(); 
-        
-        // Exécution à haute fréquence (60Hz) pour garantir la mise à jour des valeurs.
+        // 3. Boucle principale de rafraîchissement (Utiliser la fonction syncH pour l'heure)
         setInterval(() => {
-            syncH();
-            updateDashboard();
-        }, 1000 / 60); 
+            syncH(); // Mise à jour du temps rapide
+            updateDashboardDOM(); // Mise à jour des valeurs (physique/astro)
+        }, 1000 / 60); // Haute Fréquence (60Hz) pour un affichage fluide
+        
+        // Vérification du statut Capteur IMU après tentative d'initialisation
+        if ($('imu-status')) {
+            $('imu-status').textContent = isIMUActive ? 'Actif' : 'Inactif (Non-démarré)';
+        }
 
     });
-
-})(window);
+// Fin du fichier gnss-dashboard-full.js
