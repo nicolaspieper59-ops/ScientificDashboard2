@@ -1,7 +1,7 @@
 // =================================================================
-// FICHIER : gnss-dashboard-full.js (V7.3 - ULTRA-FIX GRAVITÉ/CAPTEURS/UTC)
+// FICHIER : gnss-dashboard-full.js (V7.3 - FINAL & CONSOLIDÉ)
 // VERSION : FINALE ULTRA-ROBUSTE V7.3
-// DÉPENDANCE CRITIQUE: window.getGravity DOIT être défini dans lib/ukf-lib.js
+// DÉPENDANCES CRITIQUES: lib/ukf-lib.js (avec getGravity), lib/astro.js (avec getSolarData)
 // =================================================================
 
 // --- FONCTIONS UTILITAIRES GLOBALES ---
@@ -30,9 +30,9 @@ const dataOrDefault = (val, decimals, suffix = '', fallback = null, forceZero = 
 const dataOrDefaultExp = (val, decimals, suffix = '') => {
     if (val === undefined || val === null || isNaN(val) || Math.abs(val) < 1e-30) {
         const zeroDecimals = '0.' + Array(decimals).fill('0').join('');
-        return zeroDecimals + 'e+0' + suffix;
+        return zeroDecimals + 'e+0';
     }
-    return val.toExponential(decimals).replace('.', ',') + suffix;
+    return val.toExponential(decimals).replace('.', ',');
 };
 
 
@@ -43,7 +43,7 @@ const G_STD = 9.8067;
 const RHO_AIR_ISA = 1.225;          
 const V_SOUND_ISA = 340.2900;       
 const R2D = 180 / Math.PI;
-const D2R = Math.PI / 180; // Pour la conversion des coordonnées
+const D2R = Math.PI / 180; 
 
 // =================================================================
 // DÉMARRAGE : Encapsulation de la logique UKF et État Global (IIFE)
@@ -57,13 +57,13 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
     let isIMUActive = false;            
     let currentMass = 70.0;             
     
-    let currentMaxSpeed_ms = 0.0 / 3.6;    
+    let currentMaxSpeed_ms = 0.5 / 3.6;    
     let currentSessionTime = 0.00;       
     let currentMovementTime = 0.00;
     
     // État UKF initial (utilisé pour les calculs astro)
     let currentUKFState = { 
-        lat: 43.284572, lon: 5.358710, alt: 100.00, 
+        lat: 43.284572, lon: 5.358710, alt: 100.00, // Coordonnées initiales de Marseille
         vN: 0.0, vE: 0.0, vD: 0.0, 
         speed: 0.0, kUncert: 0.0 
     };
@@ -72,13 +72,14 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
     let lastTime = performance.now();
     
     // --- VÉRIFICATION ET FALLBACKS DES DÉPENDANCES ASTRO ---
+    // Les fonctions formatHours et getMoonPhaseName sont dans astro.js
     const formatHours = window.formatHours || ((h) => 'N/A');
     const getMoonPhaseName = window.getMoonPhaseName || ((p) => 'N/A');
     const getSolarData = window.getSolarData || ((d, lat, lon, alt) => null);
 
-    // =========================================================
-    // BLOC 0 : GESTION DU TEMPS (syncH)
-    // =========================================================
+// =========================================================
+// BLOC 0 : GESTION DU TEMPS (syncH)
+// =========================================================
 
     function syncH() {
         const now = performance.now();
@@ -92,24 +93,24 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
 
         const localTime = new Date();
         
-        // --- MISE À JOUR DU TEMPS ---
+        // --- MISE À JOUR DU TEMPS LOCAL ---
         if ($('heure-locale')) $('heure-locale').textContent = localTime.toTimeString().substring(0, 8) + ' (Local)';
 
-        // FIX CRITIQUE: AFFICHAGE DE L'HEURE UTC
+        // --- FIX CRITIQUE: AFFICHAGE STABLE DE L'HEURE UTC ---
         try {
             const utcDatePart = localTime.toLocaleDateString('fr-FR', {
                 year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC'
-            }).replace(/\//g, '-'); // Remplacer les / par des -
+            }).replace(/\//g, '-');
             
             const utcTimePart = localTime.toLocaleTimeString('fr-FR', {
                 hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC'
             });
 
             if ($('utc-datetime')) {
-                $('utc-datetime').textContent = utcDatePart + ' ' + utcTimePart + ' UTC/GMT';
+                $('utc-datetime').textContent = `${utcDatePart} ${utcTimePart} UTC/GMT`;
             }
         } catch (e) {
-            if ($('utc-datetime')) $('utc-datetime').textContent = 'Erreur UTC';
+            if ($('utc-datetime')) $('utc-datetime').textContent = 'N/A (Erreur de formatage)';
         }
 
 
@@ -118,9 +119,9 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
         if ($('movement-time')) $('movement-time').textContent = dataOrDefault(currentMovementTime, 2, ' s');
     }
 
-    // =========================================================
-    // BLOC 1 : LOGIQUE DE CALCUL CRITIQUE (UKF/Physique/Astro)
-    // =========================================================
+// =========================================================
+// BLOC 1 : LOGIQUE DE CALCUL CRITIQUE (UKF/Physique/Astro)
+// =========================================================
 
     function updateDashboard() {
         
@@ -136,11 +137,11 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
         const kinetic_energy = 0.5 * M * V_ms * V_ms; 
         const mach_number = V_ms / V_SOUND_ISA; 
         
-        // 3. CALCULS ASTRO (Utilise les fonctions de astro.js et ephem.js)
+        // 3. CALCULS ASTRO (Utilise les fonctions de astro.js)
         const today = new Date();
         let astroData = null;
         try {
-            // Utiliser la fonction globale (assure l'accès si astro.js est chargé)
+            // Tente de calculer les données astro si la fonction est définie
             if (typeof window.getSolarData === 'function') {
                 astroData = window.getSolarData(today, currentUKFState.lat, currentUKFState.lon, currentUKFState.alt);
             }
@@ -150,11 +151,12 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
         
         // --- MISE À JOUR DOM : VITESSE & RELATIVITÉ ---
         
-        // Vitesse (En mode PAUSE/ATTENTE, les tirets sont appropriés)
+        // Vitesse 
         const speedFallback = isGpsPaused ? '0,0 km/h' : '--.- km/h';
         const speedMSFallback = isGpsPaused ? '0,00 m/s' : '-- m/s';
         if ($('current-speed-kmh')) $('current-speed-kmh').textContent = dataOrDefault(speed_kmh, 1, ' km/h', speedFallback, false); 
         if ($('stable-speed-ms')) $('stable-speed-ms').textContent = dataOrDefault(V_ms, 2, ' m/s', speedMSFallback, false); 
+        if ($('vmax-session')) $('vmax-session').textContent = dataOrDefault(currentMaxSpeed_ms * 3.6, 1, ' km/h');
         
         // Physique & Relativité
         if ($('perc-vitesse-son')) $('perc-vitesse-son').textContent = dataOrDefault(V_ms / V_SOUND_ISA * 100, 2, ' %'); 
@@ -177,7 +179,7 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
         if ($('kinetic-energy')) $('kinetic-energy').textContent = dataOrDefault(kinetic_energy, 2, ' J'); 
         
         // Filtre EKF/UKF & Debug
-        const gpsStatusText = isGpsPaused ? 'INACTIF' : 'ATTENTE SIGNAL';
+        const gpsStatusText = isGpsPaused ? 'PAUSE GPS' : 'ATTENTE SIGNAL';
         if ($('gps-status')) $('gps-status').textContent = gpsStatusText; 
         if ($('ekf-status')) $('ekf-status').textContent = isGpsPaused ? 'INACTIF' : 'ACQUISITION';
         
@@ -201,24 +203,28 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
             
             // Lune
             if ($('moon-phase-name')) $('moon-phase-name').textContent = getMoonPhaseName(astroData.moon.illumination.phase);
+            if ($('moon-illumination')) $('moon-illumination').textContent = dataOrDefault(astroData.moon.illumination.fraction * 100, 1, ' %');
             if ($('moon-alt')) $('moon-alt').textContent = dataOrDefault(astroData.moon.position.altitude * R2D, 2, '°');
             if ($('moon-azimuth')) $('moon-azimuth').textContent = dataOrDefault(astroData.moon.position.azimuth * R2D, 2, '°'); 
+            if ($('moon-distance')) $('moon-distance').textContent = dataOrDefaultExp(astroData.moon.position.distance, 2, ' m');
         } else {
-             // Fallbacks for Astro
+             // Fallbacks pour tous les champs Astro
              if ($('tst-time')) $('tst-time').textContent = 'N/A';
              if ($('mst-time')) $('mst-time').textContent = 'N/A';
              if ($('equation-of-time')) $('equation-of-time').textContent = 'N/A';
              if ($('sun-alt')) $('sun-alt').textContent = 'N/A';
              if ($('sun-azimuth')) $('sun-azimuth').textContent = 'N/A'; 
              if ($('moon-phase-name')) $('moon-phase-name').textContent = 'N/A';
+             if ($('moon-illumination')) $('moon-illumination').textContent = 'N/A';
              if ($('moon-alt')) $('moon-alt').textContent = 'N/A';
              if ($('moon-azimuth')) $('moon-azimuth').textContent = 'N/A'; 
+             if ($('moon-distance')) $('moon-distance').textContent = 'N/A';
         }
     } // Fin de updateDashboard
 
-    // =========================================================
-    // BLOC 7 : INITIALISATION DU SYSTÈME (AU CHARGEMENT DE LA PAGE)
-    // =========================================================
+// =========================================================
+// BLOC 7 : INITIALISATION DU SYSTÈME (AU CHARGEMENT DE LA PAGE)
+// =========================================================
 
     window.addEventListener('load', () => {
         
@@ -228,36 +234,40 @@ const D2R = Math.PI / 180; // Pour la conversion des coordonnées
         }
 
         // 1. Initialisation des fonctions de base (GPS, Synchro, Contrôles)
-        syncH(); // Démarrer la synchro NTP (pour Heure Locale)
+        syncH(); 
         if (typeof window.initGPS === 'function') {
-            window.initGPS(); // Démarrer le GPS (si elle est définie)
+            window.initGPS(); 
         }
         if (typeof window.setupEventListeners === 'function') {
-            window.setupEventListeners(); // Attacher les contrôles
+            window.setupEventListeners(); 
         }
 
         // 🟢 FIX CRITIQUE: INITIALISATION DES CAPTEURS
         if (typeof window.initIMUSensors === 'function') {
             window.initIMUSensors();
-            isIMUActive = true; // Variable à mettre à jour si l'initialisation réussit
+            isIMUActive = true; 
         }
         if (typeof window.initEnvironmentalSensors === 'function') {
             window.initEnvironmentalSensors();
         }
         
         // 2. Mise à jour initiale des statuts (Gravity, Astro, Capteurs)
-        updateDashboardDOM();
+        updateDashboard();
 
-        // 3. Boucle principale de rafraîchissement (Utiliser la fonction syncH pour l'heure)
+        // 3. Boucle principale de rafraîchissement (60Hz)
         setInterval(() => {
-            syncH(); // Mise à jour du temps rapide
-            updateDashboardDOM(); // Mise à jour des valeurs (physique/astro)
-        }, 1000 / 60); // Haute Fréquence (60Hz) pour un affichage fluide
+            syncH(); 
+            updateDashboard(); 
+        }, 1000 / 60);
         
         // Vérification du statut Capteur IMU après tentative d'initialisation
         if ($('imu-status')) {
-            $('imu-status').textContent = isIMUActive ? 'Actif' : 'Inactif (Non-démarré)';
+            $('imu-status').textContent = isIMUActive ? 'Actif' : 'Inactif';
+        }
+        if ($('env-status')) {
+             $('env-status').textContent = 'Initialisé'; // Statut par défaut si non pris en charge
         }
 
     });
-// Fin du fichier gnss-dashboard-full.js
+
+})(window); 
